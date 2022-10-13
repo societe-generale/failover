@@ -1,0 +1,10 @@
+# Auto Configure
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.societegenerale.failover.configuration.FailoverAutoConfiguration,\
+com.societegenerale.failover.configuration.FailoverCaffeineStoreAutoConfiguration,\
+com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration,\
+com.societegenerale.failover.configuration.ResilienceFailoverExecutionAutoConfiguration
+
+# Failure Analyzer
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+com.societegenerale.failover.analyzer.FailoverFailureAnalyzer
