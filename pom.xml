@@ -8,7 +8,6 @@
     <packaging>pom</packaging>
 
     <name>failover</name>
-    <description>failover</description>
     <description>A library for managing failover</description>
     <url>https://github.com/societe-generale/failover</url>
 
