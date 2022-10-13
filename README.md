@@ -2,6 +2,9 @@
 
 # **Failover** <small>***1.0.x***</small>
 
+![CI](https://github.com/societe-generale/failover/actions/workflows/java-maven-ci.yml/badge.svg)
+
+
 > ***Failover library - To manage the failover on referential systems***
 
 - <small>Support </small>**Failover**<small> needs for your domain services</small>
