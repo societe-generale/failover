@@ -19,3 +19,17 @@
 ![failover](images/failover.png)
 
 ---
+
+## Features
+- **A light framework ( Domain and Core modules )** : No external frameworks  ( Just by @Failover Annotation ) 
+- **Failover Execution Strategy** :  ( Eliminate tightly coupling with other frameworks )
+  - With simple Try Catch  ( No heavy framework )
+  - Support for resilience4j-circuitbreaker 	
+  - Easily pluggable architecture for custom Failover Execution Strategy 
+- **Failover Store** :  
+  - In-memory : Not recommended for production 
+  - Cache : With caffeine cache ( for very small-scale use case )
+  - JDBC : For any database support ( recommended for most common use cases )
+  - CUSTOM : For any other custom failover store
+- **Monitoring** : Various failover metrics are available for effective monitoring
+- **Spring Boot Starter** : Support for spring boot starter for easy integration
