@@ -13,7 +13,7 @@
 - <small>Support for various failover execution</small> **Basic**, **Resilience** etc
 - <small>Easy to </small>**customize**<small>  and use by providing your own</small> **Expiry Policy**, **Failover Store**, **RecoveredPayloadHandler**<small> or many other providers</small>
 
-[Getting Started](docs/documentation/quick-start.md)
+[Getting Started](https://societe-generale.github.io/failover-lib/#/documentation/quick-start)
 
 ---
 
