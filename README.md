@@ -22,7 +22,7 @@
 ---
 
 ## Features
-- **Very light modules Domain and Core** : No external frameworks  ( Just by @Failover Annotation ) 
+- **A light framework ( Domain and Core modules )** : No external frameworks  ( Just by @Failover Annotation ) 
 - **Failover Execution Strategy** :  ( Eliminate tightly coupling with other frameworks )
   - With simple Try Catch  ( No heavy framework )
   - Support for resilience4j-circuitbreaker 	
