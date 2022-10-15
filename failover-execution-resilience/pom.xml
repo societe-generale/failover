@@ -8,13 +8,13 @@
 
     <parent>
         <artifactId>failover</artifactId>
-        <groupId>com.societegenerale.failover</groupId>
+        <groupId>com.societegenerale.failover_lib</groupId>
         <version>1.0.1-SNAPSHOT</version>
     </parent>
 
     <dependencies>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-core</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
@@ -47,14 +47,14 @@
         </dependency>
 
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-store-inmemory</artifactId>
             <version>${project.parent.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-aspect</artifactId>
             <version>${project.parent.version}</version>
             <scope>test</scope>

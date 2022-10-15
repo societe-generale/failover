@@ -8,7 +8,7 @@
 
     <parent>
         <artifactId>failover</artifactId>
-        <groupId>com.societegenerale.failover</groupId>
+        <groupId>com.societegenerale.failover_lib</groupId>
         <version>1.0.1-SNAPSHOT</version>
     </parent>
 
@@ -18,7 +18,7 @@
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-spring-boot-autoconfigure</artifactId>
             <version>${project.parent.version}</version>
         </dependency>

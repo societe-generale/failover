@@ -7,63 +7,63 @@
 
     <parent>
         <artifactId>failover</artifactId>
-        <groupId>com.societegenerale.failover</groupId>
+        <groupId>com.societegenerale.failover_lib</groupId>
         <version>1.0.1-SNAPSHOT</version>
     </parent>
 
     <dependencies>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-domain</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-core</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-store-inmemory</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-store-caffeine</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-store-jdbc</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-store-async</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-execution-resilience</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-aspect</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-scheduler</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-lookup</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.societegenerale.failover</groupId>
+            <groupId>com.societegenerale.failover_lib</groupId>
             <artifactId>failover-spring-boot-autoconfigure</artifactId>
             <version>${project.parent.version}</version>
         </dependency>

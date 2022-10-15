@@ -8,7 +8,7 @@
 
     <parent>
         <artifactId>failover</artifactId>
-        <groupId>com.societegenerale.failover</groupId>
+        <groupId>com.societegenerale.failover_lib</groupId>
         <version>1.0.1-SNAPSHOT</version>
     </parent>
 

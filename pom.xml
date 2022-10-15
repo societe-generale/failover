@@ -2,14 +2,14 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.societegenerale.failover</groupId>
-    <artifactId>failover</artifactId>
+    <groupId>com.societegenerale.failover_lib</groupId>
+    <artifactId>failover-lib</artifactId>
     <version>1.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>failover</name>
+    <name>failover-lib</name>
     <description>A library for managing failover</description>
-    <url>https://github.com/societe-generale/failover</url>
+    <url>https://github.com/societe-generale/failover-lib</url>
 
     <properties>
         <java.version>1.8</java.version>
