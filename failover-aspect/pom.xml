@@ -7,7 +7,7 @@
     <packaging>jar</packaging>
 
     <parent>
-        <artifactId>failover</artifactId>
+        <artifactId>failover-lib</artifactId>
         <groupId>com.societegenerale.failover_lib</groupId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
