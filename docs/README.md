@@ -26,12 +26,6 @@ You can configure the failover module with your project by adding the below star
 For more details, please go to [Getting Started](https://societe-generale.github.io/failover/#/documentation/quick-start)
 
 ---
-
-![failover](docs/images/failover.png)
-
----
-
----
 ![failover](images/failover.png)
 
 ---
