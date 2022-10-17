@@ -71,7 +71,7 @@ There will be many microservices will be in a platform. In this example, we have
 **When a referential services having some issues where the application teams does not have a control ?**
 - In such condition, the impact will be cascaded to each applications. 
 - If referential service is down, the application will have some exception. ( *500 : Internal Server Error* )
-- If the referential service is slow, the aplication will also have the slowness. 
+- If the referential service is slow, our application will also have the slowness. 
 
 ### Solution 
 - Apply **failover** 
