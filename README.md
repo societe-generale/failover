@@ -13,7 +13,21 @@
 - <small>Support for various failover execution</small> **Basic**, **Resilience** etc
 - <small>Easy to </small>**customize**<small>  and use by providing your own</small> **Expiry Policy**, **Failover Store**, **RecoveredPayloadHandler**<small> or many other providers</small>
 
-[Getting Started](https://societe-generale.github.io/failover/#/documentation/quick-start)
+---
+
+## Spring Boot Starter Dependency
+
+You can configure the failover module with your project by adding the below starter dependency and the configurations
+ 
+```pom.xml
+    <dependency>
+        <groupId>com.societegenerale.failover</groupId>
+        <artifactId>failover-spring-boot-starter</artifactId>
+        <version> <!-- add latest version --> </version>
+    </dependency>
+```
+
+For more details, please go to [Getting Started](https://societe-generale.github.io/failover/#/documentation/quick-start)
 
 ---
 
