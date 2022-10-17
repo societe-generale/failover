@@ -60,7 +60,7 @@ There will be many microservices will be in a platform. In this example, we have
    - Ownership is with external organization
    - If there is any issue in such service, the application team has to escalate the issues with the respective teams in other organization and wait for the resolution. Most of the time this take some time. 
 
-![failover usecase](docs/images/failover-service-calls.png)
+![failover usecase](images/failover-service-calls.png)
 
 ### Scenario 
 **When a referential services having some issues where the application teams does not have a control ?**
@@ -73,6 +73,6 @@ There will be many microservices will be in a platform. In this example, we have
 - Define the expiry for each referential **with the acceptance of business**
 - Define **acceptable expiry policy**
 
-![failover solution](docs/images/failover-user-experience.png)
+![failover solution](images/failover-user-experience.png)
 
 ---
