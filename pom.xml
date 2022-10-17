@@ -41,6 +41,14 @@
         <sonar.coverage.jacoco.xmlReportPaths>../report/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
+    <developers>
+        <developer>
+            <id>anandmnair</id>
+            <name>Anand Manissery</name>
+            <email>anand.manissery@socgen.com</email>
+        </developer>
+    </developers>
+
     <licenses>
         <license>
             <name>Apache 2</name>
