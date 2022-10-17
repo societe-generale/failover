@@ -28,13 +28,15 @@ import java.time.LocalDateTime;
 public interface ReferentialAware {
 
     /**
-     * @param upToDate flag to be set. Whether the value of the referential data is up-to-date or not.
+     * Whether the value of the referential data is up-to-date or not.
+     * @param upToDate flag to be set.
      */
     void setUpToDate(Boolean upToDate);
 
 
     /**
-     * @param asOf time to be set. The value of referential data is as of the given time
+     * The value of referential data is as of the given time
+     * @param asOf time to be set.
      */
     void setAsOf(LocalDateTime asOf);
 }
