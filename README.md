@@ -49,3 +49,35 @@ For more details, please go to [Getting Started](https://societe-generale.github
 - **Monitoring** : Various failover metrics are available for effective monitoring
 - **Spring Boot Starter** : Support for spring boot starter for easy integration
 
+---
+ 
+## Usecase 
+
+### Context
+There will be many microservices will be in a platform. In this example, we have 3 category of services. 
+1. **Internal microservices** :  
+   - Full ownership is with the application teams. 
+   - If there is any issue in Internal Services, the team has full control of it and easy to improve. 
+2. **Referential Services** :
+   - Ownership is not with application team, but managed by other teams in the organization. 
+   - If there is any issue in such service, the application team has to escalate the issues with the respective owners/teams and wait for the resolution. Most of the time this take some time. 
+3. **External Service** : 
+   - Ownership is with external organization
+   - If there is any issue in such service, the application team has to escalate the issues with the respective teams in other organization and wait for the resolution. Most of the time this take some time. 
+
+![failover usecase](docs/images/failover-service-calls.png)
+
+### Scenario 
+**When a referential services having some issues where the application teams does not have a control ?**
+- In such condition, the impact will be cascaded to each applications. 
+- If referential service is down, the application will have some exception. ( *500 : Internal Server Error* )
+- If the referential service is slow, our application will also have the slowness. 
+
+### Solution 
+- Apply **failover** 
+- Define the expiry for each referential **with the acceptance of business**
+- Define **acceptable expiry policy**
+
+![failover solution](docs/images/failover-user-experience.png)
+
+---
