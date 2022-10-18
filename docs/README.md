@@ -76,3 +76,14 @@ There will be many microservices will be in a platform. In this example, we have
 ![failover solution](images/failover-user-experience.png)
 
 ---
+
+### Official maintainers
+- Anand MANISSERY(https://github.com/anandmnair)
+
+### Thanks and acknowledgement 
+- [Vincent FUCHS](https://github.com/vincent-fuchs) 
+- Patrice FRICARD
+- Igor LOVICH
+
+---
+
