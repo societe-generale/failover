@@ -89,5 +89,5 @@ There will be many microservices will be in a platform. In this example, we have
 - [Vincent FUCHS](https://github.com/vincent-fuchs) 
 - Patrice FRICARD
 - Igor LOVICH
-
+- Abilash TITUS
 ---
