@@ -82,7 +82,7 @@ There will be many microservices will be in a platform. In this example, we have
 
 ---
 
-### Official maintainers
+### Code Owners
 - [Anand MANISSERY](https://github.com/anandmnair)
 
 ### Thanks and acknowledgement 
