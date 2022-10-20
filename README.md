@@ -51,7 +51,7 @@ For more details, please go to [Getting Started](https://societe-generale.github
 
 ---
  
-## Usecase 
+## Use case 
 
 ### Context
 There will be many microservices will be in a platform. In this example, we have 3 category of services. 
@@ -65,7 +65,7 @@ There will be many microservices will be in a platform. In this example, we have
    - Ownership is with external organization
    - If there is any issue in such service, the application team has to escalate the issues with the respective teams in other organization and wait for the resolution. Most of the time this take some time. 
 
-![failover usecase](docs/images/failover-service-calls.png)
+![failover use case](docs/images/failover-challenges.png)
 
 ### Scenario 
 **When a referential services having some issues where the application teams does not have a control ?**
@@ -77,6 +77,12 @@ There will be many microservices will be in a platform. In this example, we have
 - Apply **failover** 
 - Define the expiry for each referential **with the acceptance of business**
 - Define **acceptable expiry policy**
+
+![failover solution](docs/images/failover-solution.png)
+
+### Benefit
+The solution **will not eliminate such failures completely (not 100%)**. 
+However, this will help us to **reduce the impact** on the business on a large scale.
 
 ![failover solution](docs/images/failover-user-experience.png)
 
