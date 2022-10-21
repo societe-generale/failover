@@ -87,7 +87,7 @@ However, this will help us to **reduce the impact** on the business on a large s
 ![failover solution](docs/images/failover-user-experience.png)
 
 ### Key Features
-The key features of the solutions**.
+**The key features of the solutions**
 ![failover solution](images/failover-key-features.png)
 
 ---
