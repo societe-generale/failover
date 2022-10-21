@@ -73,7 +73,6 @@ There will be many microservices will be in a platform. In this example, we have
 - Define the expiry for each referential **with the acceptance of business**
 - Define **acceptable expiry policy**
 
-
 ![failover solution](images/failover-solution.png)
 
 ### Benefit
@@ -81,6 +80,10 @@ The solution **will not eliminate such failures completely (not 100%)**.
 However, this will help us to **reduce the impact** on the business on a large scale.
 
 ![failover solution](images/failover-user-experience.png)
+
+### Key Features
+The key features of the solutions**.
+![failover solution](images/failover-key-features.png)
 
 ---
 
