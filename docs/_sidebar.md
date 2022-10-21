@@ -1,4 +1,4 @@
-- [**Failover**](README.md)
+- [**Failover**](../README.md)
 
 - [**Quick Start**](documentation/quick-start.md)
 
