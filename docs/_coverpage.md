@@ -11,4 +11,4 @@
 - <small>Easy to </small>**customize**<small>  and use by providing your own</small> **Expiry Policy**, **Failover Store**, **RecoveredPayloadHandler**<small> or many other providers</small>
 
 [GitHub](https://github.com/societe-generale/failover)
-[Getting Started](../README.md)
+[Getting Started](/README.md)
