@@ -86,6 +86,9 @@ However, this will help us to **reduce the impact** on the business on a large s
 
 ![failover solution](docs/images/failover-user-experience.png)
 
+### Key Features
+![failover key features](images/failover-key-features.png)
+
 ---
 
 ### Code Owners
