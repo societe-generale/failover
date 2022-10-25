@@ -35,8 +35,13 @@ For more details, please go to [Getting Started](https://societe-generale.github
 
 ---
 
-## Features
-- **A light framework ( Domain and Core modules )** : No external frameworks  ( Just by @Failover Annotation ) 
+## Key Features  
+
+![failover key features](docs/images/failover-key-features-list.png)  
+
+- **A light framework ( Domain and Core modules )** : No external frameworks  ( Just by @Failover Annotation )
+  - Easy integration with any jvm base project with no spring framework. 
+  - **Spring Boot Starter** : Spring boot starter for easy spring integration
 - **Failover Execution Strategy** :  ( Eliminate tightly coupling with other frameworks )
   - With simple Try Catch  ( No heavy framework )
   - Support for resilience4j-circuitbreaker 	
@@ -46,9 +51,14 @@ For more details, please go to [Getting Started](https://societe-generale.github
   - Cache : With caffeine cache ( for very small-scale use case )
   - JDBC : For any database support ( recommended for most common use cases )
   - CUSTOM : For any other custom failover store
+- **Failover Expiry Policy** :
+  - With simple time duration ( SECONDS, MINUTES, HOURS, DAYS, etc. )
+  - Custom expiry policy : Team can configure any specific custom expiry policy for their need. Ex: For not to expire on weekends
 - **Monitoring** : Various failover metrics are available for effective monitoring
-- **Spring Boot Starter** : Support for spring boot starter for easy integration
-
+  - **Failover Configuration Dashboard** : Shows all configurations on failover
+  - **Failover Rates** : Shows overall failover on external service call 
+  - **Failover Recovery Rates** : Shows recovery on failover  
+  - **Failover NonRecovery Rates** : Shows non recovery on failover ( actual impact or exception on application )
 ---
  
 ## Use case 
@@ -86,15 +96,30 @@ However, this will help us to **reduce the impact** on the business on a large s
 
 ![failover solution](docs/images/failover-user-experience.png)
 
-### Key Features
-![failover key features](images/failover-key-features.png)
+---
+
+## MONITORING
+
+    The failover lib comes with good monitoring metrics which help the teams to understand the various insights of overall failures on the application
+
+### Failover Configuration Dashboard
+![failover solution](docs/images/failover-monitoring-dashboard.png)
+
+### Failover Rates
+![failover solution](docs/images/failover-monitoring-failover-rate.png)
+
+### Failover Recovery Rates
+![failover solution](docs/images/failover-monitoring-failover-recovery-rate.png)
+
+### Failover NonRecovery Rates 
+![failover solution](docs/images/failover-monitoring-failover-non-recovery-rate.png)
 
 ---
 
-### Code Owners
+## Code Owners
 - [Anand MANISSERY](https://github.com/anandmnair)
 
-### Thanks and acknowledgement 
+## Thanks and acknowledgement 
 - [Vincent FUCHS](https://github.com/vincent-fuchs) 
 - Patrice FRICARD
 - Igor LOVICH
