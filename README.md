@@ -7,6 +7,8 @@
 
 > ***Failover library - To manage the failover on referential systems***
 
+**"This library is to help to enable a failover to handle the failures on external services by keeping a local store for such api responses"**
+
 - <small>Support </small>**Failover**<small> needs for your domain services</small>
 - <small>Simple to use by simply annotating with</small> **@Failover(name="client-by-id")**
 - <small>Support for various failover store</small> **Inmemory**, **Caffeine**, **Jdbc** etc
