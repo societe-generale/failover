@@ -66,11 +66,12 @@ For more details, please go to [Getting Started](https://societe-generale.github
 ## Use case 
 
 ### Context
-There will be many microservices will be in a platform. In this example, we have 3 category of services. 
-1. **Internal microservices** :  
+In microservice architecture, many types of microservices are present in a platofrm. In this example, we have 3 category of microservices.
+
+1. **Internal Microservices** :  
    - Full ownership is with the application teams. 
    - If there is any issue in Internal Services, the team has full control of it and easy to improve. 
-2. **Referential Services** :
+2. **Transversal Services** :
    - Ownership is not with application team, but managed by other teams in the organization. 
    - If there is any issue in such service, the application team has to escalate the issues with the respective owners/teams and wait for the resolution. Most of the time this take some time. 
 3. **External Service** : 
