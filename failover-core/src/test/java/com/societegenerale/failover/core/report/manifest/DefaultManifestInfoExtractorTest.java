@@ -42,7 +42,7 @@ class DefaultManifestInfoExtractorTest {
     @Test
     void shouldReturnTheManifestInfo() {
         Map<String,String> result = manifestInfoExtractor.extract("slf4j-api");
-        assertThat(result).containsEntry("lib-metadata-title", "slf4j-api").containsEntry("lib-metadata-version", "1.7.30");
+        assertThat(result).containsEntry("lib-metadata-title", "slf4j-api").containsEntry("lib-metadata-version", "1.7.36");
     }
 
     @Test
