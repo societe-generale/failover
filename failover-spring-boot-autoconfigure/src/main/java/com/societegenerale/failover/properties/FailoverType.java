@@ -17,8 +17,23 @@
 package com.societegenerale.failover.properties;
 
 /**
+ * This describes the type of failover
  * @author Anand Manissery
  */
 public enum FailoverType {
-    BASIC, RESILIENCE, CUSTOM
+
+    /**
+     * For basic failover type which uses simple try catch
+     */
+    BASIC,
+
+    /**
+     * For resilience failover type which uses resilience4j-circuitbreaker
+     */
+    RESILIENCE,
+
+    /**
+     * For any other custom implementation, please use custom type
+     */
+    CUSTOM
 }
