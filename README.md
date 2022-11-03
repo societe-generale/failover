@@ -1,7 +1,6 @@
 ![logo](https://raw.githubusercontent.com/societe-generale/failover/main/docs/images/failover-icon.png)
 
-# **Failover** <small>***1.0.x***</small>
-
+# **Failover**
 ![CI](https://github.com/societe-generale/failover/actions/workflows/java-maven-ci.yml/badge.svg)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg?style=plastic)](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover)
 
