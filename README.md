@@ -2,7 +2,8 @@
 
 # **Failover**
 ![CI](https://github.com/societe-generale/failover/actions/workflows/java-maven-ci.yml/badge.svg)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg?style=plastic)](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover)
+[![codecov](https://codecov.io/gh/societe-generale/failover/branch/main/graph/badge.svg?token=C8T1GUYOFB)](https://codecov.io/gh/societe-generale/failover)
 
 > ***Failover library - To manage the failover on referential systems***
 
