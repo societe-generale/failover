@@ -1,6 +1,6 @@
 ![logo](images/failover-icon.png)
 
-# **Failover** <small>***1.0.x***</small>
+# **Failover** <small><img :src="https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg"></small>
 
 > ***Failover library - To manage the failover on referential systems***
 
