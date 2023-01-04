@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Create or report the bug to help us improve
-title: "BUG : "
+title: "bug : "
 labels: bug
 assignees: anandmnair
 
