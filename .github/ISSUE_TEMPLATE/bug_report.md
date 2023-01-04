@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Create or report the bug to help us improve
-title: "[BUG] : "
+title: "BUG : "
 labels: bug
 assignees: anandmnair
 
@@ -12,9 +12,9 @@ A clear and concise description of what the bug is.
 
 ## To Reproduce
 Steps to reproduce the behavior:
-1. Go to '...'
-2. Perform '....'
-3. See error '...'
+ 1. Go to '...'  
+ 2. Perform '....'  
+ 3. See error '...'  
 
 ## Expected behavior
 A clear and concise description of what you expected to happen.
