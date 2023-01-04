@@ -1,7 +1,7 @@
 ---
 name: Need a help
 about: Describe what king of help you want ?
-title: "[HELP] : "
+title: "help : "
 labels: help wanted
 assignees: anandmnair
 
