@@ -34,8 +34,6 @@ import static org.mockito.Mockito.mock;
  */
 class DefaultKeyGeneratorTest {
 
-    private static final String NAME = "failover-name";
-
     private static final Failover FAILOVER = mock(Failover.class);
 
     private final DefaultKeyGenerator defaultKeyProvider = new DefaultKeyGenerator();

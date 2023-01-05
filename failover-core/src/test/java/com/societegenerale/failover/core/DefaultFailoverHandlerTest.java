@@ -149,13 +149,13 @@ class DefaultFailoverHandlerTest {
         defaultFailoverHandler.clean();
         verify(failoverStore).cleanByExpiry(now);
     }
-}
 
-@Data
-@EqualsAndHashCode(callSuper = true)
-@AllArgsConstructor
-class ThirdParty extends Referential {
-    private Long id;
-    private String name;
-    private int score;
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    @AllArgsConstructor
+    static class ThirdParty extends Referential {
+        private Long id;
+        private String name;
+        private int score;
+    }
 }
