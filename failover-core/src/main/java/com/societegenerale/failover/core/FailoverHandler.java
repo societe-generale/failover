@@ -25,6 +25,8 @@ import java.util.List;
  */
 public interface FailoverHandler<T> {
     T store(Failover failover, List<Object> args, T payload);
+
     T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable throwable);
+
     void clean();
 }

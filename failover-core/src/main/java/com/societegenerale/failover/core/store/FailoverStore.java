@@ -26,7 +26,10 @@ import java.util.Optional;
  */
 public interface FailoverStore<T> {
     void store(ReferentialPayload<T> referentialPayload);
+
     void delete(ReferentialPayload<T> referentialPayload);
+
     Optional<ReferentialPayload<T>> find(String name, String key);
+
     void cleanByExpiry(LocalDateTime expiry);
 }
