@@ -2,6 +2,7 @@
 
 # **Failover**
 ![CI](https://github.com/societe-generale/failover/actions/workflows/java-maven-ci.yml/badge.svg)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/166cceffb02241d4a2117856e0369cf4)](https://app.codacy.com/gh/societe-generale/failover?utm_source=github.com&utm_medium=referral&utm_content=societe-generale/failover&utm_campaign=Badge_Grade_Settings)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover)
 [![codecov](https://codecov.io/gh/societe-generale/failover/branch/main/graph/badge.svg?token=C8T1GUYOFB)](https://codecov.io/gh/societe-generale/failover)
 
