@@ -38,8 +38,14 @@ class ReflectionsExceptionHandlerTest {
     @Test
     void wrapAnyRuntimeExceptionWithFailoverScannerException() {
         FailoverScannerException exception = assertThrows(FailoverScannerException.class,
-                () -> exceptionHandler.execute(()-> { throw new RuntimeException("Dummy Exception"); }));
+                () -> exceptionHandler.execute(()-> { throw new DummyException("Dummy Exception"); }));
         assertThat(exception).isInstanceOf(FailoverScannerException.class);
         assertThat(exception.getMessage()).isEqualTo(REFLECTION_ERR_MESSAGE);
+    }
+
+    static class DummyException extends RuntimeException {
+        public DummyException(String message) {
+            super(message);
+        }
     }
 }

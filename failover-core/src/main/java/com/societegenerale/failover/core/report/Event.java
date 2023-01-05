@@ -22,7 +22,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
 
 /**
  * @author Anand Manissery
@@ -32,7 +35,9 @@ import java.util.*;
 public final class Event {
 
     private static final String TECHNICAL_TYPE = "TECHNICAL";
+
     private static final String NAME_ATTRIBUTE = "metricName";
+
     private static final String TYPE_ATTRIBUTE = "type";
 
     @EqualsAndHashCode.Include

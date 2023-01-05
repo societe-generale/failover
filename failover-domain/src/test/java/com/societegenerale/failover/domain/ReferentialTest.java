@@ -36,13 +36,15 @@ class ReferentialTest {
         assertThat(thirdParty.getUpToDate()).isNull();
         assertThat(thirdParty.getAsOf()).isNull();
     }
+
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    @AllArgsConstructor
+    static class ThirdParty extends Referential {
+        private Long id;
+        private String name;
+        private int score;
+    }
 }
 
-@Data
-@EqualsAndHashCode(callSuper = true)
-@AllArgsConstructor
-class ThirdParty extends Referential {
-    private Long id;
-    private String name;
-    private int score;
-}
+

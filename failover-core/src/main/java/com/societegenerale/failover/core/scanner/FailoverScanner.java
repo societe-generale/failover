@@ -25,5 +25,6 @@ import java.util.List;
  */
 public interface FailoverScanner {
     Failover findFailoverByName(String name);
+
     List<Failover> findAllFailover();
 }
