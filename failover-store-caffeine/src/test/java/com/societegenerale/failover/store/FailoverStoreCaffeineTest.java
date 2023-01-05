@@ -147,12 +147,11 @@ class FailoverStoreCaffeineTest {
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isNotPresent();
     }
 
-}
-
-@Data
-@AllArgsConstructor
-class ThirdParty  {
-    private Long id;
-    private String name;
-    private int score;
+    @Data
+    @AllArgsConstructor
+    static class ThirdParty  {
+        private Long id;
+        private String name;
+        private int score;
+    }
 }

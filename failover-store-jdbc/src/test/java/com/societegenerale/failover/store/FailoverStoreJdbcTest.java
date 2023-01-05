@@ -45,7 +45,7 @@ class FailoverStoreJdbcTest {
 
     private static final String KEY = "Failover-Key";
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final LocalDateTime NOW = now();
 
     private ReferentialPayload<Client> referentialPayload;
 
@@ -138,6 +138,7 @@ class FailoverStoreJdbcTest {
     @NoArgsConstructor
     static class Client extends Referential {
         private Long id;
+
         private String name;
     }
 }

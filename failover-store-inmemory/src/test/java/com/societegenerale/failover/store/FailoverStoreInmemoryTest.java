@@ -94,12 +94,13 @@ class FailoverStoreInmemoryTest {
         assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusMinutes(5), new ThirdParty(5L, "TATA-5", 5)));
     }
 
-}
+    @Data
+    @AllArgsConstructor
+    static class ThirdParty  {
+        private Long id;
 
-@Data
-@AllArgsConstructor
-class ThirdParty  {
-    private Long id;
-    private String name;
-    private int score;
+        private String name;
+
+        private int score;
+    }
 }
