@@ -1,0 +1,4 @@
+com.societegenerale.failover.configuration.FailoverAutoConfiguration
+com.societegenerale.failover.configuration.FailoverCaffeineStoreAutoConfiguration
+com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration
+com.societegenerale.failover.configuration.ResilienceFailoverExecutionAutoConfiguration

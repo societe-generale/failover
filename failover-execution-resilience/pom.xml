@@ -29,10 +29,16 @@
             <artifactId>resilience4j-circuitbreaker</artifactId>
             <scope>provided</scope>
         </dependency>
+
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-spring</artifactId>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.vavr</groupId>
+            <artifactId>vavr</artifactId>
         </dependency>
 
         <dependency>
