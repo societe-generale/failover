@@ -17,15 +17,12 @@
 package com.societegenerale.failover.execution.resilience;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.FailoverExecution;
+import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.vavr.control.Try;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -33,37 +30,19 @@ import java.util.function.Supplier;
  * @author Anand Manissery
  */
 @Slf4j
-@AllArgsConstructor
-public class ResilienceFailoverExecution<T> implements FailoverExecution<T> {
-
-    private final FailoverHandler<T> failoverHandler;
+public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
 
-    @Override
-    public T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args) {
-        CircuitBreaker circuitBreaker = this.circuitBreakerRegistry.circuitBreaker(failover.name());
-        Class<T> returnType = (Class<T>) method.getReturnType();
-        Supplier<T> decoratedSupplier = CircuitBreaker.decorateSupplier(circuitBreaker, ()-> {
-            T result = supplier.get();
-            try {
-                failoverHandler.store(failover, args, result);
-            } catch(Exception exception) {
-                log.error("Ignoring Failover Exception !! Exception occurred while trying to 'store' the payload for failover. This will impact only the failover flow", exception);
-            }
-            return result;
-        });
+    public ResilienceFailoverExecution(FailoverHandler<T> failoverHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
+        super(failoverHandler);
+        this.circuitBreakerRegistry = circuitBreakerRegistry;
+    }
 
-        T result = null;
-        try {
-            result = Try.ofSupplier(decoratedSupplier)
-                    .recover(cause -> {
-                        log.warn("Exception occurred while trying to 'execute' the actual method '{}' with failover. We will try to recover the data from failover...", method.getName(), cause);
-                        return failoverHandler.recover(failover, args, returnType, cause);
-                    }).get();
-        } catch(Exception exception) {
-            log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover. This will impact only the failover flow, a null value will be returned.", exception);
-        }
-        return result;
+    @Override
+    protected Supplier<T> decorateSupplier(Failover failover, Supplier<T> supplier, List<Object> args) {
+        var failoverSupplier = super.decorateSupplier(failover, supplier, args);
+        CircuitBreaker circuitBreaker = this.circuitBreakerRegistry.circuitBreaker(failover.name());
+        return CircuitBreaker.decorateSupplier(circuitBreaker, failoverSupplier);
     }
 }
