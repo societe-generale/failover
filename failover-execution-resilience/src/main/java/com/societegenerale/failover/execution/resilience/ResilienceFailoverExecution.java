@@ -41,8 +41,7 @@ public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
 
     @Override
     protected Supplier<T> decorateSupplier(Failover failover, Supplier<T> supplier, List<Object> args) {
-        var failoverSupplier = super.decorateSupplier(failover, supplier, args);
         CircuitBreaker circuitBreaker = this.circuitBreakerRegistry.circuitBreaker(failover.name());
-        return CircuitBreaker.decorateSupplier(circuitBreaker, failoverSupplier);
+        return CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
     }
 }

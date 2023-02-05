@@ -29,7 +29,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @AllArgsConstructor
-public class BasicFailoverExecution<T> implements FailoverExecution<T>  {
+public class BasicFailoverExecution<T> implements FailoverExecution<T> {
 
     private final FailoverHandler<T> failoverHandler;
 
@@ -37,7 +37,7 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T>  {
     public T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args) {
         T result;
         try {
-            result = decorateSupplier(failover, supplier, args).get();
+            result = failoverSupplier(failover, supplier, args).get();
         } catch (Exception cause) {
             log.warn("Exception occurred while trying to 'execute' the actual method '{}' with failover. We will try to recover the data from failover...", method.getName(), cause);
             result = executeRecoverOnException(method, args, failover, cause);
@@ -45,16 +45,22 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T>  {
         return result;
     }
 
+    private Supplier<T> failoverSupplier(Failover failover, Supplier<T> supplier, List<Object> args) {
+        return decorateSupplier(failover,
+                () -> {
+                    T result = supplier.get();
+                    try {
+                        failoverHandler.store(failover, args, result);
+                    } catch (Exception exception) {
+                        log.error("Ignoring Failover Exception !! Exception occurred while trying to 'store' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);
+                    }
+                    return result;
+                }, args);
+    }
+
     protected Supplier<T> decorateSupplier(Failover failover, Supplier<T> supplier, List<Object> args) {
-        return ()-> {
-            T result = supplier.get();
-            try {
-                failoverHandler.store(failover, args, result);
-            } catch(Exception exception) {
-                log.error("Ignoring Failover Exception !! Exception occurred while trying to 'store' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);
-            }
-            return result;
-        };
+        log.trace("Simple pass through supplier decorator for failover {} with args {}", failover.name(), args);
+        return supplier;
     }
 
     private T executeRecoverOnException(Method method, List<Object> args, Failover failover, Exception cause) {
@@ -62,7 +68,7 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T>  {
         try {
             Class<T> clazz = (Class<T>) method.getReturnType();
             result = failoverHandler.recover(failover, args, clazz, cause);
-        } catch(Exception exception) {
+        } catch (Exception exception) {
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);
         }
         return result;
