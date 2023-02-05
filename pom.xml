@@ -19,7 +19,6 @@
         <maven.compiler.target>${java.version}</maven.compiler.target>
 
         <reflections.version>0.9.9</reflections.version>
-        <vavr.version>0.10.4</vavr.version>
 
         <!-- SPRING BOOT VERSION -->
         <spring-boot.version>3.0.2</spring-boot.version>
@@ -117,11 +116,6 @@
                 <groupId>org.reflections</groupId>
                 <artifactId>reflections</artifactId>
                 <version>${reflections.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.vavr</groupId>
-                <artifactId>vavr</artifactId>
-                <version>${vavr.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
