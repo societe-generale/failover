@@ -21,7 +21,6 @@ import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -29,7 +28,6 @@ import java.util.function.Supplier;
 /**
  * @author Anand Manissery
  */
-@Slf4j
 public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
