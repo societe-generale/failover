@@ -19,6 +19,7 @@ You can configure the failover module with the below configurations
 ```yaml
 failover:
   enabled: true  #default is true
+  package-to-scan: <your base package>   #A mandatory field to mention your base package where @Failover annotations are present.
 ```
 
 You can configure the failover module with jdbc store with the below configurations
