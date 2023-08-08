@@ -18,19 +18,18 @@ package com.societegenerale.failover.store;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static com.societegenerale.failover.store.TimeUnitConverter.convert;
 import static java.util.Optional.empty;
 import static java.util.Optional.ofNullable;
 
@@ -43,13 +42,12 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
 
     private final Map<String, Cache<String, ReferentialPayload<T>>> store = new ConcurrentHashMap<>();
 
-    private final FailoverScanner failoverScanner;
+    private final FailoverClock failoverClock;
 
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
-        Failover failover = failoverScanner.findFailoverByName(referentialPayload.getName());
         Cache<String, ReferentialPayload<T>> cache = store.computeIfAbsent(referentialPayload.getName(),
-                name -> Caffeine.newBuilder().expireAfterWrite(failover.expiryDuration(), convert(failover.expiryUnit())).build());
+                name -> Caffeine.newBuilder().expireAfterWrite(Duration.between(failoverClock.now(), referentialPayload.getExpireOn())).build());
         cache.put(storeKey(referentialPayload.getName(), referentialPayload.getKey()), referentialPayload);
     }
 
