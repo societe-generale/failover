@@ -92,7 +92,7 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean
-    public FailoverClock failOverClock() {
+    public FailoverClock failoverClock() {
         return new DefaultFailoverClock();
     }
 

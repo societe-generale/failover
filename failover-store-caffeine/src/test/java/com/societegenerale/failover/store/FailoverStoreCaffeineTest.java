@@ -16,9 +16,8 @@
 
 package com.societegenerale.failover.store;
 
-import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -42,24 +41,21 @@ import static org.mockito.BDDMockito.given;
 @ExtendWith(MockitoExtension.class)
 class FailoverStoreCaffeineTest {
 
-    public static final String NAME = "third-party-failover";
+    private static final String NAME = "third-party-failover";
+
+    private static final LocalDateTime NOW = now();
 
     @Mock
-    private Failover failover;
-
-    @Mock
-    private FailoverScanner failoverScanner;
+    private FailoverClock clock;
 
     private FailoverStoreCaffeine<ThirdParty> failoverStoreCaffeine;
 
-    private final ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(NAME, "1", true, now(), now(), new ThirdParty(1L, "TATA", 5));
+    private ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(NAME, "1", true, NOW, NOW.plusMinutes(1L), new ThirdParty(1L, "TATA", 5));
 
     @BeforeEach
     void setUp() {
-        given(failoverScanner.findFailoverByName(referentialPayload.getName())).willReturn(failover);
-        given(failover.expiryDuration()).willReturn(1L);
-        given(failover.expiryUnit()).willReturn(ChronoUnit.MINUTES);
-        failoverStoreCaffeine = new FailoverStoreCaffeine<>(failoverScanner);
+        given(clock.now()).willReturn(NOW);
+        failoverStoreCaffeine = new FailoverStoreCaffeine<>(clock);
     }
 
     @Test
@@ -132,8 +128,7 @@ class FailoverStoreCaffeineTest {
     @Test
     void shouldInvalidateTheDataOnExpiry() {
         // given
-        given(failover.expiryDuration()).willReturn(1L);
-        given(failover.expiryUnit()).willReturn(ChronoUnit.SECONDS);
+        referentialPayload = new ReferentialPayload<>(NAME, "1", true, NOW, NOW.plusSeconds(2L), new ThirdParty(1L, "TATA", 5));
 
         // when
         failoverStoreCaffeine.store(referentialPayload);
@@ -142,7 +137,7 @@ class FailoverStoreCaffeineTest {
         failoverStoreCaffeine.cleanByExpiry(now());
 
         // then : wait and assert for cache expiry
-        await().atMost(2, TimeUnit.SECONDS).until(()-> !failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey()).isPresent());
+        await().atMost(3, TimeUnit.SECONDS).until(()-> failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey()).isEmpty());
 
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isNotPresent();
     }

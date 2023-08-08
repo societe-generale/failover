@@ -16,7 +16,7 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.StoreType;
 import com.societegenerale.failover.store.FailoverStoreAsync;
@@ -39,8 +39,8 @@ import org.springframework.context.annotation.Configuration;
 public class FailoverCaffeineStoreAutoConfiguration {
 
     @Bean
-    public FailoverStore<Object> failoverStore(FailoverScanner failoverScanner) {
+    public FailoverStore<Object> failoverStore(FailoverClock failoverClock) {
         log.warn("FailoverStore configured to FailoverStoreCaffeine. This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", (Object) StoreType.values());
-        return new FailoverStoreAsync<>(new FailoverStoreCaffeine<>(failoverScanner));
+        return new FailoverStoreAsync<>(new FailoverStoreCaffeine<>(failoverClock));
     }
 }
