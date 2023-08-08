@@ -43,7 +43,7 @@ class FailoverStoreCaffeineTest {
 
     private static final String NAME = "third-party-failover";
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final LocalDateTime NOW = now();
 
     @Mock
     private FailoverClock clock;
