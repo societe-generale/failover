@@ -34,7 +34,7 @@ import com.societegenerale.failover.core.key.DefaultKeyGenerator;
 import com.societegenerale.failover.core.key.KeyGenerator;
 import com.societegenerale.failover.core.key.KeyGeneratorLookup;
 import com.societegenerale.failover.core.key.FailoverKeyGenerator;
-import com.societegenerale.failover.core.key.BeanFactoryExpiryPolicyLookup;
+import com.societegenerale.failover.core.expiry.BeanFactoryExpiryPolicyLookup;
 import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;

@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.key;
+package com.societegenerale.failover.core.expiry;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.expiry.ExpiryPolicy;
-import com.societegenerale.failover.core.expiry.ExpiryPolicyLookup;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
