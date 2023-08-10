@@ -22,6 +22,7 @@ import com.societegenerale.failover.core.DefaultFailoverHandler;
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
 import com.societegenerale.failover.core.expiry.ExpiryPolicy;
 import com.societegenerale.failover.core.key.DefaultKeyGenerator;
@@ -63,7 +64,7 @@ public class MySpringBootTestApplication {
 
     @Bean
     public ExpiryPolicy<Object> expiryPolicy(FailoverClock clock) {
-        return new DefaultExpiryPolicy<>(clock);
+        return new DefaultExpiryPolicy<>(clock, new BasicFailoverExpiryExtractor());
     }
 
     @Bean
