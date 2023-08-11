@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BasicFailoverExpiryExtractorTest {
 
     private final BasicFailoverExpiryExtractor basicFailoverExpiryExtractor = new BasicFailoverExpiryExtractor();
+
     @Test
     void shouldResolveExpiryDurationExpression() {
         var result = basicFailoverExpiryExtractor.resolveExpiryDuration("1");

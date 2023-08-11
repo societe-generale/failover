@@ -25,7 +25,13 @@ import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.clock.DefaultFailoverClock;
 import com.societegenerale.failover.core.clock.FailoverClock;
-import com.societegenerale.failover.core.expiry.*;
+import com.societegenerale.failover.core.expiry.BeanFactoryExpiryPolicyLookup;
+import com.societegenerale.failover.core.expiry.BeanFactoryFailoverExpiryExtractor;
+import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
+import com.societegenerale.failover.core.expiry.ExpiryPolicy;
+import com.societegenerale.failover.core.expiry.ExpiryPolicyLookup;
+import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
+import com.societegenerale.failover.core.expiry.FailoverExpiryPolicy;
 import com.societegenerale.failover.core.key.BeanFactoryKeyGeneratorLookup;
 import com.societegenerale.failover.core.key.DefaultKeyGenerator;
 import com.societegenerale.failover.core.key.KeyGenerator;
@@ -113,7 +119,7 @@ public class FailoverAutoConfiguration {
     @ConditionalOnMissingBean
     @Bean
     public FailoverExpiryExtractor failoverExpiryExtractor() {
-        return new BasicFailoverExpiryExtractor();
+        return new BeanFactoryFailoverExpiryExtractor();
     }
 
     @ConditionalOnMissingBean(name = "defaultExpiryPolicy")
