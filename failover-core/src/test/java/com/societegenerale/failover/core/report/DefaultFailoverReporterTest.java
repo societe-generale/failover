@@ -97,10 +97,10 @@ class DefaultFailoverReporterTest {
                 .containsEntry("failover-expiry-unit", "HOURS");
     }
 
+    @Getter
     static class InMemoryReportPublisher extends AbstractReportPublisher {
 
-        @Getter
-        private Map<String,Metrics> metricsMap;
+        private final Map<String,Metrics> metricsMap;
 
         public InMemoryReportPublisher(FailoverClock clock) {
             super(clock);
