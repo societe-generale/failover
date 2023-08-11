@@ -18,6 +18,7 @@ package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import com.societegenerale.failover.core.report.AbstractReportPublisher;
 import com.societegenerale.failover.core.report.Metrics;
@@ -74,7 +75,7 @@ class AdvancedFailoverHandlerTest {
     void setUp() {
         cause = new RuntimeException("Dummy-Exception", new IllegalArgumentException("Root-Cause"));
         reportPublisher = new InMemoryReportPublisher(clock);
-        advancedFailoverHandler = new AdvancedFailoverHandler<>(failoverHandler, recoveredPayloadHandler, reportPublisher);
+        advancedFailoverHandler = new AdvancedFailoverHandler<>(failoverHandler, recoveredPayloadHandler, reportPublisher, new BasicFailoverExpiryExtractor());
 
         lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
         lenient().when(failover.expiryDuration()).thenReturn(1L);
@@ -175,6 +176,6 @@ class AdvancedFailoverHandlerTest {
         @Override
         public void doPublish(Metrics metrics) {
                 this.metrics=metrics;
-            }
+        }
     }
 }
