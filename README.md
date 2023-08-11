@@ -107,6 +107,11 @@ However, this will help us to **reduce the impact** on the business on a large s
 
 ### Failover Configuration Dashboard
 ![failover solution](https://raw.githubusercontent.com/societe-generale/failover/main/docs/images/failover-monitoring-dashboard.png)
+> For this dashboard, you must provide below configuration :
+```yaml
+failover:
+  package-to-scan: <your base package> # Your base package where @Failover annotations are declared
+```
 
 ### Failover Rates
 ![failover solution](https://raw.githubusercontent.com/societe-generale/failover/main/docs/images/failover-monitoring-failover-rate.png)
