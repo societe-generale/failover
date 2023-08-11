@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import com.societegenerale.failover.core.report.ReportPublisher;
 import lombok.AllArgsConstructor;
@@ -39,12 +40,14 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
 
     private final ReportPublisher reportPublisher;
 
+    private final FailoverExpiryExtractor failoverExpiryExtractor;
+
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
         reportPublisher.publish(of(failover.name())
                 .collect("action", "store")
-                .collect("expiry-duration",Long.toString(failover.expiryDuration()))
-                .collect("expiry-unit", failover.expiryUnit().name()));
+                .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name()));
         return failoverHandler.store(failover, args, payload);
     }
 
@@ -58,8 +61,8 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
         } finally {
             reportPublisher.publish(of(failover.name())
                     .collect("action", "recover")
-                    .collect("expiry-duration",Long.toString(failover.expiryDuration()))
-                    .collect("expiry-unit", failover.expiryUnit().name())
+                    .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                    .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
                     .collect("exception-type", throwable.getClass().getCanonicalName())
                     .collect("exception-cause-type", throwable.getCause() !=null ? throwable.getCause().getClass().getCanonicalName() : "")
                     .collect("exception-message", throwable.getMessage())
