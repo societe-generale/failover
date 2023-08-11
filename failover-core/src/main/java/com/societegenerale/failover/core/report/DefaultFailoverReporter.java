@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core.report;
 
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.report.manifest.ManifestInfoExtractor;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 
@@ -41,14 +42,17 @@ public class DefaultFailoverReporter implements FailoverReporter {
 
     private final ManifestInfoExtractor manifestInfoExtractor;
 
+    private final FailoverExpiryExtractor failoverExpiryExtractor;
+
     private final LocalDateTime serviceStartTime;
 
-    public DefaultFailoverReporter(ReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, Map<String, String> additionalInfo) {
+    public DefaultFailoverReporter(ReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor, Map<String, String> additionalInfo) {
         this.reportPublisher = reportPublisher;
         this.failoverScanner = failoverScanner;
         this.additionalInfo = additionalInfo;
         this.clock = clock;
         this.manifestInfoExtractor = manifestInfoExtractor;
+        this.failoverExpiryExtractor = failoverExpiryExtractor;
         this.serviceStartTime = clock.now();
     }
 
@@ -62,8 +66,8 @@ public class DefaultFailoverReporter implements FailoverReporter {
         failoverScanner.findAllFailover().forEach(failover->  {
             Metrics metrics = Metrics.of(format("failover-report-%s", failover.name()))
                     .collect("name", failover.name())
-                    .collect("expiry-duration", Long.toString(failover.expiryDuration()))
-                    .collect("expiry-unit", failover.expiryUnit().name());
+                    .collect("expiry-duration", Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                    .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name());
             genericInfo.forEach(metrics::collect);
             reportPublisher.publish(metrics);
         });

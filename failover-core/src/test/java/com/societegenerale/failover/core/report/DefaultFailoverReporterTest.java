@@ -19,10 +19,12 @@ package com.societegenerale.failover.core.report;
 import com.google.common.collect.ImmutableMap;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.report.manifest.ManifestInfoExtractor;
 import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +43,7 @@ import static org.mockito.Mockito.lenient;
  * @author Anand Manissery
  */
 @ExtendWith(MockitoExtension.class)
+@Slf4j
 class DefaultFailoverReporterTest {
 
     private static final Map<String,String> ADDITIONAL_INFO = ImmutableMap.of("additional-info-key", "additional-info-value");
@@ -65,7 +68,8 @@ class DefaultFailoverReporterTest {
         lenient().when(manifestInfoExtractor.extract(any())).thenReturn(METADATA_INFO);
         reportPublisher = new DefaultFailoverReporterTest.InMemoryReportPublisher(clock);
         FailoverScanner failoverScanner = new DefaultFailoverScanner("com.societegenerale.failover.core.report");
-        defaultFailoverReporter = new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, ADDITIONAL_INFO);
+        log.info("The class {} is used for @Failover Scan", SomeReferential.class);
+        defaultFailoverReporter = new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, new BasicFailoverExpiryExtractor(), ADDITIONAL_INFO);
     }
 
     @Test
@@ -93,17 +97,19 @@ class DefaultFailoverReporterTest {
                 .containsEntry("failover-expiry-unit", "HOURS");
     }
 
-    class InMemoryReportPublisher extends AbstractReportPublisher {
-        @Getter
-        private Map<String,Metrics> metricsMap = new ConcurrentHashMap<>();
+    @Getter
+    static class InMemoryReportPublisher extends AbstractReportPublisher {
+
+        private final Map<String,Metrics> metricsMap;
 
         public InMemoryReportPublisher(FailoverClock clock) {
             super(clock);
+            this.metricsMap = new ConcurrentHashMap<>();
         }
 
         @Override
         public void doPublish(Metrics metrics) {
-            this.metricsMap.put(metrics.getName(), metrics);
+            getMetricsMap().put(metrics.getName(), metrics);
         }
     }
 

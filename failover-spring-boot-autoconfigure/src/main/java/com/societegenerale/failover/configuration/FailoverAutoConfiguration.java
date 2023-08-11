@@ -184,8 +184,8 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean
-    public FailoverHandler<Object> failoverHandler(@Qualifier("failoverKeyGenerator") KeyGenerator keyGenerator, @Qualifier("failoverExpiryPolicy")ExpiryPolicy<Object> expiryPolicy, FailoverClock clock, FailoverStore<Object> failoverStore, PayloadEnricher<Object> payloadEnricher, RecoveredPayloadHandler recoveredPayloadHandler, CompositeReportPublisher reportPublisher) {
-        return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, reportPublisher);
+    public FailoverHandler<Object> failoverHandler(@Qualifier("failoverKeyGenerator") KeyGenerator keyGenerator, @Qualifier("failoverExpiryPolicy")ExpiryPolicy<Object> expiryPolicy, FailoverClock clock, FailoverStore<Object> failoverStore, PayloadEnricher<Object> payloadEnricher, RecoveredPayloadHandler recoveredPayloadHandler, CompositeReportPublisher reportPublisher, FailoverExpiryExtractor failoverExpiryExtractor) {
+        return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
     }
 
     @ConditionalOnProperty(prefix = "failover", name = "type", havingValue = "basic", matchIfMissing = true)
@@ -216,8 +216,8 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean(initMethod = "report")
-    public FailoverReporter failoverReporter(CompositeReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor) {
-        return new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, failoverProperties.additionalInfo());
+    public FailoverReporter failoverReporter(CompositeReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor) {
+        return new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, failoverExpiryExtractor, failoverProperties.additionalInfo());
     }
 
     @ConditionalOnProperty(prefix = "failover", name = "scheduler.enabled", havingValue = "true", matchIfMissing = true)
