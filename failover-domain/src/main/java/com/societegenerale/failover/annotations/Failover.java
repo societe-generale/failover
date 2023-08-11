@@ -68,11 +68,27 @@ public @interface Failover {
     long expiryDuration() default 1;
 
     /**
+     * The expiry duration expression for computing the expiry of the entities stored in the failover store.
+     * If you specify expression it will be taken for computing expiry otherwise expiryDuration will be taken
+     * <p>The default value is ""
+     * @return expiry duration of the failover
+     */
+    String expiryDurationExpression() default "";
+
+    /**
      * The expiry unit @see java.time.temporal.ChronoUnit for computing the expiry of the entities stored in the failover store.
      * <p>The default value is HOURS
      * @return expiry unit of the failover
      */
     ChronoUnit expiryUnit() default ChronoUnit.HOURS;
+
+    /**
+     * The expiry unit expression @see java.time.temporal.ChronoUnit for computing the expiry of the entities stored in the failover store.
+     * If you specify expression it will be taken for computing expiry otherwise expiryUnit will be taken
+     * <p>The default value is ""
+     * @return expiry unit of the failover
+     */
+    String expiryUnitExpression() default "";
 
     /**
      * The bean name of the custom 'com.societegenerale.failover.core.key.KeyGenerator' to use.

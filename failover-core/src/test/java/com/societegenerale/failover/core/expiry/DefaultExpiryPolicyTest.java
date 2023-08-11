@@ -56,7 +56,7 @@ class DefaultExpiryPolicyTest {
 
     @BeforeEach
     void setUp() {
-        defaultExpiryPolicy = new DefaultExpiryPolicy<>(clock);
+        defaultExpiryPolicy = new DefaultExpiryPolicy<>(clock, new BasicFailoverExpiryExtractor());
     }
 
     @DisplayName("should return expiry based on the given duration and unit")

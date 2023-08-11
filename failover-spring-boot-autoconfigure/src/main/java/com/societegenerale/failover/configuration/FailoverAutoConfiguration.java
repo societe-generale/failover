@@ -25,16 +25,18 @@ import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.clock.DefaultFailoverClock;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.expiry.BeanFactoryExpiryPolicyLookup;
+import com.societegenerale.failover.core.expiry.BeanFactoryFailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
 import com.societegenerale.failover.core.expiry.ExpiryPolicy;
 import com.societegenerale.failover.core.expiry.ExpiryPolicyLookup;
+import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.FailoverExpiryPolicy;
 import com.societegenerale.failover.core.key.BeanFactoryKeyGeneratorLookup;
 import com.societegenerale.failover.core.key.DefaultKeyGenerator;
 import com.societegenerale.failover.core.key.KeyGenerator;
 import com.societegenerale.failover.core.key.KeyGeneratorLookup;
 import com.societegenerale.failover.core.key.FailoverKeyGenerator;
-import com.societegenerale.failover.core.key.BeanFactoryExpiryPolicyLookup;
 import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
@@ -114,10 +116,16 @@ public class FailoverAutoConfiguration {
         return new FailoverKeyGenerator(defaultKeyGenerator, keyGeneratorLookup);
     }
 
+    @ConditionalOnMissingBean
+    @Bean
+    public FailoverExpiryExtractor failoverExpiryExtractor() {
+        return new BeanFactoryFailoverExpiryExtractor();
+    }
+
     @ConditionalOnMissingBean(name = "defaultExpiryPolicy")
     @Bean
-    public ExpiryPolicy<Object> defaultExpiryPolicy(FailoverClock clock) {
-        return new DefaultExpiryPolicy<>(clock);
+    public ExpiryPolicy<Object> defaultExpiryPolicy(FailoverClock clock, FailoverExpiryExtractor failoverExpiryExtractor) {
+        return new DefaultExpiryPolicy<>(clock, failoverExpiryExtractor);
     }
 
     @ConditionalOnMissingBean

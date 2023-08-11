@@ -20,7 +20,6 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import lombok.AllArgsConstructor;
-import lombok.Getter;
 
 import java.time.LocalDateTime;
 
@@ -30,16 +29,17 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class DefaultExpiryPolicy<T> implements ExpiryPolicy<T> {
 
-    @Getter
     private final FailoverClock clock;
+
+    private final FailoverExpiryExtractor failoverExpiryExtractor;
 
     @Override
     public LocalDateTime computeExpiry(Failover failover) {
-        return getClock().now().plus(failover.expiryDuration(), failover.expiryUnit());
+        return clock.now().plus(failoverExpiryExtractor.expiryDuration(failover), failoverExpiryExtractor.expiryUnit(failover));
     }
 
     @Override
     public boolean isExpired(Failover failover, ReferentialPayload<T> referentialPayload) {
-        return getClock().now().isAfter(referentialPayload.getExpireOn());
+        return clock.now().isAfter(referentialPayload.getExpireOn());
     }
 }

@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.key;
+package com.societegenerale.failover.core.expiry;
 
-import com.societegenerale.failover.core.expiry.ExpiryPolicy;
-import com.societegenerale.failover.core.expiry.ExpiryPolicyLookup;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;

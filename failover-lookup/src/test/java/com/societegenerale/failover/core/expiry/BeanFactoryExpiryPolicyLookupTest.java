@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.key;
+package com.societegenerale.failover.core.expiry;
 
-import com.societegenerale.failover.core.expiry.ExpiryPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

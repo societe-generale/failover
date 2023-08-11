@@ -88,6 +88,35 @@ public interface FeignClientReferential extends ClientReferential {
 }
 
 ```
+#### Externalizing expiry configurations via properties or yml
+
+You can also externalize the expiry from your properties or yml as follows : 
+```yaml
+my-application:
+  client-by-id:
+    duration: 10
+    unit: DAYS
+  client-all:
+    duration: 30
+    unit: HOURS
+```
+```java
+@FeignClient(value = "client", url = "http://localhost:9090")
+public interface FeignClientReferential extends ClientReferential {
+
+    @Failover(name = "client-by-id", expiryDurationExpression = "${my-application.client-by-id.duration}", expiryUnitExpression = "${my-application.client-by-id.unit}")   // Failover configuration by expression
+    @GetMapping(value = "/api/v1/clients/{id}", produces = "application/json")
+    @Override
+    Client findClientById(@PathVariable("id")Long id);
+
+
+
+    @Failover(name = "client-all", expiryDurationExpression = "${my-application.client-all.duration}", expiryUnitExpression = "${my-application.client-all.unit}")     // Failover configuration by expression
+    @GetMapping(value = "/api/v1/clients", produces = "application/json")
+    @Override
+    List<Client> findAllClients();
+}
+```
 
 ### Failover Metadata configuration 
 
