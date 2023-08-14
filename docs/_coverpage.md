@@ -1,6 +1,6 @@
 ![logo](images/failover-icon.png)
 
-# **Failover** [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg?style=plastic)](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover)
+# **Failover** [![Maven Central](https://img.shields.io/maven-central/v/com.societegenerale.failover/failover.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22com.societegenerale.failover%22%20AND%20a:%22failover%22)
 
 
 > ***Failover library - To manage the failover on referential systems***
