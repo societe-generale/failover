@@ -25,6 +25,7 @@ The modules are :
 - [ ] failover-store-async
 - [ ] failover-aspect
 - [ ] failover-scheduler
+- [ ] failover-lookup
 - [ ] failover-execution-resilience
 - [ ] failover-spring-boot-autoconfigure
 - [ ] failover-spring-boot-starter
