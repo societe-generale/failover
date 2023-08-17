@@ -101,6 +101,13 @@ class DefaultKeyGeneratorTest {
         assertThat(key).isEqualTo("1:2:3");
     }
 
+    @DisplayName("should return the key when one of the argument is a Boolean")
+    @Test
+    void shouldReturnTheKeyWhenArgContainsBoolean() {
+        String key = defaultKeyProvider.key(FAILOVER, asList(1L, Boolean.TRUE, "3"));
+        assertThat(key).isEqualTo("1:true:3");
+    }
+
     @DisplayName("should return the key when the arguments are of multiple types")
     @Test
     void shouldReturnTheKeyWhenArgContainsMultipleTypes() {
