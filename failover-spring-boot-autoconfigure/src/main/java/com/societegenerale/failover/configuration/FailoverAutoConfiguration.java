@@ -62,7 +62,6 @@ import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ReportScheduler;
 import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -83,14 +82,11 @@ import java.util.List;
 @ConditionalOnExpression("${failover.enabled:true} eq true")
 @EnableConfigurationProperties(FailoverProperties.class)
 @Configuration
-@AllArgsConstructor
 @Slf4j
 @EnableAspectJAutoProxy
 @EnableAsync
 @EnableScheduling
 public class FailoverAutoConfiguration {
-
-    private FailoverProperties failoverProperties;
 
     @ConditionalOnMissingBean
     @Bean
@@ -148,7 +144,7 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean
-    public FailoverScanner failoverScanner() {
+    public FailoverScanner failoverScanner(FailoverProperties failoverProperties) {
         return new DefaultFailoverScanner(failoverProperties.getPackageToScan());
     }
 
@@ -216,7 +212,7 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean(initMethod = "report")
-    public FailoverReporter failoverReporter(CompositeReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor) {
+    public FailoverReporter failoverReporter(CompositeReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor, FailoverProperties failoverProperties) {
         return new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, failoverExpiryExtractor, failoverProperties.additionalInfo());
     }
 
