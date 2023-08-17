@@ -17,8 +17,8 @@
 package com.societegenerale.failover.core.report;
 
 import lombok.Data;
-import lombok.Getter;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -32,10 +32,8 @@ public class Metrics {
 
     private static final String KEY_PREFIX = "failover";
 
-    @Getter
     private String name;
 
-    @Getter
     private Map<String, String> info;
 
     private String keyPrefix;
@@ -53,5 +51,9 @@ public class Metrics {
     public Metrics collect(String key, String value) {
         info.put( format("%s-%s",keyPrefix, key), value);
         return this;
+    }
+
+    public Map<String, String> getInfo() {
+        return Collections.unmodifiableMap(info);
     }
 }
