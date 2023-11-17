@@ -6,6 +6,7 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/437763c6ed04421a9b3fbc439f24b523)](https://www.codacy.com/gh/societe-generale/failover/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=societe-generale/failover&amp;utm_campaign=Badge_Grade)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.societegenerale.failover/failover)
 [![Maven Central](https://img.shields.io/maven-central/v/com.societegenerale.failover/failover.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/com.societegenerale.failover/failover)
+[![Project Map](https://sourcespy.com/shield.svg)](https://sourcespy.com/github/societegeneralefailover/)
 > ***Failover library - To manage the failover on referential systems***
 
 **"This library is to help to enable a failover to handle the failures on external services by keeping a local store for such api responses"**
