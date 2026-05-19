@@ -23,18 +23,18 @@ import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreCaffeine;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * @author Anand Manissery
  */
 @ConditionalOnExpression("${failover.enabled:true} eq true and '${failover.store.type:inmemory}'.toLowerCase() eq 'caffeine'")
-@ConditionalOnClass(name = { "com.github.benmanes.caffeine.cache.Caffeine" })
-@Configuration
+@ConditionalOnClass(name = {"com.github.benmanes.caffeine.cache.Caffeine"})
 @AllArgsConstructor
+@AutoConfiguration
 @Slf4j
 public class FailoverCaffeineStoreAutoConfiguration {
 

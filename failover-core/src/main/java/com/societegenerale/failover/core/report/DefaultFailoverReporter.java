@@ -25,8 +25,6 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static java.lang.String.format;
-
 /**
  * @author Anand Manissery
  */
@@ -64,7 +62,7 @@ public class DefaultFailoverReporter implements FailoverReporter {
         genericInfo.putAll(additionalInfo);
         genericInfo.putAll(manifestInfoExtractor.extract("failover-core"));
         failoverScanner.findAllFailover().forEach(failover->  {
-            Metrics metrics = Metrics.of(format("failover-report-%s", failover.name()))
+            Metrics metrics = Metrics.of("failover-report-%s".formatted(failover.name()))
                     .collect("name", failover.name())
                     .collect("expiry-duration", Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
                     .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name());

@@ -69,8 +69,8 @@ class FailoverAutoConfigurationTest {
     @DisplayName("should load inmemory failover store by default")
     void shouldLoadInmemoryFailoverStoreByDefault() throws Exception {
         assertThat(failoverStore).isNotNull();
-        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised) {
-            Object target = ((Advised)failoverStore).getTargetSource().getTarget();
+        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised advised) {
+            Object target = advised.getTargetSource().getTarget();
             assertThat(((FailoverStoreAsync)target).getFailoverStore()).isInstanceOf(FailoverStoreInmemory.class);
         }
     }

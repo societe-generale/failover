@@ -22,8 +22,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static java.lang.String.format;
-
 /**
  * @author Anand Manissery
  */
@@ -49,7 +47,7 @@ public class Metrics {
     }
 
     public Metrics collect(String key, String value) {
-        info.put( format("%s-%s",keyPrefix, key), value);
+        info.put( "%s-%s".formatted(keyPrefix, key), value);
         return this;
     }
 

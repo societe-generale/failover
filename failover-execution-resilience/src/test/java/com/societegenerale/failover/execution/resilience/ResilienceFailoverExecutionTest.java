@@ -26,7 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -44,10 +44,10 @@ class ResilienceFailoverExecutionTest {
 
     private final Client client = new Client(1L, "TATA");
 
-    @MockBean
+    @MockitoBean
     private FailoverClock clock;
 
-    @MockBean
+    @MockitoBean
     private ClientReferentialExecutor clientReferentialExecutor;
 
     @Autowired

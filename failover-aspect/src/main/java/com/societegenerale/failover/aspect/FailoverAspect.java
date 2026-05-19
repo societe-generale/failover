@@ -28,7 +28,6 @@ import org.aspectj.lang.reflect.MethodSignature;
 
 import java.lang.reflect.Method;
 
-import static java.lang.String.format;
 import static java.util.Arrays.asList;
 
 /**
@@ -48,12 +47,17 @@ public class FailoverAspect<T> {
         if (failover != null && failover.name()!=null && !failover.name().isEmpty()) {
             return failoverExecution.execute(failover, ()-> {
                 try {
-                    return (T) joinPoint.proceed();
+                    return returnResult(joinPoint);
                 } catch (Throwable throwable) {
-                    throw new ExecutionException(format("Exception occurred while executing method '%s' execution failed due to '%s'", method.getName(), throwable.getMessage()), throwable);
+                    throw new ExecutionException("Exception occurred while executing method '%s' execution failed due to '%s'".formatted(method.getName(), throwable.getMessage()), throwable);
                 }
             }, method, asList(joinPoint.getArgs()));
         }
+         return returnResult(joinPoint);
+    }
+
+    @SneakyThrows
+    private T returnResult(ProceedingJoinPoint joinPoint) {
         return (T) joinPoint.proceed();
     }
 }

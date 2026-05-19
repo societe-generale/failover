@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.core.report.manifest;
 
-import com.google.common.collect.ImmutableMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,7 +37,7 @@ class CacheableManifestInfoExtractorTest {
 
     private static final String SOME_JAR = "some-jar";
 
-    private static final Map<String, String> INFO = ImmutableMap.of("additional-info-key", "additional-info-value");
+    private static final Map<String, String> INFO = Map.of("additional-info-key", "additional-info-value");
 
     @Mock
     private ManifestInfoExtractor manifestInfoExtractor;

@@ -18,7 +18,7 @@ package com.societegenerale.failover.core.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
 import org.reflections.Reflections;
-import org.reflections.scanners.MethodAnnotationsScanner;
+import org.reflections.scanners.Scanners;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,7 +42,7 @@ public class DefaultFailoverScanner implements FailoverScanner {
     public DefaultFailoverScanner(String packageToScan) {
         this.exceptionHandler = new ReflectionsExceptionHandler();
         this.exceptionHandler.execute(()->
-            this.reflections = new Reflections(packageToScan, new MethodAnnotationsScanner())
+            this.reflections = new Reflections(packageToScan, Scanners.MethodsAnnotated)
         );
         this.failoverMap = new ConcurrentHashMap<>();
         init();

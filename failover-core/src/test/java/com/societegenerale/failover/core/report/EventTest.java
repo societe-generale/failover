@@ -18,7 +18,6 @@ package com.societegenerale.failover.core.report;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
-import com.google.common.collect.ImmutableMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -110,7 +109,7 @@ class EventTest {
         event.publish();
 
         //then
-        assertThat(MDC.getCopyOfContextMap()).containsAllEntriesOf(ImmutableMap.of(
+        assertThat(MDC.getCopyOfContextMap()).containsAllEntriesOf(Map.of(
                 "existingKey", "existingValue",
                 "existingKey2", "existingValue2"));
     }

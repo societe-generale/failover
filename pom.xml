@@ -12,30 +12,33 @@
     <url>https://github.com/societe-generale/failover</url>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
 
-        <reflections.version>0.9.9</reflections.version>
+        <reflections.version>0.10.2</reflections.version>
 
         <!-- SPRING BOOT VERSION -->
-        <spring-boot.version>3.0.2</spring-boot.version>
-        <spring-cloud.version>2022.0.0</spring-cloud.version>
+        <spring-boot.version>4.0.6</spring-boot.version>
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
 
         <!-- Plugin -->
-        <plugin-failsafe.version>2.21.0</plugin-failsafe.version>
+        <plugin-failsafe.version>3.5.3</plugin-failsafe.version>
         <plugin-release.version>2.5.3</plugin-release.version>
         <plugin-scm.version>1.9.4</plugin-scm.version>
         <plugin-source.version>3.0.1</plugin-source.version>
-        <plugin-enforcer.version>1.4.1</plugin-enforcer.version>
-        <maven-surefire-plugin.version>3.0.0-M5</maven-surefire-plugin.version>
-        <jacoco.version>0.8.10</jacoco.version>
+        <plugin-enforcer.version>3.5.0</plugin-enforcer.version>
+        <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>
+        <jacoco.version>0.8.14</jacoco.version>
         <sonar.language>java</sonar.language>
         <sonar-maven-plugin.version>3.7.0.1746</sonar-maven-plugin.version>
         <maven-dependency-plugin.version>3.1.1</maven-dependency-plugin.version>
-        <maven-jar-plugin.version>3.2.0</maven-jar-plugin.version>
+        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+        <rewrite-maven-plugin.version>6.39.0</rewrite-maven-plugin.version>
+        <rewrite-spring.version>6.30.4</rewrite-spring.version>
+        <rewrite-migrate-java.version>3.7.0</rewrite-migrate-java.version>
         <sonar.java.libraries>target/dependency/*.jar</sonar.java.libraries>
         <project.coverage.directory>${project.build.directory}/coverage-results</project.coverage.directory>
         <sonar.coverage.jacoco.xmlReportPaths>../report/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
@@ -124,6 +127,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <version>1.18.46</version>
             <scope>provided</scope>
         </dependency>
 
@@ -152,6 +156,38 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.15.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.46</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.openrewrite.maven</groupId>
+                <artifactId>rewrite-maven-plugin</artifactId>
+                <version>6.39.0</version>
+                <configuration>
+                    <exportDatatables>true</exportDatatables>
+                    <activeRecipes>
+                        <recipe>org.openrewrite.java.spring.boot4.UpgradeSpringBoot_4_0</recipe>
+                    </activeRecipes>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.openrewrite.recipe</groupId>
+                        <artifactId>rewrite-spring</artifactId>
+                        <version>6.30.4</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
             <plugin>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>${plugin-failsafe.version}</version>
@@ -306,7 +342,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.1.1</version>
+                <version>3.11.2</version>
                 <configuration>
                     <encoding>UTF-8</encoding>
                 </configuration>
@@ -320,6 +356,23 @@
                 </executions>
             </plugin>
         </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>1.18.40</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 
 
