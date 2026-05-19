@@ -25,9 +25,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.util.List;
 import java.util.function.Supplier;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;

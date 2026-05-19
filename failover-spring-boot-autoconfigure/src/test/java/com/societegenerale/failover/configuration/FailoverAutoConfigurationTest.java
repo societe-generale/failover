@@ -61,7 +61,7 @@ class FailoverAutoConfigurationTest {
     @Test
     @DisplayName("should load BasicFailoverExecution by default")
     void shouldLoadResilienceFailoverExecutionByDefault() {
-        BasicFailoverExecution<?> bean = applicationContext.getBean(BasicFailoverExecution.class);
+        var bean = applicationContext.getBean(BasicFailoverExecution.class);
         assertThat(bean).isNotNull();
     }
 

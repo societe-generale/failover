@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
+import org.jspecify.annotations.Nullable;
 import org.reflections.Reflections;
 import org.reflections.scanners.Scanners;
 
@@ -49,7 +50,7 @@ public class DefaultFailoverScanner implements FailoverScanner {
     }
 
     @Override
-    public Failover findFailoverByName(String name) {
+    public @Nullable Failover findFailoverByName(String name) {
         return failoverMap.get(name);
     }
 

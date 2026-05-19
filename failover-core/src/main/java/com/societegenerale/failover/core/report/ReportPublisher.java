@@ -16,9 +16,7 @@
 
 package com.societegenerale.failover.core.report;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 public interface ReportPublisher {
     void publish(Metrics metrics);
 }

@@ -28,7 +28,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -42,7 +41,7 @@ class BasicFailoverExecutionTest {
 
     private static final String PAYLOAD = "Payload";
 
-    private static final List<Object> ARGS = singletonList(1L);
+    private static final List<Object> ARGS = List.of(1L);
 
     @Mock
     private Failover failover;

@@ -56,13 +56,13 @@ public class DefaultKeyGenerator implements KeyGenerator {
             return valueOf(item);
         }
         if (Collection.class.isAssignableFrom(item.getClass())) {
-            Collection<?> collection = (Collection<?>) item;
+            var collection = (Collection<?>) item;
             return collection.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(","));
         }
         if (item.getClass().isArray()) {
-            int len = Array.getLength(item);
-            List<Object> list = new ArrayList<>();
-            for (int i = 0; i < len; i++) {
+            var len = Array.getLength(item);
+            var list = new ArrayList<>();
+            for (var i = 0; i < len; i++) {
                 list.add(Array.get(item, i));
             }
             return list.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(","));

@@ -66,7 +66,7 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
     private T executeRecoverOnException(Method method, List<Object> args, Failover failover, Exception cause) {
         T result = null;
         try {
-            Class<T> clazz = (Class<T>) method.getReturnType();
+            var clazz = (Class<T>) method.getReturnType();
             result = failoverHandler.recover(failover, args, clazz, cause);
         } catch (Exception exception) {
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);

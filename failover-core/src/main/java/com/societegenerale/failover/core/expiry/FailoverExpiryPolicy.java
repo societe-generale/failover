@@ -46,7 +46,7 @@ public class FailoverExpiryPolicy<T> implements ExpiryPolicy<T> {
         if(failover.expiryPolicy().isEmpty()) {
             return defaultExpiryPolicy;
         }
-        ExpiryPolicy<T> expiryPolicy = expiryPolicyLookup.lookup(failover.expiryPolicy());
+        var expiryPolicy = expiryPolicyLookup.lookup(failover.expiryPolicy());
         if(expiryPolicy == null) {
             throw new ExpiryPolicyNotFoundException("No matching ExpiryPolicy bean found for failover '%s' with expiry policy qualifier '%s'. Neither qualifier match nor bean name match!".formatted(failover.name(), failover.expiryPolicy()));
         }

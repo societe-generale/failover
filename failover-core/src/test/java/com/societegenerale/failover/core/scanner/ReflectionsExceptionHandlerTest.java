@@ -23,9 +23,7 @@ import static com.societegenerale.failover.core.scanner.ReflectionsExceptionHand
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 class ReflectionsExceptionHandlerTest {
 
     private ReflectionsExceptionHandler exceptionHandler;

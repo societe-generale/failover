@@ -56,7 +56,7 @@ public class DefaultFailoverReporter implements FailoverReporter {
 
     @Override
     public void report() {
-        Map<String,String> genericInfo = new LinkedHashMap<>();
+        var genericInfo = new LinkedHashMap<String,String>();
         genericInfo.put("metrics-as-on", clock.now().toString());
         genericInfo.put("service-start-time", serviceStartTime.toString());
         genericInfo.putAll(additionalInfo);

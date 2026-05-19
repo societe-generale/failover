@@ -30,12 +30,12 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
         T payload = referentialPayload.getPayload();
         if (payload != null) {
             if (Referential.class.isAssignableFrom(payload.getClass())) {
-                Referential referential = (Referential) payload;
+                var referential = (Referential) payload;
                 referential.setUpToDate(referentialPayload.isUpToDate());
                 referential.setAsOf(referentialPayload.getAsOf());
             }
             if (ReferentialAware.class.isAssignableFrom(payload.getClass())) {
-                ReferentialAware referentialAwarePayload = (ReferentialAware) payload;
+                var referentialAwarePayload = (ReferentialAware) payload;
                 referentialAwarePayload.setUpToDate(referentialPayload.isUpToDate());
                 referentialAwarePayload.setAsOf(referentialPayload.getAsOf());
             }

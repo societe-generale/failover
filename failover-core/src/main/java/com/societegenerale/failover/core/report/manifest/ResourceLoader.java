@@ -20,9 +20,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.Enumeration;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 public interface ResourceLoader {
     Enumeration<URL> getResourcesUrls(String name) throws IOException;
 }

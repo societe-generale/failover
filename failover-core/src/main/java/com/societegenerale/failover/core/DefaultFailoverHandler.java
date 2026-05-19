@@ -25,10 +25,10 @@ import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * @author Anand Manissery
@@ -49,17 +49,17 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
-        ReferentialPayload<T> referentialPayload = payloadEnricher.enrich(failover, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
+        var referentialPayload = payloadEnricher.enrich(failover, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);
         log.info("Failover : Storing information on '{}' for failover. ReferentialPayload : {{}}", failover.name(), referentialPayload);
         return referentialPayload.getPayload();
     }
 
     @Override
-    public T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+    public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         log.debug("Failover Recovery : Recovering information on '{}' from failover store due to exception : ", failover.name(), cause);
         log.info("Failover Recovery : Recovering information on '{}' from failover store due to exception {}", failover.name(), cause.getMessage());
-        Optional<ReferentialPayload<T>> optionalReferential = failoverStore.find(failover.name(), keyGenerator.key(failover, args));
+        var optionalReferential = failoverStore.find(failover.name(), keyGenerator.key(failover, args));
         if(optionalReferential.isPresent()) {
             ReferentialPayload<T> referentialPayload =  optionalReferential.get();
             referentialPayload.setUpToDate(false);

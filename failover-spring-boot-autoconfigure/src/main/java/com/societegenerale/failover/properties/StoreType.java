@@ -16,30 +16,20 @@
 
 package com.societegenerale.failover.properties;
 
-/**
- * This describes the type of failover stores
- * @author Anand Manissery
- */
+/// This describes the type of failover stores
+/// @author Anand Manissery
 public enum StoreType {
 
-    /**
-     * The failover store is in-memory with a map implementation.
-     * Not recommender for production usage.
-     */
+    /// The failover store is in-memory with a map implementation.
+    /// Not recommender for production usage.
     INMEMORY,
 
-    /**
-     * The failover store is implemented with caffeine cache.
-     */
+    /// The failover store is implemented with caffeine cache.
     CAFFEINE,
 
-    /**
-     * The failover store is a persistence store with jdbc implementation.
-     */
+    /// The failover store is a persistence store with jdbc implementation.
     JDBC,
 
-    /**
-     * For any other custom implementation, please use custom type
-     */
+    /// For any other custom implementation, please use custom type
     CUSTOM
 }

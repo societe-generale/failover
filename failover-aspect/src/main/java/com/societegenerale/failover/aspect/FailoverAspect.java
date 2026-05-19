@@ -25,6 +25,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.Nullable;
 
 import java.lang.reflect.Method;
 
@@ -42,7 +43,7 @@ public class FailoverAspect<T> {
 
     @SneakyThrows
     @Around(value = "@annotation(com.societegenerale.failover.annotations.Failover) && @annotation(failover)", argNames = "joinPoint, failover")
-    public T failoverAroundAdvice(ProceedingJoinPoint joinPoint, Failover failover) {
+    public T failoverAroundAdvice(ProceedingJoinPoint joinPoint, @Nullable Failover failover) {
         Method method = ((MethodSignature)joinPoint.getSignature()).getMethod();
         if (failover != null && failover.name()!=null && !failover.name().isEmpty()) {
             return failoverExecution.execute(failover, ()-> {

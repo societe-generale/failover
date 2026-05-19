@@ -29,14 +29,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 @SpringBootTest
 class ResilienceFailoverExecutionTest {
 
@@ -74,7 +71,7 @@ class ResilienceFailoverExecutionTest {
         assertThat(result.getUpToDate()).isTrue();
         assertThat(result.getAsOf()).isEqualTo(NOW);
 
-        Optional<ReferentialPayload<Object>> optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
+        var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
         assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", true, NOW, NOW.plusHours(1), client));
     }
 
@@ -98,7 +95,7 @@ class ResilienceFailoverExecutionTest {
         assertThat(recovered.getUpToDate()).isFalse();
         assertThat(recovered.getAsOf()).isEqualTo(NOW);
 
-        Optional<ReferentialPayload<Object>> optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
+        var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
         assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusHours(1), client));
     }
 
@@ -120,7 +117,7 @@ class ResilienceFailoverExecutionTest {
         //then
         assertThat(recovered).isNull();
 
-        Optional<ReferentialPayload<Object>> optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
+        var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
         assertThat(optionalClientReferentialPayload).isNotPresent();
     }
 
@@ -138,7 +135,7 @@ class ResilienceFailoverExecutionTest {
         assertThat(result.getUpToDate()).isNull();
         assertThat(result.getAsOf()).isNull();
 
-        Optional<ReferentialPayload<Object>> optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
+        var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
         assertThat(optionalClientReferentialPayload).isNotPresent();
     }
 
@@ -159,7 +156,7 @@ class ResilienceFailoverExecutionTest {
 
         //Then
         assertThat(recovered).isNull();
-        Optional<ReferentialPayload<Object>> optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
+        var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
         assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusHours(1), client));
     }
 }

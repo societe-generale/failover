@@ -45,7 +45,7 @@ class BeanFactoryExpiryPolicyLookupTestIT {
 
     @Test
     void shouldReturnTheKeyGeneratorBean() {
-        ExpiryPolicy<Object> expiryPolicy = expiryPolicyLookup.lookup("custom-expiry-policy");
+        var expiryPolicy = expiryPolicyLookup.lookup("custom-expiry-policy");
         assertThat(expiryPolicy).isInstanceOf(CustomExpiryPolicy.class);
     }
 

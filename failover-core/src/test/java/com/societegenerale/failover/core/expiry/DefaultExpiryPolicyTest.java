@@ -73,8 +73,8 @@ class DefaultExpiryPolicyTest {
     @Test
     void shouldReturnTrueWhenExpired() {
         given(clock.now()).willReturn(now);
-        ReferentialPayload<String> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now.minusSeconds(11), now.minusSeconds(1), PAYLOAD);
-        boolean result = defaultExpiryPolicy.isExpired(failover, referentialPayload);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now.minusSeconds(11), now.minusSeconds(1), PAYLOAD);
+        var result = defaultExpiryPolicy.isExpired(failover, referentialPayload);
         assertThat(result).isTrue();
     }
 
@@ -82,8 +82,8 @@ class DefaultExpiryPolicyTest {
     @Test
     void shouldReturnFalseWhenNotExpired() {
         given(clock.now()).willReturn(now);
-        ReferentialPayload<String> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now.plusSeconds(1), "Payload");
-        boolean result = defaultExpiryPolicy.isExpired(failover, referentialPayload);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now.plusSeconds(1), "Payload");
+        var result = defaultExpiryPolicy.isExpired(failover, referentialPayload);
         assertThat(result).isFalse();
     }
 
@@ -91,8 +91,8 @@ class DefaultExpiryPolicyTest {
     @Test
     void shouldReturnFalseWhenNotExpiredAndHasEqualTime() {
         given(clock.now()).willReturn(now);
-        ReferentialPayload<String> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, "Payload");
-        boolean result = defaultExpiryPolicy.isExpired(failover, referentialPayload);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, "Payload");
+        var result = defaultExpiryPolicy.isExpired(failover, referentialPayload);
         assertThat(result).isFalse();
     }
 }

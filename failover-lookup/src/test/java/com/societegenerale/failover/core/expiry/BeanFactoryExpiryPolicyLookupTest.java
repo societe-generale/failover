@@ -50,7 +50,7 @@ class BeanFactoryExpiryPolicyLookupTest {
     void shouldReturnTheKeyGeneratorBean() {
         given(beanFactory.getBean("custom-expiry-policy", ExpiryPolicy.class)).willReturn(expiryPolicy);
         beanFactoryExpiryPolicyLookup.setBeanFactory(beanFactory);
-        ExpiryPolicy<String> result = beanFactoryExpiryPolicyLookup.lookup("custom-expiry-policy");
+        var result = beanFactoryExpiryPolicyLookup.lookup("custom-expiry-policy");
         assertThat(result).isEqualTo(expiryPolicy);
         verify(beanFactory).getBean("custom-expiry-policy", ExpiryPolicy.class);
     }

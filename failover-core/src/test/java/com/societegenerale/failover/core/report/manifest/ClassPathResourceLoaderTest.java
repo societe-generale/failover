@@ -19,8 +19,6 @@ package com.societegenerale.failover.core.report.manifest;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.net.URL;
-import java.util.Enumeration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,11 +27,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ClassPathResourceLoaderTest {
 
-    private ClassPathResourceLoader classPathResourceLoader = new ClassPathResourceLoader();
+    private final ClassPathResourceLoader classPathResourceLoader = new ClassPathResourceLoader();
 
     @Test
     void shouldReturnResourceUrls() throws IOException {
-        Enumeration<URL> urls = classPathResourceLoader.getResourcesUrls("META-INF/MANIFEST.MF");
+        var urls = classPathResourceLoader.getResourcesUrls("META-INF/MANIFEST.MF");
         assertThat(urls.hasMoreElements()).isTrue();
     }
 }

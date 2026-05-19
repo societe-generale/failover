@@ -30,7 +30,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 import static java.time.LocalDateTime.now;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,7 +56,7 @@ class FailoverStoreJdbcTest {
 
     @BeforeEach
     void setup() {
-        Client client = new Client(1L, "TATA");
+        var client = new Client(1L, "TATA");
         client.setAsOf(now());
         client.setUpToDate(false);
         referentialPayload = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW, client);
@@ -68,7 +67,7 @@ class FailoverStoreJdbcTest {
     @Test
     void shouldStoreAndRetrieveTheReferentialPayload() {
         failoverStoreJdbc.store(referentialPayload);
-        Optional<ReferentialPayload<Client>> fromDB = failoverStoreJdbc.find(NAME, KEY);
+        var fromDB = failoverStoreJdbc.find(NAME, KEY);
         assertThat(fromDB).isPresent().contains(referentialPayload);
     }
 
@@ -77,7 +76,7 @@ class FailoverStoreJdbcTest {
     void shouldStoreAndRetrieveTheReferentialPayloadWithNullPayload() {
         referentialPayload.setPayload(null);
         failoverStoreJdbc.store(referentialPayload);
-        Optional<ReferentialPayload<Client>> fromDB = failoverStoreJdbc.find(NAME, KEY);
+        var fromDB = failoverStoreJdbc.find(NAME, KEY);
         assertThat(fromDB).isPresent().contains(referentialPayload);
     }
 
@@ -85,7 +84,7 @@ class FailoverStoreJdbcTest {
     @Test
     void shouldDeleteGivenReferentialPayload() {
         failoverStoreJdbc.store(referentialPayload);
-        Optional<ReferentialPayload<Client>> fromDB = failoverStoreJdbc.find(NAME, KEY);
+        var fromDB = failoverStoreJdbc.find(NAME, KEY);
         assertThat(fromDB).isPresent().contains(referentialPayload);
 
         failoverStoreJdbc.delete(referentialPayload);
@@ -97,7 +96,7 @@ class FailoverStoreJdbcTest {
     @Test
     void shouldReturnEmptyWhenNoReferentialPayloadFoundForGivenNameAndKey() {
         failoverStoreJdbc.store(referentialPayload);
-        Optional<ReferentialPayload<Client>> fromDB = failoverStoreJdbc.find(NAME+"X", KEY+"Y");
+        var fromDB = failoverStoreJdbc.find(NAME+"X", KEY+"Y");
         assertThat(fromDB).isNotPresent();
     }
 
@@ -105,7 +104,7 @@ class FailoverStoreJdbcTest {
     @Test
     void shouldUpdateTheReferentialPayloadWhenExist() {
         failoverStoreJdbc.store(referentialPayload);
-        Optional<ReferentialPayload<Client>> fromDB = failoverStoreJdbc.find(NAME, KEY);
+        var fromDB = failoverStoreJdbc.find(NAME, KEY);
         assertThat(fromDB).isPresent().contains(referentialPayload);
         referentialPayload.setAsOf(now());
         failoverStoreJdbc.store(referentialPayload);
@@ -126,7 +125,7 @@ class FailoverStoreJdbcTest {
         assertThat(failoverStoreJdbc.find(NAME, "1")).isNotPresent();
         assertThat(failoverStoreJdbc.find(NAME, "2")).isNotPresent();
         assertThat(failoverStoreJdbc.find(NAME, "3")).isNotPresent();
-        Optional<ReferentialPayload<Client>> result = failoverStoreJdbc.find(NAME, "4");
+        var result = failoverStoreJdbc.find(NAME, "4");
         assertThat(result).isPresent().contains(new ReferentialPayload<>(NAME, "4", false, NOW, NOW.plusMinutes(4), new Client(4L, "TATA-4")));
         result = failoverStoreJdbc.find(NAME, "5");
         assertThat(result).isPresent().contains(new ReferentialPayload<>(NAME, "5", false, NOW, NOW.plusMinutes(5), new Client(5L, "TATA-5")));

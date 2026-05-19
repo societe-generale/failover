@@ -22,9 +22,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

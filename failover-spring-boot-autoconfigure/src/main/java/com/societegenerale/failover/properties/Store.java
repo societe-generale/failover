@@ -22,17 +22,13 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 import static com.societegenerale.failover.properties.StoreType.INMEMORY;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 @Getter
 @Setter
 public class Store {
 
-    /**
-     * Type of storage to be specified. Default to 'INMEMORY'
-     * Available options : INMEMORY, CAFFEINE, JDBC, CUSTOM
-     */
+    /// Type of storage to be specified. Default to 'INMEMORY'
+    /// Available options : INMEMORY, CAFFEINE, JDBC, CUSTOM
     private StoreType type = INMEMORY;
 
     @NestedConfigurationProperty

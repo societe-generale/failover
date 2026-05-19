@@ -43,7 +43,7 @@ public class FailoverFailureAnalyzer extends AbstractInjectionFailureAnalyzer<No
     private Environment environment;
 
     @Override
-    protected FailureAnalysis analyze(Throwable rootFailure, NoSuchBeanDefinitionException cause, String description) {
+    protected FailureAnalysis analyze(@NonNull Throwable rootFailure, NoSuchBeanDefinitionException cause, String description) {
         if(FailoverStore.class.isAssignableFrom(requireNonNull(cause.getBeanType()))) {
             String message = "Invalid FailoverStore configuration! %s required %s that could not be found.%n".formatted(description, this.getBeanDescription(cause));
             String action = getActionForFailoverStore(environment.getProperty("failover.store.type", StoreType.class, StoreType.CUSTOM));
@@ -68,8 +68,9 @@ public class FailoverFailureAnalyzer extends AbstractInjectionFailureAnalyzer<No
                     "For FailoverStore '%s', you must include 'com.github.ben-manes.caffeine:caffeine' dependency.".formatted(storeType);
             case JDBC -> "For FailoverStore '%s', you must provide 'JdbcTemplate' bean.".formatted(storeType);
             default ->
-                    format("For FailoverStore '%s', Either configured to available stores { %s } by configuring 'failover.store.type' property " +
-                                    "OR Consider defining a bean of type '%s' in your configuration by setting 'failover.store.type=custom'.",
+                    format("""
+                                    For FailoverStore '%s', Either configured to available stores { %s } by configuring 'failover.store.type' property \
+                                    OR Consider defining a bean of type '%s' in your configuration by setting 'failover.store.type=custom'.""",
                             StoreType.CUSTOM, Arrays.toString(StoreType.values()), FailoverStore.class);
         };
     }
@@ -78,8 +79,9 @@ public class FailoverFailureAnalyzer extends AbstractInjectionFailureAnalyzer<No
         if (type == FailoverType.RESILIENCE) {
             return "For FailoverExecution '%s', you must include 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j' dependency.".formatted(type);
         }
-        return format("For FailoverExecution '%s', Either configured to available type { %s } by configuring 'failover.type' property " +
-                        "OR Consider defining a bean of type '%s' in your configuration by setting 'failover.type=custom'.",
+        return format("""
+                        For FailoverExecution '%s', Either configured to available type { %s } by configuring 'failover.type' property \
+                        OR Consider defining a bean of type '%s' in your configuration by setting 'failover.type=custom'.""",
                 StoreType.CUSTOM, Arrays.toString(FailoverType.values()), FailoverStore.class);
     }
 

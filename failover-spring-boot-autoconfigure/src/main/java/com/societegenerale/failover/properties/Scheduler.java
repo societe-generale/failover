@@ -20,28 +20,20 @@ package com.societegenerale.failover.properties;
 import lombok.Getter;
 import lombok.Setter;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 @Getter
 @Setter
 public class Scheduler {
 
-    /**
-     * Whether to enable or disable the failover scheduler feature.
-     * Default value is 'true'.
-     */
+    /// Whether to enable or disable the failover scheduler feature.
+    /// Default value is 'true'.
     private boolean enabled = true;
 
-    /**
-     * Please provide the cron expression for report publisher scheduler
-     * Default is '0 0 0 * * *'  :  daily
-     */
+    /// Please provide the cron expression for report publisher scheduler
+    /// Default is '0 0 0 * * *'  :  daily
     private String reportCron = "0 0 0 * * *";
 
-    /**
-     * Please provide the cron expression for expiry clean up scheduler
-     * Default is '0 0 * * * *'   : hourly
-     */
+    /// Please provide the cron expression for expiry clean up scheduler
+    /// Default is '0 0 * * * *'   : hourly
     private String cleanupCron = "0 0 * * * *";
 }

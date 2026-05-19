@@ -52,7 +52,7 @@ class CacheableManifestInfoExtractorTest {
     @Test
     void shouldReturnTheInfo() {
         given(manifestInfoExtractor.extract(SOME_JAR)).willReturn(INFO);
-        Map<String, String> result = cacheableManifestInfoExtractor.extract(SOME_JAR);
+        var result = cacheableManifestInfoExtractor.extract(SOME_JAR);
         assertThat(result).containsExactlyEntriesOf(INFO);
         verify(manifestInfoExtractor).extract(SOME_JAR);
     }
@@ -62,7 +62,7 @@ class CacheableManifestInfoExtractorTest {
         given(manifestInfoExtractor.extract(SOME_JAR)).willReturn(INFO);
 
         // first call
-        Map<String, String> result = cacheableManifestInfoExtractor.extract(SOME_JAR);
+        var result = cacheableManifestInfoExtractor.extract(SOME_JAR);
         assertThat(result).containsExactlyEntriesOf(INFO);
 
         // second call return from cache

@@ -18,6 +18,7 @@ package com.societegenerale.failover.core.report.manifest;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,11 +34,12 @@ public class CacheableManifestInfoExtractor implements ManifestInfoExtractor {
 
     private final ManifestInfoExtractor manifestInfoExtractor;
 
-    public Map<String,String> extract(String title) {
+    @Override
+    public @Nullable Map<String, String> extract(String title) {
         if(cache.containsKey(title)) {
             return cache.get(title);
         }
-        Map<String, String> result = manifestInfoExtractor.extract(title);
+        var result = manifestInfoExtractor.extract(title);
         cache.put(title, result);
         return result;
     }

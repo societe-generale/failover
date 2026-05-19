@@ -20,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -41,13 +40,13 @@ class DefaultManifestInfoExtractorTest {
 
     @Test
     void shouldReturnTheManifestInfo() {
-        Map<String,String> result = manifestInfoExtractor.extract("slf4j-api");
+        var result = manifestInfoExtractor.extract("slf4j-api");
         assertThat(result).containsEntry("lib-metadata-title", "slf4j-api").containsEntry("lib-metadata-version", "2.0.17");
     }
 
     @Test
     void shouldReturnEmptyMapWhenNoMatchFound() {
-        Map<String,String> result = manifestInfoExtractor.extract("some-jar-name");
+        var result = manifestInfoExtractor.extract("some-jar-name");
         assertThat(result).isEmpty();
     }
 
@@ -55,8 +54,8 @@ class DefaultManifestInfoExtractorTest {
     void shouldReturnEmptyMapWhenFailToReadManifest() throws IOException {
         ResourceLoader resourceLoader = mock(ResourceLoader.class);
         when(resourceLoader.getResourcesUrls(anyString())).thenThrow(IOException.class);
-        DefaultManifestInfoExtractor manifestInfoExtractor = new DefaultManifestInfoExtractor(resourceLoader);
-        Map<String,String> result = manifestInfoExtractor.extract("some-jar-name");
+        var manifestInfoExtractor = new DefaultManifestInfoExtractor(resourceLoader);
+        var result = manifestInfoExtractor.extract("some-jar-name");
         assertThat(result).isEmpty();
     }
 }

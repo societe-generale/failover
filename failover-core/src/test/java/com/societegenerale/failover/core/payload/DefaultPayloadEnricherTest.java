@@ -53,10 +53,10 @@ class DefaultPayloadEnricherTest {
         @DisplayName("should enrich the payload from referential metadata")
         @Test
         void shouldEnrichThePayload() {
-            ThirdParty thirdParty = new ThirdParty(1L, "TATA", 5);
-            ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
+            var thirdParty = new ThirdParty(1L, "TATA", 5);
+            var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
 
-            ReferentialPayload<ThirdParty> result = payloadEnricher.enrich(FAILOVER, referentialPayload);
+            var result = payloadEnricher.enrich(FAILOVER, referentialPayload);
 
             assertThat(result.getPayload().getAsOf()).isEqualTo(now);
             assertThat(result.getPayload().getUpToDate()).isTrue();
@@ -65,7 +65,7 @@ class DefaultPayloadEnricherTest {
         @Data
         @EqualsAndHashCode(callSuper = true)
         @AllArgsConstructor
-        class ThirdParty extends Referential {
+        static class ThirdParty extends Referential {
             private Long id;
             private String name;
             private int score;
@@ -81,10 +81,10 @@ class DefaultPayloadEnricherTest {
         @DisplayName("should enrich the payload from referential metadata")
         @Test
         void shouldEnrichThePayload() {
-            ThirdParty thirdParty = new ThirdParty(1L, "TATA", 5);
-            ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
+            var thirdParty = new ThirdParty(1L, "TATA", 5);
+            var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
 
-            ReferentialPayload<ThirdParty> result = payloadEnricher.enrich(FAILOVER, referentialPayload);
+            var result = payloadEnricher.enrich(FAILOVER, referentialPayload);
 
             assertThat(result.getPayload().getAsOf()).isEqualTo(now);
             assertThat(result.getPayload().isUpToDate()).isTrue();
@@ -92,7 +92,7 @@ class DefaultPayloadEnricherTest {
 
         @Data
         @AllArgsConstructor
-        class ThirdParty implements ReferentialAware {
+        static class ThirdParty implements ReferentialAware {
             private Long id;
             private String name;
             private int score;
@@ -127,10 +127,10 @@ class DefaultPayloadEnricherTest {
         @DisplayName("should not enrich the payload from referential metadata")
         @Test
         void shouldEnrichThePayload() {
-            ThirdParty thirdParty = new ThirdParty(1L, "TATA", 5);
-            ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
+            var thirdParty = new ThirdParty(1L, "TATA", 5);
+            var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
 
-            ReferentialPayload<ThirdParty> result = payloadEnricher.enrich(FAILOVER, referentialPayload);
+            var result = payloadEnricher.enrich(FAILOVER, referentialPayload);
 
             assertThat(result.getPayload().getAsOf()).isNull();
             assertThat(result.getPayload().getUpToDate()).isNull();
@@ -138,7 +138,7 @@ class DefaultPayloadEnricherTest {
 
         @Data
         @AllArgsConstructor
-        class ThirdParty {
+        static class ThirdParty {
             private Long id;
             private String name;
             private int score;
@@ -164,9 +164,9 @@ class DefaultPayloadEnricherTest {
         @Test
         void shouldReturnThePayloadAsItIsWhenPayloadIsNull() {
 
-            ReferentialPayload<String> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, null);
+            var referentialPayload = new ReferentialPayload<String>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, null);
 
-            ReferentialPayload<String> result = payloadEnricher.enrich(FAILOVER, referentialPayload);
+            var result = payloadEnricher.enrich(FAILOVER, referentialPayload);
 
             assertThat(result).isEqualTo(referentialPayload);
         }

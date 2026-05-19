@@ -3,7 +3,6 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>failover-store-inmemory</artifactId>
-    <version>2.1.2-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <parent>

@@ -60,7 +60,7 @@ public class FailoverProperties {
     private Scheduler scheduler = new Scheduler();
 
     public Map<String,String> additionalInfo() {
-        Map<String,String> info = new LinkedHashMap<>();
+        var info = new LinkedHashMap<String,String>();
         info.put("enabled", Boolean.toString(enabled));
         info.put("type", type.name());
         info.put("store.type", store.getType().name());
