@@ -16,10 +16,10 @@
 
 package com.societegenerale.failover.store;
 
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,6 +29,7 @@ import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static java.lang.Class.forName;
 import static org.springframework.util.StringUtils.replace;
 
@@ -77,7 +78,6 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         this.cleanUpQuery = getQuery(CLEAN_UP_QUERY);
     }
 
-    @SneakyThrows
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
 
@@ -140,12 +140,15 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         return replace(query, PREFIX, this.tablePrefix);
     }
 
-    @SneakyThrows
     private T getPayload(String payload, String clazzString) {
-        if(payload==null) {
+        if (payload == null) {
             return null;
         }
-        var clazz = (Class<T>) forName(clazzString);
-        return objectMapper.readValue(payload, clazz);
+        try {
+            Class<T> clazz = cast(forName(clazzString));
+            return objectMapper.readValue(payload, clazz);
+        } catch (ClassNotFoundException e) {
+            throw new FailoverStoreException("Failed to resolve payload class '%s'".formatted(clazzString), e);
+        }
     }
 }

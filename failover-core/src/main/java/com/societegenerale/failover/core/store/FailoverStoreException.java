@@ -16,20 +16,11 @@
 
 package com.societegenerale.failover.core.store;
 
-import com.societegenerale.failover.core.payload.ReferentialPayload;
-
-import java.time.LocalDateTime;
-import java.util.Optional;
-
 /**
  * @author Anand Manissery
  */
-public interface FailoverStore<T> {
-    void store(ReferentialPayload<T> referentialPayload) throws FailoverStoreException;
-
-    void delete(ReferentialPayload<T> referentialPayload) throws FailoverStoreException;
-
-    Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException;
-
-    void cleanByExpiry(LocalDateTime expiry)  throws FailoverStoreException;
+public class FailoverStoreException extends RuntimeException {
+    public FailoverStoreException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }
