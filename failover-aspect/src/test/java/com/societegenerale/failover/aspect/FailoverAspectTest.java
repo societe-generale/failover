@@ -126,9 +126,11 @@ class FailoverAspectTest {
     @Test
     void shouldThrowExceptionWhenFailoverAnnotationNotFoundAndExecutionFailed() throws Throwable {
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("")));
-        assertThat(exception).isInstanceOf(RuntimeException.class);
-        assertThat(exception.getMessage()).isEqualTo("Dummy Exception");
+        var exception = assertThrows(RuntimeException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("")));
+        assertThat(exception).isInstanceOf(ExecutionException.class);
+        assertThat(exception.getMessage()).isEqualTo("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'");
+        assertThat(exception.getCause()).isInstanceOf(RuntimeException.class);
+        assertThat(exception.getCause().getMessage()).isEqualTo("Dummy Exception");
     }
 
     private static Failover failoverWithName(String name) {
