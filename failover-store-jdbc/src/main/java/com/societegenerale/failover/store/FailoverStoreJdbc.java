@@ -16,7 +16,7 @@
 
 package com.societegenerale.failover.store;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import lombok.SneakyThrows;
@@ -81,7 +81,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
 
-        Optional<ReferentialPayload<T>> optionalReferentialPayloadFromDB = find(referentialPayload.getName(), referentialPayload.getKey());
+        var optionalReferentialPayloadFromDB = find(referentialPayload.getName(), referentialPayload.getKey());
 
         String executeQuery = optionalReferentialPayloadFromDB.isPresent() ? updateQuery : insertQuery;
 
@@ -101,20 +101,20 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
                 Types.VARCHAR,
                 Types.VARCHAR,
         };
-        int count = jdbcTemplate.update(executeQuery, objects, types);
+        var count = jdbcTemplate.update(executeQuery, objects, types);
         log.debug("Referential payload inserted/updated. No of record inserted : '{}'", count);
     }
 
     @Override
     public void delete(ReferentialPayload<T> referentialPayload) {
-        int count = jdbcTemplate.update(deleteQuery, new Object[]{referentialPayload.getName(), referentialPayload.getKey()}, new int[]{Types.VARCHAR, Types.VARCHAR});
+        var count = jdbcTemplate.update(deleteQuery, new Object[]{referentialPayload.getName(), referentialPayload.getKey()}, new int[]{Types.VARCHAR, Types.VARCHAR});
         log.debug("Referential payload deleted. No of record deleted : '{}'", count);
     }
 
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(selectQuery, new Object[]{name, key}, new int[]{Types.VARCHAR, Types.VARCHAR}, (resultSet, index) -> {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(selectQuery, new Object[]{name, key}, new int[]{Types.VARCHAR, Types.VARCHAR}, (resultSet, _) -> {
                 String failoverName = resultSet.getString("FAILOVER_NAME");
                 String failoverKey = resultSet.getString("FAILOVER_KEY");
                 LocalDateTime asOf = resultSet.getTimestamp("AS_OF").toLocalDateTime();
@@ -132,7 +132,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     @Override
     public void cleanByExpiry(LocalDateTime expiry) {
-        int count = jdbcTemplate.update(cleanUpQuery, new Object[]{expiry}, new int[]{Types.TIMESTAMP});
+        var count = jdbcTemplate.update(cleanUpQuery, new Object[]{expiry}, new int[]{Types.TIMESTAMP});
         log.debug("Referential payload cleaned up by given expiry : '{}' . No of record deleted : '{}'", expiry, count);
     }
 
@@ -145,7 +145,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         if(payload==null) {
             return null;
         }
-        Class<T> clazz = (Class<T>) forName(clazzString);
+        var clazz = (Class<T>) forName(clazzString);
         return objectMapper.readValue(payload, clazz);
     }
 }

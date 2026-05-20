@@ -28,9 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBasicBean;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 @SpringBootTest(classes = {MyTestApplication.class})
 @TestPropertySource(properties = {"failover.type=resilience"})
 class ResilienceFailoverExecutionAutoConfigurationTest {
@@ -47,7 +45,7 @@ class ResilienceFailoverExecutionAutoConfigurationTest {
     @Test
     @DisplayName("should load ResilienceFailoverExecution bean")
     void shouldLoadResilienceFailoverExecutionBean() {
-        ResilienceFailoverExecution<?> bean = applicationContext.getBean(ResilienceFailoverExecution.class);
+        var bean = applicationContext.getBean(ResilienceFailoverExecution.class);
         assertThat(bean).isNotNull();
     }
 }

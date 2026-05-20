@@ -21,7 +21,9 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.expiry.ExpiryPolicy;
 import com.societegenerale.failover.core.key.DefaultKeyGenerator;
 import com.societegenerale.failover.core.key.KeyGenerator;
-import com.societegenerale.failover.core.payload.*;
+import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
+import com.societegenerale.failover.core.payload.PayloadEnricher;
+import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.domain.Referential;
 import lombok.AllArgsConstructor;
@@ -35,9 +37,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
-import static java.util.Collections.singletonList;
 import static java.util.Optional.of;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -84,12 +86,12 @@ class DefaultFailoverHandlerTest {
     @DisplayName("should store the referential payload")
     @Test
     void shouldStoreTheReferential() {
-        ThirdParty thirdParty = new ThirdParty(1L, "Tata", 1);
-        ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", true, now, now, thirdParty);
+        var thirdParty = new ThirdParty(1L, "Tata", 1);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", true, now, now, thirdParty);
         given(clock.now()).willReturn(now);
         given(expiryPolicy.computeExpiry(failover)).willReturn(now);
 
-        ThirdParty result = defaultFailoverHandler.store(failover, singletonList(1L), thirdParty);
+        ThirdParty result = defaultFailoverHandler.store(failover, List.of(1L), thirdParty);
 
         assertThat(result).isEqualTo(thirdParty);
         assertThat(result.getAsOf()).isEqualTo(now);
@@ -100,12 +102,13 @@ class DefaultFailoverHandlerTest {
     @DisplayName("should recover the referential payload when not expired")
     @Test
     void shouldRecoverTheReferentialWhenNotExpired() {
-        ThirdParty thirdParty = new ThirdParty(1L, "Tata", 1);
-        ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
+        var thirdParty = new ThirdParty(1L, "Tata", 1);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
         given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(of(referentialPayload));
 
-        ThirdParty result = defaultFailoverHandler.recover(failover, singletonList(1L), ThirdParty.class, cause);
+        ThirdParty result = defaultFailoverHandler.recover(failover, List.of(1L), ThirdParty.class, cause);
 
+        assertThat(result).isNotNull();
         assertThat(result).isEqualTo(thirdParty);
         assertThat(result.getAsOf()).isEqualTo(now);
         assertThat(result.getUpToDate()).isFalse();
@@ -119,7 +122,7 @@ class DefaultFailoverHandlerTest {
     void shouldReturnNullWhenReferentialIsNotFound() {
         given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(Optional.empty());
 
-        ThirdParty result = defaultFailoverHandler.recover(failover, singletonList(1L), ThirdParty.class, cause);
+        ThirdParty result = defaultFailoverHandler.recover(failover, List.of(1L), ThirdParty.class, cause);
 
         assertThat(result).isNull();
         verify(failoverStore).find(FAILOVER_NAME, "1");
@@ -130,12 +133,12 @@ class DefaultFailoverHandlerTest {
     @DisplayName("should return null when referential payload is expired")
     @Test
     void shouldReturnNullWhenReferentialIsExpired() {
-        ThirdParty thirdParty = new ThirdParty(1L, "Tata", 1);
-        ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
+        var thirdParty = new ThirdParty(1L, "Tata", 1);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
         given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(of(referentialPayload));
         given(expiryPolicy.isExpired(failover, referentialPayload)).willReturn(true);
 
-        ThirdParty result = defaultFailoverHandler.recover(failover, singletonList(1L), ThirdParty.class, cause);
+        ThirdParty result = defaultFailoverHandler.recover(failover, List.of(1L), ThirdParty.class, cause);
 
         assertThat(result).isNull();
         verify(failoverStore).find(FAILOVER_NAME, "1");

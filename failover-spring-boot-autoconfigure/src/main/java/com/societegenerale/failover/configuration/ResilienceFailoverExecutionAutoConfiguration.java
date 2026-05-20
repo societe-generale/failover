@@ -23,18 +23,18 @@ import com.societegenerale.failover.properties.FailoverType;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * @author Anand Manissery
  */
 @ConditionalOnExpression("${failover.enabled:true} eq true and '${failover.type:basic}'.toLowerCase() eq 'resilience'")
-@ConditionalOnClass(name = { "io.github.resilience4j.circuitbreaker.CircuitBreaker" } )
-@Configuration
+@ConditionalOnClass(name = {"io.github.resilience4j.circuitbreaker.CircuitBreaker"})
 @AllArgsConstructor
+@AutoConfiguration
 @Slf4j
 public class ResilienceFailoverExecutionAutoConfiguration {
 

@@ -21,8 +21,6 @@ import lombok.AllArgsConstructor;
 
 import java.util.List;
 
-import static java.lang.String.format;
-
 /**
  * @author Anand Manissery
  */
@@ -40,7 +38,7 @@ public class FailoverKeyGenerator implements KeyGenerator {
         }
         KeyGenerator keyGenerator = keyGeneratorLookup.lookup(failover.keyGenerator());
         if(keyGenerator == null) {
-            throw new KeyGeneratorNotFoundException(format("No matching KeyGenerator bean found for failover '%s' with key generator qualifier '%s'. Neither qualifier match nor bean name match!", failover.name(), failover.keyGenerator()));
+            throw new KeyGeneratorNotFoundException("No matching KeyGenerator bean found for failover '%s' with key generator qualifier '%s'. Neither qualifier match nor bean name match!".formatted(failover.name(), failover.keyGenerator()));
         }
         return keyGenerator.key(failover, args);
     }

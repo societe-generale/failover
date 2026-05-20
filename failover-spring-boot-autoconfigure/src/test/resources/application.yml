@@ -1,0 +1,3 @@
+failover:
+  enabled: true
+  package-to-scan: com.societegenerale.failover

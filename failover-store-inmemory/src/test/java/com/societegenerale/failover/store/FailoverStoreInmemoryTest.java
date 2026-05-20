@@ -22,7 +22,6 @@ import lombok.Data;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 import static java.time.LocalDateTime.now;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,7 +48,7 @@ class FailoverStoreInmemoryTest {
     void shouldReturnTheReferentialWhenFoundForTheGivenKey() {
         failoverStoreInmemory.store(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreInmemory.find("third-party-failover", "1");
+        var result = failoverStoreInmemory.find("third-party-failover", "1");
 
         assertThat(result).isPresent().contains(referentialPayload);
     }
@@ -58,7 +57,7 @@ class FailoverStoreInmemoryTest {
     void shouldReturnEmptyWhenNoReferentialFoundForTheGivenKey() {
         failoverStoreInmemory.store(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreInmemory.find("third-party-failover", "2");
+        var result = failoverStoreInmemory.find("third-party-failover", "2");
 
         assertThat(result).isNotPresent();
     }
@@ -70,7 +69,7 @@ class FailoverStoreInmemoryTest {
 
         failoverStoreInmemory.delete(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreInmemory.find("third-party-failover", "1");
+        var result = failoverStoreInmemory.find("third-party-failover", "1");
         assertThat(result).isNotPresent();
     }
 
@@ -88,7 +87,7 @@ class FailoverStoreInmemoryTest {
         assertThat(failoverStoreInmemory.find("third-party-failover", "1")).isNotPresent();
         assertThat(failoverStoreInmemory.find("third-party-failover", "2")).isNotPresent();
         assertThat(failoverStoreInmemory.find("third-party-failover", "3")).isNotPresent();
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreInmemory.find("third-party-failover", "4");
+        var result = failoverStoreInmemory.find("third-party-failover", "4");
         assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "4", true, NOW, NOW.plusMinutes(4), new ThirdParty(4L, "TATA-4", 5)));
         result = failoverStoreInmemory.find("third-party-failover", "5");
         assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusMinutes(5), new ThirdParty(5L, "TATA-5", 5)));

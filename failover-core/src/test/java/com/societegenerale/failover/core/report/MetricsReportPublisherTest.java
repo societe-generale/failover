@@ -41,9 +41,9 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class MetricsReportPublisherTest {
 
-    private LocalDateTime now = LocalDateTime.now();
+    private static final LocalDateTime NOW = LocalDateTime.now();
 
-    private Metrics metrics = Metrics.of("failover");
+    private static final Metrics METRICS = Metrics.of("failover");
 
     @Mock
     private Appender<ILoggingEvent> appender;
@@ -58,16 +58,16 @@ class MetricsReportPublisherTest {
 
     @BeforeEach
     void setUp() {
-        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
         logger.addAppender(appender);
         metricsReportPublisher = new MetricsReportPublisher(clock);
-        BDDMockito.given(clock.now()).willReturn(now);
+        BDDMockito.given(clock.now()).willReturn(NOW);
     }
 
     @Test
     void shouldPublishMetrics() {
-        metricsReportPublisher.publish(metrics);
+        metricsReportPublisher.publish(METRICS);
         verify(appender).doAppend(captor.capture());
-        assertThat(captor.getValue().getMDCPropertyMap()).containsAllEntriesOf(metrics.getInfo());
+        assertThat(captor.getValue().getMDCPropertyMap()).containsAllEntriesOf(METRICS.getInfo());
     }
 }

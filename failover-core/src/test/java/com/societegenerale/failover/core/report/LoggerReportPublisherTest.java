@@ -58,7 +58,7 @@ class LoggerReportPublisherTest {
 
     @BeforeEach
     void setUp() {
-        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
         logger.addAppender(appender);
         loggerReportPublisher = new LoggerReportPublisher(clock);
         BDDMockito.given(clock.now()).willReturn(now);

@@ -24,7 +24,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 
 import static java.lang.Integer.toHexString;
-import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -111,18 +110,18 @@ class DefaultKeyGeneratorTest {
     @DisplayName("should return the key when the arguments are of multiple types")
     @Test
     void shouldReturnTheKeyWhenArgContainsMultipleTypes() {
-        long one = 1;
+        var one = 1L;
         Long two = 2L;
-        Object object = new Object();
+        var object = new Object();
         String key = defaultKeyProvider.key(FAILOVER, asList(one, two, new BigDecimal(3), "4", object));
-        assertThat(key).isEqualTo(format("1:2:3:4:Object@%s", toHexString(object.hashCode())));
+        assertThat(key).isEqualTo("1:2:3:4:Object@%s".formatted(toHexString(object.hashCode())));
     }
 
     @DisplayName("should return the key when the argument is of any non primitive Object")
     @Test
     void shouldReturnTheKeyWhenArgContainsAnyObjectTypesOtherThanPrimitiveType() {
-        Object object = new Object();
+        var object = new Object();
         String key = defaultKeyProvider.key(FAILOVER, asList(1, object, "3"));
-        assertThat(key).isEqualTo(format("1:Object@%s:3", toHexString(object.hashCode())));
+        assertThat(key).isEqualTo("1:Object@%s:3".formatted(toHexString(object.hashCode())));
     }
 }

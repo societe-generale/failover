@@ -31,9 +31,7 @@ import java.util.concurrent.TimeUnit;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.*;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 @EnableScheduling
 @SpringBootTest(classes = {ReportSchedulerTest.ConfigurationClass.class})
 @TestPropertySource(properties = {"failover.scheduler.report-cron=* * * * * *"})

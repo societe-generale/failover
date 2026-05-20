@@ -16,14 +16,14 @@
 
 package com.societegenerale.failover.core.scanner;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 public class ReflectionsExceptionHandler implements ExceptionHandler {
 
-    protected static final String REFLECTION_ERR_MESSAGE = "Exception occurred while executing the scanner with reflections." +
-            "NOTE : If this exception is due to reflections library, Please check your version for reflections library ( we recommend to use the stable version 0.9.9 )";
+    protected static final String REFLECTION_ERR_MESSAGE = """
+            Exception occurred while executing the scanner with reflections.\
+            NOTE : If this exception is due to reflections library, Please check your version for reflections library ( we recommend to use the stable version 0.9.9 )""";
 
+    @Override
     public void execute(ExceptionHandlerExecutor exceptionHandlerExecutor) {
         try {
             exceptionHandlerExecutor.execute();

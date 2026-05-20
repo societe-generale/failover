@@ -16,28 +16,28 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreJdbc;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * @author Anand Manissery
  */
 @ConditionalOnExpression("${failover.enabled:true} eq true and '${failover.store.type:inmemory}'.toLowerCase() eq 'jdbc'")
-@ConditionalOnClass(name = { "javax.sql.DataSource" } )
+@ConditionalOnClass(name = {"javax.sql.DataSource"})
 @EnableConfigurationProperties(FailoverProperties.class)
-@Configuration
 @AllArgsConstructor
+@AutoConfiguration
 @Slf4j
 public class FailoverJdbcStoreAutoConfiguration {
 

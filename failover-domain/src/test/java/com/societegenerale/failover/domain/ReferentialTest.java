@@ -24,15 +24,13 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 class ReferentialTest {
 
     @DisplayName("should have default referential values while instantiating when not set explicitly")
     @Test
     void shouldHaveDefaultReferentialValueWhenNotProvided() {
-        ThirdParty thirdParty = new ThirdParty(1L, "TATA", 5);
+        var thirdParty = new ThirdParty(1L, "TATA", 5);
         assertThat(thirdParty.getUpToDate()).isNull();
         assertThat(thirdParty.getAsOf()).isNull();
     }

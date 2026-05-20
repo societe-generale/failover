@@ -22,9 +22,7 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * @author Anand Manissery
- */
+/// @author Anand Manissery
 class ReferentialPayloadTest {
 
     private final static LocalDateTime NOW = LocalDateTime.now();
@@ -39,7 +37,7 @@ class ReferentialPayloadTest {
 
     @Test
     void shouldHaveDefaultConstructorForJacksonParsing() {
-        ReferentialPayload<String> localReferentialPayload = new ReferentialPayload<>();
+        var localReferentialPayload = new ReferentialPayload<String>();
         localReferentialPayload.setName("NAME");
         localReferentialPayload.setKey("KEY");
         localReferentialPayload.setUpToDate(true);

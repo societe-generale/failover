@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.core.report;
 
-import com.google.common.collect.ImmutableMap;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
@@ -46,9 +45,9 @@ import static org.mockito.Mockito.lenient;
 @Slf4j
 class DefaultFailoverReporterTest {
 
-    private static final Map<String,String> ADDITIONAL_INFO = ImmutableMap.of("additional-info-key", "additional-info-value");
+    private static final Map<String,String> ADDITIONAL_INFO = Map.of("additional-info-key", "additional-info-value");
 
-    private static final Map<String,String> METADATA_INFO = ImmutableMap.of("lib-metadata-title", "failover-core", "lib-metadata-version", "1.0.0");
+    private static final Map<String,String> METADATA_INFO = Map.of("lib-metadata-title", "failover-core", "lib-metadata-version", "1.0.0");
 
     private static final LocalDateTime NOW = LocalDateTime.now();
 

@@ -19,8 +19,6 @@ package com.societegenerale.failover.core.report.manifest;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.net.URL;
-import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.jar.Manifest;
@@ -37,12 +35,13 @@ public class DefaultManifestInfoExtractor implements ManifestInfoExtractor {
         this.resourceLoader = resourceLoader;
     }
 
-    public Map<String,String> extract(String title) {
-        Map<String,String> info = new LinkedHashMap<>();
+    @Override
+    public Map<String, String> extract(String title) {
+        var info = new LinkedHashMap<String,String>();
         try {
-            Enumeration<URL> resources = resourceLoader.getResourcesUrls("META-INF/MANIFEST.MF");
+            var resources = resourceLoader.getResourcesUrls("META-INF/MANIFEST.MF");
             while (resources.hasMoreElements()) {
-                Manifest manifest = new Manifest(resources.nextElement().openStream());
+                var manifest = new Manifest(resources.nextElement().openStream());
                 String manifestTitle = manifest.getMainAttributes().getValue("Implementation-Title");
                 if (title.equals(manifestTitle)) {
                     info.put("lib-metadata-title", manifestTitle);

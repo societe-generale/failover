@@ -85,9 +85,10 @@ class FailoverFailureAnalyzerTest {
         given(environment.getProperty("failover.store.type", StoreType.class, StoreType.CUSTOM)).willReturn(StoreType.CUSTOM);
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, "some exception description");
         assertThat(result).isNotNull();
-        assertThat(result.getAction()).isEqualTo("For FailoverStore 'CUSTOM', " +
-                "Either configured to available stores { [INMEMORY, CAFFEINE, JDBC, CUSTOM] } by configuring 'failover.store.type' property " +
-                "OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.store.type=custom'."
+        assertThat(result.getAction()).isEqualTo("""
+                For FailoverStore 'CUSTOM', \
+                Either configured to available stores { [INMEMORY, CAFFEINE, JDBC, CUSTOM] } by configuring 'failover.store.type' property \
+                OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.store.type=custom'."""
         );
     }
 
@@ -108,18 +109,19 @@ class FailoverFailureAnalyzerTest {
         given(environment.getProperty("failover.type", FailoverType.class, FailoverType.CUSTOM)).willReturn(FailoverType.CUSTOM);
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, "some exception description");
         assertThat(result).isNotNull();
-        assertThat(result.getAction()).isEqualTo("For FailoverExecution 'CUSTOM', " +
-                "Either configured to available type { [BASIC, RESILIENCE, CUSTOM] } by configuring 'failover.type' property " +
-                "OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.type=custom'.");
+        assertThat(result.getAction()).isEqualTo("""
+                For FailoverExecution 'CUSTOM', \
+                Either configured to available type { [BASIC, RESILIENCE, CUSTOM] } by configuring 'failover.type' property \
+                OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.type=custom'.""");
     }
 
     @DisplayName("should return Failover Failure Analysis when exception is due to Failover configuration")
     @Test
     void shouldProvideFailoverFailureAnalysis() {
-        String description = "Parameter 0 of method failoverStoreJdbc in com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration";
+        var description = "Parameter 0 of method failoverStoreJdbc in com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration";
         ResolvableType resolvableType = ResolvableType.forType(JdbcTemplate.class);
         Throwable rootFailure = new RuntimeException("Some exception");
-        NoSuchBeanDefinitionException cause = new NoSuchBeanDefinitionException(resolvableType);
+        var cause = new NoSuchBeanDefinitionException(resolvableType);
 
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, description);
 

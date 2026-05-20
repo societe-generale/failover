@@ -33,7 +33,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static java.time.temporal.ChronoUnit.MINUTES;
-import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
@@ -47,7 +46,7 @@ class AdvancedFailoverHandlerTest {
 
     private static final String FAILOVER_NAME = "failover-name";
 
-    private static final List<Object> ARGS = singletonList(1L);
+    private static final List<Object> ARGS = List.of(1L);
 
     private static final String PAYLOAD = "PAYLOAD";
 
@@ -165,7 +164,7 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).clean();
     }
 
-    class InMemoryReportPublisher extends AbstractReportPublisher {
+    static class InMemoryReportPublisher extends AbstractReportPublisher {
         @Getter
         private Metrics metrics;
 

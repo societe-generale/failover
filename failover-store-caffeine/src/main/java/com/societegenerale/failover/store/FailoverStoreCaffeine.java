@@ -46,8 +46,8 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
 
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
-        Cache<String, ReferentialPayload<T>> cache = store.computeIfAbsent(referentialPayload.getName(),
-                name -> Caffeine.newBuilder().expireAfterWrite(Duration.between(failoverClock.now(), referentialPayload.getExpireOn())).build());
+        var cache = store.computeIfAbsent(referentialPayload.getName(),
+                _ -> Caffeine.newBuilder().expireAfterWrite(Duration.between(failoverClock.now(), referentialPayload.getExpireOn())).build());
         cache.put(storeKey(referentialPayload.getName(), referentialPayload.getKey()), referentialPayload);
     }
 
@@ -61,7 +61,7 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         if(store.containsKey(name)) {
-            return ofNullable(store.get(name).get(storeKey(name, key), k -> null));
+            return ofNullable(store.get(name).get(storeKey(name, key), _ -> null));
         }
         return empty();
     }

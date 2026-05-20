@@ -30,8 +30,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -49,8 +51,16 @@ class FailoverAspectTest {
 
     private final Client client = new Client(1L, "Client-1");
 
-    @Mock
-    private Failover failover;
+    // Use a real Method — java.lang.reflect.Method cannot be mocked on Java 25
+    // (JDK core classes in restricted modules cannot be instrumented by Mockito).
+    private static final Method TEST_METHOD;
+    static {
+        try {
+            TEST_METHOD = Object.class.getMethod("toString");
+        } catch (NoSuchMethodException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     @Mock
     private ProceedingJoinPoint joinPoint;
@@ -58,17 +68,13 @@ class FailoverAspectTest {
     @Mock
     private MethodSignature signature;
 
-    @Mock
-    private Method method;
-
     private FailoverAspect<Client> failoverAspect;
 
     @BeforeEach
     void setUp() {
         failoverAspect = new FailoverAspect<>(new DummyFailoverExecution());
         given(joinPoint.getSignature()).willReturn(signature);
-        given(signature.getMethod()).willReturn(method);
-        //given(method.getName()).willReturn("method");
+        given(signature.getMethod()).willReturn(TEST_METHOD);
     }
 
     @Test
@@ -83,8 +89,7 @@ class FailoverAspectTest {
     @Test
     void shouldSkipFailoverWhenFailoverAnnotationNameIsNull() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
-        given(failover.name()).willReturn(null);
-        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failover);
+        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName(null));
         assertThat(result).isEqualTo(client);
         assertThat(result.getUpToDate()).isNull();
         assertThat(result.getAsOf()).isNull();
@@ -93,8 +98,7 @@ class FailoverAspectTest {
     @Test
     void shouldSkipFailoverWhenFailoverAnnotationNameIsEmpty() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
-        given(failover.name()).willReturn("");
-        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failover);
+        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName(""));
         assertThat(result).isEqualTo(client);
         assertThat(result.getUpToDate()).isNull();
         assertThat(result.getAsOf()).isNull();
@@ -102,10 +106,9 @@ class FailoverAspectTest {
 
     @Test
     void shouldExecuteFailoverWhenValidFailoverAnnotationFound() throws Throwable {
-        given(failover.name()).willReturn("FAILOVER");
         given(joinPoint.proceed()).willReturn(client);
         given(joinPoint.getArgs()).willReturn(new Long[]{1L,2L,3L});
-        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failover);
+        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("FAILOVER"));
         assertThat(result).isEqualTo(client);
         assertThat(result.getUpToDate()).isFalse();
         assertThat(result.getAsOf()).isEqualTo(now);
@@ -113,21 +116,32 @@ class FailoverAspectTest {
 
     @Test
     void shouldThrowExceptionOnFailoverWhenValidFailoverAnnotationFoundAndExecutionFailed() throws Throwable {
-        given(failover.name()).willReturn("FAILOVER");
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
         given(joinPoint.getArgs()).willReturn(new Long[]{1L,2L,3L});
-        ExecutionException exception = assertThrows(ExecutionException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failover));
+        ExecutionException exception = assertThrows(ExecutionException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("FAILOVER")));
         assertThat(exception).isInstanceOf(ExecutionException.class);
-        assertThat(exception.getMessage()).isEqualTo("Exception occurred while executing method 'null' execution failed due to 'Dummy Exception'");
+        assertThat(exception.getMessage()).isEqualTo("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'");
     }
 
     @Test
     void shouldThrowExceptionWhenFailoverAnnotationNotFoundAndExecutionFailed() throws Throwable {
-        given(failover.name()).willReturn("");
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failover));
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("")));
         assertThat(exception).isInstanceOf(RuntimeException.class);
         assertThat(exception.getMessage()).isEqualTo("Dummy Exception");
+    }
+
+    private static Failover failoverWithName(String name) {
+        return new Failover() {
+            @Override public Class<? extends Annotation> annotationType() { return Failover.class; }
+            @Override public String name() { return name; }
+            @Override public long expiryDuration() { return 1; }
+            @Override public String expiryDurationExpression() { return ""; }
+            @Override public ChronoUnit expiryUnit() { return ChronoUnit.HOURS; }
+            @Override public String expiryUnitExpression() { return ""; }
+            @Override public String keyGenerator() { return ""; }
+            @Override public String expiryPolicy() { return ""; }
+        };
     }
 
     class DummyFailoverExecution implements FailoverExecution<Client> {
@@ -149,6 +163,3 @@ class FailoverAspectTest {
         private String name;
     }
 }
-
-
-

@@ -27,7 +27,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import static java.time.LocalDateTime.now;
@@ -68,7 +67,7 @@ class FailoverStoreCaffeineTest {
     void shouldReturnTheReferentialWhenFoundForTheGivenKey() {
         failoverStoreCaffeine.store(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreCaffeine.find(NAME, "1");
+        var result = failoverStoreCaffeine.find(NAME, "1");
 
         assertThat(result).isPresent().contains(referentialPayload);
     }
@@ -77,7 +76,7 @@ class FailoverStoreCaffeineTest {
     void shouldReturnEmptyWhenNoReferentialFoundForTheGivenKey() {
         failoverStoreCaffeine.store(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreCaffeine.find(NAME, "2");
+        var result = failoverStoreCaffeine.find(NAME, "2");
 
         assertThat(result).isNotPresent();
     }
@@ -86,7 +85,7 @@ class FailoverStoreCaffeineTest {
     void shouldReturnEmptyWhenNoReferentialFoundForTheGivenName() {
         failoverStoreCaffeine.store(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreCaffeine.find("DUMMY-KEY", "1");
+        var result = failoverStoreCaffeine.find("DUMMY-KEY", "1");
 
         assertThat(result).isNotPresent();
     }
@@ -98,7 +97,7 @@ class FailoverStoreCaffeineTest {
 
         failoverStoreCaffeine.delete(referentialPayload);
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreCaffeine.find(NAME, "1");
+        var result = failoverStoreCaffeine.find(NAME, "1");
         assertThat(result).isNotPresent();
     }
 
@@ -110,7 +109,7 @@ class FailoverStoreCaffeineTest {
 
         failoverStoreCaffeine.delete(new ReferentialPayload<>("DUMMY-NAME", "1", true, now(), now(), new ThirdParty(1L, "TATA", 5)));
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreCaffeine.find(NAME, "1");
+        var result = failoverStoreCaffeine.find(NAME, "1");
         assertThat(result).isPresent();
     }
 
@@ -121,7 +120,7 @@ class FailoverStoreCaffeineTest {
 
         failoverStoreCaffeine.delete(new ReferentialPayload<>(NAME, "DUMMY-KEY", true, now(), now(), new ThirdParty(1L, "TATA", 5)));
 
-        Optional<ReferentialPayload<ThirdParty>> result = failoverStoreCaffeine.find(NAME, "1");
+        var result = failoverStoreCaffeine.find(NAME, "1");
         assertThat(result).isPresent();
     }
 

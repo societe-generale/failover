@@ -22,8 +22,6 @@ import lombok.AllArgsConstructor;
 
 import java.time.LocalDateTime;
 
-import static java.lang.String.format;
-
 /**
  * @author Anand Manissery
  */
@@ -48,9 +46,9 @@ public class FailoverExpiryPolicy<T> implements ExpiryPolicy<T> {
         if(failover.expiryPolicy().isEmpty()) {
             return defaultExpiryPolicy;
         }
-        ExpiryPolicy<T> expiryPolicy = expiryPolicyLookup.lookup(failover.expiryPolicy());
+        var expiryPolicy = expiryPolicyLookup.lookup(failover.expiryPolicy());
         if(expiryPolicy == null) {
-            throw new ExpiryPolicyNotFoundException(format("No matching ExpiryPolicy bean found for failover '%s' with expiry policy qualifier '%s'. Neither qualifier match nor bean name match!", failover.name(), failover.expiryPolicy()));
+            throw new ExpiryPolicyNotFoundException("No matching ExpiryPolicy bean found for failover '%s' with expiry policy qualifier '%s'. Neither qualifier match nor bean name match!".formatted(failover.name(), failover.expiryPolicy()));
         }
         return expiryPolicy;
     }

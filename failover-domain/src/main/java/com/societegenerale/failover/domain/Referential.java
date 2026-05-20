@@ -21,24 +21,18 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * Base class for referential entities which need to be aware of the failover metadata information.
- *
- * @author Anand Manissery
- * @since 1.0.0
- */
+/// Base class for referential entities which need to be aware of the failover metadata information.
+///
+/// @author Anand Manissery
+/// @since 1.0.0
 @Data
 public abstract class Referential implements Serializable {
 
-    /**
-     * A flag {@link Boolean} which mention whether a referential value is up-to-date or not
-     * TRUE : A referential value is up-to-date
-     * FALSE : A referential value is not  up-to-date, and recovered from the failover store
-     */
+    /// A flag [Boolean] which mention whether a referential value is up-to-date or not
+    /// TRUE : A referential value is up-to-date
+    /// FALSE : A referential value is not  up-to-date, and recovered from the failover store
     private Boolean upToDate;
 
-    /**
-     * 'AsOf' {@link LocalDateTime} which mention the captured time of a given referential value.     *
-     */
+    /// 'AsOf' [LocalDateTime] which mention the captured time of a given referential value.     *
     private LocalDateTime asOf;
 }

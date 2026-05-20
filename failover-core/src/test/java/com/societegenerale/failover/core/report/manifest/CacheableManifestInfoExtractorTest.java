@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.core.report.manifest;
 
-import com.google.common.collect.ImmutableMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,7 +37,7 @@ class CacheableManifestInfoExtractorTest {
 
     private static final String SOME_JAR = "some-jar";
 
-    private static final Map<String, String> INFO = ImmutableMap.of("additional-info-key", "additional-info-value");
+    private static final Map<String, String> INFO = Map.of("additional-info-key", "additional-info-value");
 
     @Mock
     private ManifestInfoExtractor manifestInfoExtractor;
@@ -53,7 +52,7 @@ class CacheableManifestInfoExtractorTest {
     @Test
     void shouldReturnTheInfo() {
         given(manifestInfoExtractor.extract(SOME_JAR)).willReturn(INFO);
-        Map<String, String> result = cacheableManifestInfoExtractor.extract(SOME_JAR);
+        var result = cacheableManifestInfoExtractor.extract(SOME_JAR);
         assertThat(result).containsExactlyEntriesOf(INFO);
         verify(manifestInfoExtractor).extract(SOME_JAR);
     }
@@ -63,7 +62,7 @@ class CacheableManifestInfoExtractorTest {
         given(manifestInfoExtractor.extract(SOME_JAR)).willReturn(INFO);
 
         // first call
-        Map<String, String> result = cacheableManifestInfoExtractor.extract(SOME_JAR);
+        var result = cacheableManifestInfoExtractor.extract(SOME_JAR);
         assertThat(result).containsExactlyEntriesOf(INFO);
 
         // second call return from cache

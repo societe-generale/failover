@@ -55,8 +55,8 @@ class FailoverCaffeineStoreAutoConfigurationTest {
     @DisplayName("should load caffeine failover store bean")
     void shouldLoadCaffeineFailoverStoreBean() throws Exception {
         assertThat(failoverStore).isNotNull();
-        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised) {
-            Object target = ((Advised)failoverStore).getTargetSource().getTarget();
+        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised advised) {
+            Object target = advised.getTargetSource().getTarget();
             assertThat(((FailoverStoreAsync)target).getFailoverStore()).isInstanceOf(FailoverStoreCaffeine.class);
         }
     }

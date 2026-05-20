@@ -61,7 +61,7 @@ class FailoverAutoConfigurationTest {
     @Test
     @DisplayName("should load BasicFailoverExecution by default")
     void shouldLoadResilienceFailoverExecutionByDefault() {
-        BasicFailoverExecution<?> bean = applicationContext.getBean(BasicFailoverExecution.class);
+        var bean = applicationContext.getBean(BasicFailoverExecution.class);
         assertThat(bean).isNotNull();
     }
 
@@ -69,8 +69,8 @@ class FailoverAutoConfigurationTest {
     @DisplayName("should load inmemory failover store by default")
     void shouldLoadInmemoryFailoverStoreByDefault() throws Exception {
         assertThat(failoverStore).isNotNull();
-        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised) {
-            Object target = ((Advised)failoverStore).getTargetSource().getTarget();
+        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised advised) {
+            Object target = advised.getTargetSource().getTarget();
             assertThat(((FailoverStoreAsync)target).getFailoverStore()).isInstanceOf(FailoverStoreInmemory.class);
         }
     }

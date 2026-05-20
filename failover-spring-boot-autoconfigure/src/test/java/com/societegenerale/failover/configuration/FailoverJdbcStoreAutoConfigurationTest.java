@@ -55,8 +55,8 @@ class FailoverJdbcStoreAutoConfigurationTest {
     @DisplayName("should load jdbc failover store bean")
     void shouldLoadInmemoryFailoverStoreBean() throws Exception {
         assertThat(failoverStore).isNotNull();
-        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised) {
-            Object target = ((Advised)failoverStore).getTargetSource().getTarget();
+        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised advised) {
+            Object target = advised.getTargetSource().getTarget();
             assertThat(((FailoverStoreAsync)target).getFailoverStore()).isInstanceOf(FailoverStoreJdbc.class);
         }
     }
