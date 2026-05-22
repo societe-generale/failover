@@ -30,7 +30,7 @@
         <plugin-release.version>3.3.1</plugin-release.version>
         <plugin-scm.version>1.9.4</plugin-scm.version>
         <plugin-source.version>3.4.0</plugin-source.version>
-        <plugin-enforcer.version>3.5.0</plugin-enforcer.version>
+        <plugin-enforcer.version>3.6.3</plugin-enforcer.version>
         <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
         <jacoco.version>0.8.14</jacoco.version>
         <sonar.language>java</sonar.language>
