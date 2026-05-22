@@ -29,14 +29,14 @@
         <plugin-failsafe.version>3.5.5</plugin-failsafe.version>
         <plugin-release.version>3.3.1</plugin-release.version>
         <plugin-scm.version>1.9.4</plugin-scm.version>
-        <plugin-source.version>3.0.1</plugin-source.version>
+        <plugin-source.version>3.4.0</plugin-source.version>
         <plugin-enforcer.version>3.5.0</plugin-enforcer.version>
         <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
         <jacoco.version>0.8.14</jacoco.version>
         <sonar.language>java</sonar.language>
-        <sonar-maven-plugin.version>3.7.0.1746</sonar-maven-plugin.version>
-        <maven-dependency-plugin.version>3.1.1</maven-dependency-plugin.version>
-        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+        <sonar-maven-plugin.version>5.6.0.6792</sonar-maven-plugin.version>
+        <maven-dependency-plugin.version>3.10.0</maven-dependency-plugin.version>
+        <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
         <rewrite-maven-plugin.version>6.39.0</rewrite-maven-plugin.version>
         <rewrite-spring.version>6.30.4</rewrite-spring.version>
         <rewrite-migrate-java.version>3.7.0</rewrite-migrate-java.version>
@@ -323,7 +323,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.11.2</version>
+                <version>3.12.0</version>
                 <configuration>
                     <encoding>UTF-8</encoding>
                 </configuration>
