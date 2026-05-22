@@ -119,18 +119,23 @@ class FailoverAspectTest {
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
         given(joinPoint.getArgs()).willReturn(new Long[]{1L,2L,3L});
         ExecutionException exception = assertThrows(ExecutionException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("FAILOVER")));
-        assertThat(exception).isInstanceOf(ExecutionException.class);
-        assertThat(exception.getMessage()).isEqualTo("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'");
+        assertThat(exception)
+                .isInstanceOf(ExecutionException.class)
+                .hasMessage("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'")
+                .hasCauseInstanceOf(RuntimeException.class)
+                .hasRootCauseMessage("Dummy Exception");
+
     }
 
     @Test
     void shouldThrowExceptionWhenFailoverAnnotationNotFoundAndExecutionFailed() throws Throwable {
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
         var exception = assertThrows(RuntimeException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("")));
-        assertThat(exception).isInstanceOf(ExecutionException.class);
-        assertThat(exception.getMessage()).isEqualTo("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'");
-        assertThat(exception.getCause()).isInstanceOf(RuntimeException.class);
-        assertThat(exception.getCause().getMessage()).isEqualTo("Dummy Exception");
+        assertThat(exception)
+                .isInstanceOf(ExecutionException.class)
+                .hasMessage("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'")
+                .hasCauseInstanceOf(RuntimeException.class)
+                .hasRootCauseMessage("Dummy Exception");
     }
 
     private static Failover failoverWithName(String name) {
