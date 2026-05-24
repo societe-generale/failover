@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.store;
 
+import com.societegenerale.failover.store.handler.VarcharPayloadColumnHandler;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.boot.SpringApplication;
@@ -29,18 +30,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootApplication
 public class MySpringBootApplication {
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(MySpringBootApplication.class, args);
     }
 
     @Bean
     public <T> FailoverStoreJdbc<T> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
-        return new FailoverStoreJdbc<>("TEST_", jdbcTemplate, objectMapper);
+        return new FailoverStoreJdbc<>("TEST_", jdbcTemplate, objectMapper, new VarcharPayloadColumnHandler());
     }
 
     @Bean
     public ObjectMapper objectMapper() {
-        ObjectMapper mapper = new JsonMapper();
-        return mapper;
+        return new JsonMapper();
     }
 }

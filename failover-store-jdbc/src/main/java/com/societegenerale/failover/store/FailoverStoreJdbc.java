@@ -17,6 +17,7 @@
 package com.societegenerale.failover.store;
 
 import com.societegenerale.failover.core.store.FailoverStoreException;
+import com.societegenerale.failover.store.handler.PayloadColumnHandler;
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
@@ -67,7 +68,9 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     private final String cleanUpQuery;
 
-    public FailoverStoreJdbc(String tablePrefix, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    private final PayloadColumnHandler payloadColumnHandler;
+
+    public FailoverStoreJdbc(String tablePrefix, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, PayloadColumnHandler payloadColumnHandler) {
         this.tablePrefix = tablePrefix;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
@@ -76,6 +79,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         this.selectQuery = getQuery(SELECT_QUERY);
         this.deleteQuery = getQuery(DELETE_QUERY);
         this.cleanUpQuery = getQuery(CLEAN_UP_QUERY);
+        this.payloadColumnHandler = payloadColumnHandler;
     }
 
     @Override
@@ -96,7 +100,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         int[] types = new int[] {
                 Types.TIMESTAMP,
                 Types.TIMESTAMP,
-                Types.VARCHAR,
+                payloadColumnHandler.payloadType(),
                 Types.VARCHAR,
                 Types.VARCHAR,
                 Types.VARCHAR,
@@ -120,7 +124,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
                 LocalDateTime asOf = resultSet.getTimestamp("AS_OF").toLocalDateTime();
                 LocalDateTime expireOn = resultSet.getTimestamp("EXPIRE_ON").toLocalDateTime();
                 String payloadClass = resultSet.getString("PAYLOAD_CLASS");
-                T payload = getPayload(resultSet.getString("PAYLOAD"), payloadClass);
+                T payload = getPayload(payloadColumnHandler.extractPayload(resultSet,  "PAYLOAD"), payloadClass);
                 return new ReferentialPayload<>(failoverName, failoverKey, false, asOf, expireOn, payload);
             }));
         }

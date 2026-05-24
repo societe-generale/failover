@@ -2,7 +2,7 @@
 ---------------
 
 > ## Customize Maven Dependency 
-  
+
 > ### 1. **Failover Annotations and Domain**
   
   The basic annotations and domain classes are present in **failover-domain** module. This module has no other dependencies
@@ -76,11 +76,11 @@ The below are the dependency for failover-store-caffeine
 > ### 5. **Failover Store Jdbc**
 This module contains jdbc implementation of failover store. You must provide the DataSource and JdbcTemplate beans
 
-To use Caffeine failover store , you must provide the below configurations
+To use jdbc failover store , you must provide the below configurations
 ```yaml
 failover:
   store:
-    type: caffeine
+    type: jdbc
 ```
 
 The below are the dependency for failover-store-jdbc
@@ -110,6 +110,8 @@ The below are the dependency for failover-store-jdbc
 You also need to provide **spring-jdbc** dependency for the same.
 
 We require the ObjectMapper bean from jackson , JdbcTemplate bean from Spring for Failover Store Jdbc
+
+---
 
 > ## Failover Execution
 * We have provided below Failover Execution
@@ -162,6 +164,8 @@ public class CustomFailoverExecution<Object> implements FailoverExecution<Object
 }
 
 ```
+
+---
 
 > ## ExpiryPolicy
 You can provide a custom ExpiryPolicy for managing failover recovery expiry
@@ -238,6 +242,8 @@ public class ExpiryPolicyConfigurations {
 ```
 In case if we did not find the bean with the given expiry policy name, an exception will be thrown.
 
+---
+
 > ## RecoveredPayloadHandler
 You can provide a custom RecoveredPayloadHandler for managing failover recovered payload
 
@@ -276,6 +282,8 @@ public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandl
     }
 ```
 
+---
+
 > ## Scheduler
 We have two schedulers
 1. **Report publisher** : This is to publish the failover configuration reports for monitoring. The default value is **daily**
@@ -289,6 +297,8 @@ failover:
     report-cron: 0 0 0 * * *    #default is daily
     cleanup-cron: 0 0 * * * *   #default is hourly
 ```
+
+---
 
 > ## Key Generator
 
@@ -333,3 +343,73 @@ public class KeyGeneratorConfigurations {
 ```
 
 In case if we did not find the bean with the given key generator name, an exception will be thrown.  
+
+---
+
+> ## **Customization FailoverStoreJdbc**
+
+> ### **Customization of FailoverStoreJdbc table with prefix**
+> 
+To use jdbc failover store with custom prefix, you need to provide the below configurations
+```yaml
+failover:
+  store:
+    type: jdbc
+    jdbc:
+      table-prefix: DEMO_
+```
+The failover information will be stored in **DEMO_FAILOVER_STORE** table as per the above configurations.
+
+Make sure you have the below failover store table created in your database!
+
+```sql
+-- Table name should be :  %table-prefix%FAILOVER_STORE 
+CREATE TABLE DEMO_FAILOVER_STORE (
+     FAILOVER_NAME VARCHAR(50) NOT NULL,
+     FAILOVER_KEY VARCHAR(256) NOT NULL,
+     AS_OF TIMESTAMP(9) NOT NULL,
+     EXPIRE_ON TIMESTAMP(9) NOT NULL,
+     PAYLOAD VARCHAR(2000),               -- Provide the maximum size based on your payload
+     PAYLOAD_CLASS VARCHAR(256),
+     PRIMARY KEY(FAILOVER_NAME, FAILOVER_KEY)
+);
+```
+
+> ### **Customization of payload column in FailoverStoreJdbc**
+In case if FailoverStoreJdbc, Most of the time, for a simple referential use case the size of serialized (by JSON) payload will be with in varchar 2000.
+However, for more complex use case we may need a higher capacity to hold this data based on the database type we use.
+We are introducing **PayloadColumnHandler** to address this issue, now users can customize the payload column based on their needs (ex: to use TEXT or CLOB instead of default VARCHAR(2000))
+```java
+public interface PayloadColumnHandler {
+
+    /**
+     * @return the type of payload column ( refer java.sql.Types class for more details )
+     */
+    int payloadType();
+
+    /**
+     * @param resultSet : result set of payload row
+     * @param payloadColumn : payload column name
+     * @return : the payload as String from payload column
+     */
+    String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException;
+}
+```
+
+we have provided a default implementation to support varchar type as below :
+```java
+public class VarcharPayloadColumnHandler implements PayloadColumnHandler {
+
+    @Override
+    public int payloadType() {
+        return Types.VARCHAR;
+    }
+
+    @Override
+    public String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException {
+        return resultSet.getString(payloadColumn);
+    }
+}
+```
+
+> Users can provide their own custom PayloadColumnHandler in case if they choose to use the column type as TEXT or CLOB instead of default VARCHAR
