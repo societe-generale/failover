@@ -27,8 +27,8 @@
 
         <!-- Plugin -->
         <plugin-failsafe.version>3.5.5</plugin-failsafe.version>
+        <plugin-scm.version>2.2.1</plugin-scm.version>
         <plugin-release.version>3.3.1</plugin-release.version>
-        <plugin-scm.version>1.9.4</plugin-scm.version>
         <plugin-source.version>3.4.0</plugin-source.version>
         <plugin-enforcer.version>3.6.3</plugin-enforcer.version>
         <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
