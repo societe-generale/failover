@@ -43,7 +43,7 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
 
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
-        return Optional.ofNullable(store.get(storeKey(name, key)));
+        return Optional.ofNullable(copy(store.get(storeKey(name, key))));
     }
 
     @Override
@@ -53,5 +53,9 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
 
     private String storeKey(String name, String key) {
         return name + "##" + key;
+    }
+
+    protected ReferentialPayload<T> copy(ReferentialPayload<T> rPayload) {
+        return new ReferentialPayload<>(rPayload.getName(), rPayload.getKey(), rPayload.isUpToDate(), rPayload.getAsOf(), rPayload.getExpireOn(), rPayload.getPayload());
     }
 }
