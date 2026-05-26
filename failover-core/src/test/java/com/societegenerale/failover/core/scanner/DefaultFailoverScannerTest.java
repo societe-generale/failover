@@ -18,6 +18,7 @@ package com.societegenerale.failover.core.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
 import lombok.AllArgsConstructor;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -39,12 +40,14 @@ class DefaultFailoverScannerTest {
     }
 
     @Test
+    @DisplayName("should return all failover annotations")
     void shouldReturnAllFailoverAnnotations() {
         List<Failover> result = failoverScanner.findAllFailover();
         assertThat(result).hasSize(2);
     }
 
     @Test
+    @DisplayName("should return failover annotation by given name")
     void shouldReturnFailoverAnnotationByGivenName() {
         Failover result = failoverScanner.findFailoverByName("client-by-id");
         assertThat(result).isNotNull();

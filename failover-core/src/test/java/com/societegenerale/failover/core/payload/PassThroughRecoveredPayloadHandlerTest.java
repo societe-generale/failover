@@ -28,15 +28,15 @@ class PassThroughRecoveredPayloadHandlerTest {
 
     private final PassThroughRecoveredPayloadHandler payloadHandler = new PassThroughRecoveredPayloadHandler();
 
-    @DisplayName("should always return the same payload")
     @Test
+    @DisplayName("should always return the same payload")
     void shouldAlwaysReturnTheSamePayload() {
         String result = payloadHandler.handle(null, null, String.class, "SOME-PAYLOAD");
         assertThat(result).isEqualTo("SOME-PAYLOAD");
     }
 
-    @DisplayName("should always return the same payload even the payload is null")
     @Test
+    @DisplayName("should always return the same payload even the payload is null")
     void shouldAlwaysReturnTheSamePayloadEvenIfThePayloadIsNull() {
         String result = payloadHandler.handle(null, null, String.class, null);
         assertThat(result).isNull();

@@ -58,8 +58,8 @@ class FailoverFailureAnalyzerTest {
         this.failoverFailureAnalyzer.setEnvironment(environment);
     }
 
-    @DisplayName("should handle exception on FailoverStore with CAFFEINE")
     @Test
+    @DisplayName("should handle exception when failover store caffeine configured")
     void shouldHandleExceptionWhenFailoverStoreCaffeineConfigured() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(FailoverStore.class));
         given(environment.getProperty("failover.store.type", StoreType.class, StoreType.CUSTOM)).willReturn(StoreType.CAFFEINE);
@@ -68,8 +68,8 @@ class FailoverFailureAnalyzerTest {
         assertThat(result.getAction()).isEqualTo("For FailoverStore 'CAFFEINE', you must include 'com.github.ben-manes.caffeine:caffeine' dependency.");
     }
 
-    @DisplayName("should handle exception on FailoverStore with JDBC")
     @Test
+    @DisplayName("should handle exception when failover store jdbc configured")
     void shouldHandleExceptionWhenFailoverStoreJdbcConfigured() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(FailoverStore.class));
         given(environment.getProperty("failover.store.type", StoreType.class, StoreType.CUSTOM)).willReturn(StoreType.JDBC);
@@ -78,8 +78,8 @@ class FailoverFailureAnalyzerTest {
         assertThat(result.getAction()).isEqualTo("For FailoverStore 'JDBC', you must provide 'JdbcTemplate' bean.");
     }
 
-    @DisplayName("should handle exception on FailoverStore with CUSTOM")
     @Test
+    @DisplayName("should handle exception when custom failover store configured")
     void shouldHandleExceptionWhenCustomFailoverStoreConfigured() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(FailoverStore.class));
         given(environment.getProperty("failover.store.type", StoreType.class, StoreType.CUSTOM)).willReturn(StoreType.CUSTOM);
@@ -92,8 +92,8 @@ class FailoverFailureAnalyzerTest {
         );
     }
 
-    @DisplayName("should handle exception on FailoverExecution with RESILIENCE")
     @Test
+    @DisplayName("should handle exception when failover execution configured with resilience")
     void shouldHandleExceptionWhenFailoverExecutionConfigured() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(FailoverExecution.class));
         given(environment.getProperty("failover.type", FailoverType.class, FailoverType.CUSTOM)).willReturn(FailoverType.RESILIENCE);
@@ -102,8 +102,8 @@ class FailoverFailureAnalyzerTest {
         assertThat(result.getAction()).isEqualTo("For FailoverExecution 'RESILIENCE', you must include 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j' dependency.");
     }
 
-    @DisplayName("should handle exception on FailoverExecution with CUSTOM")
     @Test
+    @DisplayName("should handle exception when custom failover execution configured")
     void shouldHandleExceptionWhenCustomFailoverExecutionConfigured() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(FailoverExecution.class));
         given(environment.getProperty("failover.type", FailoverType.class, FailoverType.CUSTOM)).willReturn(FailoverType.CUSTOM);
@@ -115,8 +115,8 @@ class FailoverFailureAnalyzerTest {
                 OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.type=custom'.""");
     }
 
-    @DisplayName("should return Failover Failure Analysis when exception is due to Failover configuration")
     @Test
+    @DisplayName("should provide failover failure analysis on exception due to invalid failover configuration")
     void shouldProvideFailoverFailureAnalysis() {
         var description = "Parameter 0 of method failoverStoreJdbc in com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration";
         ResolvableType resolvableType = ResolvableType.forType(JdbcTemplate.class);
@@ -130,33 +130,32 @@ class FailoverFailureAnalyzerTest {
         assertThat(result.getCause()).isEqualTo(cause);
     }
 
-
-    @DisplayName("should return null when description does not contain FailoverJdbcStoreAutoConfiguration for JdbcTemplate related error")
     @Test
+    @DisplayName("should return null when description does not contains failover jdbc store auto configuration class for JdbcTemplate related error")
     void shouldReturnNullWhenDescriptionDoesNotContainsFailoverJdbcStoreAutoConfigurationClass() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(JdbcTemplate.class));
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, "some description");
         assertThat(result).isNull();
     }
 
-    @DisplayName("should return null when no issues due to missing JdbcTemplate Or FailoverStore Or FailoverExecution beans")
     @Test
+    @DisplayName("should return null when no issues due to missing JdbcTemplate Or FailoverStore Or FailoverExecution beans")
     void shouldReturnNullWhenNoJdbcTemplateOrFailoverStoreOrFailoverExecutionFound() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(DataSource.class));
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, "some description");
         assertThat(result).isNull();
     }
 
-    @DisplayName("should return null when description is null for JdbcTemplate exception")
     @Test
+    @DisplayName("should return null when description is null for JdbcTemplate exception")
     void shouldReturnNullWhenDescriptionIsNull() {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(JdbcTemplate.class));
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, null);
         assertThat(result).isNull();
     }
 
-    @DisplayName("should have order zero")
     @Test
+    @DisplayName("should have order zero")
     void shouldHaveOrderZero() {
         assertThat(failoverFailureAnalyzer.getOrder()).isZero();
     }

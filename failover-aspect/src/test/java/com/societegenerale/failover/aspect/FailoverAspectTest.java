@@ -24,6 +24,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,6 +79,7 @@ class FailoverAspectTest {
     }
 
     @Test
+    @DisplayName("should skip failover when failover annotation is null")
     void shouldSkipFailoverWhenFailoverAnnotationIsNull() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
         Client result = failoverAspect.failoverAroundAdvice(joinPoint, null);
@@ -87,6 +89,7 @@ class FailoverAspectTest {
     }
 
     @Test
+    @DisplayName("should skip failover when failover annotation name is null")
     void shouldSkipFailoverWhenFailoverAnnotationNameIsNull() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
         Client result = failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName(null));
@@ -96,6 +99,7 @@ class FailoverAspectTest {
     }
 
     @Test
+    @DisplayName("should skip failover when failover annotation name is empty")
     void shouldSkipFailoverWhenFailoverAnnotationNameIsEmpty() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
         Client result = failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName(""));
@@ -105,6 +109,7 @@ class FailoverAspectTest {
     }
 
     @Test
+    @DisplayName("should execute failover when valid failover annotation found")
     void shouldExecuteFailoverWhenValidFailoverAnnotationFound() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
         given(joinPoint.getArgs()).willReturn(new Long[]{1L,2L,3L});
@@ -115,6 +120,7 @@ class FailoverAspectTest {
     }
 
     @Test
+    @DisplayName("should throw exception on failover when valid failover annotation found and execution failed")
     void shouldThrowExceptionOnFailoverWhenValidFailoverAnnotationFoundAndExecutionFailed() throws Throwable {
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
         given(joinPoint.getArgs()).willReturn(new Long[]{1L,2L,3L});
@@ -128,6 +134,7 @@ class FailoverAspectTest {
     }
 
     @Test
+    @DisplayName("should throw exception when failover annotation not found and execution failed")
     void shouldThrowExceptionWhenFailoverAnnotationNotFoundAndExecutionFailed() throws Throwable {
         given(joinPoint.proceed()).willThrow(new RuntimeException("Dummy Exception"));
         var exception = assertThrows(RuntimeException.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("")));

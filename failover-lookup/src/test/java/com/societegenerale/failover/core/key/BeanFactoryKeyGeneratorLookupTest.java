@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.key;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +48,7 @@ class BeanFactoryKeyGeneratorLookupTest {
     }
 
     @Test
+    @DisplayName("should return the key generator bean")
     void shouldReturnTheKeyGeneratorBean() {
         given(beanFactory.getBean("custom-key-gen", KeyGenerator.class)).willReturn(keyGenerator);
         beanFactoryKeyGeneratorLookup.setBeanFactory(beanFactory);

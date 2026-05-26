@@ -73,8 +73,8 @@ class BasicFailoverExecutionTest {
         verify(failoverHandler).store(failover, ARGS, PAYLOAD);
     }
 
-    @DisplayName("should return the actual result when store execution is failed")
     @Test
+    @DisplayName("should return the actual result when store execution is failed")
     void shouldReturnTheActualResultWhenStoreExecutionIsFailed() {
         given(supplier.get()).willReturn(PAYLOAD);
         given(failoverHandler.store(failover, ARGS, PAYLOAD)).willThrow(new RuntimeException("SomeException"));
@@ -85,8 +85,8 @@ class BasicFailoverExecutionTest {
         verify(failoverHandler).store(failover, ARGS, PAYLOAD);
     }
 
-    @DisplayName("should recover the result from failover when execution occurred")
     @Test
+    @DisplayName("should recover the result from failover when an exception occurred")
     void shouldRecoverTheResultFromFailoverWhenAnExceptionOccurred() {
         Throwable throwable = new RuntimeException("Some Exception");
         given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(PAYLOAD);
@@ -99,8 +99,8 @@ class BasicFailoverExecutionTest {
         verify(failoverHandler, never()).store(failover, ARGS, PAYLOAD);
     }
 
-    @DisplayName("should return null when failover recover has any execution")
     @Test
+    @DisplayName("should return null when failover recover has any exception")
     void shouldReturnNullWhenFailoverRecoverHasAnyException() {
         Throwable throwable = new RuntimeException("Some Exception");
         given(supplier.get()).willThrow(throwable);

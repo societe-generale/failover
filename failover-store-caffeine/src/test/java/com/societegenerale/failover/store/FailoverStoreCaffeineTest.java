@@ -20,6 +20,7 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,12 +59,14 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("should store the referential")
     void shouldStoreTheReferential() {
         failoverStoreCaffeine.store(referentialPayload);
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
     }
 
     @Test
+    @DisplayName("should return the referential when found for the given key")
     void shouldReturnTheReferentialWhenFoundForTheGivenKey() {
         failoverStoreCaffeine.store(referentialPayload);
 
@@ -73,6 +76,7 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("should return empty when no referential found for the given key")
     void shouldReturnEmptyWhenNoReferentialFoundForTheGivenKey() {
         failoverStoreCaffeine.store(referentialPayload);
 
@@ -82,6 +86,7 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("should return empty when no referential found for the given name")
     void shouldReturnEmptyWhenNoReferentialFoundForTheGivenName() {
         failoverStoreCaffeine.store(referentialPayload);
 
@@ -91,6 +96,7 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("should delete the referential")
     void shouldDeleteTheReferential() {
         failoverStoreCaffeine.store(referentialPayload);
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
@@ -103,6 +109,7 @@ class FailoverStoreCaffeineTest {
 
 
     @Test
+    @DisplayName("should execute delete without exception when no referential name found for delete")
     void shouldExecuteDeleteWithoutExceptionWhenNoReferentialNameFoundForDelete() {
         failoverStoreCaffeine.store(referentialPayload);
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
@@ -114,6 +121,7 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("should execute delete without exception when no referential key found in cache for delete")
     void shouldExecuteDeleteWithoutExceptionWhenNoReferentialKeyFoundInCacheForDelete() {
         failoverStoreCaffeine.store(referentialPayload);
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
@@ -125,6 +133,7 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("should invalidate the data on expiry")
     void shouldInvalidateTheDataOnExpiry() {
         // given
         referentialPayload = new ReferentialPayload<>(NAME, "1", true, NOW, NOW.plusSeconds(2L), new ThirdParty(1L, "TATA", 5));

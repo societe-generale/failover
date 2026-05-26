@@ -17,6 +17,7 @@
 package com.societegenerale.failover.scheduler;
 
 import com.societegenerale.failover.core.report.FailoverReporter;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -41,6 +42,7 @@ class ReportSchedulerTest {
     private FailoverReporter failoverReporter;
 
     @Test
+    @DisplayName("should report on a given interval")
     void shouldReportOnAGivenInterval() {
         await().atMost(3, TimeUnit.SECONDS)
                 .untilAsserted(() -> verify(failoverReporter, atLeast(2)).report());

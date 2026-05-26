@@ -63,16 +63,16 @@ class FailoverStoreJdbcTest {
         jdbcTemplate.update("DELETE FROM TEST_FAILOVER_STORE");
     }
 
-    @DisplayName("should store and retrieve the referential payload")
     @Test
+    @DisplayName("should store and retrieve the referential payload")
     void shouldStoreAndRetrieveTheReferentialPayload() {
         failoverStoreJdbc.store(referentialPayload);
         var fromDB = failoverStoreJdbc.find(NAME, KEY);
         assertThat(fromDB).isPresent().contains(referentialPayload);
     }
 
-    @DisplayName("should store and retrieve the referential payload with no payload")
     @Test
+    @DisplayName("should store and retrieve the referential payload with null payload")
     void shouldStoreAndRetrieveTheReferentialPayloadWithNullPayload() {
         referentialPayload.setPayload(null);
         failoverStoreJdbc.store(referentialPayload);
@@ -80,8 +80,8 @@ class FailoverStoreJdbcTest {
         assertThat(fromDB).isPresent().contains(referentialPayload);
     }
 
-    @DisplayName("should store and delete the referential payload")
     @Test
+    @DisplayName("should store and delete the referential payload")
     void shouldDeleteGivenReferentialPayload() {
         failoverStoreJdbc.store(referentialPayload);
         var fromDB = failoverStoreJdbc.find(NAME, KEY);
@@ -92,16 +92,16 @@ class FailoverStoreJdbcTest {
         assertThat(fromDB).isNotPresent();
     }
 
-    @DisplayName("should return empty when no matching referential payload found")
     @Test
+    @DisplayName("should return empty when no referential payload found for given name and key")
     void shouldReturnEmptyWhenNoReferentialPayloadFoundForGivenNameAndKey() {
         failoverStoreJdbc.store(referentialPayload);
         var fromDB = failoverStoreJdbc.find(NAME+"X", KEY+"Y");
         assertThat(fromDB).isNotPresent();
     }
 
-    @DisplayName("should update the referential payload when already exist")
     @Test
+    @DisplayName("should update the referential payload when already exist")
     void shouldUpdateTheReferentialPayloadWhenExist() {
         failoverStoreJdbc.store(referentialPayload);
         var fromDB = failoverStoreJdbc.find(NAME, KEY);
@@ -113,6 +113,7 @@ class FailoverStoreJdbcTest {
     }
 
     @Test
+    @DisplayName("should clean all referential by expiry")
     void shouldCleanAllReferentialByExpiry() {
         failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusMinutes(1), new Client(1L, "TATA-1")));
         failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusMinutes(2), new Client(2L, "TATA-2")));

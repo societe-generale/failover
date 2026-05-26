@@ -18,6 +18,7 @@ package com.societegenerale.failover.core.report;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,6 +57,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should create a new technical event")
     void shouldCreateANewTechnicalEvent() {
         //when
         Event event = Event.technical("An event");
@@ -67,6 +69,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should add an attribute")
     void shouldAddAnAttribute() {
         //when
         Event event = Event.technical("An event")
@@ -80,6 +83,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should publish event through logging")
     void shouldPublishEventThroughLogging() {
         //given
         Event event = Event.technical("An event")
@@ -97,6 +101,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should restore mdc after publish")
     void shouldRestoreMdcAfterPublish() {
         //given
         MDC.put("existingKey", "existingValue");
@@ -115,6 +120,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should throw exception when modifying from outside")
     void shouldThrowExceptionWhenModifyingFromOutside() {
 
         Event event = Event.technical("An event")
@@ -130,6 +136,7 @@ class EventTest {
 
 
     @Test
+    @DisplayName("should clear mdc after publish if no mdc present before publish")
     void shouldClearMdcAfterPublishIfNoMdcPresentBeforePublish() {
         //given
 
@@ -144,6 +151,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should check equality")
     void shouldCheckEquality() {
         Event event1 = Event.technical("An event").addAttribute("key-1", "value-1");
         Event event2 = Event.technical("An event").addAttribute("key-1", "value-1");
@@ -151,6 +159,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should check non equality")
     void shouldCheckNonEquality() {
         Event event1 = Event.technical("An event").addAttribute("key-1", "value-1");
         Event event2 = Event.technical("An event").addAttribute("key-2", "value-2");
@@ -158,6 +167,7 @@ class EventTest {
     }
 
     @Test
+    @DisplayName("should check to string")
     void shouldCheckToString() {
         Event event = Event.technical("An event").addAttribute("existingKey", "newValue");
         assertThat(event.toString()).hasToString("Event(attributes={metricName=An event, existingKey=newValue, type=TECHNICAL})");
