@@ -57,8 +57,8 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
-        log.debug("Failover Recovery : Recovering information on '{}' from failover store due to exception : ", failover.name(), cause);
         log.info("Failover Recovery : Recovering information on '{}' from failover store due to exception {}", failover.name(), cause.getMessage());
+        log.debug("Failover Recovery : Recovering information on '{}' from failover store", failover.name(), cause);
         var optionalReferential = failoverStore.find(failover.name(), keyGenerator.key(failover, args));
         if(optionalReferential.isPresent()) {
             ReferentialPayload<T> referentialPayload =  optionalReferential.get();
