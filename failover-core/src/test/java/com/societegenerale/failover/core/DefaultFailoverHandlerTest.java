@@ -147,6 +147,22 @@ class DefaultFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should enrich metadata on Referential payload with exception info when recovering")
+    void shouldEnrichMetadataOnReferentialPayloadWithExceptionInfoWhenRecovering() {
+        var cause = new RuntimeException("upstream-failure");
+        var thirdParty = new ThirdParty(1L, "Tata", 1);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
+        given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(of(referentialPayload));
+
+        ThirdParty result = defaultFailoverHandler.recover(failover, List.of(1L), ThirdParty.class, cause);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getMetadata().getInfo())
+                .containsEntry("exception-name", RuntimeException.class.getName())
+                .containsEntry("cause", "upstream-failure");
+    }
+
+    @Test
     @DisplayName("should execute clean")
     void shouldExecuteClean() {
         given(clock.now()).willReturn(now);

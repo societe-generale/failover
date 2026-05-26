@@ -19,6 +19,7 @@ package com.societegenerale.failover.execution.resilience;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 
@@ -30,8 +31,8 @@ public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
 
-    public ResilienceFailoverExecution(FailoverHandler<T> failoverHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
-        super(failoverHandler);
+    public ResilienceFailoverExecution(FailoverHandler<T> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
+        super(failoverHandler,  methodExceptionHandler);
         this.circuitBreakerRegistry = circuitBreakerRegistry;
     }
 

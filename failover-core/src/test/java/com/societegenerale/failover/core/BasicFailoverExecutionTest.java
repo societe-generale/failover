@@ -17,6 +17,8 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.exception.MethodExceptionContext;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -52,6 +56,9 @@ class BasicFailoverExecutionTest {
     @Mock
     private FailoverHandler<String> failoverHandler;
 
+    @Mock
+    private MethodExceptionHandler methodExceptionHandler;
+
     private Method method;
 
     private BasicFailoverExecution<String> basicFailoverExecution;
@@ -59,7 +66,7 @@ class BasicFailoverExecutionTest {
     @BeforeEach
     void setUp() throws NoSuchMethodException {
         method = ReferentialMethod.class.getMethod("findReferential");
-        basicFailoverExecution = new BasicFailoverExecution<>(failoverHandler);
+        basicFailoverExecution = new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler);
     }
 
     @DisplayName("should return and store the actual result when execution is successful")
@@ -89,8 +96,9 @@ class BasicFailoverExecutionTest {
     @DisplayName("should recover the result from failover when an exception occurred")
     void shouldRecoverTheResultFromFailoverWhenAnExceptionOccurred() {
         Throwable throwable = new RuntimeException("Some Exception");
-        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(PAYLOAD);
         given(supplier.get()).willThrow(throwable);
+        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(PAYLOAD);
+        given(methodExceptionHandler.handle(any())).willReturn(PAYLOAD);
 
         String result = basicFailoverExecution.execute(failover, supplier, method, ARGS);
 
@@ -100,17 +108,44 @@ class BasicFailoverExecutionTest {
     }
 
     @Test
-    @DisplayName("should return null when failover recover has any exception")
+    @DisplayName("should delegate to method exception policy after recovery")
+    void shouldDelegateToMethodExceptionPolicyAfterRecovery() {
+        Throwable throwable = new RuntimeException("Some Exception");
+        given(supplier.get()).willThrow(throwable);
+        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(PAYLOAD);
+        given(methodExceptionHandler.handle(any(MethodExceptionContext.class))).willReturn(PAYLOAD);
+
+        basicFailoverExecution.execute(failover, supplier, method, ARGS);
+
+        verify(methodExceptionHandler).handle(any(MethodExceptionContext.class));
+    }
+
+    @Test
+    @DisplayName("should return null when failover recover has any exception and policy returns null")
     void shouldReturnNullWhenFailoverRecoverHasAnyException() {
         Throwable throwable = new RuntimeException("Some Exception");
         given(supplier.get()).willThrow(throwable);
         given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willThrow(throwable);
+        given(methodExceptionHandler.handle(any())).willReturn(null);
 
         String result = basicFailoverExecution.execute(failover, supplier, method, ARGS);
 
         assertThat(result).isNull();
         verify(failoverHandler).recover(failover, ARGS, String.class, throwable);
         verify(failoverHandler, never()).store(failover, ARGS, PAYLOAD);
+    }
+
+    @Test
+    @DisplayName("should propagate exception when handler rethrows")
+    void shouldPropagateExceptionWhenHandlerRethrows() {
+        Throwable throwable = new RuntimeException("Some Exception");
+        RuntimeException rethrown = new RuntimeException("rethrown");
+        given(supplier.get()).willThrow(throwable);
+        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(null);
+        given(methodExceptionHandler.handle(any())).willThrow(rethrown);
+
+        assertThatThrownBy(() -> basicFailoverExecution.execute(failover, supplier, method, ARGS))
+                .isSameAs(rethrown);
     }
 
     interface ReferentialMethod {

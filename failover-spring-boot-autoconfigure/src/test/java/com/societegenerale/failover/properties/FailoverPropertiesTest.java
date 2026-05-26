@@ -21,9 +21,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.assertThatNoException;
+import static com.societegenerale.failover.properties.ExceptionPolicy.RETHROW;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * @author Anand Manissery
@@ -67,6 +66,12 @@ class FailoverPropertiesTest {
         assertThat(result).containsEntry("scheduler.enabled", "true")
                 .containsEntry("scheduler.report-cron", "0 0 0 * * *")
                 .containsEntry("scheduler.cleanup-cron", "0 0 * * * *");
+    }
+
+    @Test
+    @DisplayName("should have RET̈̈HROW as default exception policy")
+    void shouldHaveRethrowAsDefaultExceptionPolicy() {
+        assertThat(failoverProperties.getExceptionPolicy()).isEqualTo(RETHROW);
     }
 
     @Test

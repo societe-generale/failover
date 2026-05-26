@@ -17,12 +17,16 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.exception.MethodExceptionContext;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.function.Supplier;
+
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
 
 /**
  * @author Anand Manissery
@@ -32,6 +36,8 @@ import java.util.function.Supplier;
 public class BasicFailoverExecution<T> implements FailoverExecution<T> {
 
     private final FailoverHandler<T> failoverHandler;
+
+    private final MethodExceptionHandler methodExceptionHandler;
 
     @Override
     public T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args) {
@@ -64,13 +70,13 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
     }
 
     private T executeRecoverOnException(Method method, List<Object> args, Failover failover, Exception cause) {
-        T result = null;
+        T recovered = null;
         try {
-            var clazz = (Class<T>) method.getReturnType();
-            result = failoverHandler.recover(failover, args, clazz, cause);
+            Class<T> clazz = cast(method.getReturnType());
+            recovered = failoverHandler.recover(failover, args, clazz, cause);
         } catch (Exception exception) {
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);
         }
-        return result;
+        return methodExceptionHandler.handle(new MethodExceptionContext<>(failover, method, args, recovered, cause));
     }
 }
