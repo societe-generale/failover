@@ -41,6 +41,11 @@ public class DefaultFailoverScanner implements FailoverScanner {
     private Map<String, Failover> failoverMap;
 
     public DefaultFailoverScanner(String packageToScan) {
+        if (packageToScan == null || packageToScan.isBlank()) {
+            throw new IllegalStateException(
+                    "failover.package-to-scan must not be blank. " +
+                    "Set it to the base package of your application (e.g. failover.package-to-scan=com.example.app).");
+        }
         this.exceptionHandler = new ReflectionsExceptionHandler();
         this.exceptionHandler.execute(()->
             this.reflections = new Reflections(packageToScan, Scanners.MethodsAnnotated)

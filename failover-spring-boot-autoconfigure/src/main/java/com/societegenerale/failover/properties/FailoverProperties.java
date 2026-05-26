@@ -16,11 +16,13 @@
 
 package com.societegenerale.failover.properties;
 
-
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
+import org.springframework.util.StringUtils;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,6 +34,7 @@ import static com.societegenerale.failover.properties.FailoverType.BASIC;
  */
 @Getter
 @Setter
+@Validated
 @ConfigurationProperties(prefix = "failover")
 public class FailoverProperties {
     /**
@@ -69,5 +72,14 @@ public class FailoverProperties {
         info.put("scheduler.report-cron", scheduler.getReportCron());
         info.put("scheduler.cleanup-cron", scheduler.getCleanupCron());
         return info;
+    }
+
+    @PostConstruct
+    public void validate() {
+        if (enabled && !StringUtils.hasText(packageToScan)) {
+            throw new IllegalStateException(
+                    "failover.package-to-scan must not be blank when failover is enabled. " +
+                    "Set it to the base package of your application (e.g. failover.package-to-scan=com.example.app).");
+        }
     }
 }
