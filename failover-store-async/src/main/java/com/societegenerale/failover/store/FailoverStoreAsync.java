@@ -58,6 +58,6 @@ public class FailoverStoreAsync <T> implements FailoverStore<T> {
     @Async
     @Override
     public void cleanByExpiry(LocalDateTime expiry) {
-        failoverStore.cleanByExpiry(expiry);
+        getFailoverStore().cleanByExpiry(expiry);
     }
 }
