@@ -67,10 +67,11 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
      */
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
-        var payload = referentialPayload.copy();
-        var cache = store.computeIfAbsent(payload.getName(),
-                _ -> Caffeine.newBuilder().expireAfterWrite(Duration.between(failoverClock.now(), payload.getExpireOn())).build());
-        cache.put(storeKey(payload.getName(), payload.getKey()), payload);
+        var rPayload = referentialPayload.copy();
+        // for a single failover configuration (same name cache), the expiry is always same
+        var cache = store.computeIfAbsent(rPayload.getName(),
+                _ -> Caffeine.newBuilder().expireAfterWrite(Duration.between(failoverClock.now(), rPayload.getExpireOn())).build());
+        cache.put(storeKey(rPayload.getName(), rPayload.getKey()), rPayload);
     }
 
     /**
