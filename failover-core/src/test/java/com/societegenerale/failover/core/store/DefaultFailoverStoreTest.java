@@ -36,7 +36,7 @@ class DefaultFailoverStoreTest {
     // --- store() ---
 
     @Test
-    void store_delegatesWithUpToDateFalse() throws FailoverStoreException {
+    void storeDelegatesWithUpToDateFalse() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<ReferentialPayload<String>> captor = ArgumentCaptor.forClass(ReferentialPayload.class);
@@ -54,7 +54,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
-    void store_propagatesFailoverStoreException() throws FailoverStoreException {
+    void storePropagatesFailoverStoreException() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).store(any());
 
@@ -64,7 +64,7 @@ class DefaultFailoverStoreTest {
     // --- delete() ---
 
     @Test
-    void delete_delegatesWithUpToDateFalse() throws FailoverStoreException {
+    void deleteDelegatesWithUpToDateFalse() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<ReferentialPayload<String>> captor = ArgumentCaptor.forClass(ReferentialPayload.class);
@@ -82,7 +82,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
-    void delete_propagatesFailoverStoreException() throws FailoverStoreException {
+    void deletePropagatesFailoverStoreException() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).delete(any());
 
@@ -92,7 +92,7 @@ class DefaultFailoverStoreTest {
     // --- find() ---
 
     @Test
-    void find_presentResult_returnsWithUpToDateFalse() throws FailoverStoreException {
+    void findPresentResultReturnsWithUpToDateFalse() throws FailoverStoreException {
         ReferentialPayload<String> found = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         when(delegate.find("name", "key")).thenReturn(Optional.of(found));
 
@@ -108,7 +108,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
-    void find_emptyResult_returnsEmpty() throws FailoverStoreException {
+    void findEmptyResultReturnsEmpty() throws FailoverStoreException {
         when(delegate.find("name", "key")).thenReturn(Optional.empty());
 
         Optional<ReferentialPayload<String>> result = store.find("name", "key");
@@ -117,7 +117,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
-    void find_propagatesFailoverStoreException() throws FailoverStoreException {
+    void findPropagatesFailoverStoreException() throws FailoverStoreException {
         when(delegate.find("name", "key")).thenThrow(new FailoverStoreException("error", new RuntimeException()));
 
         assertThatThrownBy(() -> store.find("name", "key")).isInstanceOf(FailoverStoreException.class);
@@ -126,7 +126,7 @@ class DefaultFailoverStoreTest {
     // --- cleanByExpiry() ---
 
     @Test
-    void cleanByExpiry_delegatesDirectly() throws FailoverStoreException {
+    void cleanByExpiryDelegatesDirectly() throws FailoverStoreException {
         LocalDateTime expiry = LocalDateTime.now();
 
         store.cleanByExpiry(expiry);
@@ -135,7 +135,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
-    void cleanByExpiry_propagatesFailoverStoreException() throws FailoverStoreException {
+    void cleanByExpiryPropagatesFailoverStoreException() throws FailoverStoreException {
         LocalDateTime expiry = LocalDateTime.now();
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).cleanByExpiry(any());
 

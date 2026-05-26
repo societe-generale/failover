@@ -23,7 +23,7 @@ class FailoverStoreBeanPostProcessorTest {
     @Test
     @DisplayName("should wrap raw FailoverStore with FailoverStoreAsync and DefaultFailoverStore")
     @SuppressWarnings("unchecked")
-    void rawFailoverStore_wrapsWithAsyncAndDefault() {
+    void rawFailoverStoreWrapsWithAsyncAndDefault() {
         FailoverStoreInmemory<Object> rawStore = new FailoverStoreInmemory<>();
 
         Object result = processor.postProcessBeforeInitialization(rawStore, "failoverStore");
@@ -36,7 +36,7 @@ class FailoverStoreBeanPostProcessorTest {
     @Test
     @DisplayName("should preserve original bean as the innermost store after wrapping")
     @SuppressWarnings("unchecked")
-    void rawFailoverStore_innermostIsOriginalBean() {
+    void rawFailoverStoreInnermostIsOriginalBean() {
         FailoverStoreInmemory<Object> rawStore = new FailoverStoreInmemory<>();
 
         Object result = processor.postProcessBeforeInitialization(rawStore, "failoverStore");
@@ -48,7 +48,7 @@ class FailoverStoreBeanPostProcessorTest {
 
     @Test
     @DisplayName("should return FailoverStoreAsync as-is without double-wrapping")
-    void alreadyWrappedWithAsync_returnsSameInstance() {
+    void alreadyWrappedWithAsyncReturnsSameInstance() {
         FailoverStoreAsync<Object> asyncStore = new FailoverStoreAsync<>(new FailoverStoreInmemory<>());
 
         Object result = processor.postProcessBeforeInitialization(asyncStore, "failoverStoreAsync");
@@ -58,7 +58,7 @@ class FailoverStoreBeanPostProcessorTest {
 
     @Test
     @DisplayName("should return DefaultFailoverStore as-is without double-wrapping")
-    void alreadyWrappedWithDefault_returnsSameInstance() {
+    void alreadyWrappedWithDefaultReturnsSameInstance() {
         DefaultFailoverStore<Object> defaultStore = new DefaultFailoverStore<>(new FailoverStoreInmemory<>());
 
         Object result = processor.postProcessBeforeInitialization(defaultStore, "defaultFailoverStore");
@@ -68,7 +68,7 @@ class FailoverStoreBeanPostProcessorTest {
 
     @Test
     @DisplayName("should return non-FailoverStore bean unchanged")
-    void nonFailoverStoreBean_returnsSameInstance() {
+    void nonFailoverStoreBeanReturnsSameInstance() {
         String nonStoreBean = "someBean";
 
         Object result = processor.postProcessBeforeInitialization(nonStoreBean, "someBean");
@@ -78,7 +78,7 @@ class FailoverStoreBeanPostProcessorTest {
 
     @Test
     @DisplayName("should return arbitrary object bean unchanged")
-    void arbitraryObject_returnsSameInstance() {
+    void arbitraryObjectReturnsSameInstance() {
         Object arbitraryBean = new Object();
 
         Object result = processor.postProcessBeforeInitialization(arbitraryBean, "arbitraryBean");
@@ -89,7 +89,7 @@ class FailoverStoreBeanPostProcessorTest {
     @Test
     @DisplayName("should wrap regardless of bean name")
     @SuppressWarnings("unchecked")
-    void rawFailoverStore_wrapsRegardlessOfBeanName() {
+    void rawFailoverStoreWrapsRegardlessOfBeanName() {
         FailoverStoreInmemory<Object> rawStore = new FailoverStoreInmemory<>();
 
         Object result = processor.postProcessBeforeInitialization(rawStore, "anyBeanNameWhatsoever");
