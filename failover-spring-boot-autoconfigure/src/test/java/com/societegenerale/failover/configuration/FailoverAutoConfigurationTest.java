@@ -107,7 +107,7 @@ class FailoverAutoConfigurationTest {
 
     @Test
     @DisplayName("should execute store asynchronously on a different thread")
-    void store_executesOnDifferentThread() throws Exception {
+    void storeExecutesOnDifferentThread() throws Exception {
         String callingThread = Thread.currentThread().getName();
         AtomicReference<String> storingThread = new AtomicReference<>();
         CountDownLatch latch = new CountDownLatch(1);
