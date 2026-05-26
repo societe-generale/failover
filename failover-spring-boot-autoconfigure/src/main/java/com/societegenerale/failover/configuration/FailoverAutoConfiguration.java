@@ -70,6 +70,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -85,7 +86,6 @@ import java.util.List;
 @Slf4j
 @EnableAspectJAutoProxy
 @EnableAsync
-@EnableScheduling
 public class FailoverAutoConfiguration {
 
     @Bean
@@ -221,17 +221,21 @@ public class FailoverAutoConfiguration {
         return new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, failoverExpiryExtractor, failoverProperties.additionalInfo());
     }
 
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
     @ConditionalOnProperty(prefix = "failover", name = "scheduler.enabled", havingValue = "true", matchIfMissing = true)
-    @ConditionalOnMissingBean
-    @Bean
-    public ReportScheduler reportScheduler(FailoverReporter failoverReporter) {
-        return new ReportScheduler(failoverReporter);
-    }
+    @EnableScheduling
+    static class FailoverSchedulingConfiguration {
+        @ConditionalOnMissingBean
+        @Bean
+        public ReportScheduler reportScheduler(FailoverReporter failoverReporter) {
+            return new ReportScheduler(failoverReporter);
+        }
 
-    @ConditionalOnProperty(prefix = "failover", name = "scheduler.enabled", havingValue = "true", matchIfMissing = true)
-    @ConditionalOnMissingBean
-    @Bean
-    public ExpiryCleanupScheduler<Object> expiryCleanupScheduler(FailoverHandler<Object> failoverHandler) {
-        return new ExpiryCleanupScheduler<>(failoverHandler);
+        @ConditionalOnMissingBean
+        @Bean
+        public ExpiryCleanupScheduler<Object> expiryCleanupScheduler(FailoverHandler<Object> failoverHandler) {
+            return new ExpiryCleanupScheduler<>(failoverHandler);
+        }
     }
 }
