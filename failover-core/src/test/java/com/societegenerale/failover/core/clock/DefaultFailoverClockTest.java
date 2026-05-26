@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.clock;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ class DefaultFailoverClockTest {
     private final DefaultFailoverClock clock = new DefaultFailoverClock();
 
     @Test
+    @DisplayName("should return current date time")
     void shouldReturnCurrentDateTime() {
         LocalDateTime now = clock.now();
         assertThat(now).isNotNull();

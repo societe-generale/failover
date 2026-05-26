@@ -37,78 +37,78 @@ class DefaultKeyGeneratorTest {
 
     private final DefaultKeyGenerator defaultKeyProvider = new DefaultKeyGenerator();
 
-    @DisplayName("should return 'no-arg' when argument is null")
     @Test
+    @DisplayName("should return 'no-arg' when argument is null")
     void shouldReturnNoArgWhenArgumentIsNull() {
         String key = defaultKeyProvider.key(FAILOVER, null);
         assertThat(key).isEqualTo("NO-ARG");
     }
 
-    @DisplayName("should return 'no-arg' when argument is empty")
     @Test
+    @DisplayName("should return 'no-arg' when argument is empty")
     void shouldReturnNoArgWhenArgumentIsEmpty() {
         String key = defaultKeyProvider.key(FAILOVER, new ArrayList<>());
         assertThat(key).isEqualTo("NO-ARG");
     }
 
-    @DisplayName("should return the key by concatenating all arguments")
     @Test
+    @DisplayName("should return the key by concatenating all arguments")
     void shouldReturnTheKeyByConcatenatingAllArguments() {
         String key = defaultKeyProvider.key(FAILOVER, asList("x","y",1L,2,3));
         assertThat(key).isEqualTo("x:y:1:2:3");
     }
 
-    @DisplayName("should return the key when one of the argument is a collection")
     @Test
+    @DisplayName("should return the key when one of the argument is a collection")
     void shouldReturnTheKeyWhenOneArgIsACollection() {
         String key = defaultKeyProvider.key(FAILOVER, asList("x", asList(1L,2,3), "y"));
         assertThat(key).isEqualTo("x:1,2,3:y");
     }
 
-    @DisplayName("should return the key when one of the argument is an array")
     @Test
+    @DisplayName("should return the key when one of the argument is an array")
     void shouldReturnTheKeyWhenOneArgIsAnArray() {
         String key = defaultKeyProvider.key(FAILOVER, asList("x", new int[]{1,2,3}, "y"));
         assertThat(key).isEqualTo("x:1,2,3:y");
     }
 
-    @DisplayName("should return the key when one of the argument is a null value")
     @Test
+    @DisplayName("should return the key when one of the argument is a null value")
     void shouldReturnTheKeyWhenOneArgIsNull() {
         String key = defaultKeyProvider.key(FAILOVER, asList("x", null, "y"));
         assertThat(key).isEqualTo("x::y");
     }
 
-    @DisplayName("should return the key when one of the argument is a list with a null value")
     @Test
+    @DisplayName("should return the key when one of the argument is a list with a null value")
     void shouldReturnTheKeyWhenOneArgIsNullInList() {
         String key = defaultKeyProvider.key(FAILOVER, asList("x", asList(1L,null,3), "y"));
         assertThat(key).isEqualTo("x:1,,3:y");
     }
 
-    @DisplayName("should return the key when one of the argument is an array with a null value")
     @Test
+    @DisplayName("should return the key when one of the argument is an array with a null value")
     void shouldReturnTheKeyWhenOneArgIsNullInAnArray() {
         String key = defaultKeyProvider.key(FAILOVER, asList("x", new String[]{"1",null,"3"}, "y"));
         assertThat(key).isEqualTo("x:1,,3:y");
     }
 
-    @DisplayName("should return the key when one of the argument is a BigDecimal")
     @Test
+    @DisplayName("should return the key when one of the argument is a BigDecimal")
     void shouldReturnTheKeyWhenArgContainsBigDecimal() {
         String key = defaultKeyProvider.key(FAILOVER, asList(1L, new BigDecimal(2), "3"));
         assertThat(key).isEqualTo("1:2:3");
     }
 
-    @DisplayName("should return the key when one of the argument is a Boolean")
     @Test
+    @DisplayName("should return the key when one of the argument is a Boolean")
     void shouldReturnTheKeyWhenArgContainsBoolean() {
         String key = defaultKeyProvider.key(FAILOVER, asList(1L, Boolean.TRUE, "3"));
         assertThat(key).isEqualTo("1:true:3");
     }
 
-    @DisplayName("should return the key when the arguments are of multiple types")
     @Test
+    @DisplayName("should return the key when the arguments are of multiple types")
     void shouldReturnTheKeyWhenArgContainsMultipleTypes() {
         var one = 1L;
         Long two = 2L;
@@ -117,8 +117,8 @@ class DefaultKeyGeneratorTest {
         assertThat(key).isEqualTo("1:2:3:4:Object@%s".formatted(toHexString(object.hashCode())));
     }
 
-    @DisplayName("should return the key when the argument is of any non primitive Object")
     @Test
+    @DisplayName("should return the key when the argument is of any non primitive Object")
     void shouldReturnTheKeyWhenArgContainsAnyObjectTypesOtherThanPrimitiveType() {
         var object = new Object();
         String key = defaultKeyProvider.key(FAILOVER, asList(1, object, "3"));

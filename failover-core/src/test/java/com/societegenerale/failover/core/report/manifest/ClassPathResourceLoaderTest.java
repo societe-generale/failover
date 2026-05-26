@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.report.manifest;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -30,6 +31,7 @@ class ClassPathResourceLoaderTest {
     private final ClassPathResourceLoader classPathResourceLoader = new ClassPathResourceLoader();
 
     @Test
+    @DisplayName("should return resource urls")
     void shouldReturnResourceUrls() throws IOException {
         var urls = classPathResourceLoader.getResourcesUrls("META-INF/MANIFEST.MF");
         assertThat(urls.hasMoreElements()).isTrue();

@@ -22,6 +22,7 @@ import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.execution.resilience.demo.Client;
 import com.societegenerale.failover.execution.resilience.demo.ClientReferentialExecutor;
 import com.societegenerale.failover.execution.resilience.demo.ClientService;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +60,7 @@ class ResilienceFailoverExecutionTest {
     }
 
     @Test
+    @DisplayName("should store the client info after successful call")
     void shouldStoreTheClientInfoAfterSuccessfulCall() {
         //Given
         given(clientReferentialExecutor.findClientById(1L)).willReturn(client);
@@ -76,6 +78,7 @@ class ResilienceFailoverExecutionTest {
     }
 
     @Test
+    @DisplayName("should recover the client info on failure")
     void shouldRecoverTheClientInfoOnFailure() {
         //Given
         given(clientReferentialExecutor.findClientById(1L)).willReturn(client);
@@ -100,6 +103,7 @@ class ResilienceFailoverExecutionTest {
     }
 
     @Test
+    @DisplayName("should not recover the client info is expired")
     void shouldNotRecoverTheClientInfoIsExpired() {
         //Given
         given(clock.now()).willReturn(NOW, NOW, NOW, NOW.plusHours(2));
@@ -122,6 +126,7 @@ class ResilienceFailoverExecutionTest {
     }
 
     @Test
+    @DisplayName("should return the actual client info when actual call is success and failover has internal error")
     void shouldReturnTheActualClientInfoWhenActualCallIsSuccessAndFailoverHasInternalError() {
         //Given
         given(clientReferentialExecutor.findClientById(1L)).willReturn(client);
@@ -140,6 +145,7 @@ class ResilienceFailoverExecutionTest {
     }
 
     @Test
+    @DisplayName("should return null when failover recovery has internal error")
     void shouldReturnNullWhenFailoverRecoveryHasInternalError() {
         //Given
         given(clientReferentialExecutor.findClientById(1L)).willReturn(client);

@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.report;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +50,7 @@ class CompositeReportPublisherTest {
     }
 
     @Test
+    @DisplayName("should publish metrics with all publishers")
     void shouldPublishMetricsWithAllPublishers() {
         compositeReportPublisher.publish(metrics);
         verify(publisher1).publish(metrics);

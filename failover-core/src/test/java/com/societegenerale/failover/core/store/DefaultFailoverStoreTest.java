@@ -1,6 +1,7 @@
 package com.societegenerale.failover.core.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +37,7 @@ class DefaultFailoverStoreTest {
     // --- store() ---
 
     @Test
+    @DisplayName("store delegates with up to date false")
     void storeDelegatesWithUpToDateFalse() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         @SuppressWarnings("unchecked")
@@ -54,6 +56,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
+    @DisplayName("store propagates failover store exception")
     void storePropagatesFailoverStoreException() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).store(any());
@@ -64,6 +67,7 @@ class DefaultFailoverStoreTest {
     // --- delete() ---
 
     @Test
+    @DisplayName("delete delegates with up to date false")
     void deleteDelegatesWithUpToDateFalse() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         @SuppressWarnings("unchecked")
@@ -82,6 +86,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
+    @DisplayName("delete propagates failover store exception")
     void deletePropagatesFailoverStoreException() throws FailoverStoreException {
         ReferentialPayload<String> original = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).delete(any());
@@ -92,6 +97,7 @@ class DefaultFailoverStoreTest {
     // --- find() ---
 
     @Test
+    @DisplayName("find present result returns with up to date false")
     void findPresentResultReturnsWithUpToDateFalse() throws FailoverStoreException {
         ReferentialPayload<String> found = new ReferentialPayload<>("name", "key", true, AS_OF, EXPIRE_ON, "payload");
         when(delegate.find("name", "key")).thenReturn(Optional.of(found));
@@ -108,6 +114,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
+    @DisplayName("find empty result returns empty")
     void findEmptyResultReturnsEmpty() throws FailoverStoreException {
         when(delegate.find("name", "key")).thenReturn(Optional.empty());
 
@@ -117,6 +124,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
+    @DisplayName("find propagates failover store exception")
     void findPropagatesFailoverStoreException() throws FailoverStoreException {
         when(delegate.find("name", "key")).thenThrow(new FailoverStoreException("error", new RuntimeException()));
 
@@ -126,6 +134,7 @@ class DefaultFailoverStoreTest {
     // --- cleanByExpiry() ---
 
     @Test
+    @DisplayName("clean by expiry delegates directly")
     void cleanByExpiryDelegatesDirectly() throws FailoverStoreException {
         LocalDateTime expiry = LocalDateTime.now();
 
@@ -135,6 +144,7 @@ class DefaultFailoverStoreTest {
     }
 
     @Test
+    @DisplayName("clean by expiry propagates failover store exception")
     void cleanByExpiryPropagatesFailoverStoreException() throws FailoverStoreException {
         LocalDateTime expiry = LocalDateTime.now();
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).cleanByExpiry(any());

@@ -1,5 +1,6 @@
 package com.societegenerale.failover.core.expiry;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +27,7 @@ class BeanFactoryFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should resolve expiry duration")
     void shouldResolveExpiryDuration() {
         var expression = "${expiry-duration-expression}";
         given(beanFactory.resolveEmbeddedValue(expression)).willReturn("10");
@@ -34,6 +36,7 @@ class BeanFactoryFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should resolve expiry unit")
     void shouldResolveExpiryUnit() {
         var expression = "${expiry-unit-expression}";
         given(beanFactory.resolveEmbeddedValue(expression)).willReturn("DAYS");
@@ -42,6 +45,7 @@ class BeanFactoryFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should resolve expiry unit in lower case")
     void shouldResolveExpiryUnitInLowerCase() {
         var expression = "${expiry-unit-expression}";
         given(beanFactory.resolveEmbeddedValue(expression)).willReturn("days");

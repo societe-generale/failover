@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.report.manifest;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +51,7 @@ class CacheableManifestInfoExtractorTest {
     }
 
     @Test
+    @DisplayName("should return the info")
     void shouldReturnTheInfo() {
         given(manifestInfoExtractor.extract(SOME_JAR)).willReturn(INFO);
         var result = cacheableManifestInfoExtractor.extract(SOME_JAR);
@@ -58,6 +60,7 @@ class CacheableManifestInfoExtractorTest {
     }
 
     @Test
+    @DisplayName("should return the info from cache")
     void shouldReturnTheInfoFromCache() {
         given(manifestInfoExtractor.extract(SOME_JAR)).willReturn(INFO);
 

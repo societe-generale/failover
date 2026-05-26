@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core.key;
 
 import com.societegenerale.failover.annotations.Failover;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -61,6 +62,7 @@ class FailoverKeyGeneratorTest {
     }
 
     @Test
+    @DisplayName("generate key with default key generator when no key generator specified")
     void generateKeyWithDefaultKeyGeneratorWhenNoKeyGeneratorSpecified() {
         given(failover.keyGenerator()).willReturn("");
 
@@ -71,6 +73,7 @@ class FailoverKeyGeneratorTest {
     }
 
     @Test
+    @DisplayName("generate key with custom key generator when no key generator specified")
     void generateKeyWithCustomKeyGeneratorWhenNoKeyGeneratorSpecified() {
         given(failover.keyGenerator()).willReturn(KEY_GEN_NAME);
         given(keyGeneratorLookup.lookup(KEY_GEN_NAME)).willReturn(customKeyGenerator);
@@ -82,6 +85,7 @@ class FailoverKeyGeneratorTest {
     }
 
     @Test
+    @DisplayName("should throw exception when no custom key generator found for a given key generator name")
     void shouldThrowExceptionWhenNoCustomKeyGeneratorFoundForAGivenKeyGeneratorName() {
         given(failover.keyGenerator()).willReturn(KEY_GEN_NAME);
         given(keyGeneratorLookup.lookup(KEY_GEN_NAME)).willReturn(null);

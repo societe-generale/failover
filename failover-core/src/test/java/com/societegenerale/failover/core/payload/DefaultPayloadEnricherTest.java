@@ -50,8 +50,8 @@ class DefaultPayloadEnricherTest {
 
         private final DefaultPayloadEnricher<ThirdParty> payloadEnricher = new DefaultPayloadEnricher<>();
 
-        @DisplayName("should enrich the payload from referential metadata")
         @Test
+        @DisplayName("should enrich the payload from referential metadata")
         void shouldEnrichThePayload() {
             var thirdParty = new ThirdParty(1L, "TATA", 5);
             var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
@@ -78,8 +78,8 @@ class DefaultPayloadEnricherTest {
 
         private final DefaultPayloadEnricher<ThirdParty> payloadEnricher = new DefaultPayloadEnricher<>();
 
-        @DisplayName("should enrich the payload from referential metadata")
         @Test
+        @DisplayName("should enrich the payload from referential metadata")
         void shouldEnrichThePayload() {
             var thirdParty = new ThirdParty(1L, "TATA", 5);
             var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
@@ -124,8 +124,8 @@ class DefaultPayloadEnricherTest {
 
         private final DefaultPayloadEnricher<ThirdParty> payloadEnricher = new DefaultPayloadEnricher<>();
 
-        @DisplayName("should not enrich the payload from referential metadata")
         @Test
+        @DisplayName("should not enrich the payload from referential metadata")
         void shouldEnrichThePayload() {
             var thirdParty = new ThirdParty(1L, "TATA", 5);
             var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, thirdParty);
@@ -160,8 +160,8 @@ class DefaultPayloadEnricherTest {
 
         private final DefaultPayloadEnricher<String> payloadEnricher = new DefaultPayloadEnricher<>();
 
-        @DisplayName("should enrich the payload from referential metadata")
         @Test
+        @DisplayName("should enrich the payload from referential metadata")
         void shouldReturnThePayloadAsItIsWhenPayloadIsNull() {
 
             var referentialPayload = new ReferentialPayload<String>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, null);

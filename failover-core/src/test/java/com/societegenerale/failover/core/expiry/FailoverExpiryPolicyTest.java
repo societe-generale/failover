@@ -18,6 +18,7 @@ package com.societegenerale.failover.core.expiry;
 
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,6 +61,7 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("compute expiry with default expiry policy when no expiry policy specified")
     void computeExpiryWithDefaultExpiryPolicyWhenNoExpiryPolicySpecified() {
         given(failover.expiryPolicy()).willReturn("");
 
@@ -70,6 +72,7 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("compute expiry with custom expiry policy when expiry policy specified")
     void computeExpiryWithCustomExpiryPolicyWhenExpiryPolicySpecified() {
         given(failover.expiryPolicy()).willReturn(EXPIRY_POLICY_NAME);
         given(expiryPolicyLookup.lookup(EXPIRY_POLICY_NAME)).willReturn(customExpiryPolicy);
@@ -81,6 +84,7 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("should throw exception when no custom key generator found for a given key generator name")
     void shouldThrowExceptionWhenNoCustomKeyGeneratorFoundForAGivenKeyGeneratorName() {
         when(failover.name()).thenReturn("failover-xyz");
         given(failover.expiryPolicy()).willReturn(EXPIRY_POLICY_NAME);
@@ -93,6 +97,7 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("check expiry with default expiry policy when no expiry policy specified")
     void checkExpiryWithDefaultExpiryPolicyWhenNoExpiryPolicySpecified() {
         given(failover.expiryPolicy()).willReturn("");
 
@@ -103,6 +108,7 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("check expiry with custom expiry policy when expiry policy specified")
     void checkExpiryWithCustomExpiryPolicyWhenExpiryPolicySpecified() {
         given(failover.expiryPolicy()).willReturn(EXPIRY_POLICY_NAME);
         given(expiryPolicyLookup.lookup(EXPIRY_POLICY_NAME)).willReturn(customExpiryPolicy);
@@ -114,6 +120,7 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("check throw exception when no custom key generator found for a given key generator name")
     void checkThrowExceptionWhenNoCustomKeyGeneratorFoundForAGivenKeyGeneratorName() {
         when(failover.name()).thenReturn("failover-xyz");
         given(failover.expiryPolicy()).willReturn(EXPIRY_POLICY_NAME);

@@ -19,6 +19,7 @@ package com.societegenerale.failover.core.report;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,6 +66,7 @@ class MetricsReportPublisherTest {
     }
 
     @Test
+    @DisplayName("should publish metrics")
     void shouldPublishMetrics() {
         metricsReportPublisher.publish(METRICS);
         verify(appender).doAppend(captor.capture());

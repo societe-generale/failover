@@ -19,6 +19,7 @@ package com.societegenerale.failover.store;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -38,6 +39,7 @@ class FailoverStoreInmemoryTest {
     private final ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>("third-party-failover", "1", true, NOW, NOW, new ThirdParty(1L, "TATA", 5));
 
     @Test
+    @DisplayName("should store the referential")
     void shouldStoreTheReferential() {
         failoverStoreInmemory.store(referentialPayload);
 
@@ -45,6 +47,7 @@ class FailoverStoreInmemoryTest {
     }
 
     @Test
+    @DisplayName("should return the referential when found for the given key")
     void shouldReturnTheReferentialWhenFoundForTheGivenKey() {
         failoverStoreInmemory.store(referentialPayload);
 
@@ -54,6 +57,7 @@ class FailoverStoreInmemoryTest {
     }
 
     @Test
+    @DisplayName("should return empty when no referential found for the given key")
     void shouldReturnEmptyWhenNoReferentialFoundForTheGivenKey() {
         failoverStoreInmemory.store(referentialPayload);
 
@@ -63,6 +67,7 @@ class FailoverStoreInmemoryTest {
     }
 
     @Test
+    @DisplayName("should delete the referential")
     void shouldDeleteTheReferential() {
         failoverStoreInmemory.store(referentialPayload);
         assertThat(failoverStoreInmemory.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
@@ -74,6 +79,7 @@ class FailoverStoreInmemoryTest {
     }
 
     @Test
+    @DisplayName("should clean all referential by expiry")
     void shouldCleanAllReferentialByExpiry() {
 
         failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "1", true, NOW, NOW.plusMinutes(1), new ThirdParty(1L, "TATA-1", 5)));

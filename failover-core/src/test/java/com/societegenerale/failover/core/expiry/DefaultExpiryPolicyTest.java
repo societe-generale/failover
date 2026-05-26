@@ -59,8 +59,8 @@ class DefaultExpiryPolicyTest {
         defaultExpiryPolicy = new DefaultExpiryPolicy<>(clock, new BasicFailoverExpiryExtractor());
     }
 
-    @DisplayName("should return expiry based on the given duration and unit")
     @Test
+    @DisplayName("should return expiry based on the given duration and unit")
     void shouldReturnExpiry() {
         given(failover.expiryDuration()).willReturn(10L);
         given(failover.expiryUnit()).willReturn(ChronoUnit.SECONDS);
@@ -69,8 +69,8 @@ class DefaultExpiryPolicyTest {
         assertThat(result).isEqualTo(now.plusSeconds(10L));
     }
 
-    @DisplayName("should return true when referential payload is expired")
     @Test
+    @DisplayName("should return true when referential payload is expired")
     void shouldReturnTrueWhenExpired() {
         given(clock.now()).willReturn(now);
         var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now.minusSeconds(11), now.minusSeconds(1), PAYLOAD);
@@ -78,8 +78,8 @@ class DefaultExpiryPolicyTest {
         assertThat(result).isTrue();
     }
 
-    @DisplayName("should return false when referential payload is not expired")
     @Test
+    @DisplayName("should return false when referential payload is not expired")
     void shouldReturnFalseWhenNotExpired() {
         given(clock.now()).willReturn(now);
         var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now.plusSeconds(1), "Payload");
@@ -87,8 +87,8 @@ class DefaultExpiryPolicyTest {
         assertThat(result).isFalse();
     }
 
-    @DisplayName("should return false when referential payload is not expired and 'as of' has same time as 'expire on'")
     @Test
+    @DisplayName("should return false when referential payload is not expired and 'as of' has same time as 'expire on'")
     void shouldReturnFalseWhenNotExpiredAndHasEqualTime() {
         given(clock.now()).willReturn(now);
         var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, "Payload");

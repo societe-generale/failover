@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.scanner;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,7 @@ class ReflectionsExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("wrap any runtime exception with failover scanner exception")
     void wrapAnyRuntimeExceptionWithFailoverScannerException() {
         FailoverScannerException exception = assertThrows(FailoverScannerException.class,
                 () -> exceptionHandler.execute(()-> { throw new DummyException("Dummy Exception"); }));

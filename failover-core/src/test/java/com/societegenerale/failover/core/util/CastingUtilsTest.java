@@ -1,5 +1,6 @@
 package com.societegenerale.failover.core.util;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -27,6 +28,7 @@ class CastingUtilsTest {
     }
 
     @Test
+    @DisplayName("should throw class cast exception when types are incompatible")
     void shouldThrowClassCastExceptionWhenTypesAreIncompatible() {
         Object payload = 1;
         assertThatThrownBy(() -> {

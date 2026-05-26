@@ -24,6 +24,7 @@ import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -72,6 +73,7 @@ class DefaultFailoverReporterTest {
     }
 
     @Test
+    @DisplayName("should publish report")
     void shouldPublishReport() {
         defaultFailoverReporter.report();
         assertThat(reportPublisher.getMetricsMap().get("failover-report-find-by-id").getInfo())
