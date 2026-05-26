@@ -26,6 +26,7 @@ import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.platform.commons.util.ReflectionUtils;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,7 +122,7 @@ class FailoverAutoConfigurationTest {
 
         // Inject thread-capturing wrapper via reflection
         Field innerField = DefaultFailoverStore.class.getDeclaredField("failoverStore");
-        innerField.setAccessible(true);
+        ReflectionUtils.makeAccessible(innerField);
         innerField.set(defaultStore, new ThreadCapturingStore(originalInner, storingThread, latch));
 
         try {
