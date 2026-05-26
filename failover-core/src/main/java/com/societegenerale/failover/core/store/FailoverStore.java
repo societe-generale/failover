@@ -22,14 +22,48 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
+ * Persistence contract for failover referential data.
+ *
+ * <p>Implementations are responsible for storing, retrieving, and evicting
+ * {@link ReferentialPayload} entries so that the failover mechanism can serve
+ * cached data when the primary source is unavailable.
+ *
+ * @param <T> the type of the payload held by each referential entry
  * @author Anand Manissery
  */
 public interface FailoverStore<T> {
+
+    /**
+     * Persists or updates a referential payload entry.
+     *
+     * @param referentialPayload the payload to store; must not be {@code null}
+     * @throws FailoverStoreException if the underlying store operation fails
+     */
     void store(ReferentialPayload<T> referentialPayload) throws FailoverStoreException;
 
+    /**
+     * Removes a referential payload entry from the store.
+     *
+     * @param referentialPayload the payload to remove; must not be {@code null}
+     * @throws FailoverStoreException if the underlying delete operation fails
+     */
     void delete(ReferentialPayload<T> referentialPayload) throws FailoverStoreException;
 
+    /**
+     * Looks up a referential payload by its logical name and key.
+     *
+     * @param name the referential name (e.g. the entity or endpoint identifier)
+     * @param key  the unique key within that referential
+     * @return an {@link Optional} containing the stored payload, or empty if not found
+     * @throws FailoverStoreException if the underlying lookup operation fails
+     */
     Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException;
 
-    void cleanByExpiry(LocalDateTime expiry)  throws FailoverStoreException;
+    /**
+     * Evicts all entries whose expiry timestamp is on or before the given datetime.
+     *
+     * @param expiry the cutoff datetime; entries expiring at or before this value are removed
+     * @throws FailoverStoreException if the underlying cleanup operation fails
+     */
+    void cleanByExpiry(LocalDateTime expiry) throws FailoverStoreException;
 }

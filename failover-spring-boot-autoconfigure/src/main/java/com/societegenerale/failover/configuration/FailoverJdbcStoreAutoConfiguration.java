@@ -19,7 +19,6 @@ package com.societegenerale.failover.configuration;
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
-import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreJdbc;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +45,6 @@ public class FailoverJdbcStoreAutoConfiguration {
     @Bean
     public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         log.info("FailoverStore configured to FailoverStoreJdbc.");
-        return new FailoverStoreAsync<>(new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper));
+        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper);
     }
 }
