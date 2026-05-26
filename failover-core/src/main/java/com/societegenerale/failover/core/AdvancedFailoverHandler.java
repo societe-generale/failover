@@ -67,7 +67,7 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("exception-cause-type", throwable.getCause() !=null ? throwable.getCause().getClass().getCanonicalName() : "")
                     .collect("exception-message", throwable.getMessage())
                     .collect("exception-cause-message", throwable.getCause() !=null ? throwable.getCause().getMessage() : "")
-                    .collect("is-recovered", result==null ? "false" : "true"));
+                    .collect("is-recovered", Boolean.toString(result != null)));
         }
         return recoveredPayloadHandler.handle(failover, args, clazz, result);
     }

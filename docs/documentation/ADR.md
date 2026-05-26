@@ -354,3 +354,63 @@ If wrapping happened in step 5 (`postProcessAfterInitialization`), the returned 
 * `FailoverStoreAsync` and `DefaultFailoverStore` themselves are excluded from re-wrapping by the guard.
 * BPP ordering relative to `AsyncAnnotationBeanPostProcessor` is safe because `postProcessBeforeInitialization` always precedes AOP proxy creation.
 ___
+
+## 12. MethodExceptionPolicy — Pluggable Exception Handling Strategy
+
+**Date : 26-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+When a primary call fails and failover recovery is attempted, the framework previously had a fixed outcome: swallow the original exception and return the recovered result (or `null` if recovery also failed).
+This gave callers no way to control what happens post-recovery:
+
+* Some teams want the original exception to propagate when the store has nothing to serve, so monitoring and alerting fire correctly.
+* Some teams want silent degradation (return stale data or `null`) regardless of recovery success.
+* Some teams need custom logic — enriching the exception, mapping it to a domain-specific type, publishing a metric.
+
+#### Decision
+Introduce a `MethodExceptionPolicy` strategy interface to decide the final outcome after recovery is attempted.
+
+```java
+@FunctionalInterface
+public interface MethodExceptionPolicy {
+    <T> T handle(MethodExceptionContext<T> context);
+}
+```
+
+`MethodExceptionContext<T>` carries all relevant information:
+
+```java
+public record MethodExceptionContext<T>(
+        Failover failover,
+        Method method,
+        List<Object> args,
+        @Nullable T recoveredResult,
+        Throwable cause
+) {}
+```
+
+Implementations may:
+* Return `context.recoveredResult()` — serve stale data transparently.
+* Return `null` — propagate nothing; let the caller handle absence.
+* Rethrow `context.cause()` via sneaky throw — cascade the original exception.
+
+Three built-in implementations are provided:
+
+| Implementation                             | Behaviour                                                                   | Property value                                    |
+|--------------------------------------------|-----------------------------------------------------------------------------|---------------------------------------------------|
+| `RethrowIfNoRecoveryMethodExceptionPolicy` | Returns recovered result if non-null; rethrows original exception otherwise | `rethrow` *(default, property absent)*            |
+| `NeverRethrowMethodExceptionPolicy`        | Always returns recovered result or `null`, never throws                     | `never_throw`                                     |
+| Custom user bean                           | Any logic; registered as a Spring bean                                      | *(register bean, set `custom` for documentation)* |
+
+The policy is resolved by auto-configuration using `failover.exception-policy` property.
+A `MethodExceptionHandler` wraps the policy to add debug logging before delegating.
+
+#### Consequences
+* Default behaviour (`RethrowIfNoRecoveryMethodExceptionPolicy`) is safe: stale data is preferred, but the original failure is surfaced when there is nothing to serve. This ensures monitoring fires on genuine outages with empty stores.
+* `NeverRethrowMethodExceptionPolicy` gives a pure degraded-mode experience at the cost of silent failures.
+* Any team can inject a custom `MethodExceptionPolicy` bean to override auto-configuration via `@ConditionalOnMissingBean`.
+* The exception policy operates at the failover boundary only — exceptions thrown during store/recover operations are already logged and swallowed internally.
+___

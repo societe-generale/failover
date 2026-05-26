@@ -20,6 +20,10 @@ You can configure the failover module with the below configurations
 failover:
   enabled: true  #default is true
   package-to-scan: <your base package>   #A mandatory field to mention your base package where @Failover annotations are present.
+  exception-policy: rethrow       #optional. Controls what happens after a failed call when failover recovery is attempted.
+                                  #  rethrow (default/absent) : rethrow original exception when recovery has nothing to serve; return stale data when it does
+                                  #  never_throw              : always return stale data or null, never rethrow
+                                  #  custom                   : provide your own MethodExceptionPolicy Spring bean
 ```
 
 You can configure the failover module with jdbc store with the below configurations

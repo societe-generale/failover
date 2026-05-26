@@ -22,6 +22,9 @@ import com.societegenerale.failover.core.DefaultFailoverHandler;
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
+import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExceptionPolicy;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
 import com.societegenerale.failover.core.expiry.ExpiryPolicy;
@@ -95,8 +98,18 @@ public class MySpringBootTestApplication {
     }
 
     @Bean
-    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
-        return new ResilienceFailoverExecution<>(failoverHandler, circuitBreakerRegistry);
+    public MethodExceptionPolicy methodExceptionPolicy() {
+        return new NeverRethrowMethodExceptionPolicy();
+    }
+
+    @Bean
+    public MethodExceptionHandler methodExceptionHandler(MethodExceptionPolicy methodExceptionPolicy) {
+        return new MethodExceptionHandler(methodExceptionPolicy);
+    }
+
+    @Bean
+    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
+        return new ResilienceFailoverExecution<>(failoverHandler, methodExceptionHandler, circuitBreakerRegistry);
     }
 
     @Bean

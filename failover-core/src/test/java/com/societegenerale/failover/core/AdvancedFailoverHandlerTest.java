@@ -165,6 +165,16 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should return the stored payload from the delegate")
+    void shouldReturnStoredPayloadFromDelegate() {
+        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+
+        String result = advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+
+        assertThat(result).isEqualTo(PAYLOAD);
+    }
+
+    @Test
     @DisplayName("should execute clean")
     void shouldExecuteClean() {
         advancedFailoverHandler.clean();

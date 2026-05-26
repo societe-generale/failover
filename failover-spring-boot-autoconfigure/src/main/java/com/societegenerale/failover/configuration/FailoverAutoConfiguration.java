@@ -19,12 +19,16 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.aspect.FailoverAspect;
 
 import com.societegenerale.failover.core.AdvancedFailoverHandler;
-import com.societegenerale.failover.core.DefaultFailoverHandler;
-import com.societegenerale.failover.core.FailoverHandler;
-import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.BasicFailoverExecution;
+import com.societegenerale.failover.core.DefaultFailoverHandler;
+import com.societegenerale.failover.core.FailoverExecution;
+import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
 import com.societegenerale.failover.core.clock.DefaultFailoverClock;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExceptionPolicy;
+import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
 import com.societegenerale.failover.core.expiry.BeanFactoryExpiryPolicyLookup;
 import com.societegenerale.failover.core.expiry.BeanFactoryFailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
@@ -56,6 +60,7 @@ import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.processor.FailoverStoreBeanPostProcessor;
+import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
 import com.societegenerale.failover.properties.StoreType;
@@ -189,12 +194,18 @@ public class FailoverAutoConfiguration {
         return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
     }
 
+    @ConditionalOnMissingBean
+    @Bean
+    public MethodExceptionHandler methodExceptionHandler(MethodExceptionPolicy  methodExceptionPolicy) {
+        return new MethodExceptionHandler(methodExceptionPolicy);
+    }
+
     @ConditionalOnProperty(prefix = "failover", name = "type", havingValue = "basic", matchIfMissing = true)
     @ConditionalOnMissingBean
     @Bean
-    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler) {
+    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler) {
         log.info("FailoverExecution configured to BasicFailoverExecution. Available options are :  {{}}", (Object) FailoverType.values());
-        return new BasicFailoverExecution<>(failoverHandler);
+        return new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler);
     }
 
     @ConditionalOnProperty(prefix = "failover", name = "aspect.enabled", havingValue = "true", matchIfMissing = true)
@@ -237,5 +248,27 @@ public class FailoverAutoConfiguration {
         public ExpiryCleanupScheduler<Object> expiryCleanupScheduler(FailoverHandler<Object> failoverHandler) {
             return new ExpiryCleanupScheduler<>(failoverHandler);
         }
+    }
+
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
+    @EnableScheduling
+    static class ExceptionPolicyConfiguration {
+
+        @ConditionalOnProperty(prefix = "failover", name = "exception-policy", havingValue = "never_throw")
+        @ConditionalOnMissingBean
+        @Bean
+        public MethodExceptionPolicy neverRethrowMethodExceptionPolicy() {
+            log.warn("MethodExceptionPolicy configured to NeverRethrowMethodExceptionPolicy. Available options are : {{}}", (Object) ExceptionPolicy.values());
+            return new NeverRethrowMethodExceptionPolicy();
+        }
+
+        @ConditionalOnMissingBean
+        @ConditionalOnProperty(prefix = "failover", name = "exception-policy", havingValue = "rethrow", matchIfMissing = true)
+        @Bean
+        public MethodExceptionPolicy rethrowIfNoRecoveryMethodExceptionPolicy() {
+            return new RethrowIfNoRecoveryMethodExceptionPolicy();
+        }
+
     }
 }

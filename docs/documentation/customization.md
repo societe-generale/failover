@@ -276,6 +276,93 @@ public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandl
     }
 ```
 
+> ## MethodExceptionPolicy
+
+`MethodExceptionPolicy` controls what happens after a primary call fails and failover recovery has been attempted.
+The decision point is: _should the original exception be propagated, or should the caller receive the recovered data (or `null`)?_
+
+```java
+@FunctionalInterface
+public interface MethodExceptionPolicy {
+    <T> T handle(MethodExceptionContext<T> context);
+}
+```
+
+`MethodExceptionContext<T>` carries everything available at the decision point:
+
+```java
+public record MethodExceptionContext<T>(
+        Failover failover,      // the @Failover annotation
+        Method method,          // the intercepted method
+        List<Object> args,      // original call arguments
+        T recoveredResult,      // null if recovery failed or store was empty
+        Throwable cause         // the original exception from the primary call
+) {}
+```
+
+### Built-in policies
+
+Three implementations are provided out of the box:
+
+#### 1. `RethrowIfNoRecoveryMethodExceptionPolicy` _(default)_
+Returns `recoveredResult` when the store had data; rethrows the original exception when recovery produced `null`.
+
+```yaml
+# no configuration needed — this is the default when exception-policy is absent
+```
+or
+```yaml
+failover:
+  exception-policy: rethrow
+```
+
+#### 2. `NeverRethrowMethodExceptionPolicy`
+Always returns `recoveredResult` or `null`. The original exception is never propagated — useful for pure degraded-mode services.
+
+```yaml
+failover:
+  exception-policy: never_throw
+```
+
+#### 3. Custom policy
+Register a `MethodExceptionPolicy` Spring bean. `@ConditionalOnMissingBean` ensures the auto-configured default is skipped.
+
+```yaml
+failover:
+  exception-policy: custom   # documents intent; the bean presence is what actually matters
+```
+
+```java
+@Configuration
+public class FailoverExceptionPolicyConfig {
+
+    @Bean
+    public MethodExceptionPolicy methodExceptionPolicy() {
+        return new CustomMethodExceptionPolicy();
+    }
+}
+```
+
+Example: rethrow for unexpected exception types, return recovered data for known transient failures:
+
+```java
+public class CustomMethodExceptionPolicy implements MethodExceptionPolicy {
+
+    @Override
+    public <T> T handle(MethodExceptionContext<T> context) {
+        if (context.recoveredResult() != null) {
+            return context.recoveredResult();
+        }
+        if (context.cause() instanceof TimeoutException) {
+            // transient — serve null gracefully
+            return null;
+        }
+        // unexpected failure — propagate
+        throw new RuntimeException("Failover: no recovery available for " + context.failover().name(), context.cause());
+    }
+}
+```
+
 > ## Scheduler
 We have two schedulers
 1. **Report publisher** : This is to publish the failover configuration reports for monitoring. The default value is **daily**
@@ -331,5 +418,6 @@ public class KeyGeneratorConfigurations {
     }
 }
 ```
-
 In case if we did not find the bean with the given key generator name, an exception will be thrown.  
+
+---

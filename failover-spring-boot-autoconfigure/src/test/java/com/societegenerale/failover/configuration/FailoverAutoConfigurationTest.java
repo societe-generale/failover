@@ -19,6 +19,9 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.MyTestApplication;
 import com.societegenerale.failover.aspect.FailoverAspect;
 import com.societegenerale.failover.core.BasicFailoverExecution;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
+import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
@@ -78,6 +81,19 @@ class FailoverAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("should load MethodExceptionHandler bean by default")
+    void shouldLoadMethodExceptionHandlerBeanByDefault() {
+        assertBeansAreNotNull(applicationContext, MethodExceptionHandler.class);
+    }
+
+    @Test
+    @DisplayName("should load RethrowIfNoRecoveryMethodExceptionPolicy as default MethodExceptionPolicy")
+    void shouldLoadRethrowIfNoRecoveryPolicyByDefault() {
+        var policy = applicationContext.getBean(MethodExceptionPolicy.class);
+        assertThat(policy).isInstanceOf(RethrowIfNoRecoveryMethodExceptionPolicy.class);
+    }
+
+    @Test
     @DisplayName("should load inmemory failover store by default")
     void shouldLoadInmemoryFailoverStoreByDefault() throws Exception {
         assertThat(failoverStore).isNotNull();
@@ -130,9 +146,7 @@ class FailoverAutoConfigurationTest {
                     LocalDateTime.now(), LocalDateTime.now().plusHours(1), "payload"));
 
             assertThat(latch.await(5, TimeUnit.SECONDS)).as("store() did not execute within 5 seconds").isTrue();
-            assertThat(storingThread.get())
-                    .as("store() must run on a thread different from the calling thread")
-                    .isNotEqualTo(callingThread);
+            assertThat(storingThread.get()).as("store() must run on a thread different from the calling thread").isNotEqualTo(callingThread);
         } finally {
             innerField.set(defaultStore, originalInner);
         }

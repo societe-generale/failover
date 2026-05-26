@@ -33,6 +33,8 @@ class ReferentialTest {
         var thirdParty = new ThirdParty(1L, "TATA", 5);
         assertThat(thirdParty.getUpToDate()).isNull();
         assertThat(thirdParty.getAsOf()).isNull();
+        assertThat(thirdParty.getMetadata()).isNotNull();
+        assertThat(thirdParty.getMetadata().getInfo()).isEmpty();
     }
 
     @Data
