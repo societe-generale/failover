@@ -84,7 +84,7 @@ class FailoverStoreInmemoryTest {
 
         failoverStoreInmemory.cleanByExpiry(NOW.plusMinutes(4));
 
-        assertThat(failoverStoreInmemory.find("third-party-failover", "1")).isNotPresent();
+        assertThat(failoverStoreInmemory.find("third-party-failover", "1")).isEmpty();
         assertThat(failoverStoreInmemory.find("third-party-failover", "2")).isNotPresent();
         assertThat(failoverStoreInmemory.find("third-party-failover", "3")).isNotPresent();
         var result = failoverStoreInmemory.find("third-party-failover", "4");

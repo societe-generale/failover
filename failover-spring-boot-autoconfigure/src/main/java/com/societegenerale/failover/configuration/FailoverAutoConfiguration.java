@@ -55,12 +55,12 @@ import com.societegenerale.failover.core.report.manifest.ResourceLoader;
 import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.processor.FailoverStoreBeanPostProcessor;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
 import com.societegenerale.failover.properties.StoreType;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ReportScheduler;
-import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -87,6 +87,11 @@ import java.util.List;
 @EnableAsync
 @EnableScheduling
 public class FailoverAutoConfiguration {
+
+    @Bean
+    public static FailoverStoreBeanPostProcessor failoverStoreBeanPostProcessor() {
+        return new FailoverStoreBeanPostProcessor();
+    }
 
     @ConditionalOnMissingBean
     @Bean
@@ -175,7 +180,7 @@ public class FailoverAutoConfiguration {
     @Bean
     public FailoverStore<Object> failoverStoreInmemory() {
         log.warn("FailoverStore configured to FailoverStoreInmemory. We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", (Object) StoreType.values());
-        return new FailoverStoreAsync<>(new FailoverStoreInmemory<>());
+        return new FailoverStoreInmemory<>();
     }
 
     @ConditionalOnMissingBean

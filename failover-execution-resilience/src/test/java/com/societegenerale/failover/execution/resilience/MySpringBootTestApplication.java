@@ -34,6 +34,7 @@ import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import com.societegenerale.failover.core.report.LoggerReportPublisher;
 import com.societegenerale.failover.core.report.ReportPublisher;
+import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -60,7 +61,7 @@ public class MySpringBootTestApplication {
 
     @Bean
     public FailoverStore<Object> failoverStore() {
-        return new FailoverStoreInmemory<>();
+        return new DefaultFailoverStore<>(new FailoverStoreInmemory<>());
     }
 
     @Bean

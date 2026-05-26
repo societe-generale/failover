@@ -72,7 +72,7 @@ class ResilienceFailoverExecutionTest {
         assertThat(result.getAsOf()).isEqualTo(NOW);
 
         var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
-        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", true, NOW, NOW.plusHours(1), client));
+        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusHours(1), client));
     }
 
     @Test
