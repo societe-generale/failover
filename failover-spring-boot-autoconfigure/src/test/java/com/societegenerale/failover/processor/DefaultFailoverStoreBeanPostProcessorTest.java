@@ -1,7 +1,6 @@
 package com.societegenerale.failover.processor;
 
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
-import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,43 +10,40 @@ import org.junit.jupiter.api.Test;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-class FailoverStoreBeanPostProcessorTest {
+class DefaultFailoverStoreBeanPostProcessorTest {
 
-    private FailoverStoreBeanPostProcessor processor;
+    private DefaultFailoverStoreBeanPostProcessor processor;
 
     @BeforeEach
     void setUp() {
-        processor = new FailoverStoreBeanPostProcessor();
+        processor = new DefaultFailoverStoreBeanPostProcessor();
     }
 
     @Test
-    @DisplayName("should wrap raw FailoverStore with FailoverStoreAsync and DefaultFailoverStore")
-    @SuppressWarnings("unchecked")
-    void rawFailoverStoreWrapsWithAsyncAndDefault() {
+    @DisplayName("should wrap raw FailoverStore with DefaultFailoverStore")
+    void rawFailoverStoreWrapsWithDefault() {
         FailoverStoreInmemory<Object> rawStore = new FailoverStoreInmemory<>();
 
         Object result = processor.postProcessBeforeInitialization(rawStore, "failoverStore");
-        assertThat(result).isNotNull();
-        assertThat(result).isInstanceOf(FailoverStoreAsync.class);
-        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) result).getFailoverStore());
-        assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
+
+        assertThat(result).isInstanceOf(DefaultFailoverStore.class);
     }
 
     @Test
-    @DisplayName("should preserve original bean as the innermost store after wrapping")
+    @DisplayName("should preserve original bean as the inner store after wrapping")
     @SuppressWarnings("unchecked")
     void rawFailoverStoreInnermostIsOriginalBean() {
         FailoverStoreInmemory<Object> rawStore = new FailoverStoreInmemory<>();
 
         Object result = processor.postProcessBeforeInitialization(rawStore, "failoverStore");
+
         assertThat(result).isNotNull();
-        FailoverStoreAsync<Object> async = (FailoverStoreAsync<Object>) result;
-        DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) requireNonNull(async.getFailoverStore());
+        DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) result;
         assertThat(requireNonNull(defaultStore.getFailoverStore())).isSameAs(rawStore);
     }
 
     @Test
-    @DisplayName("should return FailoverStoreAsync as-is without double-wrapping")
+    @DisplayName("should return FailoverStoreAsync as-is without wrapping")
     void alreadyWrappedWithAsyncReturnsSameInstance() {
         FailoverStoreAsync<Object> asyncStore = new FailoverStoreAsync<>(new FailoverStoreInmemory<>());
 
@@ -93,10 +89,16 @@ class FailoverStoreBeanPostProcessorTest {
         FailoverStoreInmemory<Object> rawStore = new FailoverStoreInmemory<>();
 
         Object result = processor.postProcessBeforeInitialization(rawStore, "anyBeanNameWhatsoever");
+
         assertThat(result).isNotNull();
-        assertThat(result).isInstanceOf(FailoverStoreAsync.class);
-        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) result).getFailoverStore());
-        assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
-        assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isSameAs(rawStore);
+        assertThat(result).isInstanceOf(DefaultFailoverStore.class);
+        DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) result;
+        assertThat(requireNonNull(defaultStore.getFailoverStore())).isSameAs(rawStore);
+    }
+
+    @Test
+    @DisplayName("should have order 1 to run before AsyncFailoverStoreBeanPostProcessor")
+    void orderIsOne() {
+        assertThat(processor.getOrder()).isEqualTo(1);
     }
 }

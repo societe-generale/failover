@@ -31,6 +31,10 @@ public class Store {
     /// Available options : INMEMORY, CAFFEINE, JDBC, CUSTOM
     private StoreType type = INMEMORY;
 
+    /// To enable the async mode for failover store flow ( which won't block the users for better performance)
+    /// Default recommended mode is async = true
+    private boolean async = true;
+
     @NestedConfigurationProperty
     private Jdbc jdbc = new Jdbc();
 

@@ -17,49 +17,26 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.aspect.FailoverAspect;
-
-import com.societegenerale.failover.core.AdvancedFailoverHandler;
-import com.societegenerale.failover.core.BasicFailoverExecution;
-import com.societegenerale.failover.core.DefaultFailoverHandler;
-import com.societegenerale.failover.core.FailoverExecution;
-import com.societegenerale.failover.core.FailoverHandler;
-import com.societegenerale.failover.core.exception.MethodExceptionHandler;
-import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
+import com.societegenerale.failover.core.*;
 import com.societegenerale.failover.core.clock.DefaultFailoverClock;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
 import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExceptionPolicy;
 import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
-import com.societegenerale.failover.core.expiry.BeanFactoryExpiryPolicyLookup;
-import com.societegenerale.failover.core.expiry.BeanFactoryFailoverExpiryExtractor;
-import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
-import com.societegenerale.failover.core.expiry.ExpiryPolicy;
-import com.societegenerale.failover.core.expiry.ExpiryPolicyLookup;
-import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
-import com.societegenerale.failover.core.expiry.FailoverExpiryPolicy;
-import com.societegenerale.failover.core.key.BeanFactoryKeyGeneratorLookup;
-import com.societegenerale.failover.core.key.DefaultKeyGenerator;
-import com.societegenerale.failover.core.key.KeyGenerator;
-import com.societegenerale.failover.core.key.KeyGeneratorLookup;
-import com.societegenerale.failover.core.key.FailoverKeyGenerator;
+import com.societegenerale.failover.core.expiry.*;
+import com.societegenerale.failover.core.key.*;
 import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
-import com.societegenerale.failover.core.report.LoggerReportPublisher;
-import com.societegenerale.failover.core.report.MetricsReportPublisher;
-import com.societegenerale.failover.core.report.ReportPublisher;
-import com.societegenerale.failover.core.report.CompositeReportPublisher;
-import com.societegenerale.failover.core.report.FailoverReporter;
-import com.societegenerale.failover.core.report.DefaultFailoverReporter;
-import com.societegenerale.failover.core.report.manifest.ManifestInfoExtractor;
-import com.societegenerale.failover.core.report.manifest.CacheableManifestInfoExtractor;
-import com.societegenerale.failover.core.report.manifest.ClassPathResourceLoader;
-import com.societegenerale.failover.core.report.manifest.DefaultManifestInfoExtractor;
-import com.societegenerale.failover.core.report.manifest.ResourceLoader;
+import com.societegenerale.failover.core.report.*;
+import com.societegenerale.failover.core.report.manifest.*;
 import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
-import com.societegenerale.failover.processor.FailoverStoreBeanPostProcessor;
+import com.societegenerale.failover.processor.AsyncFailoverStoreBeanPostProcessor;
+import com.societegenerale.failover.processor.DefaultFailoverStoreBeanPostProcessor;
 import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
@@ -90,13 +67,7 @@ import java.util.List;
 @EnableConfigurationProperties(FailoverProperties.class)
 @Slf4j
 @EnableAspectJAutoProxy
-@EnableAsync
 public class FailoverAutoConfiguration {
-
-    @Bean
-    public static FailoverStoreBeanPostProcessor failoverStoreBeanPostProcessor() {
-        return new FailoverStoreBeanPostProcessor();
-    }
 
     @ConditionalOnMissingBean
     @Bean
@@ -269,6 +240,26 @@ public class FailoverAutoConfiguration {
         public MethodExceptionPolicy rethrowIfNoRecoveryMethodExceptionPolicy() {
             return new RethrowIfNoRecoveryMethodExceptionPolicy();
         }
+    }
 
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
+    static class DefaultBeanProcessorConfiguration {
+
+        @Bean
+        public static DefaultFailoverStoreBeanPostProcessor defaultFailoverStoreBeanPostProcessor() {
+            return new DefaultFailoverStoreBeanPostProcessor();
+        }
+    }
+
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true and ${failover.store.async:true} eq true")
+    @EnableAsync
+    static class AsyncBeanProcessorConfiguration {
+
+        @Bean
+        public static AsyncFailoverStoreBeanPostProcessor asyncFailoverStoreBeanPostProcessor() {
+            return new AsyncFailoverStoreBeanPostProcessor();
+        }
     }
 }
