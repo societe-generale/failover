@@ -19,6 +19,8 @@ package com.societegenerale.failover.store;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -37,9 +39,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     private final JdbcTemplate jdbcTemplate;
+
     private final FailoverStoreQueryResolver queryResolver;
 
-    private final String mergeQuery;
+    @Setter
+    @Getter
+    private String mergeQuery;
 
     /** Flipped to false at runtime if the merge SQL fails with a grammar error. */
     private final AtomicBoolean mergeEnabled;
@@ -55,7 +60,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     public void store(ReferentialPayload<T> referentialPayload) {
         if (mergeEnabled.get()) {
             try {
-                var count = jdbcTemplate.update(mergeQuery,
+                var count = jdbcTemplate.update(resolveMergeQuery(),
                         queryResolver.buildInsertMergeParams(referentialPayload),
                         queryResolver.buildInsertMergeTypes());
                 log.debug("Referential payload merged. Records affected: '{}'", count);
@@ -66,6 +71,13 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
             }
         }
         insertOrUpdate(referentialPayload);
+    }
+
+    private String resolveMergeQuery() {
+        if(mergeQuery == null) {
+            setMergeQuery(queryResolver.getMergeQuery());
+        }
+        return mergeQuery;
     }
 
     private void insertOrUpdate(ReferentialPayload<T> referentialPayload) {

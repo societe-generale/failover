@@ -23,15 +23,12 @@ import com.societegenerale.failover.store.resolver.DefaultDatabaseResolver;
 import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
 import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
 import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
+import org.junit.jupiter.api.*;
 import tools.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -176,6 +173,17 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should update stored values when storing the same key again")
         void shouldUpdateStoredValuesWhenStoringTheSameKeyAgain() {
+            failoverStoreJdbc.store(referentialPayload);
+            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
+            failoverStoreJdbc.store(updated);
+            assertThat(failoverStoreJdbc.find(NAME, KEY)).isPresent().contains(updated);
+        }
+
+
+        @Test
+        @DisplayName("should update stored values when storing the same key again when merge query reset to null")
+        void shouldUpdateStoredValuesWhenStoringTheSameKeyAgainWhenMergeQueryResetToNull() {
+            failoverStoreJdbc.setMergeQuery(null);
             failoverStoreJdbc.store(referentialPayload);
             var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
             failoverStoreJdbc.store(updated);
@@ -555,10 +563,20 @@ class FailoverStoreJdbcTest {
     @DisplayName("BadSqlGrammarException — FailoverStoreQueryResolver spy returns invalid merge SQL")
     class BadSqlGrammarFromQueryResolverSpyScenarios {
 
+        @BeforeEach
+        void setUp() {
+            failoverStoreJdbc.setMergeQuery("THIS IS NOT VALID SQL !! @#$");
+        }
+
+        @AfterEach
+        void tearDown() {
+            failoverStoreJdbc.setMergeQuery(null);
+        }
+
         @Test
         @DisplayName("store() completes and record is findable when spy returns invalid merge SQL (real H2 throws BadSqlGrammarException → INSERT fallback)")
         void storeCompletesViaInsertFallbackWhenMergeSqlIsInvalid() {
-            Mockito.when(failoverStoreQueryResolver.getMergeQuery()).thenReturn("THIS IS NOT VALID SQL !! @#$");
+            failoverStoreJdbc.setMergeQuery("THIS IS NOT VALID SQL !! @#$");
 
             failoverStoreJdbc.store(referentialPayload);
 
