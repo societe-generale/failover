@@ -27,12 +27,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 /// @author Anand Manissery
 class ReferentialTest {
 
-    @DisplayName("should have default referential values while instantiating when not set explicitly")
     @Test
+    @DisplayName("should have default referential values while instantiating when not set explicitly")
     void shouldHaveDefaultReferentialValueWhenNotProvided() {
         var thirdParty = new ThirdParty(1L, "TATA", 5);
         assertThat(thirdParty.getUpToDate()).isNull();
         assertThat(thirdParty.getAsOf()).isNull();
+        assertThat(thirdParty.getMetadata()).isNotNull();
+        assertThat(thirdParty.getMetadata().getInfo()).isEmpty();
     }
 
     @Data

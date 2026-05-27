@@ -16,15 +16,18 @@
 
 package com.societegenerale.failover.properties;
 
-
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
+import org.springframework.util.StringUtils;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static com.societegenerale.failover.properties.ExceptionPolicy.RETHROW;
 import static com.societegenerale.failover.properties.FailoverType.BASIC;
 
 /**
@@ -32,8 +35,9 @@ import static com.societegenerale.failover.properties.FailoverType.BASIC;
  */
 @Getter
 @Setter
+@Validated
 @ConfigurationProperties(prefix = "failover")
-public class FailoverProperties {
+public class FailoverProperties implements InitializingBean {
     /**
      * Whether to enable or disable the failover feature.
      * Default value is 'true'.
@@ -53,6 +57,12 @@ public class FailoverProperties {
      */
     private FailoverType type = BASIC;
 
+    /**
+     * Type of ExceptionPolicy to be specified. Default to 'RET̈̈HROW'
+     * Available options : RET̈̈HROW, NEVER_THROW, CUSTOM
+     */
+    private ExceptionPolicy exceptionPolicy = RETHROW;
+
     @NestedConfigurationProperty()
     private Store store = new Store();
 
@@ -69,5 +79,18 @@ public class FailoverProperties {
         info.put("scheduler.report-cron", scheduler.getReportCron());
         info.put("scheduler.cleanup-cron", scheduler.getCleanupCron());
         return info;
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        validate();
+    }
+
+    public void validate() {
+        if (enabled && !StringUtils.hasText(packageToScan)) {
+            throw new IllegalStateException(
+                    "failover.package-to-scan must not be blank when failover is enabled. " +
+                    "Set it to the base package of your application (e.g. failover.package-to-scan=com.example.app).");
+        }
     }
 }

@@ -49,7 +49,7 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
-        var referentialPayload = payloadEnricher.enrich(failover, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
+        var referentialPayload = payloadEnricher.enrichOnStore(failover, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);
         log.info("Failover : Storing information on '{}' for failover. ReferentialPayload : {{}}", failover.name(), referentialPayload);
         return referentialPayload.getPayload();
@@ -57,21 +57,21 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
-        log.debug("Failover Recovery : Recovering information on '{}' from failover store due to exception : ", failover.name(), cause);
         log.info("Failover Recovery : Recovering information on '{}' from failover store due to exception {}", failover.name(), cause.getMessage());
+        log.debug("Failover Recovery : Recovering information on '{}' from failover store", failover.name(), cause);
         var optionalReferential = failoverStore.find(failover.name(), keyGenerator.key(failover, args));
         if(optionalReferential.isPresent()) {
             ReferentialPayload<T> referentialPayload =  optionalReferential.get();
             referentialPayload.setUpToDate(false);
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {
                 log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
-                return payloadEnricher.enrich(failover, referentialPayload).getPayload();
+                return payloadEnricher.enrichOnRecover(failover, referentialPayload, cause).getPayload();
             }
             log.info("Failover Recovery : Deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
             failoverStore.delete(referentialPayload);
         }
         log.warn("Failover Recovery : Could not recover information on '{}' from failover store, Either not found or expired for the given key!", failover.name());
-        return null;
+        return payloadEnricher.enrichOnRecover(failover, null, cause).getPayload();
     }
 
     @Override

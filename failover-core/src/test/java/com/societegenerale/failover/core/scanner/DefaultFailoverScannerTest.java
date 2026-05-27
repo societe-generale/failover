@@ -18,6 +18,7 @@ package com.societegenerale.failover.core.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
 import lombok.AllArgsConstructor;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * @author Anand Manissery
@@ -39,18 +41,44 @@ class DefaultFailoverScannerTest {
     }
 
     @Test
+    @DisplayName("should return all failover annotations")
     void shouldReturnAllFailoverAnnotations() {
         List<Failover> result = failoverScanner.findAllFailover();
         assertThat(result).hasSize(2);
     }
 
     @Test
+    @DisplayName("should return failover annotation by given name")
     void shouldReturnFailoverAnnotationByGivenName() {
         Failover result = failoverScanner.findFailoverByName("client-by-id");
         assertThat(result).isNotNull();
         assertThat(result.name()).isEqualTo("client-by-id");
         assertThat(result.expiryDuration()).isEqualTo(1);
         assertThat(result.expiryUnit()).isEqualTo(ChronoUnit.HOURS);
+    }
+
+    @Test
+    @DisplayName("should throw IllegalStateException when packageToScan is null")
+    void constructorThrowsWhenPackageToScanIsNull() {
+        assertThatThrownBy(() -> new DefaultFailoverScanner(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failover.package-to-scan must not be blank");
+    }
+
+    @Test
+    @DisplayName("should throw IllegalStateException when packageToScan is blank")
+    void constructorThrowsWhenPackageToScanIsBlank() {
+        assertThatThrownBy(() -> new DefaultFailoverScanner("   "))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failover.package-to-scan must not be blank");
+    }
+
+    @Test
+    @DisplayName("should throw IllegalStateException when packageToScan is empty string")
+    void constructorThrowsWhenPackageToScanIsEmpty() {
+        assertThatThrownBy(() -> new DefaultFailoverScanner(""))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failover.package-to-scan must not be blank");
     }
 
     interface ClientReferential {

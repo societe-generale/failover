@@ -23,6 +23,7 @@ import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import com.societegenerale.failover.core.report.AbstractReportPublisher;
 import com.societegenerale.failover.core.report.Metrics;
 import lombok.Getter;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -83,6 +84,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should store along with reporting")
     void shouldStoreAlongWithReporting() {
         advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
         verify(failoverHandler).store(failover, ARGS, PAYLOAD);
@@ -92,6 +94,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should recover along with reporting and recovered payload handler")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandler() {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
@@ -109,6 +112,7 @@ class AdvancedFailoverHandlerTest {
 
 
     @Test
+    @DisplayName("should recover along with reporting and recovered payload handler and null result")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandlerAndNullResult() {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(null);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
@@ -125,6 +129,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should recover along with reporting and recovered payload handler and with root cause")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandlerAndWithRootCause() {
         cause = new RuntimeException("Dummy-Exception");
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
@@ -142,6 +147,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should handled the exception and handle with recovered payload handler when any exception occurred on recover")
     void shouldHandledTheExceptionAndHandleWithRecoveredPayloadHandlerWhenAnyExceptionOccurredOnRecover() {
         cause = new RuntimeException("Dummy-Exception");
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Exception on recover"));
@@ -159,6 +165,17 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should return the stored payload from the delegate")
+    void shouldReturnStoredPayloadFromDelegate() {
+        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+
+        String result = advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+
+        assertThat(result).isEqualTo(PAYLOAD);
+    }
+
+    @Test
+    @DisplayName("should execute clean")
     void shouldExecuteClean() {
         advancedFailoverHandler.clean();
         verify(failoverHandler).clean();

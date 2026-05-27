@@ -18,6 +18,7 @@ package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
 import com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution;
 import com.societegenerale.failover.properties.FailoverType;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -39,8 +40,8 @@ import org.springframework.context.annotation.Bean;
 public class ResilienceFailoverExecutionAutoConfiguration {
 
     @Bean
-    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
+    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
         log.info("FailoverExecution configured to ResilienceFailoverExecution. NOTE : You should not mix more than 1 framework for failover (like Resilience Retry and Feign Retry etc). Available options are : { {} }", (Object) FailoverType.values());
-        return new ResilienceFailoverExecution<>(failoverHandler, circuitBreakerRegistry);
+        return new ResilienceFailoverExecution<>(failoverHandler, methodExceptionHandler, circuitBreakerRegistry);
     }
 }

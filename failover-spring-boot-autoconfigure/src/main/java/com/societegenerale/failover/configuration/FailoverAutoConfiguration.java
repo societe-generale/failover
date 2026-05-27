@@ -17,50 +17,32 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.aspect.FailoverAspect;
-
-import com.societegenerale.failover.core.AdvancedFailoverHandler;
-import com.societegenerale.failover.core.DefaultFailoverHandler;
-import com.societegenerale.failover.core.FailoverHandler;
-import com.societegenerale.failover.core.FailoverExecution;
-import com.societegenerale.failover.core.BasicFailoverExecution;
+import com.societegenerale.failover.core.*;
 import com.societegenerale.failover.core.clock.DefaultFailoverClock;
 import com.societegenerale.failover.core.clock.FailoverClock;
-import com.societegenerale.failover.core.expiry.BeanFactoryExpiryPolicyLookup;
-import com.societegenerale.failover.core.expiry.BeanFactoryFailoverExpiryExtractor;
-import com.societegenerale.failover.core.expiry.DefaultExpiryPolicy;
-import com.societegenerale.failover.core.expiry.ExpiryPolicy;
-import com.societegenerale.failover.core.expiry.ExpiryPolicyLookup;
-import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
-import com.societegenerale.failover.core.expiry.FailoverExpiryPolicy;
-import com.societegenerale.failover.core.key.BeanFactoryKeyGeneratorLookup;
-import com.societegenerale.failover.core.key.DefaultKeyGenerator;
-import com.societegenerale.failover.core.key.KeyGenerator;
-import com.societegenerale.failover.core.key.KeyGeneratorLookup;
-import com.societegenerale.failover.core.key.FailoverKeyGenerator;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
+import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExceptionPolicy;
+import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
+import com.societegenerale.failover.core.expiry.*;
+import com.societegenerale.failover.core.key.*;
 import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
-import com.societegenerale.failover.core.report.LoggerReportPublisher;
-import com.societegenerale.failover.core.report.MetricsReportPublisher;
-import com.societegenerale.failover.core.report.ReportPublisher;
-import com.societegenerale.failover.core.report.CompositeReportPublisher;
-import com.societegenerale.failover.core.report.FailoverReporter;
-import com.societegenerale.failover.core.report.DefaultFailoverReporter;
-import com.societegenerale.failover.core.report.manifest.ManifestInfoExtractor;
-import com.societegenerale.failover.core.report.manifest.CacheableManifestInfoExtractor;
-import com.societegenerale.failover.core.report.manifest.ClassPathResourceLoader;
-import com.societegenerale.failover.core.report.manifest.DefaultManifestInfoExtractor;
-import com.societegenerale.failover.core.report.manifest.ResourceLoader;
+import com.societegenerale.failover.core.report.*;
+import com.societegenerale.failover.core.report.manifest.*;
 import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.processor.AsyncFailoverStoreBeanPostProcessor;
+import com.societegenerale.failover.processor.DefaultFailoverStoreBeanPostProcessor;
+import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
 import com.societegenerale.failover.properties.StoreType;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ReportScheduler;
-import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -70,6 +52,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -84,8 +67,6 @@ import java.util.List;
 @EnableConfigurationProperties(FailoverProperties.class)
 @Slf4j
 @EnableAspectJAutoProxy
-@EnableAsync
-@EnableScheduling
 public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
@@ -175,7 +156,7 @@ public class FailoverAutoConfiguration {
     @Bean
     public FailoverStore<Object> failoverStoreInmemory() {
         log.warn("FailoverStore configured to FailoverStoreInmemory. We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", (Object) StoreType.values());
-        return new FailoverStoreAsync<>(new FailoverStoreInmemory<>());
+        return new FailoverStoreInmemory<>();
     }
 
     @ConditionalOnMissingBean
@@ -184,12 +165,18 @@ public class FailoverAutoConfiguration {
         return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
     }
 
+    @ConditionalOnMissingBean
+    @Bean
+    public MethodExceptionHandler methodExceptionHandler(MethodExceptionPolicy  methodExceptionPolicy) {
+        return new MethodExceptionHandler(methodExceptionPolicy);
+    }
+
     @ConditionalOnProperty(prefix = "failover", name = "type", havingValue = "basic", matchIfMissing = true)
     @ConditionalOnMissingBean
     @Bean
-    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler) {
+    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler) {
         log.info("FailoverExecution configured to BasicFailoverExecution. Available options are :  {{}}", (Object) FailoverType.values());
-        return new BasicFailoverExecution<>(failoverHandler);
+        return new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler);
     }
 
     @ConditionalOnProperty(prefix = "failover", name = "aspect.enabled", havingValue = "true", matchIfMissing = true)
@@ -216,17 +203,63 @@ public class FailoverAutoConfiguration {
         return new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, failoverExpiryExtractor, failoverProperties.additionalInfo());
     }
 
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
     @ConditionalOnProperty(prefix = "failover", name = "scheduler.enabled", havingValue = "true", matchIfMissing = true)
-    @ConditionalOnMissingBean
-    @Bean
-    public ReportScheduler reportScheduler(FailoverReporter failoverReporter) {
-        return new ReportScheduler(failoverReporter);
+    @EnableScheduling
+    static class FailoverSchedulingConfiguration {
+        @ConditionalOnMissingBean
+        @Bean
+        public ReportScheduler reportScheduler(FailoverReporter failoverReporter) {
+            return new ReportScheduler(failoverReporter);
+        }
+
+        @ConditionalOnMissingBean
+        @Bean
+        public ExpiryCleanupScheduler<Object> expiryCleanupScheduler(FailoverHandler<Object> failoverHandler) {
+            return new ExpiryCleanupScheduler<>(failoverHandler);
+        }
     }
 
-    @ConditionalOnProperty(prefix = "failover", name = "scheduler.enabled", havingValue = "true", matchIfMissing = true)
-    @ConditionalOnMissingBean
-    @Bean
-    public ExpiryCleanupScheduler<Object> expiryCleanupScheduler(FailoverHandler<Object> failoverHandler) {
-        return new ExpiryCleanupScheduler<>(failoverHandler);
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
+    @EnableScheduling
+    static class ExceptionPolicyConfiguration {
+
+        @ConditionalOnProperty(prefix = "failover", name = "exception-policy", havingValue = "never_throw")
+        @ConditionalOnMissingBean
+        @Bean
+        public MethodExceptionPolicy neverRethrowMethodExceptionPolicy() {
+            log.warn("MethodExceptionPolicy configured to NeverRethrowMethodExceptionPolicy. Available options are : {{}}", (Object) ExceptionPolicy.values());
+            return new NeverRethrowMethodExceptionPolicy();
+        }
+
+        @ConditionalOnMissingBean
+        @ConditionalOnProperty(prefix = "failover", name = "exception-policy", havingValue = "rethrow", matchIfMissing = true)
+        @Bean
+        public MethodExceptionPolicy rethrowIfNoRecoveryMethodExceptionPolicy() {
+            return new RethrowIfNoRecoveryMethodExceptionPolicy();
+        }
+    }
+
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
+    static class DefaultBeanProcessorConfiguration {
+
+        @Bean
+        public static DefaultFailoverStoreBeanPostProcessor defaultFailoverStoreBeanPostProcessor() {
+            return new DefaultFailoverStoreBeanPostProcessor();
+        }
+    }
+
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true and ${failover.store.async:true} eq true")
+    @EnableAsync
+    static class AsyncBeanProcessorConfiguration {
+
+        @Bean
+        public static AsyncFailoverStoreBeanPostProcessor asyncFailoverStoreBeanPostProcessor() {
+            return new AsyncFailoverStoreBeanPostProcessor();
+        }
     }
 }

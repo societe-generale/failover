@@ -18,6 +18,7 @@ package com.societegenerale.failover.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,24 +49,28 @@ class FailoverStoreAsyncTest {
     }
 
     @Test
+    @DisplayName("should call store")
     void shouldCallStore() {
         failoverStoreAsync.store(referentialPayload);
         verify(failoverStore).store(referentialPayload);
     }
 
     @Test
+    @DisplayName("should call delete")
     void shouldCallDelete() {
         failoverStoreAsync.delete(referentialPayload);
         verify(failoverStore).delete(referentialPayload);
     }
 
     @Test
+    @DisplayName("should call find")
     void shouldCallFind() {
         failoverStoreAsync.find("name", "key");
         verify(failoverStore).find("name", "key");
     }
 
     @Test
+    @DisplayName("should call clean by expiry")
     void shouldCallCleanByExpiry() {
         LocalDateTime now = LocalDateTime.now();
         failoverStoreAsync.cleanByExpiry(now);

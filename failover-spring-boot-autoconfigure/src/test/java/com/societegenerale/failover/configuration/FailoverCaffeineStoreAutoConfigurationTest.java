@@ -17,6 +17,7 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.MyTestApplication;
+import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreCaffeine;
@@ -30,6 +31,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.TestPropertySource;
 
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBasicBean;
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -55,9 +58,28 @@ class FailoverCaffeineStoreAutoConfigurationTest {
     @DisplayName("should load caffeine failover store bean")
     void shouldLoadCaffeineFailoverStoreBean() throws Exception {
         assertThat(failoverStore).isNotNull();
-        if(AopUtils.isAopProxy(failoverStore) && failoverStore instanceof Advised advised) {
-            Object target = advised.getTargetSource().getTarget();
-            assertThat(((FailoverStoreAsync)target).getFailoverStore()).isInstanceOf(FailoverStoreCaffeine.class);
-        }
+        Object target = AopUtils.isAopProxy(failoverStore)
+                ? ((Advised) failoverStore).getTargetSource().getTarget()
+                : failoverStore;
+        FailoverStoreAsync<Object> async = cast(target);
+        assertThat(async).isNotNull();
+        FailoverStore<Object> inner = requireNonNull(async.getFailoverStore());
+        assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
+        assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isInstanceOf(FailoverStoreCaffeine.class);
+    }
+
+    @Test
+    @DisplayName("should wrap async and default stores with the given failover store caffeine")
+    @SuppressWarnings("unchecked")
+    void shouldWrapAsyncAndDefaultStoresWithTheGivenFailoverStoreCaffeine() throws Exception {
+        Object target = AopUtils.isAopProxy(failoverStore)
+                ? ((Advised) failoverStore).getTargetSource().getTarget()
+                : failoverStore;
+        assertThat(target).isNotNull();
+        assertThat(target).isInstanceOf(FailoverStoreAsync.class);
+        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) target).getFailoverStore());
+        assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
+        FailoverStore<Object> innermost = requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore());
+        assertThat(innermost).isInstanceOf(FailoverStoreCaffeine.class);
     }
 }

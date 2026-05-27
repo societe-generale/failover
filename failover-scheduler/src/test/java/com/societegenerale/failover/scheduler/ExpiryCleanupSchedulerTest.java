@@ -17,6 +17,7 @@
 package com.societegenerale.failover.scheduler;
 
 import com.societegenerale.failover.core.FailoverHandler;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,6 +44,7 @@ class ExpiryCleanupSchedulerTest {
     private FailoverHandler<Object> failoverHandler;
 
     @Test
+    @DisplayName("should clean up on a given interval")
     void shouldCleanUpOnAGivenInterval() {
         await().atMost(3, TimeUnit.SECONDS)
                .untilAsserted(() -> verify(failoverHandler, atLeast(2)).clean());

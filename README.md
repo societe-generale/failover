@@ -126,6 +126,222 @@ failover:
 
 ---
 
+## Architecture
+
+### Module Structure
+
+```mermaid
+graph TD
+    domain["<b>failover-domain</b><br/>Referential · Metadata · ReferentialAware"]
+    core["<b>failover-core</b><br/>FailoverExecution · FailoverHandler<br/>FailoverStore · ExpiryPolicy<br/>KeyGenerator · PayloadEnricher<br/>MethodExceptionPolicy · ReportPublisher"]
+    aspect["<b>failover-aspect</b><br/>FailoverAspect (@Around)"]
+    lookup["<b>failover-lookup</b><br/>BeanFactory-based lookups<br/>for KeyGenerator & ExpiryPolicy"]
+    scheduler["<b>failover-scheduler</b><br/>ExpiryCleanupScheduler<br/>ReportScheduler"]
+    inmemory["<b>failover-store-inmemory</b><br/>FailoverStoreInmemory<br/>(dev / test only)"]
+    caffeine["<b>failover-store-caffeine</b><br/>FailoverStoreCaffeine<br/>(small-scale cache)"]
+    jdbc["<b>failover-store-jdbc</b><br/>FailoverStoreJdbc<br/>(recommended for production)"]
+    async["<b>failover-store-async</b><br/>FailoverStoreAsync<br/>(non-blocking write decorator)"]
+    resilience["<b>failover-execution-resilience</b><br/>ResilienceFailoverExecution<br/>(CircuitBreaker integration)"]
+    autoconfigure["<b>failover-spring-boot-autoconfigure</b><br/>FailoverAutoConfiguration<br/>Conditional bean wiring"]
+    starter["<b>failover-spring-boot-starter</b><br/>Convenience starter POM"]
+
+    domain --> core
+    core --> aspect
+    core --> lookup
+    core --> scheduler
+    core --> inmemory
+    core --> caffeine
+    core --> jdbc
+    core --> async
+    core --> resilience
+    aspect --> autoconfigure
+    lookup --> autoconfigure
+    scheduler --> autoconfigure
+    inmemory --> autoconfigure
+    caffeine --> autoconfigure
+    jdbc --> autoconfigure
+    async --> autoconfigure
+    resilience --> autoconfigure
+    autoconfigure --> starter
+```
+
+---
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant FA as FailoverAspect
+    participant FE as FailoverExecution<br/>(Basic / Resilience)
+    participant FH as AdvancedFailoverHandler
+    participant DH as DefaultFailoverHandler
+    participant FS as FailoverStore<br/>(Inmemory / Caffeine / JDBC)
+    participant EP as ExpiryPolicy
+    participant PE as PayloadEnricher
+    participant RP as ReportPublisher
+    participant MP as MethodExceptionPolicy
+
+    C->>FA: call @Failover method
+    FA->>FE: execute(failover, supplier, method, args)
+
+    alt Primary call succeeds
+        FE->>FE: supplier.get() ✓
+        FE->>FH: store(failover, args, result)
+        FH->>DH: store(...)
+        DH->>EP: computeExpiry(failover)
+        DH->>PE: enrichOnStore(failover, payload)
+        DH->>FS: store(ReferentialPayload)
+        FH->>RP: publish(store metrics)
+        FE-->>FA: return result
+        FA-->>C: return result
+    else Primary call throws
+        FE->>FE: supplier.get() ✗
+        FE->>FH: recover(failover, args, type, cause)
+        FH->>DH: recover(...)
+        DH->>FS: find(name, key)
+        alt Payload found & not expired
+            DH->>EP: isExpired(failover, payload) → false
+            DH->>PE: enrichOnRecover(failover, payload, cause)
+            DH-->>FH: return recovered payload
+        else Payload expired
+            DH->>EP: isExpired(...) → true
+            DH->>FS: delete(payload)
+            DH-->>FH: return null
+        else Payload not found
+            DH-->>FH: return null
+        end
+        FH->>RP: publish(recover metrics)
+        FH->>FE: recovered result (or null)
+        FE->>MP: handle(MethodExceptionContext)
+        alt NeverRethrowPolicy
+            MP-->>FA: return recovered or null
+        else RethrowIfNoRecoveryPolicy
+            alt recovered != null
+                MP-->>FA: return recovered
+            else recovered == null
+                MP--xFA: rethrow original exception
+            end
+        end
+        FA-->>C: result / null / exception
+    end
+```
+
+---
+
+### Key Abstractions & Extension Points
+
+```mermaid
+classDiagram
+    direction TB
+
+    class FailoverExecution {
+        <<interface>>
+        +execute(failover, supplier, method, args) T
+        +decorateSupplier(failover, supplier, args) Supplier~T~
+    }
+    class BasicFailoverExecution {
+        store on success
+        recover + policy on exception
+    }
+    class ResilienceFailoverExecution {
+        wraps supplier with CircuitBreaker
+    }
+    FailoverExecution <|.. BasicFailoverExecution
+    FailoverExecution <|.. ResilienceFailoverExecution
+
+    class FailoverHandler {
+        <<interface>>
+        +store(failover, args, payload) T
+        +recover(failover, args, type, cause) T
+        +clean()
+    }
+    class DefaultFailoverHandler {
+        KeyGenerator · ExpiryPolicy
+        FailoverStore · PayloadEnricher
+    }
+    class AdvancedFailoverHandler {
+        decorates DefaultFailoverHandler
+        adds reporting + RecoveredPayloadHandler
+    }
+    FailoverHandler <|.. DefaultFailoverHandler
+    FailoverHandler <|.. AdvancedFailoverHandler
+
+    class FailoverStore {
+        <<interface>>
+        +store(ReferentialPayload)
+        +find(name, key) Optional
+        +delete(ReferentialPayload)
+        +cleanByExpiry(now)
+    }
+    FailoverStore <|.. FailoverStoreInmemory
+    FailoverStore <|.. FailoverStoreCaffeine
+    FailoverStore <|.. FailoverStoreJdbc
+    FailoverStore <|.. FailoverStoreAsync
+
+    class MethodExceptionPolicy {
+        <<interface>>
+        +handle(MethodExceptionContext) T
+    }
+    class NeverRethrowMethodExceptionPolicy {
+        return recovered or null, never throw
+    }
+    class RethrowIfNoRecoveryMethodExceptionPolicy {
+        return recovered if present
+        else rethrow original cause
+    }
+    MethodExceptionPolicy <|.. NeverRethrowMethodExceptionPolicy
+    MethodExceptionPolicy <|.. RethrowIfNoRecoveryMethodExceptionPolicy
+
+    class ExpiryPolicy {
+        <<interface>>
+        +computeExpiry(failover) LocalDateTime
+        +isExpired(failover, payload) boolean
+    }
+
+    class KeyGenerator {
+        <<interface>>
+        +key(failover, args) String
+    }
+
+    class PayloadEnricher {
+        <<interface>>
+        +enrichOnStore(failover, payload)
+        +enrichOnRecover(failover, payload, cause)
+    }
+
+    class ReportPublisher {
+        <<interface>>
+        +publish(Metrics)
+    }
+    class CompositeReportPublisher {
+        delegates to LoggerReportPublisher
+        and MetricsReportPublisher
+    }
+    ReportPublisher <|.. CompositeReportPublisher
+```
+
+---
+
+### Store Options
+
+| Store | Module | Use Case |
+|---|---|---|
+| `FailoverStoreInmemory` | `failover-store-inmemory` | Development & testing only |
+| `FailoverStoreCaffeine` | `failover-store-caffeine` | Small-scale, single-node with cache TTL |
+| `FailoverStoreJdbc` | `failover-store-jdbc` | Production — any SQL database |
+| `FailoverStoreAsync` | `failover-store-async` | Decorator — non-blocking writes around any store |
+
+### Exception Policies
+
+| Policy | Behaviour |
+|---|---|
+| `RethrowIfNoRecoveryMethodExceptionPolicy` *(default)* | Serves stale data when available; rethrows original exception when recovery returns null |
+| `NeverRethrowMethodExceptionPolicy` | Always returns recovered data or null, never propagates the exception |
+| Custom bean | Implement `MethodExceptionPolicy` and register as a Spring bean |
+
+---
+
 ## Code Owners
 - [Anand MANISSERY](https://github.com/anandmnair)
 

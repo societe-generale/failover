@@ -35,4 +35,7 @@ public abstract class Referential implements Serializable {
 
     /// 'AsOf' [LocalDateTime] which mention the captured time of a given referential value.     *
     private LocalDateTime asOf;
+
+    /// 'metadata' to hold the additional metadata.
+    private Metadata metadata = new Metadata();
 }

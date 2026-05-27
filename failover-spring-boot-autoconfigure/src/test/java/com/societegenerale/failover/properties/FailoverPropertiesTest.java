@@ -21,7 +21,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static com.societegenerale.failover.properties.ExceptionPolicy.RETHROW;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * @author Anand Manissery
@@ -65,5 +66,62 @@ class FailoverPropertiesTest {
         assertThat(result).containsEntry("scheduler.enabled", "true")
                 .containsEntry("scheduler.report-cron", "0 0 0 * * *")
                 .containsEntry("scheduler.cleanup-cron", "0 0 * * * *");
+    }
+
+    @Test
+    @DisplayName("should have RET̈̈HROW as default exception policy")
+    void shouldHaveRethrowAsDefaultExceptionPolicy() {
+        assertThat(failoverProperties.getExceptionPolicy()).isEqualTo(RETHROW);
+    }
+
+    @Test
+    @DisplayName("should throw when enabled and packageToScan is null")
+    void validateThrowsWhenEnabledAndPackageToScanIsNull() {
+        failoverProperties.setEnabled(true);
+        failoverProperties.setPackageToScan(null);
+
+        assertThatThrownBy(failoverProperties::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failover.package-to-scan");
+    }
+
+    @Test
+    @DisplayName("should throw when enabled and packageToScan is blank")
+    void validateThrowsWhenEnabledAndPackageToScanIsBlank() {
+        failoverProperties.setEnabled(true);
+        failoverProperties.setPackageToScan("   ");
+
+        assertThatThrownBy(failoverProperties::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failover.package-to-scan");
+    }
+
+    @Test
+    @DisplayName("should throw when enabled and packageToScan is empty string")
+    void validateThrowsWhenEnabledAndPackageToScanIsEmpty() {
+        failoverProperties.setEnabled(true);
+        failoverProperties.setPackageToScan("");
+
+        assertThatThrownBy(failoverProperties::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failover.package-to-scan");
+    }
+
+    @Test
+    @DisplayName("should not throw when enabled and packageToScan is set")
+    void validatePassesWhenEnabledAndPackageToScanIsSet() {
+        failoverProperties.setEnabled(true);
+        failoverProperties.setPackageToScan("com.example");
+
+        assertThatNoException().isThrownBy(failoverProperties::validate);
+    }
+
+    @Test
+    @DisplayName("should not throw when disabled even if packageToScan is blank")
+    void validatePassesWhenDisabledRegardlessOfPackageToScan() {
+        failoverProperties.setEnabled(false);
+        failoverProperties.setPackageToScan(null);
+
+        assertThatNoException().isThrownBy(failoverProperties::validate);
     }
 }

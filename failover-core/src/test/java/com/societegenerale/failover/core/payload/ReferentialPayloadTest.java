@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.payload;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -30,12 +31,14 @@ class ReferentialPayloadTest {
     private final ReferentialPayload<String> referentialPayload = new ReferentialPayload<>("NAME", "KEY", true, NOW, NOW, "PAYLOAD");
 
     @Test
+    @DisplayName("should not contain key details in to string")
     void shouldNotContainKeyDetailsInToString() {
         String toString  = referentialPayload.toString();
         assertThat(toString).doesNotContain("KEY");
     }
 
     @Test
+    @DisplayName("should have default constructor for jackson parsing")
     void shouldHaveDefaultConstructorForJacksonParsing() {
         var localReferentialPayload = new ReferentialPayload<String>();
         localReferentialPayload.setName("NAME");

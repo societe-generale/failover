@@ -1,6 +1,7 @@
 package com.societegenerale.failover.core.expiry;
 
 import com.societegenerale.failover.annotations.Failover;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -20,6 +21,7 @@ class AbstractFailoverExpiryExtractorTest {
     private final AbstractFailoverExpiryExtractor failoverExpiryExtractor = new BasicFailoverExpiryExtractor();
 
     @Test
+    @DisplayName("should return expiry duration when expiry duration expression is empty")
     void shouldReturnExpiryDurationWhenExpiryDurationExpressionIsEmpty() {
         given(failover.expiryDurationExpression()).willReturn("");
         given(failover.expiryDuration()).willReturn(1L);
@@ -28,6 +30,7 @@ class AbstractFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should return expiry duration when expiry duration expression is blank")
     void shouldReturnExpiryDurationWhenExpiryDurationExpressionIsBlank() {
         given(failover.expiryDurationExpression()).willReturn("  ");
         given(failover.expiryDuration()).willReturn(1L);
@@ -36,6 +39,7 @@ class AbstractFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should return expiry duration from expression when expiry duration expression is not blank")
     void shouldReturnExpiryDurationFromExpressionWhenExpiryDurationExpressionIsNotBlank() {
         given(failover.expiryDurationExpression()).willReturn("10");
         var result = failoverExpiryExtractor.expiryDuration(failover);
@@ -43,6 +47,7 @@ class AbstractFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should return expiry unit when expiry unit expression is empty")
     void shouldReturnExpiryUnitWhenExpiryUnitExpressionIsEmpty() {
         given(failover.expiryUnitExpression()).willReturn("");
         given(failover.expiryUnit()).willReturn(HOURS);
@@ -51,6 +56,7 @@ class AbstractFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should return expiry unit when expiry unit expression is blank")
     void shouldReturnExpiryUnitWhenExpiryUnitExpressionIsBlank() {
         given(failover.expiryUnitExpression()).willReturn("  ");
         given(failover.expiryUnit()).willReturn(HOURS);
@@ -59,6 +65,7 @@ class AbstractFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should return expiry unit from expression when expiry unit expression is not blank")
     void shouldReturnExpiryUnitFromExpressionWhenExpiryUnitExpressionIsNotBlank() {
         given(failover.expiryUnitExpression()).willReturn("DAYS");
         var result = failoverExpiryExtractor.expiryUnit(failover);
@@ -66,6 +73,7 @@ class AbstractFailoverExpiryExtractorTest {
     }
 
     @Test
+    @DisplayName("should return expiry unit from expression when expiry unit expression is in lower case")
     void shouldReturnExpiryUnitFromExpressionWhenExpiryUnitExpressionIsInLowerCase() {
         given(failover.expiryUnitExpression()).willReturn("days");
         var result = failoverExpiryExtractor.expiryUnit(failover);

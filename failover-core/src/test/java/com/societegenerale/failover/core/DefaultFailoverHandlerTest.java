@@ -83,8 +83,8 @@ class DefaultFailoverHandlerTest {
         defaultFailoverHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
     }
 
-    @DisplayName("should store the referential payload")
     @Test
+    @DisplayName("should store the referential payload")
     void shouldStoreTheReferential() {
         var thirdParty = new ThirdParty(1L, "Tata", 1);
         var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", true, now, now, thirdParty);
@@ -99,8 +99,8 @@ class DefaultFailoverHandlerTest {
         verify(failoverStore).store(referentialPayload);
     }
 
-    @DisplayName("should recover the referential payload when not expired")
     @Test
+    @DisplayName("should recover the referential payload when not expired")
     void shouldRecoverTheReferentialWhenNotExpired() {
         var thirdParty = new ThirdParty(1L, "Tata", 1);
         var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
@@ -117,8 +117,8 @@ class DefaultFailoverHandlerTest {
         verify(expiryPolicy).isExpired(failover, referentialPayload);
     }
 
-    @DisplayName("should return null when no referential payload found for the given name and key")
     @Test
+    @DisplayName("should return null when no referential payload found for the given name and key")
     void shouldReturnNullWhenReferentialIsNotFound() {
         given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(Optional.empty());
 
@@ -130,8 +130,8 @@ class DefaultFailoverHandlerTest {
         verify(expiryPolicy, never()).isExpired(any(), any());
     }
 
-    @DisplayName("should return null when referential payload is expired")
     @Test
+    @DisplayName("should return null when referential payload is expired")
     void shouldReturnNullWhenReferentialIsExpired() {
         var thirdParty = new ThirdParty(1L, "Tata", 1);
         var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
@@ -147,6 +147,23 @@ class DefaultFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should enrich metadata on Referential payload with exception info when recovering")
+    void shouldEnrichMetadataOnReferentialPayloadWithExceptionInfoWhenRecovering() {
+        var cause = new RuntimeException("upstream-failure");
+        var thirdParty = new ThirdParty(1L, "Tata", 1);
+        var referentialPayload = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, thirdParty);
+        given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(of(referentialPayload));
+
+        ThirdParty result = defaultFailoverHandler.recover(failover, List.of(1L), ThirdParty.class, cause);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getMetadata().getInfo())
+                .containsEntry("exception-name", RuntimeException.class.getName())
+                .containsEntry("cause", "upstream-failure");
+    }
+
+    @Test
+    @DisplayName("should execute clean")
     void shouldExecuteClean() {
         given(clock.now()).willReturn(now);
         defaultFailoverHandler.clean();

@@ -22,7 +22,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
-import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreJdbc;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,5 +55,6 @@ public class FailoverJdbcStoreAutoConfiguration {
     @ConditionalOnMissingBean
     public PayloadColumnHandler payloadColumnHandler() {
         return new VarcharPayloadColumnHandler();
+        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper);
     }
 }

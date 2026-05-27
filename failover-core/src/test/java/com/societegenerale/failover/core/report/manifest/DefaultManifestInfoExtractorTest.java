@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.report.manifest;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -39,18 +40,21 @@ class DefaultManifestInfoExtractorTest {
     }
 
     @Test
+    @DisplayName("should return the manifest info")
     void shouldReturnTheManifestInfo() {
         var result = manifestInfoExtractor.extract("slf4j-api");
         assertThat(result).containsEntry("lib-metadata-title", "slf4j-api").containsEntry("lib-metadata-version", "2.0.17");
     }
 
     @Test
+    @DisplayName("should return empty map when no match found")
     void shouldReturnEmptyMapWhenNoMatchFound() {
         var result = manifestInfoExtractor.extract("some-jar-name");
         assertThat(result).isEmpty();
     }
 
     @Test
+    @DisplayName("should return empty map when fail to read manifest")
     void shouldReturnEmptyMapWhenFailToReadManifest() throws IOException {
         ResourceLoader resourceLoader = mock(ResourceLoader.class);
         when(resourceLoader.getResourcesUrls(anyString())).thenThrow(IOException.class);

@@ -264,3 +264,153 @@ Provide an option to customize the key generator for a specific failover
 #### Consequences
 * If the custom key generator (name) is missing, an exception may occur.
 ___
+
+## 10. DefaultFailoverStore — Defensive Copy for Immutability
+
+**Date : 25-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+`FailoverStore` implementations hold `ReferentialPayload` instances in memory (ConcurrentHashMap, Caffeine cache).
+If the same object reference is shared between the store and the caller, mutations on either side corrupt the stored state silently.
+Additionally, data recovered from the failover store must always be distinguishable from a live response — a recovered payload must never appear as `upToDate=true`.
+
+#### Decision
+Introduce `DefaultFailoverStore<T>` as a mandatory decorator around every concrete `FailoverStore`.
+
+* **Before storing (`store`, `delete`)**: call `referentialPayload.copy().withUpToDate(false)` to write a defensive copy with `upToDate` forced to `false`. The caller retains their original object; the store holds its own independent copy.
+* **Before returning (`find`)**: map the result through `copy().withUpToDate(false)` so the caller receives a fresh copy that cannot be used to mutate internal store state, and `upToDate` is always `false` for recovered data.
+* **`copy()` contract** on `ReferentialPayload`: shallow copy of all fields. Payload reference is shared, but field-level mutations (name, key, upToDate, asOf, expireOn) on either side are isolated.
+* `cleanByExpiry` delegates directly — no payload is produced, so no copy is needed.
+
+```
+store(payload)   →  delegate.store( payload.copy().withUpToDate(false) )
+delete(payload)  →  delegate.delete( payload.copy().withUpToDate(false) )
+find(name, key)  →  delegate.find(name, key).map( r -> r.copy().withUpToDate(false) )
+cleanByExpiry    →  delegate.cleanByExpiry(expiry)   // passthrough
+```
+
+#### Consequences
+* Every store/find operation allocates one extra `ReferentialPayload` object — negligible overhead.
+* `upToDate` is always `false` for data served from the failover store, regardless of what was stored. Callers can rely on this invariant unconditionally.
+* Mutating the payload object received from `find()` has no effect on the store.
+* `DefaultFailoverStore` is automatically applied to all `FailoverStore` beans via `FailoverStoreBeanPostProcessor` (see ADR 11) — no manual wiring required.
+___
+
+## 11. FailoverStoreBeanPostProcessor — Uniform Store Wrapping via BeanPostProcessor
+
+**Date : 25-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+Every `FailoverStore` bean — whether auto-configured (INMEMORY, CAFFEINE, JDBC) or user-provided (CUSTOM) — must be consistently wrapped with:
+1. `DefaultFailoverStore` — enforces `upToDate=false` and defensive copy (see ADR 10).
+2. `FailoverStoreAsync` — makes `store`, `delete`, and `cleanByExpiry` asynchronous via Spring `@Async`.
+
+Previously, each auto-configuration class manually constructed the wrapping chain, leading to duplication and risk of inconsistency for custom stores. User-defined `FailoverStore` beans received no wrapping at all.
+
+#### Decision
+Implement `FailoverStoreBeanPostProcessor implements BeanPostProcessor` and register it as a `static @Bean` in `FailoverAutoConfiguration`.
+
+**Wrapping rule** applied in `postProcessBeforeInitialization`:
+```
+if bean is FailoverStore
+   AND NOT already FailoverStoreAsync
+   AND NOT already DefaultFailoverStore
+→ return new FailoverStoreAsync<>(new DefaultFailoverStore<>(bean))
+otherwise
+→ return bean unchanged
+```
+
+The guard prevents double-wrapping when the BPP encounters beans that are already part of the chain.
+
+All auto-configuration `@Bean` methods (INMEMORY, CAFFEINE, JDBC) return the raw concrete store only. The BPP applies the wrapping uniformly for all.
+
+**Why `postProcessBeforeInitialization` and not `postProcessAfterInitialization`:**
+
+Spring's bean lifecycle runs in this order:
+```
+1. Bean instantiated
+2. Dependencies injected
+3. postProcessBeforeInitialization   ← BPP fires here, returns FailoverStoreAsync wrapper
+4. @PostConstruct / afterPropertiesSet
+5. postProcessAfterInitialization    ← Spring AOP (AsyncAnnotationBeanPostProcessor) runs here
+6. Bean ready
+```
+
+By returning `FailoverStoreAsync` in step 3, Spring's `AsyncAnnotationBeanPostProcessor` (step 5) sees the wrapper as the bean and creates an AOP proxy around it, enabling `@Async` on its methods.
+If wrapping happened in step 5 (`postProcessAfterInitialization`), the returned `FailoverStoreAsync` would be registered after AOP infrastructure has already run, and `@Async` would be silently skipped — `store`, `delete`, and `cleanByExpiry` would execute synchronously.
+
+**Why `static @Bean`:**
+`BeanPostProcessor` beans are instantiated very early in the Spring context lifecycle, before regular `@Configuration` class instances are created. Declaring the bean `static` avoids eager instantiation of the `@Configuration` class and prevents proxy-related issues.
+
+#### Consequences
+* All `FailoverStore` beans — auto-configured or user-defined — get the same `FailoverStoreAsync → DefaultFailoverStore → concrete store` chain automatically.
+* Custom store authors define only the raw `FailoverStore` implementation; wrapping is transparent. **CustomStore should not use any bean post construct or bean init**
+* `FailoverStoreAsync` and `DefaultFailoverStore` themselves are excluded from re-wrapping by the guard.
+* BPP ordering relative to `AsyncAnnotationBeanPostProcessor` is safe because `postProcessBeforeInitialization` always precedes AOP proxy creation.
+___
+
+## 12. MethodExceptionPolicy — Pluggable Exception Handling Strategy
+
+**Date : 26-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+When a primary call fails and failover recovery is attempted, the framework previously had a fixed outcome: swallow the original exception and return the recovered result (or `null` if recovery also failed).
+This gave callers no way to control what happens post-recovery:
+
+* Some teams want the original exception to propagate when the store has nothing to serve, so monitoring and alerting fire correctly.
+* Some teams want silent degradation (return stale data or `null`) regardless of recovery success.
+* Some teams need custom logic — enriching the exception, mapping it to a domain-specific type, publishing a metric.
+
+#### Decision
+Introduce a `MethodExceptionPolicy` strategy interface to decide the final outcome after recovery is attempted.
+
+```java
+@FunctionalInterface
+public interface MethodExceptionPolicy {
+    <T> T handle(MethodExceptionContext<T> context);
+}
+```
+
+`MethodExceptionContext<T>` carries all relevant information:
+
+```java
+public record MethodExceptionContext<T>(
+        Failover failover,
+        Method method,
+        List<Object> args,
+        @Nullable T recoveredResult,
+        Throwable cause
+) {}
+```
+
+Implementations may:
+* Return `context.recoveredResult()` — serve stale data transparently.
+* Return `null` — propagate nothing; let the caller handle absence.
+* Rethrow `context.cause()` via sneaky throw — cascade the original exception.
+
+Three built-in implementations are provided:
+
+| Implementation                             | Behaviour                                                                   | Property value                                    |
+|--------------------------------------------|-----------------------------------------------------------------------------|---------------------------------------------------|
+| `RethrowIfNoRecoveryMethodExceptionPolicy` | Returns recovered result if non-null; rethrows original exception otherwise | `rethrow` *(default, property absent)*            |
+| `NeverRethrowMethodExceptionPolicy`        | Always returns recovered result or `null`, never throws                     | `never_throw`                                     |
+| Custom user bean                           | Any logic; registered as a Spring bean                                      | *(register bean, set `custom` for documentation)* |
+
+The policy is resolved by auto-configuration using `failover.exception-policy` property.
+A `MethodExceptionHandler` wraps the policy to add debug logging before delegating.
+
+#### Consequences
+* Default behaviour (`RethrowIfNoRecoveryMethodExceptionPolicy`) is safe: stale data is preferred, but the original failure is surfaced when there is nothing to serve. This ensures monitoring fires on genuine outages with empty stores.
+* `NeverRethrowMethodExceptionPolicy` gives a pure degraded-mode experience at the cost of silent failures.
+* Any team can inject a custom `MethodExceptionPolicy` bean to override auto-configuration via `@ConditionalOnMissingBean`.
+* The exception policy operates at the failover boundary only — exceptions thrown during store/recover operations are already logged and swallowed internally.
+___

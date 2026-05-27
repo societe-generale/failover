@@ -33,4 +33,8 @@ public interface ReferentialAware {
     /// The value of referential data is as of the given time
     /// @param asOf time to be set.
     void setAsOf(LocalDateTime asOf);
+
+    /// The value of the 'Metadata' to hold the additional metadata.
+    /// @param metadata to be set if required.
+    void setMetadata(Metadata metadata);
 }
