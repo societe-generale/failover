@@ -48,13 +48,12 @@ public class FailoverJdbcStoreAutoConfiguration {
     @Bean
     public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, PayloadColumnHandler payloadColumnHandler) {
         log.info("FailoverStore configured to FailoverStoreJdbc.");
-        return new FailoverStoreAsync<>(new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper, payloadColumnHandler));
+        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper, payloadColumnHandler);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public PayloadColumnHandler payloadColumnHandler() {
         return new VarcharPayloadColumnHandler();
-        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper);
     }
 }

@@ -149,7 +149,7 @@ failover:
   type: custom
 ```
 
-You must provide a implementation for failover execution.
+You must provide an implementation for failover execution.
 ```java
 
 public interface FailoverExecution<T> {
