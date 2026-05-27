@@ -27,26 +27,21 @@ import com.societegenerale.failover.domain.ReferentialAware;
 public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
 
     @Override
-    public ReferentialPayload<T> enrichOnStore(Failover failover, ReferentialPayload<T> referentialPayload) {
-        T payload = referentialPayload.getPayload();
-        enrichPayloadInfo(referentialPayload, payload, null);
+    public ReferentialPayload<T> enrichOnStore(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload) {
+        var payload = extractPayload(clazz, referentialPayload);
+        enrichPayloadInfo(failover, clazz, referentialPayload, payload, null);
         return referentialPayload;
     }
 
     @Override
-    public ReferentialPayload<T> enrichOnRecover(Failover failover, ReferentialPayload<T> referentialPayload, Throwable cause) {
+    public ReferentialPayload<T> enrichOnRecover(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, Throwable cause) {
         var rPayload = referentialPayload==null ? new ReferentialPayload<T>() :  referentialPayload;
-        var payload = extractPayload(rPayload);
-        enrichPayloadInfo(referentialPayload, payload, cause);
+        var payload = extractPayload(clazz, rPayload);
+        enrichPayloadInfo(failover, clazz, referentialPayload, payload, cause);
         return rPayload;
     }
 
-    protected T extractPayload(ReferentialPayload<T> referentialPayload) {
-        // you can override this to provide an empty payload in case payload is null, in that case error info will be populated in all scenarios (unrecovered case)
-        return referentialPayload.getPayload();
-    }
-
-    private void enrichPayloadInfo(ReferentialPayload<T> referentialPayload, T payload, Throwable cause) {
+    private void enrichPayloadInfo(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, T payload, Throwable cause) {
         if(payload !=null) {
             if (Referential.class.isAssignableFrom(payload.getClass())) {
                 var referential = (Referential) payload;
@@ -57,6 +52,7 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
                     metadata
                             .withInfo("exception-name",  cause.getClass().getName())
                             .withInfo("cause", cause.getMessage());
+                    populateAdditionalInfoOnMetadata(failover, clazz, referentialPayload, payload, cause, metadata);
                     referential.setMetadata(metadata);
                 }
             }
@@ -69,9 +65,20 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
                     metadata
                             .withInfo("exception-name",  cause.getClass().getName())
                             .withInfo("cause", cause.getMessage());
+                    populateAdditionalInfoOnMetadata(failover, clazz, referentialPayload, payload, cause, metadata);
                     referentialAwarePayload.setMetadata(metadata);
                 }
             }
         }
     }
+
+    protected T extractPayload(Class<T> clazz, ReferentialPayload<T> referentialPayload) {
+        // you can override this to provide an empty payload in case payload is null, in that case error info will be populated in all scenarios (unrecovered case)
+        return referentialPayload.getPayload();
+    }
+
+    protected void populateAdditionalInfoOnMetadata(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, T payload, Throwable cause, Metadata metadata) {
+        // do nothing, this can be used if users want to provide additional information to the payload metadata
+    }
+
 }

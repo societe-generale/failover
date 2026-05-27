@@ -22,7 +22,6 @@ import com.societegenerale.failover.annotations.Failover;
  * @author Anand Manissery
  */
 public interface PayloadEnricher<T> {
-    ReferentialPayload<T> enrichOnStore(Failover failover, ReferentialPayload<T> referentialPayload);
-    ReferentialPayload<T> enrichOnRecover(Failover failover, ReferentialPayload<T> referentialPayload, Throwable cause);
-
+    ReferentialPayload<T> enrichOnStore(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload);
+    ReferentialPayload<T> enrichOnRecover(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, Throwable cause);
 }

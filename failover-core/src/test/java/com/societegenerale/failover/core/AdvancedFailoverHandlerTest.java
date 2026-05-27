@@ -99,7 +99,7 @@ class AdvancedFailoverHandlerTest {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
-        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD);
+        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
@@ -117,7 +117,7 @@ class AdvancedFailoverHandlerTest {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(null);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
-        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null);
+        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
@@ -135,7 +135,7 @@ class AdvancedFailoverHandlerTest {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
-        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD);
+        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
@@ -153,7 +153,7 @@ class AdvancedFailoverHandlerTest {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Exception on recover"));
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
-        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null);
+        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")

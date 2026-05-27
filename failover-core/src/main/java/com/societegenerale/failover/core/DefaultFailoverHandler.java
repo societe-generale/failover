@@ -30,6 +30,8 @@ import org.jspecify.annotations.Nullable;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
+
 /**
  * @author Anand Manissery
  */
@@ -49,7 +51,8 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
-        var referentialPayload = payloadEnricher.enrichOnStore(failover, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
+        Class<T> clazz = cast(payload.getClass());
+        var referentialPayload = payloadEnricher.enrichOnStore(failover, clazz, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);
         log.info("Failover : Storing information on '{}' for failover. ReferentialPayload : {{}}", failover.name(), referentialPayload);
         return referentialPayload.getPayload();
@@ -65,13 +68,13 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
             referentialPayload.setUpToDate(false);
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {
                 log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
-                return payloadEnricher.enrichOnRecover(failover, referentialPayload, cause).getPayload();
+                return payloadEnricher.enrichOnRecover(failover, clazz, referentialPayload, cause).getPayload();
             }
             log.info("Failover Recovery : Deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
             failoverStore.delete(referentialPayload);
         }
         log.warn("Failover Recovery : Could not recover information on '{}' from failover store, Either not found or expired for the given key!", failover.name());
-        return payloadEnricher.enrichOnRecover(failover, null, cause).getPayload();
+        return payloadEnricher.enrichOnRecover(failover, clazz,null, cause).getPayload();
     }
 
     @Override
