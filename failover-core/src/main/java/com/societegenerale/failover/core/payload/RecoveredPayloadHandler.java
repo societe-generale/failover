@@ -22,5 +22,5 @@ import java.util.List;
 
 /// @author Anand Manissery
 public interface RecoveredPayloadHandler {
-    <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload);
+    <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload, Throwable cause);
 }

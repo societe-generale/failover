@@ -114,7 +114,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, tp);
 
-                var result = enricher.enrichOnStore(FAILOVER, rp);
+                var result = enricher.enrichOnStore(FAILOVER, ReferentialThirdParty.class, rp);
 
                 assertThat(result.getPayload().getAsOf()).isEqualTo(now);
                 assertThat(result.getPayload().getUpToDate()).isTrue();
@@ -126,7 +126,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, tp);
 
-                enricher.enrichOnStore(FAILOVER, rp);
+                enricher.enrichOnStore(FAILOVER, ReferentialThirdParty.class, rp);
 
                 assertThat(tp.getMetadata().getInfo()).isEmpty();
             }
@@ -137,7 +137,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, tp);
 
-                var result = enricher.enrichOnStore(FAILOVER, rp);
+                var result = enricher.enrichOnStore(FAILOVER, ReferentialThirdParty.class, rp);
 
                 assertThat(result).isSameAs(rp);
             }
@@ -155,7 +155,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, tp);
 
-                var result = enricher.enrichOnStore(FAILOVER, rp);
+                var result = enricher.enrichOnStore(FAILOVER, ReferentialAwareThirdParty.class, rp);
 
                 assertThat(result.getPayload().getAsOf()).isEqualTo(now);
                 assertThat(result.getPayload().getUpToDate()).isTrue();
@@ -167,7 +167,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, tp);
 
-                enricher.enrichOnStore(FAILOVER, rp);
+                enricher.enrichOnStore(FAILOVER, ReferentialAwareThirdParty.class, rp);
 
                 assertThat(tp.getMetadata()).isNull();
             }
@@ -185,7 +185,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new PlainThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, tp);
 
-                enricher.enrichOnStore(FAILOVER, rp);
+                enricher.enrichOnStore(FAILOVER, PlainThirdParty.class, rp);
 
                 assertThat(tp.getUpToDate()).isNull();
                 assertThat(tp.getAsOf()).isNull();
@@ -203,7 +203,7 @@ class DefaultPayloadEnricherTest {
             void returnsEnvelopeUnchanged() {
                 var rp = new ReferentialPayload<String>(FAILOVER_NAME, FAILOVER_KEY, true, now, now, null);
 
-                var result = enricher.enrichOnStore(FAILOVER, rp);
+                var result = enricher.enrichOnStore(FAILOVER, String.class, rp);
 
                 assertThat(result).isEqualTo(rp);
             }
@@ -230,7 +230,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                var result = enricher.enrichOnRecover(FAILOVER, rp, null);
+                var result = enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, null);
 
                 assertThat(result.getPayload().getAsOf()).isEqualTo(now);
                 assertThat(result.getPayload().getUpToDate()).isFalse();
@@ -243,7 +243,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                enricher.enrichOnRecover(FAILOVER, rp, cause);
+                enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, cause);
 
                 var info = tp.getMetadata().getInfo();
                 assertThat(info).containsEntry("exception-name", RuntimeException.class.getName())
@@ -256,7 +256,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                enricher.enrichOnRecover(FAILOVER, rp, null);
+                enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, null);
 
                 assertThat(tp.getMetadata().getInfo()).isEmpty();
             }
@@ -267,7 +267,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                var result = enricher.enrichOnRecover(FAILOVER, rp, null);
+                var result = enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, null);
 
                 assertThat(result).isSameAs(rp);
             }
@@ -285,7 +285,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                var result = enricher.enrichOnRecover(FAILOVER, rp, null);
+                var result = enricher.enrichOnRecover(FAILOVER, ReferentialAwareThirdParty.class, rp, null);
 
                 assertThat(result.getPayload().getAsOf()).isEqualTo(now);
                 assertThat(result.getPayload().getUpToDate()).isFalse();
@@ -298,7 +298,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                enricher.enrichOnRecover(FAILOVER, rp, cause);
+                enricher.enrichOnRecover(FAILOVER, ReferentialAwareThirdParty.class, rp, cause);
 
                 var metadata = tp.getMetadata();
                 assertThat(metadata).isNotNull();
@@ -313,7 +313,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                enricher.enrichOnRecover(FAILOVER, rp, null);
+                enricher.enrichOnRecover(FAILOVER, ReferentialAwareThirdParty.class, rp, null);
 
                 assertThat(tp.getMetadata()).isNull();
             }
@@ -331,7 +331,7 @@ class DefaultPayloadEnricherTest {
                 var tp = new PlainThirdParty(1L, "TATA", 5);
                 var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
 
-                enricher.enrichOnRecover(FAILOVER, rp, new RuntimeException("boom"));
+                enricher.enrichOnRecover(FAILOVER, PlainThirdParty.class, rp, new RuntimeException("boom"));
 
                 assertThat(tp.getUpToDate()).isNull();
                 assertThat(tp.getAsOf()).isNull();
@@ -349,7 +349,7 @@ class DefaultPayloadEnricherTest {
             void returnsEnvelopeUnchanged() {
                 var rp = new ReferentialPayload<String>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, null);
 
-                var result = enricher.enrichOnRecover(FAILOVER, rp, new RuntimeException("err"));
+                var result = enricher.enrichOnRecover(FAILOVER, String.class, rp, new RuntimeException("err"));
 
                 assertThat(result).isSameAs(rp);
             }
@@ -364,7 +364,7 @@ class DefaultPayloadEnricherTest {
             @Test
             @DisplayName("returns new empty ReferentialPayload without NPE")
             void returnsNewEmptyPayloadWithoutNpe() {
-                var result = enricher.enrichOnRecover(FAILOVER, null, new RuntimeException("err"));
+                var result = enricher.enrichOnRecover(FAILOVER, String.class, null, new RuntimeException("err"));
 
                 assertThat(result).isNotNull();
                 assertThat(result.getPayload()).isNull();

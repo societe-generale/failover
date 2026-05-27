@@ -26,7 +26,7 @@ import java.util.List;
 public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandler {
 
     @Override
-    public <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload) {
+    public <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload, Throwable cause) {
         return payload;
     }
 }
