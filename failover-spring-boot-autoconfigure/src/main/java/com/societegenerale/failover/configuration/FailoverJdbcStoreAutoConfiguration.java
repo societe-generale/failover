@@ -16,6 +16,9 @@
 
 package com.societegenerale.failover.configuration;
 
+import com.societegenerale.failover.store.handler.PayloadColumnHandler;
+import com.societegenerale.failover.store.handler.VarcharPayloadColumnHandler;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
@@ -43,8 +46,14 @@ public class FailoverJdbcStoreAutoConfiguration {
     protected final FailoverProperties failoverProperties;
 
     @Bean
-    public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, PayloadColumnHandler payloadColumnHandler) {
         log.info("FailoverStore configured to FailoverStoreJdbc.");
-        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper);
+        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper, payloadColumnHandler);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PayloadColumnHandler payloadColumnHandler() {
+        return new VarcharPayloadColumnHandler();
     }
 }

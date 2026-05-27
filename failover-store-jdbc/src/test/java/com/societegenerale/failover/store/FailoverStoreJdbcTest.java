@@ -138,7 +138,6 @@ class FailoverStoreJdbcTest {
     @NoArgsConstructor
     static class Client extends Referential {
         private Long id;
-
         private String name;
     }
 }
