@@ -556,6 +556,76 @@ class FailoverStoreJdbcTest {
     }
 
     // -------------------------------------------------------------------------
+    // getMergeQuery / setMergeQuery / resolveMergeQuery — caching and lazy re-fetch
+    // -------------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("resolveMergeQuery — getMergeQuery / setMergeQuery / lazy re-fetch")
+    class MergeQueryResolutionScenarios {
+
+        /**
+         * Fresh store built from the wired beans — gives an isolated mergeEnabled state
+         * unaffected by BadSqlGrammarFromQueryResolverSpyScenarios state pollution.
+         */
+        private FailoverStoreJdbc<Client> freshStore() {
+            return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver);
+        }
+
+        @Test
+        @DisplayName("getMergeQuery() returns non-null H2 merge SQL at construction")
+        void getMergeQueryReturnsNonNullH2MergeSqlAtConstruction() {
+            assertThat(freshStore().getMergeQuery())
+                    .isNotNull()
+                    .containsIgnoringCase("MERGE");
+        }
+
+        @Test
+        @DisplayName("setMergeQuery(null) clears the cached SQL — getMergeQuery() returns null immediately")
+        void setMergeQueryNullClearsCache() {
+            var store = freshStore();
+            store.setMergeQuery(null);
+            assertThat(store.getMergeQuery()).isNull();
+        }
+
+        @Test
+        @DisplayName("setMergeQuery(customSql) hot-swaps the cached SQL — getMergeQuery() reflects the new value")
+        void setMergeQueryHotSwapsTheCachedSql() {
+            var store = freshStore();
+            store.setMergeQuery("CUSTOM MERGE SQL");
+            assertThat(store.getMergeQuery()).isEqualTo("CUSTOM MERGE SQL");
+        }
+
+        @Test
+        @DisplayName("store() triggers lazy re-fetch when mergeQuery is null — getMergeQuery() is non-null after store()")
+        void storeTriggerLazyRefetchWhenMergeQueryIsNull() {
+            var store = freshStore();
+            store.setMergeQuery(null);
+
+            assertThat(store.getMergeQuery()).isNull();   // cleared before store()
+            store.store(referentialPayload);
+            assertThat(store.getMergeQuery()).isNotNull().containsIgnoringCase("MERGE");   // restored by lazy re-fetch
+            assertThat(store.find(NAME, KEY)).isPresent().contains(referentialPayload);
+        }
+
+        @Test
+        @DisplayName("second store() after lazy re-fetch uses the restored SQL — merge produces exactly one row")
+        void secondStoreAfterLazyRefetchAlsoSucceedsViaMerge() {
+            var store = freshStore();
+            store.setMergeQuery(null);
+
+            store.store(referentialPayload);   // lazy re-fetch restores mergeQuery
+            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
+            store.store(updated);   // subsequent store uses restored merge SQL
+
+            assertThat(store.find(NAME, KEY)).isPresent().contains(updated);
+            var count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM TEST_FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?",
+                    Integer.class, NAME, KEY);
+            assertThat(count).isEqualTo(1);   // merge → single row, not two inserts
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // BadSqlGrammarException — spy returns invalid merge SQL → H2 throws → fallback
     // -------------------------------------------------------------------------
 
