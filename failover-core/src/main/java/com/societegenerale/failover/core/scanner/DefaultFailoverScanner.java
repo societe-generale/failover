@@ -66,7 +66,11 @@ public class DefaultFailoverScanner implements FailoverScanner {
 
     private void init() {
         this.exceptionHandler.execute(() -> failoverMap = reflections.getMethodsAnnotatedWith(Failover.class)
-                .stream().map(method -> method.getAnnotation(Failover.class)).collect(toMap(Failover::name, identity()))
+                .stream().map(method -> method.getAnnotation(Failover.class))
+                .collect(toMap(Failover::name, identity(), (a, b) -> {
+                    throw new FailoverScannerException(
+                        "Duplicate @Failover name '%s' found. Each failover must have a unique name.".formatted(a.name()));
+                }))
         );
     }
 }

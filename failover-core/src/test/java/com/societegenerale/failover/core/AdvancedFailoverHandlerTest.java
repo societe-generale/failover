@@ -175,6 +175,19 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should use empty string in metrics when cause message is null")
+    void shouldUseEmptyStringInMetricsWhenCauseMessageIsNull() {
+        cause = new RuntimeException();   // getMessage() == null
+        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+
+        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+
+        assertThat(reportPublisher.getMetrics().getInfo())
+                .containsEntry("failover-exception-message", "")
+                .containsEntry("failover-exception-cause-message", "");
+    }
+
+    @Test
     @DisplayName("should execute clean")
     void shouldExecuteClean() {
         advancedFailoverHandler.clean();

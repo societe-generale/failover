@@ -207,6 +207,7 @@ public class FailoverAutoConfiguration {
     @ConditionalOnExpression("${failover.enabled:true} eq true")
     @ConditionalOnProperty(prefix = "failover", name = "scheduler.enabled", havingValue = "true", matchIfMissing = true)
     @EnableScheduling
+    @EnableAsync
     static class FailoverSchedulingConfiguration {
         @ConditionalOnMissingBean
         @Bean
@@ -223,7 +224,6 @@ public class FailoverAutoConfiguration {
 
     @Configuration
     @ConditionalOnExpression("${failover.enabled:true} eq true")
-    @EnableScheduling
     static class ExceptionPolicyConfiguration {
 
         @ConditionalOnProperty(prefix = "failover", name = "exception-policy", havingValue = "never_throw")

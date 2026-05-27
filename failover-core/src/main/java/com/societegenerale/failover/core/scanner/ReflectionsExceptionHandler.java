@@ -27,6 +27,8 @@ public class ReflectionsExceptionHandler implements ExceptionHandler {
     public void execute(ExceptionHandlerExecutor exceptionHandlerExecutor) {
         try {
             exceptionHandlerExecutor.execute();
+        } catch (FailoverScannerException e) {
+            throw e;
         } catch (RuntimeException e) {
             throw new FailoverScannerException(REFLECTION_ERR_MESSAGE, e);
         }

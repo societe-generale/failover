@@ -14,17 +14,20 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.scanner;
+package com.societegenerale.failover.core.fixtures.duplicate;
+
+import com.societegenerale.failover.annotations.Failover;
 
 /**
- * @author Anand Manissery
+ * Test fixture: two methods carry the same {@code @Failover} name.
+ * Used to verify that {@link com.societegenerale.failover.core.scanner.DefaultFailoverScanner}
+ * reports a clear error instead of throwing an unhelpful {@code IllegalStateException}.
  */
-public class FailoverScannerException extends RuntimeException {
-    public FailoverScannerException(String message) {
-        super(message);
-    }
+public interface DuplicateFailoverFixture {
 
-    public FailoverScannerException(String message, Throwable throwable) {
-        super(message, throwable);
-    }
+    @Failover(name = "duplicate-name")
+    String methodOne(String id);
+
+    @Failover(name = "duplicate-name")
+    String methodTwo(String id);
 }
