@@ -517,9 +517,9 @@ The default implementation `DefaultDatabaseResolver` reads the product name from
 Returning `null` disables native merge/upsert entirely — every `store()` call falls back to INSERT + UPDATE on duplicate key.
 
 **When to override:**
-- Your application uses a database proxy or middleware that misreports the product name (e.g. PgBouncer reporting a different string)
-- You want to hard-code a known dialect to skip the JDBC metadata round-trip at startup
-- You need to add observability (metrics, logging) around database detection
+* Your application uses a database proxy or middleware that misreports the product name (e.g. PgBouncer reporting a different string)
+* You want to hard-code a known dialect to skip the JDBC metadata round-trip at startup
+* You need to add observability (metrics, logging) around database detection
 
 **How to inject a custom `DatabaseResolver`:**
 
@@ -563,10 +563,10 @@ Because `DatabaseResolver` is registered with `@ConditionalOnMissingBean`, decla
 
 `FailoverStoreQueryResolver` is the single place that owns all JDBC query concerns for `FailoverStoreJdbc`:
 
-- SQL text for INSERT, UPDATE, SELECT, DELETE, CLEANUP, and native MERGE/UPSERT
-- Parameter arrays and SQL type arrays for each operation
-- `ResultSet` → `ReferentialPayload` row mapping
-- JSON payload deserialization
+* SQL text for INSERT, UPDATE, SELECT, DELETE, CLEANUP, and native MERGE/UPSERT
+* Parameter arrays and SQL type arrays for each operation
+* `ResultSet` → `ReferentialPayload` row mapping
+* JSON payload deserialization
 
 ```java
 public interface FailoverStoreQueryResolver {
@@ -592,10 +592,10 @@ public interface FailoverStoreQueryResolver {
 The default implementation `DefaultFailoverStoreQueryResolver` auto-selects the merge dialect from `DatabaseResolver` at construction time and owns all parameter-binding and result-set-mapping logic.
 
 **When to override:**
-- You need a different table schema (additional columns, different column names, different key structure)
-- You want to use a merge dialect not yet recognized by the default implementation
-- You need custom payload serialization/deserialization (e.g. Protobuf, Avro, encrypted payloads)
-- You want a CLOB/TEXT payload column (see `PayloadColumnResolver` for the simpler column-type-only override)
+* You need a different table schema (additional columns, different column names, different key structure)
+* You want to use a merge dialect not yet recognized by the default implementation
+* You need custom payload serialization/deserialization (e.g. Protobuf, Avro, encrypted payloads)
+* You want a CLOB/TEXT payload column (see `PayloadColumnResolver` for the simpler column-type-only override)
 
 **Option A — override only table prefix or payload column type (no full replacement needed):**
 
