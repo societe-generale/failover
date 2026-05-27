@@ -1,9 +1,9 @@
-package com.societegenerale.failover.store.handler;
+package com.societegenerale.failover.store.resolver;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-public interface PayloadColumnHandler {
+public interface PayloadColumnResolver {
 
     /**
      * @return the type of payload column ( refer java.sql.Types class for more details )

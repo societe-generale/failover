@@ -16,7 +16,11 @@
 
 package com.societegenerale.failover.store;
 
-import com.societegenerale.failover.store.handler.VarcharPayloadColumnHandler;
+import com.societegenerale.failover.store.resolver.DatabaseResolver;
+import com.societegenerale.failover.store.resolver.DefaultDatabaseResolver;
+import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
+import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
+import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.boot.SpringApplication;
@@ -35,8 +39,18 @@ public class MySpringBootApplication {
     }
 
     @Bean
-    public <T> FailoverStoreJdbc<T> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
-        return new FailoverStoreJdbc<>("TEST_", jdbcTemplate, objectMapper, new VarcharPayloadColumnHandler());
+    public DatabaseResolver databaseResolver(JdbcTemplate jdbcTemplate) {
+        return new DefaultDatabaseResolver(jdbcTemplate);
+    }
+
+    @Bean
+    public FailoverStoreQueryResolver failoverStoreQueryResolver(ObjectMapper objectMapper, DatabaseResolver databaseResolver) {
+        return new DefaultFailoverStoreQueryResolver("TEST_", objectMapper, databaseResolver, new VarcharPayloadColumnResolver());
+    }
+
+    @Bean
+    public <T> FailoverStoreJdbc<T> failoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver) {
+        return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver);
     }
 
     @Bean

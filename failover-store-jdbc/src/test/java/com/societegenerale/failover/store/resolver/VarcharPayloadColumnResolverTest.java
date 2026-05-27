@@ -1,4 +1,4 @@
-package com.societegenerale.failover.store.handler;
+package com.societegenerale.failover.store.resolver;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class VarcharPayloadColumnHandlerTest {
+class VarcharPayloadColumnResolverTest {
 
     private static final String PAYLOAD_COLUMN_NAME = "PAYLOAD";
     private static final String JSON_PAYLOAD = "{\"key\":\"some-value\"}";
@@ -23,7 +23,7 @@ class VarcharPayloadColumnHandlerTest {
     @Mock
     private ResultSet resultSet;
 
-    private final VarcharPayloadColumnHandler handler = new VarcharPayloadColumnHandler();
+    private final VarcharPayloadColumnResolver handler = new VarcharPayloadColumnResolver();
 
     @Test
     @DisplayName("should return VARCHAR as the payload SQL type")

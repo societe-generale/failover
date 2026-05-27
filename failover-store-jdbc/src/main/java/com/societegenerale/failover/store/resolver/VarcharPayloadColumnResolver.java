@@ -1,10 +1,10 @@
-package com.societegenerale.failover.store.handler;
+package com.societegenerale.failover.store.resolver;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 
-public class VarcharPayloadColumnHandler implements PayloadColumnHandler {
+public class VarcharPayloadColumnResolver implements PayloadColumnResolver {
 
     @Override
     public int payloadType() {

@@ -454,7 +454,7 @@ CREATE TABLE DEMO_FAILOVER_STORE (
      FAILOVER_KEY VARCHAR(256) NOT NULL,
      AS_OF TIMESTAMP(9) NOT NULL,
      EXPIRE_ON TIMESTAMP(9) NOT NULL,
-     PAYLOAD VARCHAR(2000),            -- Provide the maximum size based on your payload
+     PAYLOAD VARCHAR(2000),       -- Provide the maximum size based on your payload
      PAYLOAD_CLASS VARCHAR(256),
      PRIMARY KEY(FAILOVER_NAME, FAILOVER_KEY)
 );
@@ -498,3 +498,155 @@ public class VarcharPayloadColumnHandler implements PayloadColumnHandler {
 ```
 
 > Users can provide their own custom PayloadColumnHandler in case if they choose to use the column type as TEXT or CLOB instead of default VARCHAR
+
+---
+
+> ### **Customization of DatabaseResolver**
+
+`DatabaseResolver` is a strategy interface responsible for detecting the database product name from the live JDBC connection.
+The detected name is used by `DefaultFailoverStoreQueryResolver` to select the correct native merge/upsert SQL dialect.
+
+```java
+public interface DatabaseResolver {
+    @Nullable
+    String resolve();
+}
+```
+
+The default implementation `DefaultDatabaseResolver` reads the product name from `conn.getMetaData().getDatabaseProductName()`.
+Returning `null` disables native merge/upsert entirely — every `store()` call falls back to INSERT + UPDATE on duplicate key.
+
+**When to override:**
+
+* Your application uses a database proxy or middleware that misreports the product name (e.g. PgBouncer reporting a different string)
+* You want to hard-code a known dialect to skip the JDBC metadata round-trip at startup
+* You need to add observability (metrics, logging) around database detection
+
+**How to inject a custom `DatabaseResolver`:**
+
+```java
+@Configuration
+public class FailoverDatabaseResolverConfig {
+
+    /**
+     * Hard-code the dialect — useful when the DB product name from metadata
+     * is unreliable (e.g. proxied connections, test environments).
+     */
+    @Bean
+    public DatabaseResolver databaseResolver() {
+        return () -> "PostgreSQL";
+    }
+}
+```
+
+Or to delegate to the default and provide a fallback:
+
+```java
+@Configuration
+public class FailoverDatabaseResolverConfig {
+
+    @Bean
+    public DatabaseResolver databaseResolver(JdbcTemplate jdbcTemplate) {
+        DefaultDatabaseResolver defaultResolver = new DefaultDatabaseResolver(jdbcTemplate);
+        return () -> {
+            String product = defaultResolver.resolve();
+            return product != null ? product : "PostgreSQL"; // fall back to known dialect
+        };
+    }
+}
+```
+
+Because `DatabaseResolver` is registered with `@ConditionalOnMissingBean`, declaring your own bean in any `@Configuration` class is sufficient to replace the default.
+
+---
+
+> ### **Customization of FailoverStoreQueryResolver**
+
+`FailoverStoreQueryResolver` is the single place that owns all JDBC query concerns for `FailoverStoreJdbc`:
+
+* SQL text for INSERT, UPDATE, SELECT, DELETE, CLEANUP, and native MERGE/UPSERT
+* Parameter arrays and SQL type arrays for each operation
+* `ResultSet` → `ReferentialPayload` row mapping
+* JSON payload deserialization
+
+```java
+public interface FailoverStoreQueryResolver {
+
+    String getInsertQuery();
+    String getUpdateQuery();
+    String getSelectQuery();
+    String getDeleteQuery();
+    String getCleanUpQuery();
+    @Nullable String getMergeQuery();
+
+    <T> Object[] buildInsertMergeParams(ReferentialPayload<T> payload);
+    int[]       buildInsertMergeTypes();
+
+    <T> Object[] buildUpdateParams(ReferentialPayload<T> payload);
+    int[]        buildUpdateTypes();
+
+    <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException;
+    @Nullable <T> T deserializePayload(@Nullable String payload, String clazzString);
+}
+```
+
+The default implementation `DefaultFailoverStoreQueryResolver` auto-selects the merge dialect from `DatabaseResolver` at construction time and owns all parameter-binding and result-set-mapping logic.
+
+**When to override:**
+
+* You need a different table schema (additional columns, different column names, different key structure)
+* You want to use a merge dialect not yet recognized by the default implementation
+* You need custom payload serialization/deserialization (e.g. Protobuf, Avro, encrypted payloads)
+* You want a CLOB/TEXT payload column (see `PayloadColumnResolver` for the simpler column-type-only override)
+
+**Option A — override only table prefix or payload column type (no full replacement needed):**
+
+```yaml
+failover:
+  store:
+    type: jdbc
+    jdbc:
+      table-prefix: MY_
+```
+
+```java
+@Bean
+public PayloadColumnResolver payloadColumnHandler() {
+    // Use CLOB instead of VARCHAR for large payloads
+    return new ClobPayloadColumnResolver();
+}
+```
+
+**Option B — provide a fully custom `FailoverStoreQueryResolver`:**
+
+```java
+@Configuration
+public class FailoverQueryResolverConfig {
+
+    /**
+     * Replace the query resolver entirely.
+     * FailoverStoreJdbc receives this bean via constructor injection.
+     * @ConditionalOnMissingBean on the autoconfigured bean means this takes precedence.
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public FailoverStoreQueryResolver failoverStoreQueryResolver(
+            ObjectMapper objectMapper,
+            DatabaseResolver databaseResolver) {
+        // Use your own prefix and a CLOB payload column handler
+        return new DefaultFailoverStoreQueryResolver(
+                "MY_PREFIX_", objectMapper, databaseResolver, new ClobPayloadColumnResolver());
+    }
+}
+```
+
+Or implement the interface from scratch for complete control:
+
+```java
+@Bean
+public FailoverStoreQueryResolver failoverStoreQueryResolver() {
+    return new CustomFailoverStoreQueryResolver(); // full custom implementation
+}
+```
+
+Because `FailoverStoreQueryResolver` is registered with `@ConditionalOnMissingBean` in the auto-configuration, any user-declared bean of this type is picked up automatically — no other wiring is needed.

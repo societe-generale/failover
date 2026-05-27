@@ -94,7 +94,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
-    @DisplayName("should recover along with reporting and recovered payload handler")
+    @DisplayName("should recover along with reporting and recovered payload resolver")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandler() {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
@@ -112,7 +112,7 @@ class AdvancedFailoverHandlerTest {
 
 
     @Test
-    @DisplayName("should recover along with reporting and recovered payload handler and null result")
+    @DisplayName("should recover along with reporting and recovered payload resolver and null result")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandlerAndNullResult() {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(null);
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
@@ -129,7 +129,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
-    @DisplayName("should recover along with reporting and recovered payload handler and with root cause")
+    @DisplayName("should recover along with reporting and recovered payload resolver and with root cause")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandlerAndWithRootCause() {
         cause = new RuntimeException("Dummy-Exception");
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
@@ -147,7 +147,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
-    @DisplayName("should handled the exception and handle with recovered payload handler when any exception occurred on recover")
+    @DisplayName("should handled the exception and handle with recovered payload resolver when any exception occurred on recover")
     void shouldHandledTheExceptionAndHandleWithRecoveredPayloadHandlerWhenAnyExceptionOccurredOnRecover() {
         cause = new RuntimeException("Dummy-Exception");
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Exception on recover"));

@@ -16,8 +16,7 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.societegenerale.failover.store.handler.PayloadColumnHandler;
-import com.societegenerale.failover.store.handler.VarcharPayloadColumnHandler;
+import com.societegenerale.failover.store.resolver.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.store.FailoverStore;
@@ -46,14 +45,32 @@ public class FailoverJdbcStoreAutoConfiguration {
     protected final FailoverProperties failoverProperties;
 
     @Bean
-    public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, PayloadColumnHandler payloadColumnHandler) {
-        log.info("FailoverStore configured to FailoverStoreJdbc.");
-        return new FailoverStoreJdbc<>(failoverProperties.getStore().getJdbc().getTablePrefix(), jdbcTemplate, objectMapper, payloadColumnHandler);
+    @ConditionalOnMissingBean
+    public PayloadColumnResolver payloadColumnHandler() {
+        return new VarcharPayloadColumnResolver();
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public PayloadColumnHandler payloadColumnHandler() {
-        return new VarcharPayloadColumnHandler();
+    public DatabaseResolver databaseResolver(JdbcTemplate jdbcTemplate) {
+        return new DefaultDatabaseResolver(jdbcTemplate);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public FailoverStoreQueryResolver failoverStoreQueryResolver(ObjectMapper objectMapper,
+                                                                 DatabaseResolver databaseResolver,
+                                                                 PayloadColumnResolver payloadColumnResolver) {
+        return new DefaultFailoverStoreQueryResolver(failoverProperties.getStore().getJdbc().getTablePrefix(),
+                                                     objectMapper,
+                                                     databaseResolver,
+                                                     payloadColumnResolver);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver) {
+        log.info("FailoverStore configured to FailoverStoreJdbc.");
+        return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver);
     }
 }
