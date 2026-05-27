@@ -414,3 +414,144 @@ A `MethodExceptionHandler` wraps the policy to add debug logging before delegati
 * Any team can inject a custom `MethodExceptionPolicy` bean to override auto-configuration via `@ConditionalOnMissingBean`.
 * The exception policy operates at the failover boundary only — exceptions thrown during store/recover operations are already logged and swallowed internally.
 ___
+
+## 13. JDBC Native Merge/Upsert — Dialect Detection and Runtime Fallback
+
+**Date : 26-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+`FailoverStoreJdbc.store()` previously relied on INSERT-only for new records. Under concurrent writes to the same key this created a race between a SELECT-check and an INSERT, causing `DuplicateKeyException` noise and requiring careful retry logic. Additionally, a simple INSERT gives no atomicity guarantee when the same key is written from multiple threads or nodes.
+
+Native merge/upsert operations (H2 `MERGE INTO…KEY`, PostgreSQL `ON CONFLICT DO UPDATE`, MySQL/MariaDB `ON DUPLICATE KEY UPDATE`, Oracle `MERGE USING DUAL`) provide atomic upsert semantics. However, each database uses a different syntax and not all databases support any of these forms.
+
+Two failure scenarios must be handled:
+1. **Build-time unknown dialect**: the detected product name does not match any known dialect (e.g. HSQLDB, DB2, or unrecognised proxies).
+2. **Runtime dialect mismatch**: the product name reported at startup is incorrect (e.g. a middleware proxy reports `"PostgreSQL"` but the actual underlying DB rejects the query), causing a `BadSqlGrammarException` on the first `store()` call.
+
+#### Decision
+1. At construction, `FailoverStoreJdbc` calls `FailoverStoreQueryResolver.getMergeQuery()`. If non-null, set `mergeEnabled = true` via `AtomicBoolean`. If null (unknown dialect), `mergeEnabled = false` from the start.
+2. When `mergeEnabled.get()` is `true`, attempt the native merge SQL. On success, return immediately.
+3. On `BadSqlGrammarException` at runtime: log a warning, call `mergeEnabled.set(false)` (permanent — `AtomicBoolean` ensures thread safety), then fall through to `insertOrUpdate`. All subsequent `store()` calls skip the merge block entirely — no per-call overhead.
+4. `insertOrUpdate` uses INSERT first. On `DuplicateKeyException` it issues an UPDATE. This covers both the no-merge and the concurrent-write-on-same-key cases.
+
+```
+store(payload):
+  if mergeEnabled:
+    try → jdbcTemplate.update(mergeQuery, …)   → done
+    catch BadSqlGrammarException → mergeEnabled = false
+  insertOrUpdate(payload):
+    try → INSERT
+    catch DuplicateKeyException → UPDATE
+```
+
+The four supported native dialects:
+
+| Database          | Strategy                                        |
+|-------------------|-------------------------------------------------|
+| H2                | `MERGE INTO … KEY(FAILOVER_NAME, FAILOVER_KEY)` |
+| PostgreSQL        | `INSERT … ON CONFLICT (…) DO UPDATE SET …`      |
+| MySQL / MariaDB   | `INSERT … ON DUPLICATE KEY UPDATE …`            |
+| Oracle            | `MERGE INTO … USING (SELECT … FROM DUAL) …`     |
+| Everything else   | `mergeQuery = null` → INSERT + UPDATE fallback  |
+
+#### Consequences
+* Atomic upsert with zero additional SELECT round-trip for all four supported databases.
+* Unknown databases fall back gracefully to INSERT + UPDATE — no configuration change required.
+* A single `BadSqlGrammarException` permanently disables merge for the lifetime of the bean. Subsequent calls pay only one `update()` (INSERT) instead of two, recovering performance after the one-time failure.
+* The `AtomicBoolean` flip is thread-safe: multiple concurrent threads may each throw `BadSqlGrammarException` and call `set(false)` simultaneously — this is safe and idempotent.
+* Adding a new dialect requires only a new SQL constant and a new `contains()` branch in `DefaultFailoverStoreQueryResolver.resolveMergeQuery()`.
+___
+
+## 14. DatabaseResolver — Strategy Interface for Database Product Detection
+
+**Date : 26-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+Database dialect selection (ADR 13) requires knowing the database product name at startup. Previously this detection logic was embedded directly inside `FailoverStoreJdbc` constructor, which caused three problems:
+1. **Untestable in isolation**: unit tests for `FailoverStoreJdbc` required a live `DataSource` to exercise dialect selection.
+2. **Not overridable**: applications using proxies, middleware (e.g. PgBouncer), or test environments where the reported product name is incorrect had no way to override detection.
+3. **Single responsibility violation**: `FailoverStoreJdbc` held unrelated JDBC metadata concerns alongside store operations.
+
+#### Decision
+Extract a `DatabaseResolver` strategy interface with a single no-argument method:
+
+```java
+public interface DatabaseResolver {
+    @Nullable
+    String resolve();
+}
+```
+
+- `DefaultDatabaseResolver` receives a `JdbcTemplate` via constructor injection and reads `conn.getMetaData().getDatabaseProductName()` via `jdbcTemplate.execute(ConnectionCallback)`. Any `Exception` during detection is caught, a warning is logged, and `null` is returned — triggering the INSERT/UPDATE fallback.
+- `DatabaseResolver` is exposed as a `@ConditionalOnMissingBean` Spring bean in `FailoverJdbcStoreAutoConfiguration`. Users override by declaring their own bean of this type.
+- `DatabaseResolver.resolve()` takes no arguments. The `JdbcTemplate` is an injected constructor dependency, not a parameter. This keeps the interface minimal, consistent with the strategy pattern, and avoids the caller needing to pass infrastructure dependencies.
+- `DefaultFailoverStoreQueryResolver` receives `DatabaseResolver` via constructor injection and calls `resolve()` exactly once during its own construction to select and cache the merge SQL string.
+
+#### Consequences
+* `DefaultFailoverStoreQueryResolver` is fully unit-testable: mock or stub `DatabaseResolver.resolve()` without a live datasource.
+* `DefaultDatabaseResolver` is independently unit-testable: mock `JdbcTemplate` to simulate product name retrieval and failure paths.
+* Applications with non-standard environments (proxies, cloud SQL, test doubles) override detection by providing a single-bean `DatabaseResolver` implementation.
+* `resolve()` is called once at construction — no repeated metadata queries per `store()` call.
+* Returning `null` is the defined contract for "unknown" — all consumers treat `null` as "disable merge/use fallback".
+___
+
+## 15. FailoverStoreQueryResolver — Single-Responsibility Co-location of All JDBC Query Concerns
+
+**Date : 26-MAY-2026**
+
+#### Status
+Accepted
+
+#### Context
+`FailoverStoreJdbc` originally held SQL strings, parameter arrays, SQL type arrays, and `ResultSet` mapping inline. This caused several issues:
+1. **Fragile column ordering**: SQL column order, `Object[]` parameter order, and `int[]` type order must always agree. When scattered across a class, a column rename or reorder requires coordinated changes in at least three places, with no compile-time safety net.
+2. **Untestable SQL logic**: verifying that INSERT column order matches the UPDATE SET/WHERE order, or that all SQL placeholders `?` match the parameter array length, required a running database.
+3. **Not replaceable**: users who needed custom SQL (different schema, encrypted payload column, additional audit columns) had no extension point short of replacing the entire `FailoverStoreJdbc` bean.
+4. **Dialect SQL embedded in the store**: merge-dialect SQL templates lived alongside CRUD operation code, mixing concerns.
+
+#### Decision
+Extract a `FailoverStoreQueryResolver` interface that owns every JDBC query concern:
+
+```java
+public interface FailoverStoreQueryResolver {
+    String  getInsertQuery();
+    String  getUpdateQuery();
+    String  getSelectQuery();
+    String  getDeleteQuery();
+    String  getCleanUpQuery();
+    @Nullable String getMergeQuery();
+
+    <T> Object[] buildInsertMergeParams(ReferentialPayload<T> payload);
+    int[]        buildInsertMergeTypes();
+
+    <T> Object[] buildUpdateParams(ReferentialPayload<T> payload);
+    int[]        buildUpdateTypes();
+
+    <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException;
+    @Nullable <T> T deserializePayload(@Nullable String payload, String clazzString);
+}
+```
+
+`DefaultFailoverStoreQueryResolver` implements this interface with:
+- All SQL templates as private `static final` constants with a `%PREFIX%` placeholder substituted at construction time.
+- Parameter builders (`buildInsertMergeParams`, `buildUpdateParams`) and type builders (`buildInsertMergeTypes`, `buildUpdateTypes`) declared adjacent to their SQL templates — column order is enforced by co-location.
+- `mapRow` and `deserializePayload` co-located with the SQL they serve.
+- **No I/O dependencies**: `DefaultFailoverStoreQueryResolver` holds `ObjectMapper` and `PayloadColumnResolver` — no `JdbcTemplate`, no `DataSource`. It is instantiated and unit-tested without a running database.
+
+`FailoverStoreJdbc` depends only on the `FailoverStoreQueryResolver` interface — not on `DefaultFailoverStoreQueryResolver` directly.
+
+`FailoverStoreQueryResolver` is registered as a `@ConditionalOnMissingBean` Spring bean in `FailoverJdbcStoreAutoConfiguration`. Users replace the entire query layer by providing a single bean of this type.
+
+#### Consequences
+* SQL text, parameter order, and SQL types for each operation live in one class. A column change requires editing exactly one file.
+* `DefaultFailoverStoreQueryResolver` is fully unit-tested without a database: placeholder count consistency, column order, dialect selection, parameter binding, row mapping, and deserialization edge cases are all covered by pure unit tests.
+* `FailoverStoreJdbc` is reduced to pure JDBC execution logic — it knows nothing about SQL, column types, or serialization.
+* Teams that need a different schema (additional columns, different key structure, encrypted payload, non-JSON serialization) implement `FailoverStoreQueryResolver` and declare the bean — no other changes required.
+* `PayloadColumnResolver` remains a separate, narrower extension point for teams that only need to change the payload column SQL type and extraction method, without replacing the entire resolver.
+___

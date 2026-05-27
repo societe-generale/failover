@@ -16,23 +16,19 @@
 
 package com.societegenerale.failover.store;
 
-import com.societegenerale.failover.core.store.FailoverStoreException;
-import com.societegenerale.failover.store.handler.PayloadColumnHandler;
-import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.Optional;
-
-import static com.societegenerale.failover.core.util.CastingUtils.cast;
-import static java.lang.Class.forName;
-import static org.springframework.util.StringUtils.replace;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author Anand Manissery
@@ -40,95 +36,70 @@ import static org.springframework.util.StringUtils.replace;
 @Slf4j
 public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
-    private static final String PREFIX = "%PREFIX%";
-
-    private static final String INSERT_QUERY = "INSERT into " + PREFIX + "FAILOVER_STORE ( AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS, FAILOVER_NAME, FAILOVER_KEY ) VALUES ( ?, ?, ?, ?, ?, ? )";
-
-    private static final String UPDATE_QUERY = "UPDATE " + PREFIX + "FAILOVER_STORE SET AS_OF = ? , EXPIRE_ON = ? , PAYLOAD = ? , PAYLOAD_CLASS = ? WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
-
-    private static final String SELECT_QUERY = "SELECT FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS from " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
-
-    private static final String DELETE_QUERY = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
-
-    private static final String CLEAN_UP_QUERY = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE EXPIRE_ON < ?";
-
-    private final String tablePrefix;
-
     private final JdbcTemplate jdbcTemplate;
+    private final FailoverStoreQueryResolver queryResolver;
 
-    private final ObjectMapper objectMapper;
+    private final String mergeQuery;
 
-    private final String insertQuery;
+    /** Flipped to false at runtime if the merge SQL fails with a grammar error. */
+    private final AtomicBoolean mergeEnabled;
 
-    private final String updateQuery;
-
-    private final String selectQuery;
-
-    private final String deleteQuery;
-
-    private final String cleanUpQuery;
-
-    private final PayloadColumnHandler payloadColumnHandler;
-
-    public FailoverStoreJdbc(String tablePrefix, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, PayloadColumnHandler payloadColumnHandler) {
-        this.tablePrefix = tablePrefix;
-        this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
-        this.insertQuery = getQuery(INSERT_QUERY);
-        this.updateQuery = getQuery(UPDATE_QUERY);
-        this.selectQuery = getQuery(SELECT_QUERY);
-        this.deleteQuery = getQuery(DELETE_QUERY);
-        this.cleanUpQuery = getQuery(CLEAN_UP_QUERY);
-        this.payloadColumnHandler = payloadColumnHandler;
+    public FailoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver) {
+        this.jdbcTemplate  = jdbcTemplate;
+        this.queryResolver = failoverStoreQueryResolver;
+        this.mergeQuery = queryResolver.getMergeQuery();
+        this.mergeEnabled  = new AtomicBoolean(this.mergeQuery != null);
     }
 
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
+        if (mergeEnabled.get()) {
+            try {
+                var count = jdbcTemplate.update(mergeQuery,
+                        queryResolver.buildInsertMergeParams(referentialPayload),
+                        queryResolver.buildInsertMergeTypes());
+                log.debug("Referential payload merged. Records affected: '{}'", count);
+                return;
+            } catch (BadSqlGrammarException e) {
+                log.warn("Native merge/upsert not supported by this database — switching permanently to INSERT/UPDATE fallback. Cause: {}", e.getMessage());
+                mergeEnabled.set(false);
+            }
+        }
+        insertOrUpdate(referentialPayload);
+    }
 
-        var optionalReferentialPayloadFromDB = find(referentialPayload.getName(), referentialPayload.getKey());
-
-        String executeQuery = optionalReferentialPayloadFromDB.isPresent() ? updateQuery : insertQuery;
-
-        Object[] objects = {
-                Timestamp.valueOf(referentialPayload.getAsOf()),
-                Timestamp.valueOf(referentialPayload.getExpireOn()),
-                referentialPayload.getPayload() == null ? null: objectMapper.writeValueAsString(referentialPayload.getPayload()),
-                referentialPayload.getPayload() == null ? null : referentialPayload.getPayload().getClass().getName(),
-                referentialPayload.getName(),
-                referentialPayload.getKey()
-        };
-        int[] types = new int[] {
-                Types.TIMESTAMP,
-                Types.TIMESTAMP,
-                payloadColumnHandler.payloadType(),
-                Types.VARCHAR,
-                Types.VARCHAR,
-                Types.VARCHAR,
-        };
-        var count = jdbcTemplate.update(executeQuery, objects, types);
-        log.debug("Referential payload inserted/updated. No of record inserted : '{}'", count);
+    private void insertOrUpdate(ReferentialPayload<T> referentialPayload) {
+        try {
+            var count = jdbcTemplate.update(queryResolver.getInsertQuery(),
+                    queryResolver.buildInsertMergeParams(referentialPayload),
+                    queryResolver.buildInsertMergeTypes());
+            log.debug("Referential payload inserted. Records inserted: '{}'", count);
+        } catch (DuplicateKeyException e) {
+            log.debug("Referential payload already exists for name='{}', key='{}'. Retrying as UPDATE.", referentialPayload.getName(), referentialPayload.getKey());
+            var count = jdbcTemplate.update(queryResolver.getUpdateQuery(),
+                    queryResolver.buildUpdateParams(referentialPayload),
+                    queryResolver.buildUpdateTypes());
+            log.debug("Referential payload updated. Records updated: '{}'", count);
+        }
     }
 
     @Override
     public void delete(ReferentialPayload<T> referentialPayload) {
-        var count = jdbcTemplate.update(deleteQuery, new Object[]{referentialPayload.getName(), referentialPayload.getKey()}, new int[]{Types.VARCHAR, Types.VARCHAR});
+        var count = jdbcTemplate.update(queryResolver.getDeleteQuery(),
+                new Object[]{referentialPayload.getName(), referentialPayload.getKey()},
+                new int[]{Types.VARCHAR, Types.VARCHAR});
         log.debug("Referential payload deleted. No of record deleted : '{}'", count);
     }
 
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(selectQuery, new Object[]{name, key}, new int[]{Types.VARCHAR, Types.VARCHAR}, (resultSet, _) -> {
-                String failoverName = resultSet.getString("FAILOVER_NAME");
-                String failoverKey = resultSet.getString("FAILOVER_KEY");
-                LocalDateTime asOf = resultSet.getTimestamp("AS_OF").toLocalDateTime();
-                LocalDateTime expireOn = resultSet.getTimestamp("EXPIRE_ON").toLocalDateTime();
-                String payloadClass = resultSet.getString("PAYLOAD_CLASS");
-                T payload = getPayload(payloadColumnHandler.extractPayload(resultSet,  "PAYLOAD"), payloadClass);
-                return new ReferentialPayload<>(failoverName, failoverKey, false, asOf, expireOn, payload);
-            }));
-        }
-        catch (EmptyResultDataAccessException e) {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                    queryResolver.getSelectQuery(),
+                    new Object[]{name, key},
+                    new int[]{Types.VARCHAR, Types.VARCHAR},
+                    (rs, _) -> queryResolver.mapRow(rs)));
+        } catch (EmptyResultDataAccessException e) {
             log.debug("No referential found for name : '{}'", name, e);
             return Optional.empty();
         }
@@ -136,23 +107,9 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     @Override
     public void cleanByExpiry(LocalDateTime expiry) {
-        var count = jdbcTemplate.update(cleanUpQuery, new Object[]{expiry}, new int[]{Types.TIMESTAMP});
+        var count = jdbcTemplate.update(queryResolver.getCleanUpQuery(),
+                new Object[]{expiry}, new int[]{Types.TIMESTAMP});
         log.debug("Referential payload cleaned up by given expiry : '{}' . No of record deleted : '{}'", expiry, count);
     }
 
-    private String getQuery(String query) {
-        return replace(query, PREFIX, this.tablePrefix);
-    }
-
-    private T getPayload(String payload, String clazzString) {
-        if (payload == null) {
-            return null;
-        }
-        try {
-            Class<T> clazz = cast(forName(clazzString));
-            return objectMapper.readValue(payload, clazz);
-        } catch (ClassNotFoundException e) {
-            throw new FailoverStoreException("Failed to resolve payload class '%s'".formatted(clazzString), e);
-        }
-    }
 }

@@ -1,0 +1,222 @@
+/*
+ * Copyright 2022-2023, Société Générale All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.societegenerale.failover.store.resolver;
+
+import com.societegenerale.failover.core.payload.ReferentialPayload;
+import com.societegenerale.failover.core.store.FailoverStoreException;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.ObjectMapper;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.sql.Types;
+
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
+import static java.lang.Class.forName;
+import static org.springframework.util.StringUtils.replace;
+
+/**
+ * Default {@link FailoverStoreQueryResolver} that resolves all JDBC queries against a given table
+ * prefix, selects the appropriate native merge/upsert dialect for the detected database, and owns
+ * all parameter binding and result-set mapping logic.
+ *
+ * <p>Keeping SQL text, column order, SQL types, and parameter builders co-located here ensures
+ * that a schema change (e.g. adding or reordering a column) requires edits in exactly one class.
+ *
+ * <p>This class has no I/O dependencies and is fully unit-testable.
+ *
+ * @author Anand Manissery
+ */
+@Slf4j
+public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryResolver {
+
+    private static final String PREFIX = "%PREFIX%";
+
+    // -----------------------------------------------------------------
+    // SQL templates  (prefix placeholder = %PREFIX%)
+    // -----------------------------------------------------------------
+
+    /** Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
+    private static final String INSERT_SQL = "INSERT into " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) VALUES (?, ?, ?, ?, ?, ?)";
+
+    /** Params: AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS, FAILOVER_NAME, FAILOVER_KEY */
+    private static final String UPDATE_SQL = "UPDATE " + PREFIX + "FAILOVER_STORE SET AS_OF = ? , EXPIRE_ON = ? , PAYLOAD = ? , PAYLOAD_CLASS = ? WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
+
+    private static final String SELECT_SQL   = "SELECT FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS from " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
+    private static final String DELETE_SQL   = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
+    private static final String CLEAN_UP_SQL = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE EXPIRE_ON < ?";
+
+    /** H2 native MERGE. Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
+    private static final String MERGE_SQL_H2 = "MERGE INTO " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) KEY (FAILOVER_NAME, FAILOVER_KEY) VALUES (?, ?, ?, ?, ?, ?)";
+
+    /** PostgreSQL ON CONFLICT. Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
+    private static final String MERGE_SQL_POSTGRESQL = "INSERT INTO " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (FAILOVER_NAME, FAILOVER_KEY) DO UPDATE SET AS_OF = EXCLUDED.AS_OF, EXPIRE_ON = EXCLUDED.EXPIRE_ON, PAYLOAD = EXCLUDED.PAYLOAD, PAYLOAD_CLASS = EXCLUDED.PAYLOAD_CLASS";
+
+    /** MySQL / MariaDB ON DUPLICATE KEY. Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
+    private static final String MERGE_SQL_MYSQL = "INSERT INTO " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE AS_OF = VALUES(AS_OF), EXPIRE_ON = VALUES(EXPIRE_ON), PAYLOAD = VALUES(PAYLOAD), PAYLOAD_CLASS = VALUES(PAYLOAD_CLASS)";
+
+    /** Oracle MERGE USING subquery. Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
+    private static final String MERGE_SQL_ORACLE = "MERGE INTO " + PREFIX + "FAILOVER_STORE target USING (SELECT ? AS FAILOVER_NAME, ? AS FAILOVER_KEY, ? AS AS_OF, ? AS EXPIRE_ON, ? AS PAYLOAD, ? AS PAYLOAD_CLASS FROM DUAL) src ON (target.FAILOVER_NAME = src.FAILOVER_NAME AND target.FAILOVER_KEY = src.FAILOVER_KEY) WHEN MATCHED THEN UPDATE SET target.AS_OF = src.AS_OF, target.EXPIRE_ON = src.EXPIRE_ON, target.PAYLOAD = src.PAYLOAD, target.PAYLOAD_CLASS = src.PAYLOAD_CLASS WHEN NOT MATCHED THEN INSERT (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) VALUES (src.FAILOVER_NAME, src.FAILOVER_KEY, src.AS_OF, src.EXPIRE_ON, src.PAYLOAD, src.PAYLOAD_CLASS)";
+
+    // -----------------------------------------------------------------
+    // Resolved queries (prefix substituted at construction time)
+    // -----------------------------------------------------------------
+
+    @Getter private final String insertQuery;
+    @Getter private final String updateQuery;
+    @Getter private final String selectQuery;
+    @Getter private final String deleteQuery;
+    @Getter private final String cleanUpQuery;
+
+    /**
+     * Native merge/upsert query resolved for the detected database, or {@code null} when
+     * no known dialect is available — the store falls back to INSERT + UPDATE in that case.
+     */
+    @Nullable
+    @Getter private final String mergeQuery;
+
+    // -----------------------------------------------------------------
+    // Dependencies for parameter binding and result-set mapping
+    // -----------------------------------------------------------------
+
+    private final ObjectMapper objectMapper;
+    private final PayloadColumnResolver payloadColumnResolver;
+
+    // -----------------------------------------------------------------
+    // Constructor
+    // -----------------------------------------------------------------
+
+    public DefaultFailoverStoreQueryResolver(String tablePrefix, ObjectMapper objectMapper, DatabaseResolver databaseResolver, PayloadColumnResolver payloadColumnResolver) {
+        this.objectMapper          = objectMapper;
+        this.payloadColumnResolver = payloadColumnResolver;
+        this.insertQuery           = applyPrefix(INSERT_SQL,   tablePrefix);
+        this.updateQuery           = applyPrefix(UPDATE_SQL,   tablePrefix);
+        this.selectQuery           = applyPrefix(SELECT_SQL,   tablePrefix);
+        this.deleteQuery           = applyPrefix(DELETE_SQL,   tablePrefix);
+        this.cleanUpQuery          = applyPrefix(CLEAN_UP_SQL, tablePrefix);
+        this.mergeQuery            = resolveMergeQuery(tablePrefix, databaseResolver.resolve());
+    }
+
+    // -----------------------------------------------------------------
+    // Parameter builders — kept co-located with SQL to guard column order
+    // -----------------------------------------------------------------
+
+    @Override
+    public <T> Object[] buildInsertMergeParams(ReferentialPayload<T> p) {
+        return new Object[]{
+                p.getName(),
+                p.getKey(),
+                Timestamp.valueOf(p.getAsOf()),
+                Timestamp.valueOf(p.getExpireOn()),
+                p.getPayload() == null ? null : objectMapper.writeValueAsString(p.getPayload()),
+                p.getPayload() == null ? null : p.getPayload().getClass().getName()
+        };
+    }
+
+    @Override
+    public int[] buildInsertMergeTypes() {
+        return new int[]{Types.VARCHAR, Types.VARCHAR, Types.TIMESTAMP, Types.TIMESTAMP, payloadColumnResolver.payloadType(), Types.VARCHAR};
+    }
+
+    @Override
+    public <T> Object[] buildUpdateParams(ReferentialPayload<T> p) {
+        return new Object[]{
+                Timestamp.valueOf(p.getAsOf()),
+                Timestamp.valueOf(p.getExpireOn()),
+                p.getPayload() == null ? null : objectMapper.writeValueAsString(p.getPayload()),
+                p.getPayload() == null ? null : p.getPayload().getClass().getName(),
+                p.getName(),
+                p.getKey()
+        };
+    }
+
+    @Override
+    public int[] buildUpdateTypes() {
+        return new int[]{Types.TIMESTAMP, Types.TIMESTAMP, payloadColumnResolver.payloadType(), Types.VARCHAR, Types.VARCHAR, Types.VARCHAR};
+    }
+
+    // -----------------------------------------------------------------
+    // Result-set mapping
+    // -----------------------------------------------------------------
+
+    @Override
+    public <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException {
+        String failoverName = rs.getString("FAILOVER_NAME");
+        String failoverKey  = rs.getString("FAILOVER_KEY");
+        var asOf            = rs.getTimestamp("AS_OF").toLocalDateTime();
+        var expireOn        = rs.getTimestamp("EXPIRE_ON").toLocalDateTime();
+        String payloadClass = rs.getString("PAYLOAD_CLASS");
+        T payload           = deserializePayload(payloadColumnResolver.extractPayload(rs, "PAYLOAD"), payloadClass);
+        return new ReferentialPayload<>(failoverName, failoverKey, false, asOf, expireOn, payload);
+    }
+
+    @Override
+    @Nullable
+    public <T> T deserializePayload(@Nullable String payload, String clazzString) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            Class<T> clazz = cast(forName(clazzString));
+            return objectMapper.readValue(payload, clazz);
+        } catch (ClassNotFoundException e) {
+            throw new FailoverStoreException("Failed to resolve payload class '%s'".formatted(clazzString), e);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Merge dialect detection
+    // -----------------------------------------------------------------
+
+    @Nullable
+    private String resolveMergeQuery(String tablePrefix, @Nullable String dbProduct) {
+        if (dbProduct == null) {
+            log.info("No database product name provided — merge/upsert disabled, using INSERT/UPDATE fallback.");
+            return null;
+        }
+        String db = dbProduct.toLowerCase();
+        if (db.contains("h2")) {
+            log.info("Database '{}' detected — using H2 native MERGE.", dbProduct);
+            return applyPrefix(MERGE_SQL_H2, tablePrefix);
+        }
+        if (db.contains("postgresql") || db.contains("postgres")) {
+            log.info("Database '{}' detected — using ON CONFLICT DO UPDATE merge.", dbProduct);
+            return applyPrefix(MERGE_SQL_POSTGRESQL, tablePrefix);
+        }
+        if (db.contains("mysql") || db.contains("mariadb")) {
+            log.info("Database '{}' detected — using ON DUPLICATE KEY UPDATE merge.", dbProduct);
+            return applyPrefix(MERGE_SQL_MYSQL, tablePrefix);
+        }
+        if (db.contains("oracle")) {
+            log.info("Database '{}' detected — using Oracle MERGE USING DUAL.", dbProduct);
+            return applyPrefix(MERGE_SQL_ORACLE, tablePrefix);
+        }
+        log.info("Database '{}' has no known merge dialect — using INSERT/UPDATE fallback.", dbProduct);
+        return null;
+    }
+
+    // -----------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------
+
+    private static String applyPrefix(String template, String prefix) {
+        return replace(template, PREFIX, prefix);
+    }
+}
