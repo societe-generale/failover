@@ -463,9 +463,9 @@ CREATE TABLE DEMO_FAILOVER_STORE (
 > ### **Customization of payload column in FailoverStoreJdbc**
 In case if FailoverStoreJdbc, Most of the time, for a simple referential use case the size of serialized (by JSON) payload will be with in varchar 2000.
 However, for more complex use case we may need a higher capacity to hold this data based on the database type we use.
-We are introducing **PayloadColumnHandler** to address this issue, now users can customize the payload column based on their needs (ex: to use TEXT or CLOB instead of default VARCHAR(2000))
+We are introducing **PayloadColumnResolver** to address this issue, now users can customize the payload column based on their needs (ex: to use TEXT or CLOB instead of default VARCHAR(2000))
 ```java
-public interface PayloadColumnHandler {
+public interface PayloadColumnResolver {
 
     /**
      * @return the type of payload column ( refer java.sql.Types class for more details )
@@ -483,7 +483,7 @@ public interface PayloadColumnHandler {
 
 we have provided a default implementation to support varchar type as below :
 ```java
-public class VarcharPayloadColumnHandler implements PayloadColumnHandler {
+public class VarcharPayloadColumnResolver implements PayloadColumnResolver {
 
     @Override
     public int payloadType() {
@@ -497,7 +497,7 @@ public class VarcharPayloadColumnHandler implements PayloadColumnHandler {
 }
 ```
 
-> Users can provide their own custom PayloadColumnHandler in case if they choose to use the column type as TEXT or CLOB instead of default VARCHAR
+> Users can provide their own custom PayloadColumnResolver in case if they choose to use the column type as TEXT or CLOB instead of default VARCHAR
 
 ---
 

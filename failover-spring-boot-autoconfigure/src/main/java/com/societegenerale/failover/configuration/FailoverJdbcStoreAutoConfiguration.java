@@ -16,7 +16,12 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.societegenerale.failover.store.resolver.*;
+import com.societegenerale.failover.store.resolver.DatabaseResolver;
+import com.societegenerale.failover.store.resolver.DefaultDatabaseResolver;
+import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
+import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
+import com.societegenerale.failover.store.resolver.PayloadColumnResolver;
+import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import tools.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.core.store.FailoverStore;

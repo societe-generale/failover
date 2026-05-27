@@ -89,8 +89,8 @@ public interface FailoverStoreQueryResolver {
 
     /**
      * Deserializes a JSON payload string into the target type resolved from {@code clazzString}.
-     * Returns {@code null} when {@code payload} is {@code null}.
+     * Returns {@code null} when {@code payload} or {@code clazzString} is {@code null}.
      */
     @Nullable
-    <T> T deserializePayload(@Nullable String payload, String clazzString);
+    <T> T deserializePayload(@Nullable String payload, @Nullable String clazzString);
 }

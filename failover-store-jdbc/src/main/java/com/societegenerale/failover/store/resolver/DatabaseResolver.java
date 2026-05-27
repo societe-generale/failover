@@ -17,7 +17,6 @@
 package com.societegenerale.failover.store.resolver;
 
 import org.jspecify.annotations.Nullable;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Strategy for detecting the underlying database product name from a live JDBC connection.
@@ -32,8 +31,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public interface DatabaseResolver {
 
     /**
-     * Resolves the database product name from the given {@link JdbcTemplate}.
-     *
      * @return database product name (e.g. {@code "H2"}, {@code "PostgreSQL"}), or {@code null}
      *         if the name cannot be determined
      */
