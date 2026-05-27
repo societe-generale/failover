@@ -54,12 +54,12 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     // -----------------------------------------------------------------
 
     /** Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
-    private static final String INSERT_SQL = "INSERT into " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) VALUES (?, ?, ?, ?, ?, ?)";
+    private static final String INSERT_SQL = "INSERT INTO " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) VALUES (?, ?, ?, ?, ?, ?)";
 
     /** Params: AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS, FAILOVER_NAME, FAILOVER_KEY */
     private static final String UPDATE_SQL = "UPDATE " + PREFIX + "FAILOVER_STORE SET AS_OF = ? , EXPIRE_ON = ? , PAYLOAD = ? , PAYLOAD_CLASS = ? WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
 
-    private static final String SELECT_SQL   = "SELECT FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS from " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
+    private static final String SELECT_SQL   = "SELECT FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
     private static final String DELETE_SQL   = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
     private static final String CLEAN_UP_SQL = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE EXPIRE_ON < ?";
 
@@ -160,8 +160,15 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     public <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException {
         String failoverName = rs.getString("FAILOVER_NAME");
         String failoverKey  = rs.getString("FAILOVER_KEY");
-        var asOf            = rs.getTimestamp("AS_OF").toLocalDateTime();
-        var expireOn        = rs.getTimestamp("EXPIRE_ON").toLocalDateTime();
+        var asOfTs          = rs.getTimestamp("AS_OF");
+        var expireOnTs      = rs.getTimestamp("EXPIRE_ON");
+        if (asOfTs == null || expireOnTs == null) {
+            throw new FailoverStoreException(
+                "Corrupt row: AS_OF or EXPIRE_ON is null for name='%s', key='%s'"
+                    .formatted(failoverName, failoverKey));
+        }
+        var asOf            = asOfTs.toLocalDateTime();
+        var expireOn        = expireOnTs.toLocalDateTime();
         String payloadClass = rs.getString("PAYLOAD_CLASS");
         T payload           = deserializePayload(payloadColumnResolver.extractPayload(rs, "PAYLOAD"), payloadClass);
         return new ReferentialPayload<>(failoverName, failoverKey, false, asOf, expireOn, payload);
@@ -169,8 +176,8 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
 
     @Override
     @Nullable
-    public <T> T deserializePayload(@Nullable String payload, String clazzString) {
-        if (payload == null) {
+    public <T> T deserializePayload(@Nullable String payload, @Nullable String clazzString) {
+        if (payload == null || clazzString == null) {
             return null;
         }
         try {

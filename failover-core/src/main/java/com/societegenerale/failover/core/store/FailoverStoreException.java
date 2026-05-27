@@ -20,6 +20,10 @@ package com.societegenerale.failover.core.store;
  * @author Anand Manissery
  */
 public class FailoverStoreException extends RuntimeException {
+    public FailoverStoreException(String message) {
+        super(message);
+    }
+
     public FailoverStoreException(String message, Throwable cause) {
         super(message, cause);
     }

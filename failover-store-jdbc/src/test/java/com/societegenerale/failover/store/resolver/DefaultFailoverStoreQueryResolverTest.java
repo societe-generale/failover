@@ -616,6 +616,13 @@ class DefaultFailoverStoreQueryResolverTest {
         }
 
         @Test
+        @DisplayName("non-null payload with null class name → returns null (clazzString null guard)")
+        void nonNullPayloadWithNullClassNameReturnsNull() {
+            String json = OBJECT_MAPPER.writeValueAsString(new TestPayload("x"));
+            assertThat(resolver.<TestPayload>deserializePayload(json, null)).isNull();
+        }
+
+        @Test
         @DisplayName("valid JSON and valid class → returns deserialized object equal to original")
         void validJsonAndValidClassDeserializesCorrectly() {
             var expected = new TestPayload("round-trip-value");

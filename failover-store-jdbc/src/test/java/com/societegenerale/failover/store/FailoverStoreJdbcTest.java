@@ -181,16 +181,6 @@ class FailoverStoreJdbcTest {
 
 
         @Test
-        @DisplayName("should update stored values when storing the same key again when merge query reset to null")
-        void shouldUpdateStoredValuesWhenStoringTheSameKeyAgainWhenMergeQueryResetToNull() {
-            failoverStoreJdbc.setMergeQuery(null);
-            failoverStoreJdbc.store(referentialPayload);
-            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
-            failoverStoreJdbc.store(updated);
-            assertThat(failoverStoreJdbc.find(NAME, KEY)).isPresent().contains(updated);
-        }
-
-        @Test
         @DisplayName("should result in exactly one row when the same key is stored multiple times")
         void shouldResultInOneRowWhenSameKeyStoredMultipleTimes() {
             failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(1L, "first")));
@@ -398,28 +388,28 @@ class FailoverStoreJdbcTest {
         void shouldHandleConcurrentStoreOnSameKeyAtomically() throws Exception {
             int threadCount = 10;
             CountDownLatch startLatch = new CountDownLatch(1);
-            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-            List<Future<?>> futures = new ArrayList<>();
+            try(ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+                List<Future<?>> futures = new ArrayList<>();
 
-            for (int i = 0; i < threadCount; i++) {
-                final int index = i;
-                futures.add(executor.submit(() -> {
-                    try {
-                        startLatch.await();
-                        failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false,
-                                NOW.plusSeconds(index), NOW.plusHours(1), new Client((long) index, "CLIENT-" + index)));
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }));
+                for (int i = 0; i < threadCount; i++) {
+                    final int index = i;
+                    futures.add(executor.submit(() -> {
+                        try {
+                            startLatch.await();
+                            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false,
+                                    NOW.plusSeconds(index), NOW.plusHours(1), new Client((long) index, "CLIENT-" + index)));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }));
+                }
+
+                startLatch.countDown();
+                for (Future<?> future : futures) {
+                    future.get();
+                }
+                executor.shutdown();
             }
-
-            startLatch.countDown();
-            for (Future<?> future : futures) {
-                future.get();
-            }
-            executor.shutdown();
-
             var count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM TEST_FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?",
                     Integer.class, NAME, KEY);
@@ -431,28 +421,28 @@ class FailoverStoreJdbcTest {
         void shouldHandleConcurrentStoreOnDistinctKeys() throws Exception {
             int threadCount = 10;
             CountDownLatch startLatch = new CountDownLatch(1);
-            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-            List<Future<?>> futures = new ArrayList<>();
+            try(ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+                List<Future<?>> futures = new ArrayList<>();
 
-            for (int i = 0; i < threadCount; i++) {
-                final int index = i;
-                futures.add(executor.submit(() -> {
-                    try {
-                        startLatch.await();
-                        failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "key-" + index, false,
-                                NOW, NOW.plusHours(1), new Client((long) index, "CLIENT-" + index)));
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }));
+                for (int i = 0; i < threadCount; i++) {
+                    final int index = i;
+                    futures.add(executor.submit(() -> {
+                        try {
+                            startLatch.await();
+                            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "key-" + index, false,
+                                    NOW, NOW.plusHours(1), new Client((long) index, "CLIENT-" + index)));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }));
+                }
+
+                startLatch.countDown();
+                for (Future<?> future : futures) {
+                    future.get();
+                }
+                executor.shutdown();
             }
-
-            startLatch.countDown();
-            for (Future<?> future : futures) {
-                future.get();
-            }
-            executor.shutdown();
-
             var count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TEST_FAILOVER_STORE", Integer.class);
             assertThat(count).isEqualTo(threadCount);
         }
@@ -556,23 +546,19 @@ class FailoverStoreJdbcTest {
     }
 
     // -------------------------------------------------------------------------
-    // getMergeQuery / setMergeQuery / resolveMergeQuery — caching and lazy re-fetch
+    // mergeQuery — final field resolved once at construction
     // -------------------------------------------------------------------------
 
     @Nested
-    @DisplayName("resolveMergeQuery — getMergeQuery / setMergeQuery / lazy re-fetch")
+    @DisplayName("mergeQuery — final field resolved once at construction")
     class MergeQueryResolutionScenarios {
 
-        /**
-         * Fresh store built from the wired beans — gives an isolated mergeEnabled state
-         * unaffected by BadSqlGrammarFromQueryResolverSpyScenarios state pollution.
-         */
         private FailoverStoreJdbc<Client> freshStore() {
             return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver);
         }
 
         @Test
-        @DisplayName("getMergeQuery() returns non-null H2 merge SQL at construction")
+        @DisplayName("getMergeQuery() returns non-null H2 merge SQL — resolved at construction from live datasource")
         void getMergeQueryReturnsNonNullH2MergeSqlAtConstruction() {
             assertThat(freshStore().getMergeQuery())
                     .isNotNull()
@@ -580,48 +566,27 @@ class FailoverStoreJdbcTest {
         }
 
         @Test
-        @DisplayName("setMergeQuery(null) clears the cached SQL — getMergeQuery() returns null immediately")
-        void setMergeQueryNullClearsCache() {
-            var store = freshStore();
-            store.setMergeQuery(null);
-            assertThat(store.getMergeQuery()).isNull();
+        @DisplayName("getMergeQuery() returns null when DatabaseResolver returns null — no merge dialect available")
+        void getMergeQueryReturnsNullWhenResolverReturnsNull() {
+            var nullDbResolver = Mockito.mock(DatabaseResolver.class);
+            Mockito.when(nullDbResolver.resolve()).thenReturn(null);
+            var queryResolver = new DefaultFailoverStoreQueryResolver("TEST_", objectMapper, nullDbResolver, new VarcharPayloadColumnResolver());
+            assertThat(new FailoverStoreJdbc<>(jdbcTemplate, queryResolver).getMergeQuery()).isNull();
         }
 
         @Test
-        @DisplayName("setMergeQuery(customSql) hot-swaps the cached SQL — getMergeQuery() reflects the new value")
-        void setMergeQueryHotSwapsTheCachedSql() {
+        @DisplayName("two store() calls on same key produce exactly one row — merge active for H2")
+        void storeWithH2MergeProducesOneRow() {
             var store = freshStore();
-            store.setMergeQuery("CUSTOM MERGE SQL");
-            assertThat(store.getMergeQuery()).isEqualTo("CUSTOM MERGE SQL");
-        }
-
-        @Test
-        @DisplayName("store() triggers lazy re-fetch when mergeQuery is null — getMergeQuery() is non-null after store()")
-        void storeTriggerLazyRefetchWhenMergeQueryIsNull() {
-            var store = freshStore();
-            store.setMergeQuery(null);
-
-            assertThat(store.getMergeQuery()).isNull();   // cleared before store()
             store.store(referentialPayload);
-            assertThat(store.getMergeQuery()).isNotNull().containsIgnoringCase("MERGE");   // restored by lazy re-fetch
-            assertThat(store.find(NAME, KEY)).isPresent().contains(referentialPayload);
-        }
-
-        @Test
-        @DisplayName("second store() after lazy re-fetch uses the restored SQL — merge produces exactly one row")
-        void secondStoreAfterLazyRefetchAlsoSucceedsViaMerge() {
-            var store = freshStore();
-            store.setMergeQuery(null);
-
-            store.store(referentialPayload);   // lazy re-fetch restores mergeQuery
             var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
-            store.store(updated);   // subsequent store uses restored merge SQL
+            store.store(updated);
 
             assertThat(store.find(NAME, KEY)).isPresent().contains(updated);
             var count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM TEST_FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?",
                     Integer.class, NAME, KEY);
-            assertThat(count).isEqualTo(1);   // merge → single row, not two inserts
+            assertThat(count).isEqualTo(1);
         }
     }
 
@@ -630,50 +595,49 @@ class FailoverStoreJdbcTest {
     // -------------------------------------------------------------------------
 
     @Nested
-    @DisplayName("BadSqlGrammarException — FailoverStoreQueryResolver spy returns invalid merge SQL")
+    @DisplayName("BadSqlGrammarException — invalid merge SQL → H2 throws → INSERT/UPDATE fallback")
     class BadSqlGrammarFromQueryResolverSpyScenarios {
 
-        @BeforeEach
-        void setUp() {
-            failoverStoreJdbc.setMergeQuery("THIS IS NOT VALID SQL !! @#$");
-        }
-
-        @AfterEach
-        void tearDown() {
-            failoverStoreJdbc.setMergeQuery(null);
+        /**
+         * Builds a fresh store whose mergeQuery is permanently set to invalid SQL.
+         * A spy wrapping a real resolver overrides getMergeQuery() at construction time,
+         * so the final field is baked in as bad SQL — no setter required.
+         * Using a local instance isolates mergeEnabled state: each test starts with mergeEnabled=true.
+         */
+        private FailoverStoreJdbc<Client> storeWithBadMergeSql() {
+            var realResolver = new DefaultFailoverStoreQueryResolver(
+                    "TEST_", objectMapper, new DefaultDatabaseResolver(jdbcTemplate), new VarcharPayloadColumnResolver());
+            var spyResolver = Mockito.spy(realResolver);
+            Mockito.doReturn("THIS IS NOT VALID SQL !! @#$").when(spyResolver).getMergeQuery();
+            return new FailoverStoreJdbc<>(jdbcTemplate, spyResolver);
         }
 
         @Test
-        @DisplayName("store() completes and record is findable when spy returns invalid merge SQL (real H2 throws BadSqlGrammarException → INSERT fallback)")
+        @DisplayName("store() completes and record is findable — real H2 throws BadSqlGrammarException, falls back to INSERT")
         void storeCompletesViaInsertFallbackWhenMergeSqlIsInvalid() {
-            failoverStoreJdbc.setMergeQuery("THIS IS NOT VALID SQL !! @#$");
-
-            failoverStoreJdbc.store(referentialPayload);
+            storeWithBadMergeSql().store(referentialPayload);
 
             assertThat(failoverStoreJdbc.find(NAME, KEY)).isPresent().contains(referentialPayload);
         }
 
         @Test
-        @DisplayName("store() on same key after BadSqlGrammarException succeeds — INSERT then UPDATE path used")
+        @DisplayName("store() on same key after BadSqlGrammarException succeeds — first INSERT, second UPDATE path")
         void storeOnSameKeyAfterBadSqlGrammarSucceeds() {
-            Mockito.when(failoverStoreQueryResolver.getMergeQuery()).thenReturn("THIS IS NOT VALID SQL !! @#$");
-
+            var store   = storeWithBadMergeSql();
             var first   = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(1L, "first"));
             var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(2), new Client(99L, "updated"));
 
-            failoverStoreJdbc.store(first);    // merge → BadSqlGrammarException → INSERT → mergeEnabled=false
-            failoverStoreJdbc.store(updated);  // mergeEnabled=false → INSERT → DuplicateKeyException → UPDATE
+            store.store(first);    // merge → BadSqlGrammarException → INSERT → mergeEnabled=false
+            store.store(updated);  // mergeEnabled=false → INSERT → DuplicateKeyException → UPDATE
 
-            assertThat(failoverStoreJdbc.find(NAME, KEY)).isPresent().contains(updated);
+            assertThat(store.find(NAME, KEY)).isPresent().contains(updated);
         }
 
         @Test
         @DisplayName("store() with null payload completes successfully after merge fails with invalid SQL")
         void storeWithNullPayloadCompletesViaInsertFallback() {
-            Mockito.when(failoverStoreQueryResolver.getMergeQuery()).thenReturn("THIS IS NOT VALID SQL !! @#$");
-
             referentialPayload.setPayload(null);
-            failoverStoreJdbc.store(referentialPayload);
+            storeWithBadMergeSql().store(referentialPayload);
 
             assertThat(failoverStoreJdbc.find(NAME, KEY)).isPresent().contains(referentialPayload);
         }
