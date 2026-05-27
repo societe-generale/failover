@@ -102,11 +102,15 @@ class DefaultFailoverStoreQueryResolverTest {
         @DisplayName("all queries substitute the prefix and leave no %PREFIX% placeholder")
         void allQueriesSubstitutePrefixAndHaveNoPlaceholder() {
             var r = defaultResolver();
-            Stream.of(r.getInsertQuery(), r.getUpdateQuery(), r.getSelectQuery(),
-                            r.getDeleteQuery(), r.getCleanUpQuery(), r.getMergeQuery())
-                    .forEach(q -> assertThat(q)
-                            .doesNotContain("%PREFIX%")
-                            .contains("TEST_FAILOVER_STORE"));
+            var queries = Stream.of(r.getInsertQuery(), r.getUpdateQuery(), r.getSelectQuery(),
+                    r.getDeleteQuery(), r.getCleanUpQuery(), r.getMergeQuery()).toList();
+            assertThat(queries)
+                    .hasSize(6)
+                    .doesNotContainNull()
+                    .allSatisfy(q -> {
+                        assertThat(q).doesNotContain("%PREFIX%");
+                        assertThat(q).contains("TEST_FAILOVER_STORE");
+                    });
         }
 
         @Test
@@ -241,10 +245,11 @@ class DefaultFailoverStoreQueryResolverTest {
         @Test
         @DisplayName("H2 mergeQuery placeholder count matches buildInsertMergeParams and buildInsertMergeTypes")
         void h2MergeQueryPlaceholderCountMatchesStoreBuilders() {
-            var r       = resolver(TABLE_PREFIX, "H2");
-            assertThat(r).isNotNull();
-            var objects = r.buildInsertMergeParams(payload(new TestPayload("v")));
-            assertThat(countPlaceholders(r.getMergeQuery()))
+            var r          = resolver(TABLE_PREFIX, "H2");
+            var mergeQuery = r.getMergeQuery();
+            var objects    = r.buildInsertMergeParams(payload(new TestPayload("v")));
+            assertThat(mergeQuery).isNotNull();
+            assertThat(countPlaceholders(mergeQuery))
                     .isEqualTo(objects.length)
                     .isEqualTo(r.buildInsertMergeTypes().length);
         }
@@ -253,9 +258,11 @@ class DefaultFailoverStoreQueryResolverTest {
         @ValueSource(strings = {"PostgreSQL", "MySQL", "MariaDB", "Oracle"})
         @DisplayName("all known merge dialects placeholder count matches buildInsertMergeParams and buildInsertMergeTypes")
         void allMergeDialectsPlaceholderCountMatchesStoreBuilders(String dbProduct) {
-            var r       = resolver(TABLE_PREFIX, dbProduct);
-            var objects = r.buildInsertMergeParams(payload(new TestPayload("v")));
-            assertThat(countPlaceholders(r.getMergeQuery()))
+            var r          = resolver(TABLE_PREFIX, dbProduct);
+            var mergeQuery = r.getMergeQuery();
+            var objects    = r.buildInsertMergeParams(payload(new TestPayload("v")));
+            assertThat(mergeQuery).isNotNull();
+            assertThat(countPlaceholders(mergeQuery))
                     .isEqualTo(objects.length)
                     .isEqualTo(r.buildInsertMergeTypes().length);
         }

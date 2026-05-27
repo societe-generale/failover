@@ -517,6 +517,7 @@ The default implementation `DefaultDatabaseResolver` reads the product name from
 Returning `null` disables native merge/upsert entirely — every `store()` call falls back to INSERT + UPDATE on duplicate key.
 
 **When to override:**
+
 * Your application uses a database proxy or middleware that misreports the product name (e.g. PgBouncer reporting a different string)
 * You want to hard-code a known dialect to skip the JDBC metadata round-trip at startup
 * You need to add observability (metrics, logging) around database detection
@@ -592,6 +593,7 @@ public interface FailoverStoreQueryResolver {
 The default implementation `DefaultFailoverStoreQueryResolver` auto-selects the merge dialect from `DatabaseResolver` at construction time and owns all parameter-binding and result-set-mapping logic.
 
 **When to override:**
+
 * You need a different table schema (additional columns, different column names, different key structure)
 * You want to use a merge dialect not yet recognized by the default implementation
 * You need custom payload serialization/deserialization (e.g. Protobuf, Avro, encrypted payloads)
@@ -624,8 +626,9 @@ public class FailoverQueryResolverConfig {
     /**
      * Replace the query resolver entirely.
      * FailoverStoreJdbc receives this bean via constructor injection.
-     * @ConditionalOnMissingBean on the auto-configured bean means this takes precedence.
+     * @ConditionalOnMissingBean on the autoconfigured bean means this takes precedence.
      */
+    @ConditionalOnMissingBean
     @Bean
     public FailoverStoreQueryResolver failoverStoreQueryResolver(
             ObjectMapper objectMapper,
