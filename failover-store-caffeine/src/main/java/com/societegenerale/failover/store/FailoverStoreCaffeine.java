@@ -32,18 +32,40 @@ import java.util.Optional;
 import static java.util.Optional.ofNullable;
 
 /**
- * {@link FailoverStore} implementation backed by a single Caffeine cache.
+ * {@link FailoverStore} implementation backed by a single Caffeine in-memory cache.
  *
- * <p>All referential entries are stored in one flat {@link Cache} keyed on the composite
- * {@code name##key} format. A per-entry {@link Expiry} policy derives each entry's TTL from
- * its own {@code expireOn} timestamp, so entries with different expiry values are evicted
- * independently. Caffeine handles eviction automatically; {@link #cleanByExpiry} is a no-op.
+ * <h3>Storage layout</h3>
+ * <p>All entries — regardless of referential name — are stored in one flat {@link Cache}.
+ * Each entry's cache key is the composite string {@code "<name>##<key>"}, keeping name and
+ * key scoped together without a nested map structure.
  *
- * <p>All reads and writes operate on defensive copies of {@link ReferentialPayload} to prevent
- * callers from mutating cached state.
+ * <h3>Per-entry expiry</h3>
+ * <p>A custom {@link Expiry} policy derives each entry's TTL individually from its own
+ * {@link ReferentialPayload#getExpireOn()} timestamp at the moment of creation or update:
+ * <pre>
+ *   TTL = Duration.between(clock.now(), payload.getExpireOn())
+ * </pre>
+ * This means two entries stored under the same referential name can have different TTLs
+ * and are evicted independently. Caffeine handles eviction automatically on a background
+ * thread, so {@link #cleanByExpiry} is a no-op for this implementation.
  *
- * @param <T> the type of the business payload
+ * <h3>Read expiry</h3>
+ * <p>Reading an entry ({@link #find}) does not reset its TTL — the remaining duration is
+ * preserved unchanged on every read access.
+ *
+ * <h3>Defensive copies</h3>
+ * <p>Both {@link #store} and {@link #find} operate on copies of {@link ReferentialPayload}
+ * ({@link ReferentialPayload#copy()}). This prevents callers from mutating cached state
+ * through a retained reference.
+ *
+ * <h3>Thread safety</h3>
+ * <p>Caffeine's {@link Cache} is fully thread-safe. All operations ({@link #store},
+ * {@link #find}, {@link #delete}) may be called concurrently without external synchronisation.
+ *
+ * @param <T> the type of the business payload held by each {@link ReferentialPayload}
  * @author Anand Manissery
+ * @see FailoverStore
+ * @see ReferentialPayload
  */
 @Slf4j
 public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
@@ -52,6 +74,13 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
 
     private final Cache<String, ReferentialPayload<T>> cache;
 
+    /**
+     * Constructs a {@code FailoverStoreCaffeine} and initialises the underlying Caffeine cache
+     * with a per-entry {@link Expiry} policy backed by the given clock.
+     *
+     * @param fClock clock used to compute each entry's remaining TTL from its {@code expireOn}
+     *               timestamp; must not be {@code null}
+     */
     public FailoverStoreCaffeine(FailoverClock fClock) {
         this.failoverClock = fClock;
         this.cache = Caffeine.newBuilder()
@@ -73,8 +102,12 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     }
 
     /**
-     * Stores a defensive copy of the payload using the composite {@code name##key} cache key.
-     * The entry's TTL is derived from its own {@code expireOn} timestamp.
+     * Stores a defensive copy of the payload in the cache.
+     *
+     * <p>The cache key is the composite {@code "<name>##<key>"}. If an entry for that key
+     * already exists, it is replaced and its TTL is re-derived from the new payload's
+     * {@code expireOn}. If no entry exists, a new one is created with TTL computed as
+     * {@code Duration.between(clock.now(), payload.getExpireOn())}.
      *
      * @param referentialPayload the payload to cache; must not be {@code null}
      */
@@ -86,7 +119,8 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
 
     /**
      * Invalidates the cache entry for the given payload.
-     * No-op if the entry does not exist or has already been evicted.
+     *
+     * <p>This is a no-op if the entry does not exist or has already been evicted by Caffeine.
      *
      * @param referentialPayload the payload to remove; must not be {@code null}
      */
@@ -96,11 +130,15 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     }
 
     /**
-     * Looks up a payload by name and key, returning a defensive copy if found.
+     * Looks up a payload by referential name and key.
+     *
+     * <p>Returns a defensive copy of the cached payload if present and not yet evicted.
+     * Returns {@link Optional#empty()} if the entry was never stored, has expired, or was
+     * explicitly deleted. Reading an entry does not reset its TTL.
      *
      * @param name the referential name
      * @param key  the unique key within that referential
-     * @return an {@link Optional} containing a copy of the cached payload, or empty if not found or evicted
+     * @return an {@link Optional} containing a copy of the cached payload, or empty if absent
      */
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
@@ -108,7 +146,10 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     }
 
     /**
-     * No-op: expiry is managed automatically by Caffeine's per-entry expiry policy.
+     * No-op for this implementation.
+     *
+     * <p>Expiry is managed automatically by Caffeine's per-entry expiry policy; there is no
+     * need to scan and remove entries manually. The {@code expiry} argument is ignored.
      *
      * @param expiry ignored
      */
@@ -118,7 +159,7 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     }
 
     /**
-     * Builds a composite cache key from the referential name and entry key.
+     * Builds the composite cache key {@code "<name>##<key>"}.
      *
      * @param name the referential name
      * @param key  the entry key
