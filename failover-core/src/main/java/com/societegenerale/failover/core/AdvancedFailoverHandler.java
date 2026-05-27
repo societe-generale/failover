@@ -65,8 +65,8 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
                     .collect("exception-type", cause.getClass().getCanonicalName())
                     .collect("exception-cause-type", cause.getCause() !=null ? cause.getCause().getClass().getCanonicalName() : "")
-                    .collect("exception-message", cause.getMessage())
-                    .collect("exception-cause-message", cause.getCause() !=null ? cause.getCause().getMessage() : "")
+                    .collect("exception-message", cause.getMessage() != null ? cause.getMessage() : "")
+                    .collect("exception-cause-message", cause.getCause() != null && cause.getCause().getMessage() != null ? cause.getCause().getMessage() : "")
                     .collect("is-recovered", Boolean.toString(result != null)));
         }
         return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);

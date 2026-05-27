@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -368,6 +369,27 @@ class DefaultPayloadEnricherTest {
 
                 assertThat(result).isNotNull();
                 assertThat(result.getPayload()).isNull();
+            }
+
+            @Test
+            @DisplayName("does not NPE when overridden extractPayload returns a default Referential payload for null envelope")
+            void doesNotNpeWhenExtractPayloadReturnsDefaultForNullEnvelope() {
+                // Enricher whose extractPayload() supplies a default payload even when envelope is empty
+                var enricher = new DefaultPayloadEnricher<ReferentialThirdParty>() {
+                    @Override
+                    protected ReferentialThirdParty extractPayload(
+                            Class<ReferentialThirdParty> clazz,
+                            ReferentialPayload<ReferentialThirdParty> rp) {
+                        var p = rp.getPayload();
+                        return p != null ? p : new ReferentialThirdParty(0L, "default", 0);
+                    }
+                };
+
+                // Before fix: passes original null to enrichPayloadInfo → NPE on null.isUpToDate()
+                // After fix: passes rPayload (non-null) to enrichPayloadInfo → completes without NPE
+                assertThatCode(() ->
+                        enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, null, new RuntimeException("err")))
+                        .doesNotThrowAnyException();
             }
         }
     }

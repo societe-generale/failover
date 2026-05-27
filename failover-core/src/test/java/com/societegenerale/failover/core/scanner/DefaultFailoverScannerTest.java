@@ -81,6 +81,23 @@ class DefaultFailoverScannerTest {
                 .hasMessageContaining("failover.package-to-scan must not be blank");
     }
 
+    /**
+     * Regression: duplicate @Failover names cause toMap() to throw
+     * IllegalStateException("Duplicate key ...") which is then wrapped in a
+     * FailoverScannerException with a misleading "reflections library" message.
+     * The scanner should throw FailoverScannerException with a message that
+     * clearly names the duplicate failover name so the developer can fix it.
+     */
+    @Test
+    @DisplayName("should throw FailoverScannerException with clear duplicate-name message")
+    void constructorThrowsFailoverScannerExceptionWithClearMessageOnDuplicateNames() {
+        assertThatThrownBy(() ->
+                new DefaultFailoverScanner("com.societegenerale.failover.core.fixtures.duplicate"))
+                .isInstanceOf(FailoverScannerException.class)
+                .hasMessageContaining("Duplicate @Failover name")
+                .hasMessageContaining("duplicate-name");
+    }
+
     interface ClientReferential {
         @Failover(name = "client-by-id")
         Client findClientById(Long id);

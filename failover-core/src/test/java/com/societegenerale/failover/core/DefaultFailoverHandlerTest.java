@@ -163,6 +163,16 @@ class DefaultFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should return null without NPE when payload is null")
+    void shouldReturnNullWithoutNpeWhenPayloadIsNull() {
+        // null guard must skip clock/expiryPolicy/store — no stubs needed
+        ThirdParty result = defaultFailoverHandler.store(failover, List.of(1L), null);
+
+        assertThat(result).isNull();
+        verify(failoverStore, never()).store(any());
+    }
+
+    @Test
     @DisplayName("should execute clean")
     void shouldExecuteClean() {
         given(clock.now()).willReturn(now);

@@ -51,6 +51,10 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
+        if (payload == null) {
+            log.debug("Failover store skipped for '{}': method returned null payload", failover.name());
+            return null;
+        }
         Class<T> clazz = cast(payload.getClass());
         var referentialPayload = payloadEnricher.enrichOnStore(failover, clazz, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);

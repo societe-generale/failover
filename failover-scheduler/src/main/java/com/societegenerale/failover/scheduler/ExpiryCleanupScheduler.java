@@ -33,7 +33,7 @@ public class ExpiryCleanupScheduler<T> {
 
     @Async
     @Scheduled(cron = "${failover.scheduler.cleanup-cron:0 0 * * * *}")
-    public void report() {
+    public void cleanup() {
         log.info("Clean up expired referential...");
         failoverHandler.clean();
     }

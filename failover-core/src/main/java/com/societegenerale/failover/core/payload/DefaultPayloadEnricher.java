@@ -37,7 +37,7 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
     public ReferentialPayload<T> enrichOnRecover(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, Throwable cause) {
         var rPayload = referentialPayload==null ? new ReferentialPayload<T>() :  referentialPayload;
         var payload = extractPayload(clazz, rPayload);
-        enrichPayloadInfo(failover, clazz, referentialPayload, payload, cause);
+        enrichPayloadInfo(failover, clazz, rPayload, payload, cause);
         return rPayload;
     }
 
