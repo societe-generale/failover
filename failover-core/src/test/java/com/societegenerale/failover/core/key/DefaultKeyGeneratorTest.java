@@ -199,14 +199,17 @@ class DefaultKeyGeneratorTest {
     }
 
     @Test
-    @DisplayName("should return the key when the argument is of any non primitive Object")
-    void shouldReturnTheSameKeyWhenOneOfTheArgContainsComaSeparatedStringValues() {
+    @DisplayName("should return different keys when one of the argument contains comma separated values with different order")
+    void shouldReturnDifferentKeyWhenOneOfTheArgContainsComaSeparatedStringValues() {
         var ids1 = "2,3,4";
         var ids2 = "4,3,2";
         var ids3 = "2,4,3";
         String key1 = defaultKeyProvider.key(FAILOVER, List.of(1, ids1, "5"));
         String key2 = defaultKeyProvider.key(FAILOVER, List.of(1, ids2, "5"));
         String key3 = defaultKeyProvider.key(FAILOVER, List.of(1, ids3, "5"));
-        assertThat(key1).isEqualTo(key2).isEqualTo(key3).isEqualTo("1:2,3,4:5");
+        assertThat(key1).isNotEqualTo(key2).isNotEqualTo(key3);
+        assertThat(key1).isEqualTo("1:2,3,4:5");
+        assertThat(key2).isEqualTo("1:4,3,2:5");
+        assertThat(key3).isEqualTo("1:2,4,3:5");
     }
 }

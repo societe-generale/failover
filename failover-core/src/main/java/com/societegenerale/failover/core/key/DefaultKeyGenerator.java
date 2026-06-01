@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -44,7 +43,7 @@ public class DefaultKeyGenerator implements KeyGenerator {
 
     private static final String KEY_DELIMITER = ":";
 
-    private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, Boolean.class);
+    private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, String.class, Boolean.class);
 
     @Override
     public String key(Failover failover, List<Object> args) {
@@ -57,14 +56,6 @@ public class DefaultKeyGenerator implements KeyGenerator {
     private String castToStringValue(Object item, Failover failover) {
         if (isNull(item)) {
             return EMPTY_STRING;
-        }
-        if(item instanceof String strItem) {
-            if(strItem.contains(COLLECTIONS_DELIMITER)) {
-                return Arrays.stream(strItem.split(COLLECTIONS_DELIMITER))
-                        .sorted()
-                        .collect(joining(COLLECTIONS_DELIMITER));
-            }
-            return strItem;
         }
         if(item.getClass().isPrimitive() || isOfType(item)) {
             return valueOf(item);
