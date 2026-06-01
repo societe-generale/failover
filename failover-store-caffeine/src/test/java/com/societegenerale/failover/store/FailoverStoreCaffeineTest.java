@@ -159,8 +159,8 @@ class FailoverStoreCaffeineTest {
      * <p>This test will FAIL until the fix (per-entry {@code Expiry} policy) is applied.
      */
     @Test
-    @DisplayName("BUG: second entry with longer expireOn is evicted by first entry's shorter TTL")
-    void shouldProve_perNameCacheUsesFirstEntryExpiryTTL_forAllSubsequentEntries() {
+    @DisplayName("second entry with longer expireOn should not evicted by first entry's shorter TTL")
+    void everyEntryShouldHaveItsOwnTTLForExpiry() {
         // ARRANGE
         // Payload A: short-lived (2s). Storing this first creates the NAME cache with expireAfterWrite=2s.
         var shortLivedPayload = new ReferentialPayload<>(NAME, "key-short", true, NOW, NOW.plusSeconds(2L),
