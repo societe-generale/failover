@@ -25,6 +25,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.Types;
 import java.time.LocalDateTime;
@@ -32,7 +33,22 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
+ * JDBC-backed {@link FailoverStore} implementation.
+ *
+ * <p>Persistence strategy for {@link #store}:
+ * <ol>
+ *   <li>If the detected database provides a native merge/upsert dialect (H2, PostgreSQL,
+ *       MySQL/MariaDB, Oracle), a single merge statement is attempted first.</li>
+ *   <li>If the merge SQL fails with a {@link org.springframework.jdbc.BadSqlGrammarException}
+ *       (unsupported dialect), merge is disabled permanently for this instance and all
+ *       subsequent stores fall back to an INSERT + UPDATE-on-duplicate pattern.</li>
+ *   <li>When no merge query is available at construction time, the INSERT/UPDATE fallback
+ *       is used from the start.</li>
+ * </ol>
+ *
+ * @param <T> the type of the business payload held by each {@link ReferentialPayload}
  * @author Anand Manissery
+ * @see FailoverStore
  */
 @Slf4j
 public class FailoverStoreJdbc<T> implements FailoverStore<T> {
@@ -41,6 +57,8 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     private final FailoverStoreQueryResolver queryResolver;
 
+    private final RowMapper<ReferentialPayload<T>> rowMapper;
+
     /** Merge/upsert SQL resolved once at construction; {@code null} when no dialect is available. */
     @Getter
     private final String mergeQuery;
@@ -48,13 +66,29 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     /** Flipped to false at runtime if the merge SQL fails with a grammar error. */
     private final AtomicBoolean mergeEnabled;
 
-    public FailoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver) {
+    /**
+     * Constructs the store and resolves the merge query at construction time.
+     *
+     * @param jdbcTemplate               the JDBC template used for all SQL operations
+     * @param failoverStoreQueryResolver provides SQL strings, parameter arrays, and type arrays
+     * @param rowMapper                  maps {@code FAILOVER_STORE} rows to {@link ReferentialPayload}
+     */
+    public FailoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver, RowMapper<ReferentialPayload<T>> rowMapper) {
         this.jdbcTemplate  = jdbcTemplate;
         this.queryResolver = failoverStoreQueryResolver;
+        this.rowMapper = rowMapper;
         this.mergeQuery = queryResolver.getMergeQuery();
         this.mergeEnabled  = new AtomicBoolean(this.mergeQuery != null);
     }
 
+    /**
+     * Persists or updates the payload.
+     *
+     * <p>Attempts a native merge/upsert if available. On {@link org.springframework.jdbc.BadSqlGrammarException},
+     * merge is disabled permanently and the INSERT/UPDATE fallback takes over.
+     *
+     * @param referentialPayload the payload to persist; must not be {@code null}
+     */
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
         if (mergeEnabled.get()) {
@@ -72,6 +106,9 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         insertOrUpdate(referentialPayload);
     }
 
+    /**
+     * Inserts the payload; on {@link org.springframework.dao.DuplicateKeyException} falls back to UPDATE.
+     */
     private void insertOrUpdate(ReferentialPayload<T> referentialPayload) {
         try {
             var count = jdbcTemplate.update(queryResolver.getInsertQuery(),
@@ -87,6 +124,11 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         }
     }
 
+    /**
+     * Deletes the row identified by the payload's {@code name} and {@code key}.
+     *
+     * @param referentialPayload the payload to delete; must not be {@code null}
+     */
     @Override
     public void delete(ReferentialPayload<T> referentialPayload) {
         var count = jdbcTemplate.update(queryResolver.getDeleteQuery(),
@@ -95,6 +137,13 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         log.debug("Referential payload deleted. No of record deleted : '{}'", count);
     }
 
+    /**
+     * Looks up the payload for the given {@code name} and {@code key}.
+     *
+     * @param name the referential name
+     * @param key  the unique key within that referential
+     * @return an {@link Optional} containing the payload, or empty if not found
+     */
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         try {
@@ -102,18 +151,22 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
                     queryResolver.getSelectQuery(),
                     new Object[]{name, key},
                     new int[]{Types.VARCHAR, Types.VARCHAR},
-                    (rs, _) -> queryResolver.mapRow(rs)));
+                    rowMapper));
         } catch (EmptyResultDataAccessException e) {
             log.debug("No referential found for name : '{}'", name, e);
             return Optional.empty();
         }
     }
 
+    /**
+     * Deletes all rows whose {@code EXPIRE_ON} is before {@code expiry}.
+     *
+     * @param expiry the cut-off timestamp; rows with {@code EXPIRE_ON < expiry} are removed
+     */
     @Override
     public void cleanByExpiry(LocalDateTime expiry) {
         var count = jdbcTemplate.update(queryResolver.getCleanUpQuery(),
                 new Object[]{expiry}, new int[]{Types.TIMESTAMP});
         log.debug("Referential payload cleaned up by given expiry : '{}' . No of record deleted : '{}'", expiry, count);
     }
-
 }

@@ -150,6 +150,84 @@ class FailoverStoreCaffeineTest {
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isNotPresent();
     }
 
+    /**
+     * <p>Bug (section 2.2): {@code computeIfAbsent} creates the per-name Caffeine cache once,
+     * using the first payload's {@code expireOn} as the fixed {@code expireAfterWrite} TTL.
+     * All subsequent payloads stored under the same name share that cache and therefore
+     * inherit the first entry's TTL — their own {@code expireOn} is silently ignored.
+     *
+     * <p>This test will FAIL until the fix (per-entry {@code Expiry} policy) is applied.
+     */
+    @Test
+    @DisplayName("second entry with longer expireOn should not evicted by first entry's shorter TTL")
+    void everyEntryShouldHaveItsOwnTTLForExpiry() {
+        // ARRANGE
+        // Payload A: short-lived (2s). Storing this first creates the NAME cache with expireAfterWrite=2s.
+        var shortLivedPayload = new ReferentialPayload<>(NAME, "key-short", true, NOW, NOW.plusSeconds(2L),
+                new ThirdParty(1L, "SHORT", 1));
+        // Payload B: logically long-lived (30s). Its expireOn is 30s from NOW.
+        var longLivedPayload  = new ReferentialPayload<>(NAME, "key-long",  true, NOW, NOW.plusSeconds(30L),
+                new ThirdParty(2L, "LONG",  2));
+
+        // ACT: store short-lived first — creates NAME cache with expireAfterWrite=2s.
+        // Then store long-lived into the same name — BUG: computeIfAbsent reuses the 2s-TTL cache,
+        // so the 30s expireOn of the long-lived payload is silently ignored.
+        failoverStoreCaffeine.store(shortLivedPayload);
+        failoverStoreCaffeine.store(longLivedPayload);
+
+        // Sanity: both entries present immediately after store
+        assertThat(failoverStoreCaffeine.find(NAME, "key-short")).isPresent();
+        assertThat(failoverStoreCaffeine.find(NAME, "key-long")).isPresent();
+
+        // Wait for key-short to expire (expected — it has a 2s TTL)
+        await().atMost(4, TimeUnit.SECONDS)
+               .until(() -> failoverStoreCaffeine.find(NAME, "key-short").isEmpty());
+
+        // ASSERT (RED — proves the bug):
+        // key-long has expireOn=NOW+30s, so it must still be present when key-short (2s) just expired.
+        // BUG: both entries share the 2s-TTL cache created by key-short, so key-long is
+        // evicted at the same time — its 30s expireOn is completely ignored.
+        assertThat(failoverStoreCaffeine.find(NAME, "key-long"))
+                .as("long-lived entry (expireOn=NOW+30s) must still be present when the 2s entry expires — " +
+                    "FAILS because both entries share the same 2s-TTL cache created by the first entry")
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("should extend TTL when an existing entry is updated with a later expireOn")
+    void shouldUpdateTTLOnExpireAfterUpdate() {
+        // ARRANGE
+        // Sentinel: 2s TTL on a separate key — expires at ~T+2s, used as a wall-clock timer.
+        var sentinel = new ReferentialPayload<>(NAME, "sentinel-key", true, NOW, NOW.plusSeconds(2L),
+                new ThirdParty(0L, "SENTINEL", 0));
+        // Target entry: initially stored with 2s TTL, then immediately updated with 30s TTL.
+        // The update triggers expireAfterUpdate, which must re-derive TTL from the new expireOn.
+        var initialPayload = new ReferentialPayload<>(NAME, "update-key", true, NOW, NOW.plusSeconds(2L),
+                new ThirdParty(1L, "INITIAL", 1));
+        var updatedPayload = new ReferentialPayload<>(NAME, "update-key", true, NOW, NOW.plusSeconds(30L),
+                new ThirdParty(1L, "UPDATED", 2));
+
+        // ACT: store initial entry, then immediately update it (same key, longer expireOn)
+        failoverStoreCaffeine.store(sentinel);
+        failoverStoreCaffeine.store(initialPayload);
+        failoverStoreCaffeine.store(updatedPayload); // triggers expireAfterUpdate → new TTL = 30s
+
+        // Sanity: updated payload is present immediately
+        assertThat(failoverStoreCaffeine.find(NAME, "update-key"))
+                .isPresent()
+                .hasValueSatisfying(p -> assertThat(p.getPayload().getName()).isEqualTo("UPDATED"));
+
+        // Wait for sentinel to expire — proves ~2s of wall-clock time has elapsed
+        await().atMost(4, TimeUnit.SECONDS)
+               .until(() -> failoverStoreCaffeine.find(NAME, "sentinel-key").isEmpty());
+
+        // ASSERT: updated entry must still be present (expireAfterUpdate extended TTL to 30s)
+        assertThat(failoverStoreCaffeine.find(NAME, "update-key"))
+                .as("entry updated with expireOn=NOW+30s must still be present after the original 2s TTL elapses")
+                .isPresent()
+                .hasValueSatisfying(p -> assertThat(p.getPayload().getName()).isEqualTo("UPDATED"));
+    }
+
     @Data
     @AllArgsConstructor
     static class ThirdParty  {

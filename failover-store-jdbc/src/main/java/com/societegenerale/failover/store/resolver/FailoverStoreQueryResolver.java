@@ -19,9 +19,6 @@ package com.societegenerale.failover.store.resolver;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import org.jspecify.annotations.Nullable;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-
 /**
  * Contract for resolving JDBC queries, binding parameters, and mapping result-set rows
  * for the failover store.
@@ -38,14 +35,19 @@ public interface FailoverStoreQueryResolver {
     // Resolved queries
     // -----------------------------------------------------------------
 
+    /** @return the INSERT SQL for a new row */
     String getInsertQuery();
 
+    /** @return the UPDATE SQL for an existing row (SET columns first, then WHERE predicate) */
     String getUpdateQuery();
 
+    /** @return the SELECT SQL that retrieves a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY} */
     String getSelectQuery();
 
+    /** @return the DELETE SQL that removes a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY} */
     String getDeleteQuery();
 
+    /** @return the DELETE SQL that removes all rows with {@code EXPIRE_ON} before a given timestamp */
     String getCleanUpQuery();
 
     /**
@@ -76,21 +78,4 @@ public interface FailoverStoreQueryResolver {
 
     /** SQL types matching {@link #buildUpdateParams} column order. */
     int[] buildUpdateTypes();
-
-    // -----------------------------------------------------------------
-    // Result-set mapping
-    // -----------------------------------------------------------------
-
-    /**
-     * Maps a single result-set row to a {@link ReferentialPayload}.
-     * The {@code upToDate} flag is always {@code false} — payloads from the store are never live.
-     */
-    <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException;
-
-    /**
-     * Deserializes a JSON payload string into the target type resolved from {@code clazzString}.
-     * Returns {@code null} when {@code payload} or {@code clazzString} is {@code null}.
-     */
-    @Nullable
-    <T> T deserializePayload(@Nullable String payload, @Nullable String clazzString);
 }
