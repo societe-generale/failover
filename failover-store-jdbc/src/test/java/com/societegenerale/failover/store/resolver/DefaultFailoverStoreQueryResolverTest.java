@@ -17,13 +17,11 @@
 package com.societegenerale.failover.store.resolver;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
-import com.societegenerale.failover.core.store.FailoverStoreException;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
+import com.societegenerale.failover.store.serializer.JsonSerializer;
+import com.societegenerale.failover.store.serializer.Serializer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -32,16 +30,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 /**
@@ -59,12 +55,9 @@ class DefaultFailoverStoreQueryResolverTest {
     private static final LocalDateTime NOW    = LocalDateTime.of(2024, 1, 15, 10, 30, 0);
     private static final LocalDateTime EXPIRE = NOW.plusHours(24);
 
-    private static final ObjectMapper            OBJECT_MAPPER  = new JsonMapper();
+    private static final ObjectMapper OBJECT_MAPPER  = new ObjectMapper();
+    private static final Serializer SERIALIZER  = new JsonSerializer(OBJECT_MAPPER);
     private static final VarcharPayloadColumnResolver VARCHAR_HANDLER = new VarcharPayloadColumnResolver();
-
-    /** Only needed by MapRowScenarios; declared here so Mockito initialises it. */
-    @Mock
-    private ResultSet resultSet;
 
     @Mock
     private DatabaseResolver databaseResolver;
@@ -74,7 +67,7 @@ class DefaultFailoverStoreQueryResolverTest {
     // -------------------------------------------------------------------------
 
     private FailoverStoreQueryResolver resolver(String tablePrefix) {
-        return new DefaultFailoverStoreQueryResolver(tablePrefix, OBJECT_MAPPER, databaseResolver, VARCHAR_HANDLER);
+        return new DefaultFailoverStoreQueryResolver(tablePrefix, SERIALIZER, databaseResolver, VARCHAR_HANDLER);
     }
 
     private FailoverStoreQueryResolver resolver(String tablePrefix, String dbProduct) {
@@ -512,155 +505,6 @@ class DefaultFailoverStoreQueryResolverTest {
             assertThat(types[3]).isEqualTo(Types.VARCHAR);   // PAYLOAD_CLASS
             assertThat(types[4]).isEqualTo(Types.VARCHAR);   // FAILOVER_NAME
             assertThat(types[5]).isEqualTo(Types.VARCHAR);   // FAILOVER_KEY
-        }
-    }
-
-    // =========================================================================
-    // 7. mapRow — ResultSet → ReferentialPayload mapping
-    // =========================================================================
-
-    @Nested
-    @DisplayName("mapRow — ResultSet to ReferentialPayload mapping")
-    class MapRowScenarios {
-
-        private void stubRow(LocalDateTime asOf, LocalDateTime expireOn, String payloadJson, String payloadClass)
-                throws SQLException {
-            when(resultSet.getString("FAILOVER_NAME")).thenReturn(NAME);
-            when(resultSet.getString("FAILOVER_KEY")).thenReturn(KEY);
-            when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.valueOf(asOf));
-            when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.valueOf(expireOn));
-            when(resultSet.getString("PAYLOAD_CLASS")).thenReturn(payloadClass);
-            when(resultSet.getString("PAYLOAD")).thenReturn(payloadJson);
-        }
-
-        @Test
-        @DisplayName("should map all columns correctly to ReferentialPayload fields")
-        void mapsAllColumnsToReferentialPayload() throws SQLException {
-            var expected = new TestPayload("mapped-value");
-            stubRow(NOW, EXPIRE, OBJECT_MAPPER.writeValueAsString(expected), TestPayload.class.getName());
-
-            ReferentialPayload<TestPayload> result = defaultResolver().mapRow(resultSet);
-
-            assertThat(result.getName()).isEqualTo(NAME);
-            assertThat(result.getKey()).isEqualTo(KEY);
-            assertThat(result.getAsOf()).isEqualTo(NOW);
-            assertThat(result.getExpireOn()).isEqualTo(EXPIRE);
-            assertThat(result.getPayload()).isEqualTo(expected);
-        }
-
-        @Test
-        @DisplayName("upToDate is always false — payloads served from store are never live")
-        void upToDateIsAlwaysFalse() throws SQLException {
-            stubRow(NOW, EXPIRE,
-                    OBJECT_MAPPER.writeValueAsString(new TestPayload("x")),
-                    TestPayload.class.getName());
-
-            ReferentialPayload<TestPayload> result = defaultResolver().mapRow(resultSet);
-
-            assertThat(result.isUpToDate()).isFalse();
-        }
-
-        @Test
-        @DisplayName("null PAYLOAD column produces a null payload field in ReferentialPayload")
-        void nullPayloadColumnProducesNullPayloadField() throws SQLException {
-            stubRow(NOW, EXPIRE, null, TestPayload.class.getName());
-
-            ReferentialPayload<TestPayload> result = defaultResolver().mapRow(resultSet);
-
-            assertThat(result.getPayload()).isNull();
-            assertThat(result.getName()).isEqualTo(NAME);
-            assertThat(result.getKey()).isEqualTo(KEY);
-        }
-
-        @Test
-        @DisplayName("asOf and expireOn timestamps are converted from SQL Timestamp to LocalDateTime")
-        void timestampColumnsAreConvertedToLocalDateTime() throws SQLException {
-            var customAsOf    = LocalDateTime.of(2023, 6, 1, 8, 0);
-            var customExpireOn = customAsOf.plusDays(30);
-            stubRow(customAsOf, customExpireOn,
-                    OBJECT_MAPPER.writeValueAsString(new TestPayload("ts")),
-                    TestPayload.class.getName());
-
-            ReferentialPayload<TestPayload> result = defaultResolver().mapRow(resultSet);
-
-            assertThat(result.getAsOf()).isEqualTo(customAsOf);
-            assertThat(result.getExpireOn()).isEqualTo(customExpireOn);
-        }
-    }
-
-    // =========================================================================
-    // 8. deserializePayload — JSON deserialization edge cases
-    // =========================================================================
-
-    @Nested
-    @DisplayName("deserializePayload — JSON deserialization edge cases")
-    class DeserializePayloadScenarios {
-
-        private FailoverStoreQueryResolver resolver;
-
-        @BeforeEach
-        void setUp() {
-            resolver = defaultResolver();
-        }
-
-        @Test
-        @DisplayName("null payload string → returns null without inspecting class name")
-        void nullPayloadStringReturnsNull() {
-            assertThat(resolver.<TestPayload>deserializePayload(null, TestPayload.class.getName())).isNull();
-        }
-
-        @Test
-        @DisplayName("null payload with null class name → returns null (null guard fires before class lookup)")
-        void nullPayloadWithNullClassNameReturnsNull() {
-            assertThat(resolver.<TestPayload>deserializePayload(null, null)).isNull();
-        }
-
-        @Test
-        @DisplayName("non-null payload with null class name → returns null (clazzString null guard)")
-        void nonNullPayloadWithNullClassNameReturnsNull() {
-            String json = OBJECT_MAPPER.writeValueAsString(new TestPayload("x"));
-            assertThat(resolver.<TestPayload>deserializePayload(json, null)).isNull();
-        }
-
-        @Test
-        @DisplayName("valid JSON and valid class → returns deserialized object equal to original")
-        void validJsonAndValidClassDeserializesCorrectly() {
-            var expected = new TestPayload("round-trip-value");
-            String json  = OBJECT_MAPPER.writeValueAsString(expected);
-
-            TestPayload result = resolver.deserializePayload(json, TestPayload.class.getName());
-
-            assertThat(result).isEqualTo(expected);
-        }
-
-        @Test
-        @DisplayName("valid JSON with String class → deserializes plain string")
-        void validJsonWithStringClassDeserializesString() {
-            String result = resolver.deserializePayload("\"hello\"", String.class.getName());
-            assertThat(result).isEqualTo("hello");
-        }
-
-        @Test
-        @DisplayName("non-existent class name → throws FailoverStoreException wrapping ClassNotFoundException")
-        void nonExistentClassNameThrowsFailoverStoreException() {
-            String json       = OBJECT_MAPPER.writeValueAsString(new TestPayload("x"));
-            String ghostClass = "com.example.ghost.NonExistentClass";
-
-            assertThatThrownBy(() -> resolver.deserializePayload(json, ghostClass))
-                    .isInstanceOf(FailoverStoreException.class)
-                    .hasMessage("Failed to resolve payload class '%s'".formatted(ghostClass))
-                    .hasCauseInstanceOf(ClassNotFoundException.class);
-        }
-
-        @Test
-        @DisplayName("FailoverStoreException message contains exact formatted class name")
-        void failoverStoreExceptionMessageContainsExactClassName() {
-            String json       = "{\"value\":\"x\"}";
-            String ghostClass = "com.missing.Ghost";
-
-            assertThatThrownBy(() -> resolver.deserializePayload(json, ghostClass))
-                    .isInstanceOf(FailoverStoreException.class)
-                    .hasMessage("Failed to resolve payload class 'com.missing.Ghost'");
         }
     }
 

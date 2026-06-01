@@ -34,12 +34,12 @@ import static java.util.Optional.ofNullable;
 /**
  * {@link FailoverStore} implementation backed by a single Caffeine in-memory cache.
  *
- * <h3>Storage layout</h3>
+ * <h2>Storage layout</h2>
  * <p>All entries — regardless of referential name — are stored in one flat {@link Cache}.
  * Each entry's cache key is the composite string {@code "<name>##<key>"}, keeping name and
  * key scoped together without a nested map structure.
  *
- * <h3>Per-entry expiry</h3>
+ * <h2>Per-entry expiry</h2>
  * <p>A custom {@link Expiry} policy derives each entry's TTL individually from its own
  * {@link ReferentialPayload#getExpireOn()} timestamp at the moment of creation or update:
  * <pre>
@@ -49,16 +49,16 @@ import static java.util.Optional.ofNullable;
  * and are evicted independently. Caffeine handles eviction automatically on a background
  * thread, so {@link #cleanByExpiry} is a no-op for this implementation.
  *
- * <h3>Read expiry</h3>
+ * <h2>Read expiry</h2>
  * <p>Reading an entry ({@link #find}) does not reset its TTL — the remaining duration is
  * preserved unchanged on every read access.
  *
- * <h3>Defensive copies</h3>
+ * <h2>Defensive copies</h2>
  * <p>Both {@link #store} and {@link #find} operate on copies of {@link ReferentialPayload}
  * ({@link ReferentialPayload#copy()}). This prevents callers from mutating cached state
  * through a retained reference.
  *
- * <h3>Thread safety</h3>
+ * <h2>Thread safety</h2>
  * <p>Caffeine's {@link Cache} is fully thread-safe. All operations ({@link #store},
  * {@link #find}, {@link #delete}) may be called concurrently without external synchronisation.
  *

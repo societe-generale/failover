@@ -16,11 +16,12 @@
 
 package com.societegenerale.failover.store;
 
-import com.societegenerale.failover.store.resolver.DatabaseResolver;
-import com.societegenerale.failover.store.resolver.DefaultDatabaseResolver;
-import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
-import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
-import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
+import com.societegenerale.failover.core.payload.ReferentialPayload;
+import com.societegenerale.failover.store.mapper.ReferentialPayloadRowMapper;
+import com.societegenerale.failover.store.resolver.*;
+import com.societegenerale.failover.store.serializer.JsonSerializer;
+import com.societegenerale.failover.store.serializer.Serializer;
+import org.springframework.jdbc.core.RowMapper;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.boot.SpringApplication;
@@ -44,17 +45,32 @@ public class MySpringBootApplication {
     }
 
     @Bean
-    public FailoverStoreQueryResolver failoverStoreQueryResolver(ObjectMapper objectMapper, DatabaseResolver databaseResolver) {
-        return new DefaultFailoverStoreQueryResolver("TEST_", objectMapper, databaseResolver, new VarcharPayloadColumnResolver());
+    public FailoverStoreQueryResolver failoverStoreQueryResolver(Serializer serializer, DatabaseResolver databaseResolver) {
+        return new DefaultFailoverStoreQueryResolver("TEST_", serializer, databaseResolver, new VarcharPayloadColumnResolver());
     }
 
     @Bean
-    public <T> FailoverStoreJdbc<T> failoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver) {
-        return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver);
+    public <T> FailoverStoreJdbc<T> failoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver, RowMapper<ReferentialPayload<T>>  rowMapper) {
+        return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
+    }
+
+    @Bean
+    public PayloadColumnResolver payloadColumnResolver() {
+        return new VarcharPayloadColumnResolver();
+    }
+
+    @Bean
+    public <T> RowMapper<ReferentialPayload<T>>  rowMapper(PayloadColumnResolver payloadColumnResolver, Serializer serializer) {
+        return new ReferentialPayloadRowMapper<>(payloadColumnResolver, serializer);
     }
 
     @Bean
     public ObjectMapper objectMapper() {
         return new JsonMapper();
+    }
+
+    @Bean
+    public Serializer serializer(ObjectMapper objectMapper) {
+        return new JsonSerializer(objectMapper);
     }
 }

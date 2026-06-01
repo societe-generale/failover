@@ -18,22 +18,22 @@ package com.societegenerale.failover.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.domain.Referential;
-import com.societegenerale.failover.store.resolver.DatabaseResolver;
-import com.societegenerale.failover.store.resolver.DefaultDatabaseResolver;
-import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
-import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
-import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
-import org.junit.jupiter.api.*;
-import tools.jackson.databind.ObjectMapper;
+import com.societegenerale.failover.store.resolver.*;
+import com.societegenerale.failover.store.serializer.Serializer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -61,7 +61,7 @@ class FailoverStoreJdbcTest {
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private Serializer serializer;
 
     @MockitoSpyBean
     private DatabaseResolver databaseResolver;
@@ -72,7 +72,11 @@ class FailoverStoreJdbcTest {
     @Autowired
     private FailoverStoreJdbc<Client> failoverStoreJdbc;
 
+    @Autowired
+    private RowMapper<ReferentialPayload<Client>> rowMapper;
+
     private ReferentialPayload<Client> referentialPayload;
+
 
     @BeforeEach
     void setup() {
@@ -463,15 +467,15 @@ class FailoverStoreJdbcTest {
         private FailoverStoreJdbc<Client> buildFallbackStore() {
             var nullDbResolver = Mockito.mock(DatabaseResolver.class);
             Mockito.when(nullDbResolver.resolve()).thenReturn(null);
-            var queryResolver = new DefaultFailoverStoreQueryResolver("TEST_", objectMapper, nullDbResolver, new VarcharPayloadColumnResolver());
-            return new FailoverStoreJdbc<>(jdbcTemplate, queryResolver);
+            var queryResolver = new DefaultFailoverStoreQueryResolver("TEST_", serializer, nullDbResolver, new VarcharPayloadColumnResolver());
+            return new FailoverStoreJdbc<>(jdbcTemplate, queryResolver, rowMapper);
         }
 
         @Test
         @DisplayName("DatabaseResolver.resolve() is invoked exactly once during construction")
         void databaseResolverIsCalledExactlyOnceAtConstruction() {
             var spyResolver = Mockito.spy(new DefaultDatabaseResolver(jdbcTemplate));
-            new DefaultFailoverStoreQueryResolver("TEST_", objectMapper, spyResolver, new VarcharPayloadColumnResolver());
+            new DefaultFailoverStoreQueryResolver("TEST_", serializer, spyResolver, new VarcharPayloadColumnResolver());
             Mockito.verify(spyResolver, Mockito.times(1)).resolve();
         }
 
@@ -554,7 +558,7 @@ class FailoverStoreJdbcTest {
     class MergeQueryResolutionScenarios {
 
         private FailoverStoreJdbc<Client> freshStore() {
-            return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver);
+            return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
         }
 
         @Test
@@ -570,8 +574,8 @@ class FailoverStoreJdbcTest {
         void getMergeQueryReturnsNullWhenResolverReturnsNull() {
             var nullDbResolver = Mockito.mock(DatabaseResolver.class);
             Mockito.when(nullDbResolver.resolve()).thenReturn(null);
-            var queryResolver = new DefaultFailoverStoreQueryResolver("TEST_", objectMapper, nullDbResolver, new VarcharPayloadColumnResolver());
-            assertThat(new FailoverStoreJdbc<>(jdbcTemplate, queryResolver).getMergeQuery()).isNull();
+            var queryResolver = new DefaultFailoverStoreQueryResolver("TEST_", serializer, nullDbResolver, new VarcharPayloadColumnResolver());
+            assertThat(new FailoverStoreJdbc<>(jdbcTemplate, queryResolver, rowMapper).getMergeQuery()).isNull();
         }
 
         @Test
@@ -606,10 +610,10 @@ class FailoverStoreJdbcTest {
          */
         private FailoverStoreJdbc<Client> storeWithBadMergeSql() {
             var realResolver = new DefaultFailoverStoreQueryResolver(
-                    "TEST_", objectMapper, new DefaultDatabaseResolver(jdbcTemplate), new VarcharPayloadColumnResolver());
+                    "TEST_", serializer, new DefaultDatabaseResolver(jdbcTemplate), new VarcharPayloadColumnResolver());
             var spyResolver = Mockito.spy(realResolver);
             Mockito.doReturn("THIS IS NOT VALID SQL !! @#$").when(spyResolver).getMergeQuery();
-            return new FailoverStoreJdbc<>(jdbcTemplate, spyResolver);
+            return new FailoverStoreJdbc<>(jdbcTemplate, spyResolver, rowMapper);
         }
 
         @Test

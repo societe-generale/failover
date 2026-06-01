@@ -17,19 +17,14 @@
 package com.societegenerale.failover.store.resolver;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
-import com.societegenerale.failover.core.store.FailoverStoreException;
+import com.societegenerale.failover.store.serializer.Serializer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import tools.jackson.databind.ObjectMapper;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 
-import static com.societegenerale.failover.core.util.CastingUtils.cast;
-import static java.lang.Class.forName;
 import static org.springframework.util.StringUtils.replace;
 
 /**
@@ -96,15 +91,26 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     // Dependencies for parameter binding and result-set mapping
     // -----------------------------------------------------------------
 
-    private final ObjectMapper objectMapper;
+    private final Serializer serializer;
+
     private final PayloadColumnResolver payloadColumnResolver;
 
     // -----------------------------------------------------------------
     // Constructor
     // -----------------------------------------------------------------
 
-    public DefaultFailoverStoreQueryResolver(String tablePrefix, ObjectMapper objectMapper, DatabaseResolver databaseResolver, PayloadColumnResolver payloadColumnResolver) {
-        this.objectMapper          = objectMapper;
+    /**
+     * Constructs the resolver: substitutes {@code tablePrefix} into all SQL templates and
+     * selects the appropriate merge dialect from the database product name.
+     *
+     * @param tablePrefix          prefix prepended to {@code FAILOVER_STORE} in every SQL statement
+     *                             (e.g. {@code "MYAPP_"} produces {@code "MYAPP_FAILOVER_STORE"})
+     * @param serializer           used to serialize payloads and resolve class names for parameter binding
+     * @param databaseResolver     detects the database product name for merge dialect selection
+     * @param payloadColumnResolver determines the SQL type of the PAYLOAD column
+     */
+    public DefaultFailoverStoreQueryResolver(String tablePrefix, Serializer serializer, DatabaseResolver databaseResolver, PayloadColumnResolver payloadColumnResolver) {
+        this.serializer          = serializer;
         this.payloadColumnResolver = payloadColumnResolver;
         this.insertQuery           = applyPrefix(INSERT_SQL,   tablePrefix);
         this.updateQuery           = applyPrefix(UPDATE_SQL,   tablePrefix);
@@ -125,8 +131,8 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
                 p.getKey(),
                 Timestamp.valueOf(p.getAsOf()),
                 Timestamp.valueOf(p.getExpireOn()),
-                p.getPayload() == null ? null : objectMapper.writeValueAsString(p.getPayload()),
-                p.getPayload() == null ? null : p.getPayload().getClass().getName()
+                serializer.serialize(p.getPayload()),
+                serializer.toClassName(p.getPayload())
         };
     }
 
@@ -140,8 +146,8 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
         return new Object[]{
                 Timestamp.valueOf(p.getAsOf()),
                 Timestamp.valueOf(p.getExpireOn()),
-                p.getPayload() == null ? null : objectMapper.writeValueAsString(p.getPayload()),
-                p.getPayload() == null ? null : p.getPayload().getClass().getName(),
+                serializer.serialize(p.getPayload()),
+                serializer.toClassName(p.getPayload()),
                 p.getName(),
                 p.getKey()
         };
@@ -150,42 +156,6 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     @Override
     public int[] buildUpdateTypes() {
         return new int[]{Types.TIMESTAMP, Types.TIMESTAMP, payloadColumnResolver.payloadType(), Types.VARCHAR, Types.VARCHAR, Types.VARCHAR};
-    }
-
-    // -----------------------------------------------------------------
-    // Result-set mapping
-    // -----------------------------------------------------------------
-
-    @Override
-    public <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException {
-        String failoverName = rs.getString("FAILOVER_NAME");
-        String failoverKey  = rs.getString("FAILOVER_KEY");
-        var asOfTs          = rs.getTimestamp("AS_OF");
-        var expireOnTs      = rs.getTimestamp("EXPIRE_ON");
-        if (asOfTs == null || expireOnTs == null) {
-            throw new FailoverStoreException(
-                "Corrupt row: AS_OF or EXPIRE_ON is null for name='%s', key='%s'"
-                    .formatted(failoverName, failoverKey));
-        }
-        var asOf            = asOfTs.toLocalDateTime();
-        var expireOn        = expireOnTs.toLocalDateTime();
-        String payloadClass = rs.getString("PAYLOAD_CLASS");
-        T payload           = deserializePayload(payloadColumnResolver.extractPayload(rs, "PAYLOAD"), payloadClass);
-        return new ReferentialPayload<>(failoverName, failoverKey, false, asOf, expireOn, payload);
-    }
-
-    @Override
-    @Nullable
-    public <T> T deserializePayload(@Nullable String payload, @Nullable String clazzString) {
-        if (payload == null || clazzString == null) {
-            return null;
-        }
-        try {
-            Class<T> clazz = cast(forName(clazzString));
-            return objectMapper.readValue(payload, clazz);
-        } catch (ClassNotFoundException e) {
-            throw new FailoverStoreException("Failed to resolve payload class '%s'".formatted(clazzString), e);
-        }
     }
 
     // -----------------------------------------------------------------
