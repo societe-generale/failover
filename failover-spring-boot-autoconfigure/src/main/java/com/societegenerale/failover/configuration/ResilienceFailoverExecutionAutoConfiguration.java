@@ -30,12 +30,23 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 
 /**
+ * Autoconfiguration for the Resilience4j-based {@code FailoverExecution}.
+ *
+ * <p>Activates when {@code failover.type=resilience} and the Resilience4j
+ * {@code CircuitBreaker} class is on the classpath. Registers a
+ * {@link com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution}
+ * bean backed by the application's {@code CircuitBreakerRegistry}.
+ *
+ * <p><b>Warning:</b> do not combine this with other resilience or retry mechanisms
+ * (Feign retry, Spring Retry, etc.) — stacking failover strategies causes unpredictable
+ * interaction and performance degradation.
+ *
  * @author Anand Manissery
  */
 @ConditionalOnExpression("${failover.enabled:true} eq true and '${failover.type:basic}'.toLowerCase() eq 'resilience'")
 @ConditionalOnClass(name = {"io.github.resilience4j.circuitbreaker.CircuitBreaker"})
 @AllArgsConstructor
-@AutoConfiguration
+@AutoConfiguration(after = {FailoverAutoConfiguration.class})
 @Slf4j
 public class ResilienceFailoverExecutionAutoConfiguration {
 

@@ -111,6 +111,21 @@ You also need to provide **spring-jdbc** dependency for the same.
 
 We require the ObjectMapper bean from jackson , JdbcTemplate bean from Spring for Failover Store Jdbc
 
+> ### 6. **Failover Store Multi-Tenant**
+This module contains the multi-tenant SPI (`TenantStoreFactory`, `TenantResolver`, `MultiTenantFailoverStore`, `TenantContext`).
+Required when `failover.store.multitenant.enabled=true`.
+
+```pom.xml
+    <dependency>
+        <groupId>com.societegenerale.failover</groupId>
+        <artifactId>failover-store-multitenant</artifactId>
+        <version> <!-- add latest version --> </version>
+    </dependency>
+```
+
+This dependency is pulled in transitively by the autoconfigure starter when multi-tenant mode is enabled.
+Add it explicitly only when using `TenantStoreFactory` or `TenantResolver` directly in your application code.
+
 ---
 
 > ## Failover Execution
@@ -650,3 +665,205 @@ public FailoverStoreQueryResolver failoverStoreQueryResolver() {
 ```
 
 Because `FailoverStoreQueryResolver` is registered with `@ConditionalOnMissingBean` in the auto-configuration, any user-declared bean of this type is picked up automatically — no other wiring is needed.
+
+---
+
+> ## Async Store
+
+By default all write operations (`store`, `delete`, `cleanByExpiry`) are offloaded to a background `TaskExecutor` so the calling thread is not blocked. `find` is always synchronous.
+
+```yaml
+failover:
+  store:
+    async: true    # default — writes are non-blocking
+```
+
+To disable async (synchronous writes on the calling thread):
+
+```yaml
+failover:
+  store:
+    async: false
+```
+
+The autoconfiguration registers a `SimpleAsyncTaskExecutor` (virtual threads on JDK 21+) named `failoverTaskExecutor`. Override with your own:
+
+```java
+@Bean("failoverTaskExecutor")
+public TaskExecutor failoverTaskExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(4);
+    executor.setMaxPoolSize(16);
+    executor.setQueueCapacity(100);
+    executor.setThreadNamePrefix("failover-");
+    executor.initialize();
+    return executor;
+}
+```
+
+> **Note:** The failover library does **not** enable `@Async` globally. If your application uses `@Async` for its own beans, add `@EnableAsync` to your own `@Configuration` class.
+
+---
+
+> ## Custom Failover Store
+
+Implement `FailoverStore<T>` and register it as a Spring bean. The autoconfiguration will skip its own store bean when yours is present (`@ConditionalOnMissingBean(FailoverStore.class)`).
+
+```java
+public interface FailoverStore<T> {
+    void store(ReferentialPayload<T> referentialPayload);
+    void delete(ReferentialPayload<T> referentialPayload);
+    Optional<ReferentialPayload<T>> find(String name, String key);
+    void cleanByExpiry(LocalDateTime expiry);
+}
+```
+
+```java
+@Configuration
+public class MyStoreConfig {
+
+    @Bean
+    public FailoverStore<Object> failoverStore() {
+        return new MyCustomStore<>();
+    }
+}
+```
+
+Set `failover.store.type=custom` to document intent (no functional effect — the bean presence controls behaviour):
+
+```yaml
+failover:
+  store:
+    type: custom
+```
+
+> **Multi-tenant custom store:** If you need per-tenant isolation with a custom store, implement `TenantStoreFactory` instead of `FailoverStore` directly (see below). The assembler will apply `DefaultFailoverStore` and `FailoverStoreAsync` wrapping automatically.
+
+---
+
+> ## Custom TenantStoreFactory
+
+`TenantStoreFactory<T>` is the SPI for creating a raw store per tenant. Implementing it (instead of `FailoverStore` directly) gives the assembler the ability to create an isolated store instance for each tenant while still applying the standard decorator chain.
+
+```java
+@FunctionalInterface
+public interface TenantStoreFactory<T> {
+    String SINGLE_TENANT_ID = "_single_";
+    FailoverStore<T> create(String tenantId);
+}
+```
+
+`create(tenantId)` is always called on the **calling (request) thread** — never inside an executor. Implementations may safely read `ThreadLocal` values during `create()`.
+
+```java
+@Configuration
+public class MyStoreFactoryConfig {
+
+    @Bean
+    public TenantStoreFactory<Object> myTenantStoreFactory() {
+        return tenantId -> new MyCustomStore<>(tenantId);
+    }
+}
+```
+
+In single-tenant mode, `create(TenantStoreFactory.SINGLE_TENANT_ID)` is called once at startup. Implementations may ignore the sentinel value.
+
+---
+
+> ## Multi-Tenant Store
+
+Multi-tenant mode routes every failover operation to an isolated per-tenant store. See [failover-store.md](failover-store.md) for the full reference including JDBC strategies, SCHEMA routing, and `cleanByExpiry` behaviour.
+
+Enable multi-tenant mode:
+
+```yaml
+failover:
+  store:
+    multitenant:
+      enabled: true
+      default-tenant: acme        # fallback when TenantResolver returns null
+```
+
+### TenantResolver
+
+The application **must** provide a `TenantResolver` bean — the library does not supply a default because tenant resolution is always an application concern.
+
+```java
+@FunctionalInterface
+public interface TenantResolver {
+    @Nullable String resolve();
+}
+```
+
+Common patterns:
+
+```java
+// From TenantContext (ThreadLocal — populate in a filter)
+@Bean
+public TenantResolver tenantResolver() {
+    return new TenantContextTenantResolver();
+}
+
+// From Spring Security
+@Bean
+public TenantResolver tenantResolver() {
+    return () -> {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : null;
+    };
+}
+
+// Fixed — useful for testing
+@Bean
+public TenantResolver tenantResolver() {
+    return new FixedTenantResolver("acme");
+}
+```
+
+### TenantContext
+
+`TenantContext` is a `ThreadLocal` holder. Populate it per-request in a filter and clear it in a `finally` block:
+
+```java
+@Component
+public class TenantContextFilter extends OncePerRequestFilter {
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
+                                    FilterChain chain) throws IOException, ServletException {
+        TenantContext.set(req.getHeader("X-Tenant-ID"));
+        try {
+            chain.doFilter(req, res);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+}
+```
+
+### JDBC Isolation Strategies
+
+| Strategy | How it works | Config |
+|---|---|---|
+| `table-prefix` (default) | `effectiveTable = tenantPrefix + globalPrefix + FAILOVER_STORE` | `tenants.<id>.table-prefix` |
+| `schema` | `AbstractRoutingDataSource` routes to tenant schema; same table name across schemas | Application-managed `DataSource` |
+
+```yaml
+failover:
+  store:
+    type: jdbc
+    jdbc:
+      table-prefix: DEMO_
+    multitenant:
+      enabled: true
+      strategy: table-prefix
+      default-tenant: acme
+      tenants:
+        acme:
+          table-prefix: ACME_      # effective table: ACME_DEMO_FAILOVER_STORE
+        globex:
+          table-prefix: GLOBEX_   # effective table: GLOBEX_DEMO_FAILOVER_STORE
+```
+
+> **SCHEMA + async:** When using the SCHEMA strategy with `AbstractRoutingDataSource`, `TenantContext` is a `ThreadLocal` that is **not** propagated to executor threads. Set `failover.store.async=false`, or propagate `TenantContext` via a `TaskDecorator` on the `failoverTaskExecutor`.
+
+See [failover-store.md](failover-store.md) for complete multi-tenant documentation, including SQL schemas per tenant, `cleanByExpiry` behaviour, and full configuration reference.

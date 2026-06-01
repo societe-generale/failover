@@ -17,8 +17,10 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.MyTestApplication;
+import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,23 +31,48 @@ import static com.societegenerale.failover.configuration.BeanAssertions.assertBa
 import static org.assertj.core.api.Assertions.assertThat;
 
 /// @author Anand Manissery
-@SpringBootTest(classes = {MyTestApplication.class})
-@TestPropertySource(properties = {"failover.type=resilience"})
 class ResilienceFailoverExecutionAutoConfigurationTest {
 
-    @Autowired
-    private ApplicationContext applicationContext;
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @DisplayName("when default failover type (basic)")
+    class WhenDefaultType {
 
-    @Test
-    @DisplayName("should load all the basic default beans")
-    void shouldLoadAllTheBasicDefaultBeans() {
-        assertBasicBean(applicationContext);
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("ResilienceFailoverExecution should NOT be registered")
+        void resilienceFailoverExecutionNotRegistered() {
+            assertThat(applicationContext.getBeansOfType(ResilienceFailoverExecution.class)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("BasicFailoverExecution should be registered")
+        void basicFailoverExecutionRegistered() {
+            assertThat(applicationContext.getBean(BasicFailoverExecution.class)).isNotNull();
+        }
     }
 
-    @Test
-    @DisplayName("should load ResilienceFailoverExecution bean")
-    void shouldLoadResilienceFailoverExecutionBean() {
-        var bean = applicationContext.getBean(ResilienceFailoverExecution.class);
-        assertThat(bean).isNotNull();
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.type=resilience"})
+    @DisplayName("when failover type is resilience")
+    class WhenResilienceType {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("should load all basic default beans")
+        void shouldLoadAllBasicDefaultBeans() {
+            assertBasicBean(applicationContext);
+        }
+
+        @Test
+        @DisplayName("should load ResilienceFailoverExecution bean")
+        void shouldLoadResilienceFailoverExecutionBean() {
+            assertThat(applicationContext.getBean(ResilienceFailoverExecution.class)).isNotNull();
+        }
     }
 }

@@ -304,7 +304,7 @@ ___
 **Date : 25-MAY-2026**
 
 #### Status
-Accepted
+Deprecated — superseded by ADR 16, ADR 18, ADR 19
 
 #### Context
 Every `FailoverStore` bean — whether auto-configured (INMEMORY, CAFFEINE, JDBC) or user-provided (CUSTOM) — must be consistently wrapped with:
@@ -554,4 +554,292 @@ public interface FailoverStoreQueryResolver {
 * `FailoverStoreJdbc` is reduced to pure JDBC execution logic — it knows nothing about SQL, column types, or serialization.
 * Teams that need a different schema (additional columns, different key structure, encrypted payload, non-JSON serialization) implement `FailoverStoreQueryResolver` and declare the bean — no other changes required.
 * `PayloadColumnResolver` remains a separate, narrower extension point for teams that only need to change the payload column SQL type and extraction method, without replacing the entire resolver.
+___
+
+## 16. Removal of BeanPostProcessor-based Store Wrapping (Supersedes ADR 11)
+
+**Date : 02-JUN-2026**
+
+#### Status
+Accepted — supersedes ADR 11
+
+#### Context
+ADR 11 introduced `DefaultFailoverStoreBeanPostProcessor` and `AsyncFailoverStoreBeanPostProcessor` registered as `static @Bean` entries inside `FailoverAutoConfiguration` to intercept raw `FailoverStore` beans and wrap them with `DefaultFailoverStore → FailoverStoreAsync`.
+
+This approach had two critical problems once multi-tenancy was introduced:
+
+1. **BPP only intercepts Spring-managed beans.** In multi-tenant mode, per-tenant `FailoverStore` instances are created programmatically inside a `TenantStoreFactory` — they are never registered as individual Spring beans and therefore invisible to any `BeanPostProcessor`. The async/defensive-copy wrapping would have been silently skipped for every tenant except the first.
+2. **@Async depends on Spring AOP proxy.** `FailoverStoreAsync` previously used `@Async` on its methods to offload work. `@Async` only functions when the call goes through a Spring-managed AOP proxy. A `FailoverStoreAsync` instance created inside a factory lambda is not a proxy — `@Async` degrades to synchronous execution silently with no error or warning.
+
+#### Decision
+Remove `DefaultFailoverStoreBeanPostProcessor` and `AsyncFailoverStoreBeanPostProcessor` entirely.
+
+Store wrapping is now performed **explicitly** inside `FailoverStoreAutoConfiguration` (see ADR 18) — not via BPP interception. The assembler directly constructs:
+
+```
+FailoverStoreAsync(DefaultFailoverStore(rawStore), taskExecutor)
+```
+
+for async mode, or:
+
+```
+DefaultFailoverStore(rawStore)
+```
+
+for sync mode (`failover.store.async=false`).
+
+The inner `@EnableAsync` nested configuration class (`AsyncBeanProcessorConfiguration`) is also removed. `FailoverStoreAsync` no longer uses `@Async`; it holds an explicit `TaskExecutor` (see ADR 19).
+
+#### Consequences
+* Wrapping chain is explicit, deterministic, and visible at a single assembly point — no implicit BPP intercept magic.
+* Multi-tenant per-tenant stores receive the same wrapping chain as single-tenant stores (see ADR 20).
+* ADR 11 is deprecated. The threading and ordering guarantees it relied on (`postProcessBeforeInitialization` ordering vs. `AsyncAnnotationBeanPostProcessor`) are no longer relevant.
+* Removing `@EnableAsync` from the autoconfigure module means applications must provide `@EnableAsync` themselves if they need `@Async` elsewhere — this is the correct responsibility boundary.
+___
+
+## 17. TenantStoreFactory SPI — Abstracting Store Creation from Store Assembly
+
+**Date : 02-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+Previously each store auto-configuration (`FailoverCaffeineStoreAutoConfiguration`, `FailoverJdbcStoreAutoConfiguration`, `FailoverAutoConfiguration`) produced a fully assembled `FailoverStore<Object>` bean directly. This fused two separate concerns:
+
+1. **How to create a raw store** (which implementation, with which configuration).
+2. **How to assemble the decorator chain** (DefaultFailoverStore + FailoverStoreAsync).
+
+When multi-tenancy was introduced, each tenant needed its own isolated raw store instance (separate Caffeine cache, separate JDBC table prefix). Producing a single fully-assembled `FailoverStore` bean from a store auto-configuration was incompatible with this: the bean registry holds one bean, but multiple tenant stores must exist simultaneously and be created on demand.
+
+#### Decision
+Introduce `TenantStoreFactory<T>` as a `@FunctionalInterface` SPI:
+
+```java
+@FunctionalInterface
+public interface TenantStoreFactory<T> {
+    String SINGLE_TENANT_ID = "_single_";
+    FailoverStore<T> create(String tenantId);
+}
+```
+
+All store auto-configurations now register a `TenantStoreFactory<Object>` bean (annotated `@ConditionalOnMissingBean(TenantStoreFactory.class)`) instead of a `FailoverStore<Object>` bean directly:
+
+| Auto-config | Old bean type | New bean type |
+|---|---|---|
+| `FailoverAutoConfiguration` (inmemory) | `FailoverStore<Object>` | `TenantStoreFactory<Object>` |
+| `FailoverCaffeineStoreAutoConfiguration` | `FailoverStore<Object>` | `TenantStoreFactory<Object>` |
+| `FailoverJdbcStoreAutoConfiguration` | `FailoverStore<Object>` | `TenantStoreFactory<Object>` |
+
+The factory's `create(tenantId)` method is **always called on the calling (request) thread**, never inside an executor lambda. This is a hard contract: implementations may safely read `ThreadLocal` values (e.g. to select a `DataSource`) during `create()`, but must not capture them for later use on another thread.
+
+In single-tenant mode, `create(SINGLE_TENANT_ID)` is called once at application startup by `FailoverStoreAutoConfiguration`.
+
+#### Consequences
+* Store creation and store assembly are decoupled. Adding a new store type requires implementing `TenantStoreFactory` only; the decorator chain is applied uniformly by the assembler.
+* Multi-tenant configurations override the auto-configured `TenantStoreFactory` via `@ConditionalOnMissingBean(TenantStoreFactory.class)` — no changes to `FailoverStoreAutoConfiguration`.
+* Custom store authors implement `TenantStoreFactory` (not `FailoverStore` directly) when registering custom stores with multi-tenant awareness. For single-tenant custom stores, `() -> myStore` is sufficient since `SINGLE_TENANT_ID` is the only argument ever passed.
+* `SINGLE_TENANT_ID = "_single_"` is a sentinel chosen to be unlikely to collide with real tenant IDs. It is not validated — implementations may ignore it.
+___
+
+## 18. FailoverStoreAutoConfiguration — Central Assembler
+
+**Date : 02-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+After introducing `TenantStoreFactory` (ADR 17), the store auto-configurations produce a factory, not a ready `FailoverStore`. Something must consume the factory and produce the single `FailoverStore<Object>` bean that the rest of the framework depends on.
+
+Previously this assembly was implicit via `BeanPostProcessor` interception (ADR 11, now removed). With explicit assembly, a dedicated `@AutoConfiguration` class is the correct location.
+
+#### Decision
+Introduce `FailoverStoreAutoConfiguration` as the single assembly point for the `FailoverStore<Object>` bean.
+
+It runs `after` all store-type auto-configurations and `FailoverAutoConfiguration`, so `TenantStoreFactory` is guaranteed to be present.
+
+Two conditional `@Bean` methods produce `failoverStore`:
+
+**Async mode (default, `failover.store.async=true` or property absent):**
+```java
+new FailoverStoreAsync<>(
+    new DefaultFailoverStore<>(storeFactory.create(SINGLE_TENANT_ID)),
+    failoverTaskExecutor
+)
+```
+A `failoverTaskExecutor` bean (`SimpleAsyncTaskExecutor` with virtual threads on JDK 21+) is also registered, overridable by name.
+
+**Sync mode (`failover.store.async=false`):**
+```java
+new DefaultFailoverStore<>(storeFactory.create(SINGLE_TENANT_ID))
+```
+
+Both beans are guarded by `@ConditionalOnBean(TenantStoreFactory.class)` and `@ConditionalOnMissingBean(FailoverStore.class)`, so custom `FailoverStore` beans still take precedence.
+
+In multi-tenant mode, `FailoverStoreMultiTenantAutoConfiguration` registers `MultiTenantFailoverStore` as the `FailoverStore` bean — which satisfies `@ConditionalOnMissingBean(FailoverStore.class)`, causing this assembler to skip its own bean registration.
+
+#### Consequences
+* Assembly is visible in one class — no implicit interception.
+* Async vs. sync is a single YAML property (`failover.store.async`), not two separate auto-configurations or BPP registrations.
+* `failoverTaskExecutor` uses virtual threads by default (JDK 21+); applications override by declaring a `TaskExecutor` bean named `failoverTaskExecutor`.
+* `@ConditionalOnMissingBean(FailoverStore.class)` means applications that declare their own `FailoverStore` bean bypass this assembler entirely — same behaviour as before.
+___
+
+## 19. FailoverStoreAsync — Explicit TaskExecutor Replacing @Async
+
+**Date : 02-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+`FailoverStoreAsync` previously used `@Async` on `store`, `delete`, and `cleanByExpiry` to offload writes to a Spring-managed thread pool.
+
+`@Async` has a critical limitation: it only works when the call is dispatched through a Spring AOP proxy. An instance created programmatically — such as one created inside a `TenantStoreFactory.create()` lambda — is not a Spring proxy and `@Async` degrades to synchronous, in-thread execution with no warning.
+
+In multi-tenant mode, each tenant's `FailoverStoreAsync` is created programmatically inside the decorator lambda in `MultiTenantFailoverStore`. Every write operation would have silently become synchronous, undoing the performance benefit of the async store.
+
+Additionally, `@Async` relies on `@EnableAsync` being active in the application context, which imposed a constraint on the autoconfiguration module (it had to include `@EnableAsync` in a nested configuration class). Removing this is desirable: `@EnableAsync` is a cross-cutting concern that belongs to the application, not the library.
+
+#### Decision
+Remove `@Async` from all methods in `FailoverStoreAsync`. Inject an explicit `TaskExecutor` as a constructor parameter:
+
+```java
+@RequiredArgsConstructor
+public class FailoverStoreAsync<T> implements FailoverStore<T> {
+    private final FailoverStore<T> failoverStore;
+    private final TaskExecutor executor;
+
+    @Override
+    public void store(ReferentialPayload<T> payload) {
+        executor.execute(() -> failoverStore.store(payload));
+    }
+    // delete and cleanByExpiry: same pattern
+    // find: synchronous, unchanged
+}
+```
+
+**Threading contract in lambda:**
+Each lambda captures only method arguments — never any `ThreadLocal` values. Tenant routing (when multi-tenant) is performed by `MultiTenantFailoverStore` on the calling thread, before `FailoverStoreAsync.store()` is reached. By the time the lambda executes on the executor thread, `this.failoverStore` is already scoped to the correct tenant — no re-resolution is needed.
+
+`@Async` and `@EnableAsync` are removed from the autoconfigure module entirely.
+
+#### Consequences
+* `FailoverStoreAsync` works correctly whether instantiated as a Spring bean or programmatically inside a factory — behaviour is identical in both cases.
+* `@EnableAsync` is no longer imposed on the application context by the library. Applications that need `@Async` for their own beans must add `@EnableAsync` themselves (same as any other Spring project).
+* The executor used for failover async operations is the `failoverTaskExecutor` bean registered by `FailoverStoreAutoConfiguration` (virtual threads on JDK 21+, overridable).
+* `find()` remains synchronous — the caller needs the result immediately and there is no asynchrony benefit.
+* `cleanByExpiry()` is now also submitted to the executor — previously it was `@Async` but with the same silent-degradation risk in non-Spring-managed instances.
+___
+
+## 20. MultiTenantFailoverStore — Outermost Per-Tenant Routing Decorator
+
+**Date : 02-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+Multi-tenant applications need to isolate failover data per tenant: tenant A must not read or write tenant B's referential store, regardless of the backing store technology.
+
+The decorator chain for a single tenant is `FailoverStoreAsync(DefaultFailoverStore(rawStore))`. Multi-tenancy requires this chain to be replicated per tenant, with routing at the outermost layer so that every operation is directed to the correct tenant's chain before any thread boundary is crossed.
+
+Key constraints:
+1. **ThreadLocal must be read on the calling thread.** `TenantResolver` reads tenant context from a `ThreadLocal` (or HTTP request). Once the operation enters `FailoverStoreAsync`'s executor, the `ThreadLocal` may not be set.
+2. **Per-tenant stores must be created lazily.** The full set of tenants is not always known at startup, and eagerly creating stores for all tenants may be wasteful or impossible.
+3. **`cleanByExpiry` is called by the scheduler** (not a request thread) — no tenant context is available. It must clean all initialized tenant stores.
+
+#### Decision
+Introduce `MultiTenantFailoverStore<T> implements FailoverStore<T>` as the **outermost** decorator in the chain. It sits above `FailoverStoreAsync` and `DefaultFailoverStore`:
+
+```
+MultiTenantFailoverStore (routing, outermost)
+  ├─ tenant-a → FailoverStoreAsync(DefaultFailoverStore(rawStore-a))
+  └─ tenant-b → FailoverStoreAsync(DefaultFailoverStore(rawStore-b))
+```
+
+Internal structure:
+
+```java
+@RequiredArgsConstructor
+public class MultiTenantFailoverStore<T> implements FailoverStore<T> {
+    private final TenantResolver tenantResolver;
+    private final TenantStoreFactory<T> rawFactory;
+    private final UnaryOperator<FailoverStore<T>> decorator;  // applies Default + Async chain
+    private final String defaultTenant;
+    private final ConcurrentHashMap<String, FailoverStore<T>> stores = new ConcurrentHashMap<>();
+}
+```
+
+**Routing:** `tenantStore()` is called on the calling thread. It calls `tenantResolver.resolve()`, falls back to `defaultTenant` if `null`, throws `FailoverStoreException` if both are null. `computeIfAbsent` ensures each tenant's chain is built exactly once (thread-safe).
+
+**Decorator injection:** The `decorator` (`UnaryOperator<FailoverStore<T>>`) is injected by `FailoverStoreMultiTenantAutoConfiguration` and mirrors the single-tenant assembly: `raw -> new FailoverStoreAsync<>(new DefaultFailoverStore<>(raw), executor)`.
+
+**`cleanByExpiry`:** Calls `cleanByExpiry` on every store currently in the `stores` map — no tenant context needed. Tenants not yet accessed are not cleaned (they have no data).
+
+**Pre-warming:** `prewarm(Set<String> tenantIds)` can be called at startup to initialise stores for known tenants, ensuring `cleanByExpiry` covers them from the first scheduler tick.
+
+#### Consequences
+* Tenant resolution always occurs on the calling thread — `ThreadLocal` contract is preserved.
+* Per-tenant stores are created lazily on first access; `SINGLE_TENANT_ID` is never used in multi-tenant mode.
+* `cleanByExpiry` is fan-out across all initialized tenants. Tenants receiving their first request after the cleanup tick will skip one cleanup cycle — acceptable because an empty store has nothing to expire.
+* `defaultTenant` allows applications to configure a fallback for unauthenticated or system requests without throwing an exception.
+* `decorator` parameter makes `MultiTenantFailoverStore` independent of specific decorator implementations — it can be unit-tested with a simple identity decorator.
+___
+
+## 21. FailoverStoreMultiTenantAutoConfiguration — Multi-Tenant Auto-Configuration and TenantResolver SPI
+
+**Date : 02-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+Multi-tenant store support (ADR 20) requires configuration wiring: the `MultiTenantFailoverStore` bean must be assembled with the correct `TenantStoreFactory`, `TenantResolver`, and decorator function. Additionally, JDBC isolation strategy and per-tenant parameters must be configurable via YAML.
+
+Tenant resolution strategy (HTTP header, security context, custom logic) varies by application — the library cannot provide a universal default without pulling in inappropriate dependencies (Spring Security, Servlet API, etc.).
+
+#### Decision
+**Auto-configuration:** Introduce `FailoverStoreMultiTenantAutoConfiguration`, activated by `failover.store.multitenant.enabled=true`. It:
+
+1. Registers a multitenant `TenantStoreFactory` (one per store type) via `@ConditionalOnMissingBean(TenantStoreFactory.class)` — overrides the single-tenant factory from the store-type auto-configurations.
+2. Assembles and registers `MultiTenantFailoverStore` as the `FailoverStore<Object>` bean, satisfying `@ConditionalOnMissingBean(FailoverStore.class)` in `FailoverStoreAutoConfiguration`, preventing double assembly.
+3. Injects the decorator function that mirrors single-tenant assembly: `raw -> new FailoverStoreAsync<>(new DefaultFailoverStore<>(raw), executor)`.
+
+**TenantResolver SPI:** `TenantResolver` is a `@FunctionalInterface` with a single `resolve()` method returning the current tenant ID (or `null`). The library provides:
+- `TenantContextTenantResolver` — reads from `TenantContext` (a `ThreadLocal` holder).
+- `FixedTenantResolver` — always returns a literal (useful for testing).
+
+The application must provide the `TenantResolver` bean. The autoconfiguration declares `@ConditionalOnBean(TenantResolver.class)` — if absent, the multi-tenant configuration does not activate.
+
+**JDBC isolation strategies** (`MultiTenant.JdbcMultiTenantStrategy`):
+
+| Strategy | How it works | What the application provides |
+|---|---|---|
+| `TABLE_PREFIX` (default) | `effectivePrefix = tenantPrefix + globalPrefix`; e.g. `ACME_` + `DEMO_` = `ACME_DEMO_FAILOVER_STORE` | Per-tenant `tablePrefix` in `failover.store.multitenant.tenants.<id>.table-prefix` |
+| `SCHEMA` | Application provides an `AbstractRoutingDataSource` that routes to the correct schema using `TenantContext.get()` as the lookup key | Application-managed `DataSource` routing |
+
+**Properties:**
+```yaml
+failover:
+  store:
+    multitenant:
+      enabled: true
+      strategy: table-prefix        # or schema
+      default-tenant: default       # fallback when TenantResolver returns null
+      tenants:
+        acme:
+          table-prefix: ACME_
+        globex:
+          table-prefix: GLOBEX_
+```
+
+#### Consequences
+* Zero impact on existing single-tenant deployments: `failover.store.multitenant.enabled` defaults to `false`.
+* Applications must declare a `TenantResolver` bean; the library does not auto-detect tenant context to avoid opinionated dependencies.
+* `TABLE_PREFIX` strategy works with a single shared `DataSource` and `JdbcTemplate` — no infrastructure changes required.
+* `SCHEMA` strategy delegates all routing to the application's `DataSource` — the library performs no schema-level work beyond using the provided `JdbcTemplate`.
+* Per-tenant `TenantConfig` entries are optional for Caffeine and InMemory stores; only JDBC uses `tablePrefix`.
+* `defaultTenant` prevents exceptions for unauthenticated or internal requests that have no tenant context, at the cost of routing all such requests to a shared store.
 ___

@@ -19,11 +19,17 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
 import com.societegenerale.failover.core.expiry.ExpiryPolicy;
+import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.key.KeyGenerator;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
+import com.societegenerale.failover.core.report.CompositeReportPublisher;
+import com.societegenerale.failover.core.report.FailoverReporter;
 import com.societegenerale.failover.core.report.ReportPublisher;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import org.springframework.context.ApplicationContext;
 
@@ -41,32 +47,49 @@ public class BeanAssertions {
         throw new IllegalStateException("Cannot instantiate a utility class");
     }
 
+    /**
+     * Single-registration bean types — each must resolve to exactly one bean.
+     */
     private static final Class<?>[] MANDATORY_BASIC_BEANS = {
-            FailoverClock.class, FailoverStore.class,
-            PayloadEnricher.class, RecoveredPayloadHandler.class,
-            FailoverHandler.class, FailoverExecution.class
+            FailoverClock.class,
+            FailoverStore.class,
+            PayloadEnricher.class,
+            RecoveredPayloadHandler.class,
+            FailoverHandler.class,
+            FailoverExecution.class,
+            MethodExceptionHandler.class,
+            MethodExceptionPolicy.class,
+            FailoverExpiryExtractor.class,
+            FailoverScanner.class,
+            CompositeReportPublisher.class,
+            FailoverReporter.class
     };
 
+    /**
+     * Multi-registration bean types — each may have more than one registered bean.
+     * Checked via {@code getBeansOfType} (not empty).
+     */
     private static final Class<?>[] MANDATORY_BASIC_BEANS_COLLECTION = {
-            ReportPublisher.class, KeyGenerator.class, ExpiryPolicy.class
+            ReportPublisher.class,
+            KeyGenerator.class,
+            ExpiryPolicy.class
     };
 
     public static void assertBasicBean(ApplicationContext applicationContext) {
         assertBeansAreNotNull(applicationContext, MANDATORY_BASIC_BEANS);
-        assertBeansAreNotEmpty(applicationContext,MANDATORY_BASIC_BEANS_COLLECTION);
+        assertBeansAreNotEmpty(applicationContext, MANDATORY_BASIC_BEANS_COLLECTION);
     }
 
     public static void assertBeansAreNotNull(ApplicationContext applicationContext, Class<?>... clazzArgs) {
-        asList(clazzArgs).forEach(clazz-> beanIsNotNull(applicationContext.getBean(clazz)));
+        asList(clazzArgs).forEach(clazz -> beanIsNotNull(applicationContext.getBean(clazz)));
     }
 
     public static void assertBeansAreNotEmpty(ApplicationContext applicationContext, Class<?>... clazzArgs) {
-        asList(clazzArgs).forEach(clazz-> beanIsNotEmpty(applicationContext.getBeansOfType(clazz)));
+        asList(clazzArgs).forEach(clazz -> beanIsNotEmpty(applicationContext.getBeansOfType(clazz)));
     }
 
-
     public static void assertBeansAreEmpty(ApplicationContext applicationContext, Class<?>... clazzArgs) {
-        asList(clazzArgs).forEach(clazz-> beanIsNull(applicationContext.getBeansOfType(clazz)));
+        asList(clazzArgs).forEach(clazz -> beanMapIsEmpty(applicationContext.getBeansOfType(clazz)));
     }
 
     private static <T> void beanIsNotEmpty(Map<String, T> beanMap) {
@@ -77,9 +100,7 @@ public class BeanAssertions {
         assertThat(bean).isNotNull();
     }
 
-    private static <T> void beanIsNull(Map<String, T> beanMap) {
+    private static <T> void beanMapIsEmpty(Map<String, T> beanMap) {
         assertThat(beanMap).isEmpty();
     }
 }
-
-
