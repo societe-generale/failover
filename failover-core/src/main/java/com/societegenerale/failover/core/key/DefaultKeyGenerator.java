@@ -40,7 +40,9 @@ public class DefaultKeyGenerator implements KeyGenerator {
 
     private static final String EMPTY_STRING = "";
 
-    private static final String COMMA_DELIMITER = ",";
+    private static final String COLLECTIONS_DELIMITER = ",";
+
+    private static final String KEY_DELIMITER = ":";
 
     private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, Boolean.class);
 
@@ -49,7 +51,7 @@ public class DefaultKeyGenerator implements KeyGenerator {
         if (isNull(args) || args.isEmpty()) {
             return NO_ARG_STRING;
         }
-        return args.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(":"));
+        return args.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(KEY_DELIMITER));
     }
 
     private String castToStringValue(Object item, Failover failover) {
@@ -57,10 +59,10 @@ public class DefaultKeyGenerator implements KeyGenerator {
             return EMPTY_STRING;
         }
         if(item instanceof String strItem) {
-            if(strItem.contains(COMMA_DELIMITER)) {
-                return Arrays.stream(strItem.split(COMMA_DELIMITER))
+            if(strItem.contains(COLLECTIONS_DELIMITER)) {
+                return Arrays.stream(strItem.split(COLLECTIONS_DELIMITER))
                         .sorted()
-                        .collect(joining(COMMA_DELIMITER));
+                        .collect(joining(COLLECTIONS_DELIMITER));
             }
             return strItem;
         }
@@ -69,7 +71,7 @@ public class DefaultKeyGenerator implements KeyGenerator {
         }
         if (Collection.class.isAssignableFrom(item.getClass())) {
             var collection = (Collection<?>) item;
-            return collection.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(COMMA_DELIMITER));
+            return collection.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(COLLECTIONS_DELIMITER));
         }
         if (item.getClass().isArray()) {
             var len = Array.getLength(item);
@@ -77,7 +79,7 @@ public class DefaultKeyGenerator implements KeyGenerator {
             for (var i = 0; i < len; i++) {
                 list.add(Array.get(item, i));
             }
-            return list.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(","));
+            return list.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(COLLECTIONS_DELIMITER));
         }
         log.warn("Failover '{}': key arg '{}' is a non-primitive/non-String type. Implement equals/hashCode or configure a custom KeyGenerator.",
                 failover.name(), item.getClass().getName());
