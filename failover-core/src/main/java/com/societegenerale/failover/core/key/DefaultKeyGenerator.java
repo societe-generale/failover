@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -39,7 +40,9 @@ public class DefaultKeyGenerator implements KeyGenerator {
 
     private static final String EMPTY_STRING = "";
 
-    private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, String.class, Boolean.class);
+    private static final String COMMA_DELIMITER = ",";
+
+    private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, Boolean.class);
 
     @Override
     public String key(Failover failover, List<Object> args) {
@@ -53,12 +56,20 @@ public class DefaultKeyGenerator implements KeyGenerator {
         if (isNull(item)) {
             return EMPTY_STRING;
         }
+        if(item instanceof String strItem) {
+            if(strItem.contains(COMMA_DELIMITER)) {
+                return Arrays.stream(strItem.split(COMMA_DELIMITER))
+                        .sorted()
+                        .collect(joining(COMMA_DELIMITER));
+            }
+            return strItem;
+        }
         if(item.getClass().isPrimitive() || isOfType(item)) {
             return valueOf(item);
         }
         if (Collection.class.isAssignableFrom(item.getClass())) {
             var collection = (Collection<?>) item;
-            return collection.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(","));
+            return collection.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(COMMA_DELIMITER));
         }
         if (item.getClass().isArray()) {
             var len = Array.getLength(item);
