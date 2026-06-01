@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -40,6 +39,8 @@ public class DefaultKeyGenerator implements KeyGenerator {
 
     private static final String EMPTY_STRING = "";
 
+    private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, String.class, Boolean.class);
+
     @Override
     public String key(Failover failover, List<Object> args) {
         if (isNull(args) || args.isEmpty()) {
@@ -52,7 +53,7 @@ public class DefaultKeyGenerator implements KeyGenerator {
         if (isNull(item)) {
             return EMPTY_STRING;
         }
-        if(item.getClass().isPrimitive() || isOfType(item, Number.class, String.class, Boolean.class)) {
+        if(item.getClass().isPrimitive() || isOfType(item)) {
             return valueOf(item);
         }
         if (Collection.class.isAssignableFrom(item.getClass())) {
@@ -67,12 +68,13 @@ public class DefaultKeyGenerator implements KeyGenerator {
             }
             return list.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(","));
         }
-        log.debug("Some of the key arguments are of Object type ( non primitive , non number, non string ). You can either provide a custom key generator for failover '{{}}' or you must implement equals and hashcode for the all the key type(s) : '{}'", failover, item.getClass());
-        return "%s@%s".formatted(item.getClass().getSimpleName(), toHexString(item.hashCode()));
+        log.warn("Failover '{}': key arg '{}' is a non-primitive/non-String type. Implement equals/hashCode or configure a custom KeyGenerator.",
+                failover.name(), item.getClass().getName());
+        return "%s@%s".formatted(item.getClass().getName(), toHexString(item.hashCode()));
     }
 
-    private boolean isOfType(Object item, Class<?>...types) {
-        return Arrays.stream(types).anyMatch(cls-> isOfType(item, cls));
+    private boolean isOfType(Object item) {
+        return NUMBER_TYPES.stream().anyMatch(cls-> isOfType(item, cls));
     }
 
     private boolean isOfType(Object item, Class<?>type) {
