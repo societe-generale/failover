@@ -17,10 +17,10 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
-import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.store.FailoverStoreJdbc;
 import com.societegenerale.failover.store.mapper.ReferentialPayloadRowMapper;
+import com.societegenerale.failover.store.multitenant.TenantStoreFactory;
 import com.societegenerale.failover.store.resolver.*;
 import com.societegenerale.failover.store.serializer.JsonSerializer;
 import com.societegenerale.failover.store.serializer.Serializer;
@@ -118,13 +118,16 @@ public class FailoverJdbcStoreAutoConfiguration {
     }
 
     /**
-     * Registers a {@link com.societegenerale.failover.store.FailoverStoreJdbc} as the
-     * primary {@link FailoverStore} bean unless one is already present.
+     * Registers a {@link TenantStoreFactory} that creates a {@link FailoverStoreJdbc} per tenant.
+     *
+     * <p>In single-tenant mode the tenant ID is {@code "_single_"} and the globally configured
+     * {@link FailoverStoreQueryResolver} (with its table prefix) is used. The multitenant
+     * auto-configuration will replace this factory with a tenant-aware one when enabled.
      */
     @Bean
-    @ConditionalOnMissingBean
-    public FailoverStore<Object> failoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver, RowMapper<ReferentialPayload<Object>> rowMapper) {
+    @ConditionalOnMissingBean(TenantStoreFactory.class)
+    public TenantStoreFactory<Object> jdbcTenantStoreFactory(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver, RowMapper<ReferentialPayload<Object>> rowMapper) {
         log.info("FailoverStore configured to FailoverStoreJdbc.");
-        return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
+        return tenantId -> new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
     }
 }

@@ -30,8 +30,6 @@ import com.societegenerale.failover.store.FailoverStoreInmemory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.commons.util.ReflectionUtils;
-import org.springframework.aop.framework.Advised;
-import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
@@ -94,29 +92,19 @@ class FailoverAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("should load inmemory failover store by default")
-    void shouldLoadInmemoryFailoverStoreByDefault() throws Exception {
-        assertThat(failoverStore).isNotNull();
-        Object target = AopUtils.isAopProxy(failoverStore)
-                ? ((Advised) failoverStore).getTargetSource().getTarget()
-                : failoverStore;
-        FailoverStoreAsync<Object> async = cast(target);
-        assertThat(async).isNotNull();
-        FailoverStore<Object> inner = requireNonNull(async.getFailoverStore());
+    @DisplayName("should load inmemory failover store by default wrapped in async and default decorator chain")
+    void shouldLoadInmemoryFailoverStoreByDefault() {
+        assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
+        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) failoverStore).getFailoverStore());
         assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
         assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
     }
 
     @Test
     @DisplayName("should wrap async and default stores with the given inmemory failover store")
-    @SuppressWarnings("unchecked")
-    void shouldWrapAsyncAndDefaultStoresWithTheGivenInmemoryFailoverStore() throws Exception {
-        Object target = AopUtils.isAopProxy(failoverStore)
-                ? ((Advised) failoverStore).getTargetSource().getTarget()
-                : failoverStore;
-        assertThat(target).isNotNull();
-        assertThat(target).isInstanceOf(FailoverStoreAsync.class);
-        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) target).getFailoverStore());
+    void shouldWrapAsyncAndDefaultStoresWithTheGivenInmemoryFailoverStore() {
+        assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
+        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) failoverStore).getFailoverStore());
         assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
         FailoverStore<Object> innermost = requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore());
         assertThat(innermost).isInstanceOf(FailoverStoreInmemory.class);
@@ -129,14 +117,10 @@ class FailoverAutoConfigurationTest {
         AtomicReference<String> storingThread = new AtomicReference<>();
         CountDownLatch latch = new CountDownLatch(1);
 
-        // Unwrap: AOP proxy → FailoverStoreAsync → DefaultFailoverStore
-        Object target = ((Advised) failoverStore).getTargetSource().getTarget();
-        FailoverStoreAsync<Object> async = cast(target);
-        assertThat(async).isNotNull();
+        FailoverStoreAsync<Object> async = cast(failoverStore);
         DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) requireNonNull(async.getFailoverStore());
         FailoverStore<Object> originalInner = requireNonNull(defaultStore.getFailoverStore());
 
-        // Inject thread-capturing wrapper via reflection
         Field innerField = DefaultFailoverStore.class.getDeclaredField("failoverStore");
         ReflectionUtils.makeAccessible(innerField);
         innerField.set(defaultStore, new ThreadCapturingStore(originalInner, storingThread, latch));
@@ -166,9 +150,7 @@ class FailoverAutoConfigurationTest {
         }
 
         @Override
-        public void delete(ReferentialPayload<Object> payload) {
-            delegate.delete(payload);
-        }
+        public void delete(ReferentialPayload<Object> payload) { delegate.delete(payload); }
 
         @Override
         public Optional<ReferentialPayload<Object>> find(String name, String key) {
@@ -176,8 +158,6 @@ class FailoverAutoConfigurationTest {
         }
 
         @Override
-        public void cleanByExpiry(LocalDateTime expiry) {
-            delegate.cleanByExpiry(expiry);
-        }
+        public void cleanByExpiry(LocalDateTime expiry) { delegate.cleanByExpiry(expiry); }
     }
 }

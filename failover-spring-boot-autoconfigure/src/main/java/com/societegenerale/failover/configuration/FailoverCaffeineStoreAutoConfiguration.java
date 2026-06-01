@@ -17,14 +17,14 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.clock.FailoverClock;
-import com.societegenerale.failover.core.store.FailoverStore;
-import com.societegenerale.failover.properties.StoreType;
 import com.societegenerale.failover.store.FailoverStoreCaffeine;
+import com.societegenerale.failover.store.multitenant.TenantStoreFactory;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -37,9 +37,14 @@ import org.springframework.context.annotation.Bean;
 @Slf4j
 public class FailoverCaffeineStoreAutoConfiguration {
 
+    /**
+     * Declares a {@link TenantStoreFactory} that creates a {@link FailoverStoreCaffeine} per tenant.
+     * Each tenant gets its own isolated Caffeine cache with independent per-entry expiry.
+     */
     @Bean
-    public FailoverStore<Object> failoverStore(FailoverClock failoverClock) {
-        log.warn("FailoverStore configured to FailoverStoreCaffeine. This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", (Object) StoreType.values());
-        return new FailoverStoreCaffeine<>(failoverClock);
+    @ConditionalOnMissingBean(TenantStoreFactory.class)
+    public TenantStoreFactory<Object> caffeineTenantStoreFactory(FailoverClock failoverClock) {
+        log.warn("FailoverStore configured to FailoverStoreCaffeine. This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", (Object) com.societegenerale.failover.properties.StoreType.values());
+        return tenantId -> new FailoverStoreCaffeine<>(failoverClock);
     }
 }

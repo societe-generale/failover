@@ -49,6 +49,12 @@
 
         <dependency>
             <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-store-multitenant</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
             <artifactId>failover-aspect</artifactId>
             <version>${project.parent.version}</version>
         </dependency>

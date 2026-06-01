@@ -23,8 +23,6 @@ import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreJdbc;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.aop.framework.Advised;
-import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
@@ -55,15 +53,10 @@ class FailoverJdbcStoreAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("should load jdbc failover store bean")
-    void shouldLoadJdbcFailoverStoreBean() throws Exception {
-        assertThat(failoverStore).isNotNull();
-        Object target = AopUtils.isAopProxy(failoverStore)
-                ? ((Advised) failoverStore).getTargetSource().getTarget()
-                : failoverStore;
-        FailoverStoreAsync<Object> async = cast(target);
-        assertThat(async).isNotNull();
-        FailoverStore<Object> inner = requireNonNull(async.getFailoverStore());
+    @DisplayName("should load jdbc failover store wrapped in async and default decorator chain")
+    void shouldLoadJdbcFailoverStoreBean() {
+        assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
+        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) failoverStore).getFailoverStore());
         assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
         assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isInstanceOf(FailoverStoreJdbc.class);
     }
@@ -71,13 +64,9 @@ class FailoverJdbcStoreAutoConfigurationTest {
     @Test
     @DisplayName("should wrap async and default stores with the given failover store jdbc")
     @SuppressWarnings("unchecked")
-    void shouldWrapAsyncAndDefaultStoresWithTheGivenFailoverStoreJdbc() throws Exception {
-        Object target = AopUtils.isAopProxy(failoverStore)
-                ? ((Advised) failoverStore).getTargetSource().getTarget()
-                : failoverStore;
-        assertThat(target).isNotNull();
-        assertThat(target).isInstanceOf(FailoverStoreAsync.class);
-        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) target).getFailoverStore());
+    void shouldWrapAsyncAndDefaultStoresWithTheGivenFailoverStoreJdbc() {
+        assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
+        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) cast(failoverStore)).getFailoverStore());
         assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
         FailoverStore<Object> innermost = requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore());
         assertThat(innermost).isInstanceOf(FailoverStoreJdbc.class);
