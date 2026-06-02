@@ -340,7 +340,7 @@ When enabled the autoconfiguration assembles a `MultiTenantFailoverStore` that:
 
 ### TenantResolver
 
-The application must provide a `TenantResolver` bean. The library does not supply built-in resolvers — tenant resolution is always an application concern (HTTP header, security context, etc.).
+The application **must** provide a `TenantResolver` bean. The library does **not** supply built-in resolver implementations — tenant resolution is always an application concern. Multi-tenant applications already have infrastructure for this (request filters, security context, etc.); the resolver is the bridge between that infrastructure and the failover store.
 
 ```java
 @FunctionalInterface
@@ -349,56 +349,227 @@ public interface TenantResolver {
 }
 ```
 
-**Common patterns:**
+`resolve()` is always called on the **calling (request) thread**, before any async dispatch. Implementations may safely read `ThreadLocal` values and HTTP context — they do not need to be thread-safe beyond normal servlet-model assumptions.
+
+---
+
+#### Pattern 1 — HTTP Request Header via `TenantContext`
+
+The most common approach: a servlet filter reads a header at the start of each request, stores it in `TenantContext` (a `ThreadLocal` provided by the library), and a resolver reads from it.
+
+**Step 1 — Filter (application code):**
 
 ```java
-// From an HTTP request header (e.g. in a servlet filter)
-@Bean
-public TenantResolver tenantResolver() {
-    return TenantContext::get;   // reads from TenantContext populated by a filter
-}
+import com.societegenerale.failover.store.multitenant.TenantContext;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
 
-// From Spring Security
-@Bean
-public TenantResolver tenantResolver() {
-    return () -> {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : null;
-    };
-}
+import java.io.IOException;
 
-// Fixed tenant — useful for testing or single-tenant migration
-@Bean
-public TenantResolver tenantResolver() {
-    return new FixedTenantResolver("acme");
-}
-```
-
-### TenantContext
-
-`TenantContext` is a `ThreadLocal` holder for the current tenant ID. Populate it at the start of each request and clear it in a `finally` block:
-
-```java
+/**
+ * Reads the X-Tenant-ID header and stores it in TenantContext for the duration of the request.
+ * Application-provided — not part of the failover library.
+ */
 @Component
 public class TenantContextFilter extends OncePerRequestFilter {
+
+    public static final String TENANT_HEADER = "X-Tenant-ID";
+
     @Override
-    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
-                                    FilterChain chain) throws IOException, ServletException {
-        TenantContext.set(req.getHeader("X-Tenant-ID"));
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        String tenantId = request.getHeader(TENANT_HEADER);
+        TenantContext.set(tenantId);   // null if header absent — falls back to default-tenant
         try {
-            chain.doFilter(req, res);
+            filterChain.doFilter(request, response);
         } finally {
-            TenantContext.clear();
+            TenantContext.clear();     // must clear so the thread is clean when returned to pool
         }
     }
 }
+```
 
-// Resolver bean
-@Bean
-public TenantResolver tenantResolver() {
-    return new TenantContextTenantResolver();  // reads TenantContext.get()
+**Step 2 — Resolver bean (application code):**
+
+```java
+import com.societegenerale.failover.store.multitenant.TenantContextTenantResolver;
+import com.societegenerale.failover.store.multitenant.TenantResolver;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FailoverTenantConfig {
+
+    /**
+     * Reads TenantContext.get() — set by TenantContextFilter on the calling thread.
+     * TenantContextTenantResolver is a built-in helper provided by the failover library.
+     */
+    @Bean
+    public TenantResolver tenantResolver() {
+        return new TenantContextTenantResolver();
+    }
 }
 ```
+
+> **Maven dependency** for `TenantContextTenantResolver`: included via `failover-store-multitenant` (transitive from the starter).
+
+---
+
+#### Pattern 2 — Spring Security Principal
+
+If the tenant identifier is the authenticated principal name (common in OAuth2 / JWT setups where the `sub` claim is the tenant), read it from `SecurityContextHolder`:
+
+**Resolver (application code):**
+
+```java
+import com.societegenerale.failover.store.multitenant.TenantResolver;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+@Configuration
+public class FailoverTenantConfig {
+
+    @Bean
+    public TenantResolver tenantResolver() {
+        return new SecurityContextTenantResolver();
+    }
+
+    /**
+     * Resolves the current tenant from the Spring Security authentication principal.
+     * Application-provided — not part of the failover library.
+     */
+    static class SecurityContextTenantResolver implements TenantResolver {
+
+        @Override
+        public String resolve() {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated()) {
+                return null;   // falls back to default-tenant or throws FailoverStoreException
+            }
+            return auth.getName();   // principal name — adapt to your token claim as needed
+        }
+    }
+}
+```
+
+> **Maven dependency**: `spring-boot-starter-security` (already present in security-enabled applications).
+
+For JWT-based tenants where the tenant ID is a custom claim (e.g. `tenant_id`), adapt `resolve()` to cast `auth.getPrincipal()` to `Jwt` and read the claim:
+
+```java
+@Override
+public String resolve() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null) return null;
+    if (auth.getPrincipal() instanceof Jwt jwt) {
+        return jwt.getClaimAsString("tenant_id");
+    }
+    return auth.getName();
+}
+```
+
+---
+
+#### Pattern 3 — Custom Header Resolver (no TenantContext)
+
+If you prefer not to use `TenantContext` as an intermediary (e.g. in reactive or non-servlet stacks), inject the `HttpServletRequest` directly:
+
+```java
+import com.societegenerale.failover.store.multitenant.TenantResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+@Configuration
+public class FailoverTenantConfig {
+
+    @Bean
+    public TenantResolver tenantResolver() {
+        return new HeaderTenantResolver("X-Tenant-ID");
+    }
+
+    /**
+     * Reads a named HTTP header from the current request via RequestContextHolder.
+     * Application-provided — not part of the failover library.
+     */
+    static class HeaderTenantResolver implements TenantResolver {
+
+        private final String headerName;
+
+        HeaderTenantResolver(String headerName) {
+            this.headerName = headerName;
+        }
+
+        @Override
+        public String resolve() {
+            var attrs = RequestContextHolder.getRequestAttributes();
+            if (attrs instanceof ServletRequestAttributes sra) {
+                HttpServletRequest request = sra.getRequest();
+                return request.getHeader(headerName);
+            }
+            return null;   // non-request thread (e.g. scheduler) — falls back to default-tenant
+        }
+    }
+}
+```
+
+> **Note:** `RequestContextHolder` only works in servlet-request threads. Scheduler threads return `null` from `getRequestAttributes()`, so `resolve()` returns `null` and the `default-tenant` fallback is used.
+
+---
+
+#### Pattern 4 — Fixed Tenant (testing / single-tenant migration)
+
+`FixedTenantResolver` always returns the same literal. Useful when writing tests or when migrating a single-tenant app to multi-tenant without changing all call sites yet:
+
+```java
+import com.societegenerale.failover.store.multitenant.FixedTenantResolver;
+import com.societegenerale.failover.store.multitenant.TenantResolver;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FailoverTenantConfig {
+
+    @Bean
+    public TenantResolver tenantResolver() {
+        return new FixedTenantResolver("acme");   // always routes to "acme"
+    }
+}
+```
+
+---
+
+### TenantContext
+
+`TenantContext` is a `ThreadLocal<String>` holder provided by the library. It is a convenience utility — you are not required to use it. If you read the tenant directly from `SecurityContextHolder`, `RequestContextHolder`, or any other mechanism, `TenantContext` is not involved.
+
+```java
+// Set at start of request
+TenantContext.set("acme");
+
+// Read during request processing (by TenantContextTenantResolver)
+String tenantId = TenantContext.get();   // returns "acme"
+
+// Clear in finally block — critical to avoid leaking the tenant ID to the next request
+TenantContext.clear();
+```
+
+**When to use `TenantContext`:**
+- Your application resolves the tenant from a source not available later in the call stack (e.g. a gateway-injected header that is stripped before reaching service code).
+- You are using the SCHEMA JDBC isolation strategy where `TenantContext.get()` must also drive `AbstractRoutingDataSource.determineCurrentLookupKey()` — using the same `ThreadLocal` means the filter sets it once and both the failover store router and the datasource router read from the same place.
+
+**When NOT to use `TenantContext`:**
+- Spring Security is your source of truth — read from `SecurityContextHolder` directly.
+- You are in a reactive (WebFlux) application — `ThreadLocal` does not propagate across reactive operators; use Reactor's context instead.
 
 ### Default Tenant Fallback
 
