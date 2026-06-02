@@ -112,13 +112,27 @@ class FailoverFailureAnalyzerTest {
         assertThat(result.getAction()).isEqualTo("""
                 For FailoverExecution 'CUSTOM', \
                 Either configured to available type { [BASIC, RESILIENCE, CUSTOM] } by configuring 'failover.type' property \
-                OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.type=custom'.""");
+                OR Consider defining a bean of type 'interface com.societegenerale.failover.core.FailoverExecution' in your configuration by setting 'failover.type=custom'.""");
+    }
+
+    @Test
+    @DisplayName("should handle exception when inmemory failover store configured — default case shows actual type")
+    void shouldHandleExceptionWhenFailoverStoreInmemoryConfigured() {
+        cause = new NoSuchBeanDefinitionException(ResolvableType.forType(FailoverStore.class));
+        given(environment.getProperty("failover.store.type", StoreType.class, StoreType.CUSTOM)).willReturn(StoreType.INMEMORY);
+        FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, "some exception description");
+        assertThat(result).isNotNull();
+        assertThat(result.getAction()).isEqualTo("""
+                For FailoverStore 'INMEMORY', \
+                Either configured to available stores { [INMEMORY, CAFFEINE, JDBC, CUSTOM] } by configuring 'failover.store.type' property \
+                OR Consider defining a bean of type 'interface com.societegenerale.failover.core.store.FailoverStore' in your configuration by setting 'failover.store.type=custom'."""
+        );
     }
 
     @Test
     @DisplayName("should provide failover failure analysis on exception due to invalid failover configuration")
     void shouldProvideFailoverFailureAnalysis() {
-        var description = "Parameter 0 of method failoverStoreJdbc in com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration";
+        var description = "Parameter 0 of method jdbcTenantStoreFactory in com.societegenerale.failover.configuration.FailoverStoreAutoConfiguration$JdbcStoreConfiguration";
         ResolvableType resolvableType = ResolvableType.forType(JdbcTemplate.class);
         Throwable rootFailure = new RuntimeException("Some exception");
         var cause = new NoSuchBeanDefinitionException(resolvableType);
@@ -152,6 +166,25 @@ class FailoverFailureAnalyzerTest {
         cause = new NoSuchBeanDefinitionException(ResolvableType.forType(JdbcTemplate.class));
         FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, null);
         assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("should return null when cause has null beanType — no NPE")
+    void shouldReturnNullWhenBeanTypeIsNull() {
+        cause = new NoSuchBeanDefinitionException("someBeanName");
+        FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, "some description");
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("getBeanDescription includes fully-qualified class name in the action message")
+    void getBeanDescriptionIncludesClassName() {
+        var description = "Parameter 0 of method jdbcTenantStoreFactory in com.societegenerale.failover.configuration.FailoverStoreAutoConfiguration$JdbcStoreConfiguration";
+        cause = new NoSuchBeanDefinitionException(ResolvableType.forType(JdbcTemplate.class));
+        FailureAnalysis result = failoverFailureAnalyzer.analyze(rootFailure, cause, description);
+        assertThat(result).isNotNull();
+        assertThat(result.getDescription()).contains("a bean of type 'org.springframework.jdbc.core.JdbcTemplate'");
+        assertThat(result.getAction()).contains("a bean of type 'org.springframework.jdbc.core.JdbcTemplate'");
     }
 
     @Test

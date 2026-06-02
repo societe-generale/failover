@@ -35,15 +35,11 @@ import com.societegenerale.failover.core.report.manifest.*;
 import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
-import com.societegenerale.failover.processor.AsyncFailoverStoreBeanPostProcessor;
-import com.societegenerale.failover.processor.DefaultFailoverStoreBeanPostProcessor;
 import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
-import com.societegenerale.failover.properties.StoreType;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ReportScheduler;
-import com.societegenerale.failover.store.FailoverStoreInmemory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -60,6 +56,18 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import java.util.List;
 
 /**
+ * Root Spring Boot auto-configuration for the failover framework.
+ *
+ * <p>Activates when {@code failover.enabled=true} (the default). Registers all core
+ * failover infrastructure beans: AOP aspect, expiry policy, key generators, payload
+ * enricher, recovered-payload handler, method-exception policy, schedulers, and the
+ * in-memory store factory (when no other store type is configured).
+ *
+ * <p>Store-type-specific beans (Caffeine, JDBC) are registered by their own
+ * auto-configurations ({@code FailoverCaffeineStoreAutoConfiguration},
+ * {@code FailoverJdbcStoreAutoConfiguration}). The final assembled {@code FailoverStore}
+ * bean is produced by {@code FailoverStoreAutoConfiguration}.
+ *
  * @author Anand Manissery
  */
 @AutoConfiguration
@@ -151,14 +159,6 @@ public class FailoverAutoConfiguration {
         return new CompositeReportPublisher(reportPublishers);
     }
 
-    @ConditionalOnProperty(prefix = "failover", name = "store.type", havingValue = "inmemory", matchIfMissing = true)
-    @ConditionalOnMissingBean
-    @Bean
-    public FailoverStore<Object> failoverStoreInmemory() {
-        log.warn("FailoverStore configured to FailoverStoreInmemory. We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", (Object) StoreType.values());
-        return new FailoverStoreInmemory<>();
-    }
-
     @ConditionalOnMissingBean
     @Bean
     public FailoverHandler<Object> failoverHandler(@Qualifier("failoverKeyGenerator") KeyGenerator keyGenerator, @Qualifier("failoverExpiryPolicy")ExpiryPolicy<Object> expiryPolicy, FailoverClock clock, FailoverStore<Object> failoverStore, PayloadEnricher<Object> payloadEnricher, RecoveredPayloadHandler recoveredPayloadHandler, CompositeReportPublisher reportPublisher, FailoverExpiryExtractor failoverExpiryExtractor) {
@@ -242,24 +242,4 @@ public class FailoverAutoConfiguration {
         }
     }
 
-    @Configuration
-    @ConditionalOnExpression("${failover.enabled:true} eq true")
-    static class DefaultBeanProcessorConfiguration {
-
-        @Bean
-        public static DefaultFailoverStoreBeanPostProcessor defaultFailoverStoreBeanPostProcessor() {
-            return new DefaultFailoverStoreBeanPostProcessor();
-        }
-    }
-
-    @Configuration
-    @ConditionalOnExpression("${failover.enabled:true} eq true and ${failover.store.async:true} eq true")
-    @EnableAsync
-    static class AsyncBeanProcessorConfiguration {
-
-        @Bean
-        public static AsyncFailoverStoreBeanPostProcessor asyncFailoverStoreBeanPostProcessor() {
-            return new AsyncFailoverStoreBeanPostProcessor();
-        }
-    }
 }

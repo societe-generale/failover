@@ -17,33 +17,56 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.MyTestApplication;
+import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.aspect.FailoverAspect;
 import com.societegenerale.failover.core.BasicFailoverExecution;
+import com.societegenerale.failover.core.FailoverExecution;
+import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.exception.MethodExceptionContext;
 import com.societegenerale.failover.core.exception.MethodExceptionHandler;
 import com.societegenerale.failover.core.exception.policy.MethodExceptionPolicy;
+import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExceptionPolicy;
 import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
+import com.societegenerale.failover.core.expiry.ExpiryPolicy;
+import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
+import com.societegenerale.failover.core.key.KeyGenerator;
+import com.societegenerale.failover.core.payload.PayloadEnricher;
+import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
+import com.societegenerale.failover.core.report.CompositeReportPublisher;
+import com.societegenerale.failover.core.report.FailoverReporter;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
+import com.societegenerale.failover.core.report.ReportPublisher;
+import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
+import com.societegenerale.failover.scheduler.ReportScheduler;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.commons.util.ReflectionUtils;
-import org.springframework.aop.framework.Advised;
-import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.test.context.TestPropertySource;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBasicBean;
+import static com.societegenerale.failover.configuration.BeanAssertions.assertBeansAreEmpty;
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBeansAreNotNull;
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static java.util.Objects.requireNonNull;
@@ -52,105 +75,43 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author Anand Manissery
  */
-@SpringBootTest(classes = {MyTestApplication.class})
 class FailoverAutoConfigurationTest {
 
-    @Autowired
-    private ApplicationContext applicationContext;
+    // ── @TestConfiguration ────────────────────────────────────────────────────
 
-    @Autowired
-    private FailoverStore<Object> failoverStore;
+    @TestConfiguration
+    static class CustomPolicyConfig {
 
-    @Test
-    @DisplayName("should load all the basic default beans")
-    void shouldLoadAllTheBasicDefaultBeans() {
-        assertBasicBean(applicationContext);
-    }
+        @Bean
+        public MethodExceptionPolicy methodExceptionPolicy() {
+            return new AlwaysNullPolicy();
+        }
 
-    @Test
-    @DisplayName("should load failover aspect bean")
-    void shouldLoadFailoverAspectBean() {
-        assertBeansAreNotNull(applicationContext, FailoverAspect.class);
-    }
-
-    @Test
-    @DisplayName("should load BasicFailoverExecution by default")
-    void shouldLoadResilienceFailoverExecutionByDefault() {
-        var bean = applicationContext.getBean(BasicFailoverExecution.class);
-        assertThat(bean).isNotNull();
-    }
-
-    @Test
-    @DisplayName("should load MethodExceptionHandler bean by default")
-    void shouldLoadMethodExceptionHandlerBeanByDefault() {
-        assertBeansAreNotNull(applicationContext, MethodExceptionHandler.class);
-    }
-
-    @Test
-    @DisplayName("should load RethrowIfNoRecoveryMethodExceptionPolicy as default MethodExceptionPolicy")
-    void shouldLoadRethrowIfNoRecoveryPolicyByDefault() {
-        var policy = applicationContext.getBean(MethodExceptionPolicy.class);
-        assertThat(policy).isInstanceOf(RethrowIfNoRecoveryMethodExceptionPolicy.class);
-    }
-
-    @Test
-    @DisplayName("should load inmemory failover store by default")
-    void shouldLoadInmemoryFailoverStoreByDefault() throws Exception {
-        assertThat(failoverStore).isNotNull();
-        Object target = AopUtils.isAopProxy(failoverStore)
-                ? ((Advised) failoverStore).getTargetSource().getTarget()
-                : failoverStore;
-        FailoverStoreAsync<Object> async = cast(target);
-        assertThat(async).isNotNull();
-        FailoverStore<Object> inner = requireNonNull(async.getFailoverStore());
-        assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
-        assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
-    }
-
-    @Test
-    @DisplayName("should wrap async and default stores with the given inmemory failover store")
-    @SuppressWarnings("unchecked")
-    void shouldWrapAsyncAndDefaultStoresWithTheGivenInmemoryFailoverStore() throws Exception {
-        Object target = AopUtils.isAopProxy(failoverStore)
-                ? ((Advised) failoverStore).getTargetSource().getTarget()
-                : failoverStore;
-        assertThat(target).isNotNull();
-        assertThat(target).isInstanceOf(FailoverStoreAsync.class);
-        FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) target).getFailoverStore());
-        assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
-        FailoverStore<Object> innermost = requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore());
-        assertThat(innermost).isInstanceOf(FailoverStoreInmemory.class);
-    }
-
-    @Test
-    @DisplayName("should execute store asynchronously on a different thread")
-    void storeExecutesOnDifferentThread() throws Exception {
-        String callingThread = Thread.currentThread().getName();
-        AtomicReference<String> storingThread = new AtomicReference<>();
-        CountDownLatch latch = new CountDownLatch(1);
-
-        // Unwrap: AOP proxy → FailoverStoreAsync → DefaultFailoverStore
-        Object target = ((Advised) failoverStore).getTargetSource().getTarget();
-        FailoverStoreAsync<Object> async = cast(target);
-        assertThat(async).isNotNull();
-        DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) requireNonNull(async.getFailoverStore());
-        FailoverStore<Object> originalInner = requireNonNull(defaultStore.getFailoverStore());
-
-        // Inject thread-capturing wrapper via reflection
-        Field innerField = DefaultFailoverStore.class.getDeclaredField("failoverStore");
-        ReflectionUtils.makeAccessible(innerField);
-        innerField.set(defaultStore, new ThreadCapturingStore(originalInner, storingThread, latch));
-
-        try {
-            failoverStore.store(new ReferentialPayload<>("async-test", "key1", true,
-                    LocalDateTime.now(), LocalDateTime.now().plusHours(1), "payload"));
-
-            assertThat(latch.await(5, TimeUnit.SECONDS)).as("store() did not execute within 5 seconds").isTrue();
-            assertThat(storingThread.get()).as("store() must run on a thread different from the calling thread").isNotEqualTo(callingThread);
-        } finally {
-            innerField.set(defaultStore, originalInner);
+        static class AlwaysNullPolicy implements MethodExceptionPolicy {
+            @Override
+            public <T> T handle(MethodExceptionContext<T> context) {
+                return null;
+            }
         }
     }
+
+    @TestConfiguration
+    static class CustomFailoverExecutionConfig {
+
+        @Bean
+        public FailoverExecution<Object> failoverExecution() {
+            return new NoOpFailoverExecution();
+        }
+
+        static class NoOpFailoverExecution implements FailoverExecution<Object> {
+            @Override
+            public Object execute(Failover failover, Supplier<Object> supplier, Method method, List<Object> args) {
+                return supplier.get();
+            }
+        }
+    }
+
+    // ── Shared store probe ────────────────────────────────────────────────────
 
     private record ThreadCapturingStore(
             FailoverStore<Object> delegate,
@@ -166,9 +127,7 @@ class FailoverAutoConfigurationTest {
         }
 
         @Override
-        public void delete(ReferentialPayload<Object> payload) {
-            delegate.delete(payload);
-        }
+        public void delete(ReferentialPayload<Object> payload) { delegate.delete(payload); }
 
         @Override
         public Optional<ReferentialPayload<Object>> find(String name, String key) {
@@ -176,8 +135,249 @@ class FailoverAutoConfigurationTest {
         }
 
         @Override
-        public void cleanByExpiry(LocalDateTime expiry) {
-            delegate.cleanByExpiry(expiry);
+        public void cleanByExpiry(LocalDateTime expiry) { delegate.cleanByExpiry(expiry); }
+    }
+
+    // ── Default configuration ─────────────────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @DisplayName("when default configuration")
+    class WhenDefault {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Autowired
+        private FailoverStore<Object> failoverStore;
+
+        @Test
+        @DisplayName("should load all basic default beans")
+        void shouldLoadAllBasicDefaultBeans() {
+            assertBasicBean(applicationContext);
+        }
+
+        @Test
+        @DisplayName("should load FailoverAspect bean")
+        void shouldLoadFailoverAspectBean() {
+            assertBeansAreNotNull(applicationContext, FailoverAspect.class);
+        }
+
+        @Test
+        @DisplayName("should load BasicFailoverExecution by default")
+        void shouldLoadBasicFailoverExecutionByDefault() {
+            assertThat(applicationContext.getBean(BasicFailoverExecution.class)).isNotNull();
+        }
+
+        @Test
+        @DisplayName("should load MethodExceptionHandler bean")
+        void shouldLoadMethodExceptionHandlerBean() {
+            assertBeansAreNotNull(applicationContext, MethodExceptionHandler.class);
+        }
+
+        @Test
+        @DisplayName("should load RethrowIfNoRecoveryMethodExceptionPolicy as default")
+        void shouldLoadRethrowPolicyByDefault() {
+            assertThat(applicationContext.getBean(MethodExceptionPolicy.class))
+                    .isInstanceOf(RethrowIfNoRecoveryMethodExceptionPolicy.class);
+        }
+
+        @Test
+        @DisplayName("failoverStore is FailoverStoreAsync(DefaultFailoverStore(FailoverStoreInmemory)) by default")
+        void shouldLoadInmemoryFailoverStoreByDefault() {
+            assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
+            FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) failoverStore).getFailoverStore());
+            assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
+            assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
+        }
+
+        @Test
+        @DisplayName("innermost store is FailoverStoreInmemory")
+        void innermostShouldBeInmemory() {
+            FailoverStoreAsync<Object> async = cast(failoverStore);
+            DefaultFailoverStore<Object> defaultStore = cast(requireNonNull(async.getFailoverStore()));
+            assertThat(requireNonNull(defaultStore.getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
+        }
+
+        @Test
+        @DisplayName("should load ReportScheduler bean by default")
+        void shouldLoadReportSchedulerByDefault() {
+            assertThat(applicationContext.getBean(ReportScheduler.class)).isNotNull();
+        }
+
+        @Test
+        @DisplayName("should load ExpiryCleanupScheduler bean by default")
+        void shouldLoadExpiryCleanupSchedulerByDefault() {
+            assertThat(applicationContext.getBean(ExpiryCleanupScheduler.class)).isNotNull();
+        }
+
+        @Test
+        @DisplayName("store() executes on a different thread — async write offload confirmed")
+        void storeExecutesOnDifferentThread() throws Exception {
+            String callingThread = Thread.currentThread().getName();
+            AtomicReference<String> storingThread = new AtomicReference<>();
+            CountDownLatch latch = new CountDownLatch(1);
+
+            FailoverStoreAsync<Object> async = cast(failoverStore);
+            DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) requireNonNull(async.getFailoverStore());
+            FailoverStore<Object> originalInner = requireNonNull(defaultStore.getFailoverStore());
+
+            Field innerField = DefaultFailoverStore.class.getDeclaredField("failoverStore");
+            ReflectionUtils.makeAccessible(innerField);
+            innerField.set(defaultStore, new ThreadCapturingStore(originalInner, storingThread, latch));
+
+            try {
+                failoverStore.store(new ReferentialPayload<>("async-test", "key1", true,
+                        LocalDateTime.now(), LocalDateTime.now().plusHours(1), "payload"));
+
+                assertThat(latch.await(5, TimeUnit.SECONDS)).as("store() did not execute within 5 seconds").isTrue();
+                assertThat(storingThread.get()).as("store() must run on a different thread").isNotEqualTo(callingThread);
+            } finally {
+                innerField.set(defaultStore, originalInner);
+            }
+        }
+    }
+
+    // ── failover.enabled=false ────────────────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.enabled=false"})
+    @DisplayName("when failover disabled")
+    class WhenFailoverDisabled {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("should not load any failover beans")
+        void shouldNotLoadAnyFailoverBeans() {
+            assertBeansAreEmpty(applicationContext,
+                    FailoverClock.class, FailoverStore.class,
+                    PayloadEnricher.class, RecoveredPayloadHandler.class,
+                    FailoverHandler.class, FailoverExecution.class,
+                    MethodExceptionHandler.class, MethodExceptionPolicy.class,
+                    FailoverExpiryExtractor.class, FailoverScanner.class,
+                    CompositeReportPublisher.class, FailoverReporter.class,
+                    ReportPublisher.class, KeyGenerator.class, ExpiryPolicy.class
+            );
+        }
+    }
+
+    // ── failover.aspect.enabled=false ─────────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.aspect.enabled=false"})
+    @DisplayName("when aspect disabled")
+    class WhenAspectDisabled {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("should load all basic default beans")
+        void shouldLoadAllBasicDefaultBeans() {
+            assertBasicBean(applicationContext);
+        }
+
+        @Test
+        @DisplayName("should NOT load FailoverAspect bean")
+        void shouldNotLoadFailoverAspectBean() {
+            assertBeansAreEmpty(applicationContext, FailoverAspect.class);
+        }
+    }
+
+    // ── exception-policy=never_throw ──────────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.exception-policy=never_throw"})
+    @DisplayName("when exception policy is never_throw")
+    class WhenExceptionPolicyNeverThrow {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("should load NeverRethrowMethodExceptionPolicy")
+        void shouldLoadNeverRethrowPolicy() {
+            assertThat(applicationContext.getBean(MethodExceptionPolicy.class))
+                    .isInstanceOf(NeverRethrowMethodExceptionPolicy.class);
+        }
+    }
+
+    // ── exception-policy=custom ───────────────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class, CustomPolicyConfig.class})
+    @TestPropertySource(properties = {"failover.exception-policy=custom"})
+    @DisplayName("when exception policy is custom")
+    class WhenExceptionPolicyCustom {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("custom MethodExceptionPolicy bean overrides auto-configured default")
+        void customPolicyBeanOverridesAutoConfiguredDefault() {
+            assertThat(applicationContext.getBean(MethodExceptionPolicy.class))
+                    .isInstanceOf(CustomPolicyConfig.AlwaysNullPolicy.class);
+        }
+    }
+
+    // ── failover.scheduler.enabled=false ─────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.scheduler.enabled=false"})
+    @DisplayName("when scheduler disabled")
+    class WhenSchedulerDisabled {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("should load all basic default beans")
+        void shouldLoadAllBasicDefaultBeans() {
+            assertBasicBean(applicationContext);
+        }
+
+        @Test
+        @DisplayName("ReportScheduler should NOT be registered")
+        void reportSchedulerNotRegistered() {
+            assertBeansAreEmpty(applicationContext, ReportScheduler.class);
+        }
+
+        @Test
+        @DisplayName("ExpiryCleanupScheduler should NOT be registered")
+        void expiryCleanupSchedulerNotRegistered() {
+            assertBeansAreEmpty(applicationContext, ExpiryCleanupScheduler.class);
+        }
+    }
+
+    // ── failover.type=custom ──────────────────────────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class, CustomFailoverExecutionConfig.class})
+    @TestPropertySource(properties = {"failover.type=custom"})
+    @DisplayName("when failover type is custom")
+    class WhenFailoverTypeCustom {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("custom FailoverExecution bean is used")
+        void customFailoverExecutionUsed() {
+            assertThat(applicationContext.getBean(FailoverExecution.class))
+                    .isInstanceOf(CustomFailoverExecutionConfig.NoOpFailoverExecution.class);
+        }
+
+        @Test
+        @DisplayName("BasicFailoverExecution should NOT be registered — @ConditionalOnProperty(type=basic) does not match")
+        void basicFailoverExecutionNotRegistered() {
+            assertThat(applicationContext.getBeansOfType(BasicFailoverExecution.class)).isEmpty();
         }
     }
 }
