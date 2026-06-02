@@ -6,6 +6,19 @@ When a primary call succeeds, the result is written to the store (synchronously 
 
 ---
 
+## Store Types
+
+| Type       | Class                   | Production? | Notes                                                         |
+|------------|-------------------------|-------------|---------------------------------------------------------------|
+| `inmemory` | `FailoverStoreInmemory` | **No**      | `ConcurrentHashMap`; process-local; data lost on restart      |
+| `caffeine` | `FailoverStoreCaffeine` | Yes         | In-process; per-entry TTL managed by Caffeine; no persistence |
+| `jdbc`     | `FailoverStoreJdbc`     | Yes         | Durable; supports all major databases; fully configurable     |
+| `custom`   | *User-provided*         | Yes         | Implement `FailoverStore<T>` and register the bean            |
+
+The default store type when none is configured is `inmemory`.
+
+---
+
 ## FailoverStoreInmemory
 
 A plain `ConcurrentHashMap`-backed store. Entries are evicted explicitly when `cleanByExpiry` is called by the scheduler.
@@ -58,7 +71,7 @@ failover:
 </dependency>
 ```
 
-**Caffeine TTL behaviour:**
+**TTL behaviour:**
 
 - TTL per entry = `Duration.between(clock.now(), payload.expireOn)` at write time.
 - Re-writing the same key resets the TTL to the new `expireOn` value.
@@ -146,13 +159,13 @@ CREATE TABLE DEMO_FAILOVER_STORE (
 
 `FailoverStoreJdbc` uses a single native merge/upsert statement when the database supports it:
 
-| Database | SQL dialect |
-|---|---|
-| H2 | `MERGE INTO … KEY … VALUES …` |
-| PostgreSQL | `INSERT … ON CONFLICT … DO UPDATE SET …` |
-| MySQL / MariaDB | `INSERT … ON DUPLICATE KEY UPDATE …` |
-| Oracle | `MERGE INTO … USING DUAL …` |
-| Other | INSERT; on `DuplicateKeyException` → UPDATE |
+| Database        | SQL dialect                                 |
+|-----------------|---------------------------------------------|
+| H2              | `MERGE INTO … KEY … VALUES …`               |
+| PostgreSQL      | `INSERT … ON CONFLICT … DO UPDATE SET …`    |
+| MySQL / MariaDB | `INSERT … ON DUPLICATE KEY UPDATE …`        |
+| Oracle          | `MERGE INTO … USING DUAL …`                 |
+| Other           | INSERT; on `DuplicateKeyException` → UPDATE |
 
 The dialect is detected once at startup via `DatabaseResolver`. If detection fails or returns `null`, the INSERT + UPDATE fallback is used permanently.
 
@@ -291,17 +304,6 @@ failover:
 
 Multi-tenant mode creates an isolated `FailoverStore` instance per tenant. No data ever crosses tenant boundaries.
 
-## Store Types (Row Store Types)
-
-| Type       | Class                   | Production? | Notes                                                         |
-|------------|-------------------------|-------------|---------------------------------------------------------------|
-| `inmemory` | `FailoverStoreInmemory` | **No**      | `ConcurrentHashMap`; process-local; data lost on restart      |
-| `caffeine` | `FailoverStoreCaffeine` | Yes         | In-process; per-entry TTL managed by Caffeine; no persistence |
-| `jdbc`     | `FailoverStoreJdbc`     | Yes         | Durable; supports all major databases; fully configurable     |
-| `custom`   | *User-provided*         | Yes         | Implement `FailoverStore<T>` and register the bean            |
-
-The default store type when none is configured is `inmemory`.
-
 ### Enabling Multi-Tenant Mode
 
 ```yaml
@@ -328,8 +330,6 @@ public interface TenantResolver {
 ```
 
 `resolve()` is always called on the **calling (request) thread**, before any async dispatch. Implementations may safely read `ThreadLocal` values and HTTP context — they do not need to be thread-safe beyond normal servlet-model assumptions.
-
----
 
 #### Pattern 1 — HTTP Request Header via `TenantContext`
 
@@ -396,8 +396,6 @@ public class FailoverTenantConfig {
 
 > **Maven dependency** for `TenantContextTenantResolver`: included via `failover-store-multitenant` (transitive from the starter).
 
----
-
 #### Pattern 2 — Spring Security Principal
 
 If the tenant identifier is the authenticated principal name (common in OAuth2 / JWT setups where the `sub` claim is the tenant), read it from `SecurityContextHolder`:
@@ -453,8 +451,6 @@ public String resolve() {
 }
 ```
 
----
-
 #### Pattern 3 — Custom Header Resolver (no TenantContext)
 
 If you prefer not to use `TenantContext` as an intermediary (e.g. in reactive or non-servlet stacks), inject the `HttpServletRequest` directly:
@@ -502,8 +498,6 @@ public class FailoverTenantConfig {
 
 > **Note:** `RequestContextHolder` only works in servlet-request threads. Scheduler threads return `null` from `getRequestAttributes()`, so `resolve()` returns `null` and the `default-tenant` fallback is used.
 
----
-
 #### Pattern 4 — Fixed Tenant (testing / single-tenant migration)
 
 `FixedTenantResolver` always returns the same literal. Useful when writing tests or when migrating a single-tenant app to multi-tenant without changing all call sites yet:
@@ -523,8 +517,6 @@ public class FailoverTenantConfig {
     }
 }
 ```
-
----
 
 ### TenantContext
 
@@ -579,9 +571,7 @@ failover:
           table-prefix: GLOBEX_
 ```
 
----
-
-## Multi-Tenant — InMemory
+### Multi-Tenant — InMemory
 
 Each tenant gets its own `ConcurrentHashMap` instance. No cross-tenant reads are possible.
 
@@ -600,9 +590,7 @@ failover:
 
 `cleanByExpiry` evicts expired entries from every tenant's map — no `TenantContext` is required for cleanup.
 
----
-
-## Multi-Tenant — Caffeine
+### Multi-Tenant — Caffeine
 
 Each tenant gets its own Caffeine `Cache` instance with independent per-entry TTL.
 
@@ -621,9 +609,7 @@ failover:
 
 `cleanByExpiry` is a **no-op** per tenant — Caffeine handles eviction internally. Calling it on the `MultiTenantFailoverStore` is safe and never throws.
 
----
-
-## Multi-Tenant — JDBC: TABLE_PREFIX Strategy
+### Multi-Tenant — JDBC: TABLE_PREFIX Strategy
 
 Each tenant stores data in its own table within a shared database. The table name is composed as:
 
@@ -632,12 +618,12 @@ effectivePrefix = tenantPrefix + globalPrefix
 tableName       = effectivePrefix + "FAILOVER_STORE"
 ```
 
-| `jdbc.table-prefix` | `tenants.<id>.table-prefix` | Effective table |
-|---|---|---|
-| `DEMO_` | `ACME_` | `ACME_DEMO_FAILOVER_STORE` |
-| `DEMO_` | *(blank)* | `DEMO_FAILOVER_STORE` |
-| *(blank)* | `ACME_` | `ACME_FAILOVER_STORE` |
-| *(blank)* | *(blank)* | `FAILOVER_STORE` |
+| `jdbc.table-prefix` | `tenants.<id>.table-prefix` | Effective table            |
+|---------------------|-----------------------------|----------------------------|
+| `DEMO_`             | `ACME_`                     | `ACME_DEMO_FAILOVER_STORE` |
+| `DEMO_`             | *(blank)*                   | `DEMO_FAILOVER_STORE`      |
+| *(blank)*           | `ACME_`                     | `ACME_FAILOVER_STORE`      |
+| *(blank)*           | *(blank)*                   | `FAILOVER_STORE`           |
 
 **Configuration:**
 
@@ -685,9 +671,7 @@ CREATE TABLE GLOBEX_DEMO_FAILOVER_STORE (
 
 `cleanByExpiry` issues a `DELETE WHERE EXPIRE_ON < ?` against each tenant's table without requiring `TenantContext` — routing is by table name, not by datasource.
 
----
-
-## Multi-Tenant — JDBC: SCHEMA Strategy
+### Multi-Tenant — JDBC: SCHEMA Strategy
 
 Each tenant routes to a separate schema or physical database via Spring's `AbstractRoutingDataSource`. All tenants use the same table name (e.g. `DEMO_FAILOVER_STORE`) — isolation is at the datasource level.
 
@@ -809,7 +793,56 @@ public class MultiTenantExpiryScheduler {
 
 ---
 
-## Full Configuration Reference
+## Decorator Chain
+
+Every store bean goes through a standard decorator chain before being registered as the single `FailoverStore<Object>` bean.
+The exact chain depends on whether async mode and multi-tenant mode are enabled.
+
+### Single-Tenant (default)
+
+**`async=true` (default):**
+```
+FailoverStoreAsync              ← offloads writes to a TaskExecutor; find is synchronous
+  └─ DefaultFailoverStore       ← forces upToDate=false on every read and write
+       └─ <raw store>           ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc / custom
+```
+
+**`async=false`:**
+```
+DefaultFailoverStore            ← forces upToDate=false on every read and write
+  └─ <raw store>                ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc / custom
+```
+
+### Multi-Tenant (`failover.store.multitenant.enabled=true`)
+
+`MultiTenantFailoverStore` is always the outermost bean. It routes each call to the correct per-tenant decorated store. The inner chain is replicated independently for each tenant.
+
+**`async=true` (default):**
+```
+MultiTenantFailoverStore        ← routes each call to the correct tenant store
+  ├─ tenant-a → FailoverStoreAsync → DefaultFailoverStore → rawStore-a
+  └─ tenant-b → FailoverStoreAsync → DefaultFailoverStore → rawStore-b
+```
+
+**`async=false`:**
+```
+MultiTenantFailoverStore        ← routes each call to the correct tenant store
+  ├─ tenant-a → DefaultFailoverStore → rawStore-a
+  └─ tenant-b → DefaultFailoverStore → rawStore-b
+```
+
+### Summary
+
+| `multitenant.enabled` | `async` | Assembled chain (outermost → innermost)                                                   |
+|-----------------------|---------|-------------------------------------------------------------------------------------------|
+| `false` (default)     | `true`  | `FailoverStoreAsync → DefaultFailoverStore → raw`                                         |
+| `false` (default)     | `false` | `DefaultFailoverStore → raw`                                                              |
+| `true`                | `true`  | `MultiTenantFailoverStore → (per tenant) FailoverStoreAsync → DefaultFailoverStore → raw` |
+| `true`                | `false` | `MultiTenantFailoverStore → (per tenant) DefaultFailoverStore → raw`                      |
+
+---
+
+## Configuration Reference
 
 ```yaml
 failover:
@@ -845,8 +878,6 @@ failover:
           schema: ""        # SCHEMA strategy: informational; routing is application's responsibility
 ```
 
-### Configuration Reference Table
-
 | Property                                               | Default        | Description                                                    |
 |--------------------------------------------------------|----------------|----------------------------------------------------------------|
 | `failover.store.type`                                  | `inmemory`     | Store implementation: `inmemory`, `caffeine`, `jdbc`, `custom` |
@@ -860,7 +891,9 @@ failover:
 
 ---
 
-## Extension Points Summary
+## Extension Points
+
+All extension points are guarded by `@ConditionalOnMissingBean` — declaring your own bean in any `@Configuration` class is sufficient to replace the default.
 
 | Extension Point       | Interface / Class                       | How to Override                                            |
 |-----------------------|-----------------------------------------|------------------------------------------------------------|
@@ -873,57 +906,5 @@ failover:
 | Full SQL layer        | `FailoverStoreQueryResolver`            | Declare `@Bean FailoverStoreQueryResolver`                 |
 | Payload serialization | `Serializer`                            | Declare `@Bean Serializer`                                 |
 | Row mapping           | `RowMapper<ReferentialPayload<Object>>` | Declare `@Bean RowMapper`                                  |
-
-All extension points are guarded by `@ConditionalOnMissingBean` — declaring your own bean in any `@Configuration` class is sufficient to replace the default.
-
----
-
-## Decorator Chain
-
-Every store bean goes through a standard decorator chain before being registered as the single `FailoverStore<Object>` bean.
-The exact chain depends on whether async mode and multi-tenant mode are enabled.
-
-### Single-tenant (default)
-
-**`async=true` (default):**
-```
-MultiTenantFailoverStore        ← not present in single-tenant mode
-FailoverStoreAsync              ← offloads writes to a TaskExecutor; find is synchronous
-  └─ DefaultFailoverStore       ← forces upToDate=false on every read and write
-       └─ <raw store>           ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc / custom
-```
-
-**`async=false`:**
-```
-DefaultFailoverStore            ← forces upToDate=false on every read and write
-  └─ <raw store>                ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc / custom
-```
-
-### Multi-tenant (`failover.store.multitenant.enabled=true`)
-
-`MultiTenantFailoverStore` is always the outermost bean. It routes each call to the correct per-tenant decorated store. The inner chain is replicated independently for each tenant.
-
-**`async=true` (default):**
-```
-MultiTenantFailoverStore        ← routes each call to the correct tenant store
-  ├─ tenant-a → FailoverStoreAsync → DefaultFailoverStore → rawStore-a
-  └─ tenant-b → FailoverStoreAsync → DefaultFailoverStore → rawStore-b
-```
-
-**`async=false`:**
-```
-MultiTenantFailoverStore        ← routes each call to the correct tenant store
-  ├─ tenant-a → DefaultFailoverStore → rawStore-a
-  └─ tenant-b → DefaultFailoverStore → rawStore-b
-```
-
-### Summary table
-
-| `multitenant.enabled` | `async` | Assembled chain (outermost → innermost)                                                   |
-|-----------------------|---------|-------------------------------------------------------------------------------------------|
-| `false` (default)     | `true`  | `FailoverStoreAsync → DefaultFailoverStore → raw`                                         |
-| `false` (default)     | `false` | `DefaultFailoverStore → raw`                                                              |
-| `true`                | `true`  | `MultiTenantFailoverStore → (per tenant) FailoverStoreAsync → DefaultFailoverStore → raw` |
-| `true`                | `false` | `MultiTenantFailoverStore → (per tenant) DefaultFailoverStore → raw`                      |
 
 ---
