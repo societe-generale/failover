@@ -30,26 +30,33 @@ import java.util.function.UnaryOperator;
 
 /**
  * Outermost {@link FailoverStore} decorator that routes every operation to the correct
- * per-tenant store.
+ * per-tenant store. Always the outermost bean when multi-tenant mode is enabled.
  *
  * <h2>Decorator chain</h2>
- * <p>This class sits outside the standard decorator chain:
+ *
+ * <p>When {@code failover.store.async=true} (default):
  * <pre>
- *   MultiTenantFailoverStore (routes per tenant)  ← this class
- *     ├─ tenant-a → FailoverStoreAsync(DefaultFailoverStore(rawStore-a))
- *     └─ tenant-b → FailoverStoreAsync(DefaultFailoverStore(rawStore-b))
+ *   MultiTenantFailoverStore          ← this class; routes per tenant
+ *     ├─ tenant-a → FailoverStoreAsync → DefaultFailoverStore → rawStore-a
+ *     └─ tenant-b → FailoverStoreAsync → DefaultFailoverStore → rawStore-b
  * </pre>
  *
- * <p>The per-tenant decorated chain is built lazily on first access using the supplied
- * {@code decorator} function.  The {@code decorator} is injected by the autoconfiguration
- * so the same wrapping applied in single-tenant mode (Default + Async) is replicated per tenant.
+ * <p>When {@code failover.store.async=false}:
+ * <pre>
+ *   MultiTenantFailoverStore          ← this class; routes per tenant
+ *     ├─ tenant-a → DefaultFailoverStore → rawStore-a
+ *     └─ tenant-b → DefaultFailoverStore → rawStore-b
+ * </pre>
+ *
+ * <p>The per-tenant decorated chain is built lazily on first access (or eagerly via
+ * {@link #prewarm}) using the {@code decorator} function injected by the autoconfiguration.
  *
  * <h2>Threading</h2>
  * <p>Tenant resolution ({@link TenantResolver#resolve()}) is always called on the
  * <b>calling thread</b>, before any executor boundary is crossed.  The per-tenant store
  * returned by {@link #tenantStore()} is already fully bound; the inner
- * {@code FailoverStoreAsync} submits work to the executor without needing to re-read
- * any {@code ThreadLocal}.
+ * {@code FailoverStoreAsync} (when present) submits work to the executor without needing
+ * to re-read any {@code ThreadLocal}.
  *
  * @param <T> the type of the payload
  * @author Anand Manissery

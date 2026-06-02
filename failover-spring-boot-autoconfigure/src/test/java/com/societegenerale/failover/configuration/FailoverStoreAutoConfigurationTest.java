@@ -41,6 +41,11 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.test.context.TestPropertySource;
 
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBasicBean;
+import java.util.Map;
+import java.util.Set;
+
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -175,6 +180,24 @@ class FailoverStoreAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("per-tenant chain is MultiTenantFailoverStore → FailoverStoreAsync → DefaultFailoverStore → raw")
+        @SuppressWarnings("unchecked")
+        void perTenantChainIsAsyncWrappingDefault() {
+            MultiTenantFailoverStore<Object> multiTenant = cast(failoverStore);
+            multiTenant.prewarm(Set.of("test-tenant"));
+            Map<String, FailoverStore<Object>> stores =
+                    (Map<String, FailoverStore<Object>>) ReflectionTestUtils.getField(multiTenant, "stores");
+            FailoverStore<Object> tenantStore = requireNonNull(stores).get("test-tenant");
+            assertThat(tenantStore).isInstanceOf(FailoverStoreAsync.class);
+            FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) tenantStore).getFailoverStore());
+            assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
+            assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore()))
+                    .isNotInstanceOf(FailoverStoreAsync.class)
+                    .isNotInstanceOf(DefaultFailoverStore.class)
+                    .isNotInstanceOf(MultiTenantFailoverStore.class);
+        }
+
+        @Test
         @DisplayName("should register failoverTaskExecutor bean")
         void shouldRegisterTaskExecutorBean() {
             assertThat(applicationContext.getBeansOfType(TaskExecutor.class)).containsKey("failoverTaskExecutor");
@@ -225,7 +248,6 @@ class FailoverStoreAutoConfigurationTest {
 
         @Test
         @DisplayName("innermost store is FailoverStoreCaffeine")
-        @SuppressWarnings("unchecked")
         void innermostShouldBeCaffeine() {
             FailoverStoreAsync<Object> async = cast(failoverStore);
             DefaultFailoverStore<Object> defaultStore = cast(requireNonNull(async.getFailoverStore()));
@@ -262,7 +284,6 @@ class FailoverStoreAutoConfigurationTest {
 
         @Test
         @DisplayName("innermost store is FailoverStoreJdbc")
-        @SuppressWarnings("unchecked")
         void innermostShouldBeJdbc() {
             FailoverStoreAsync<Object> async = cast(failoverStore);
             DefaultFailoverStore<Object> defaultStore = cast(requireNonNull(async.getFailoverStore()));
@@ -289,6 +310,24 @@ class FailoverStoreAutoConfigurationTest {
         @DisplayName("failoverStore should be MultiTenantFailoverStore")
         void failoverStoreShouldBeMultiTenantFailoverStore() {
             assertThat(failoverStore).isInstanceOf(MultiTenantFailoverStore.class);
+        }
+
+        @Test
+        @DisplayName("per-tenant chain is MultiTenantFailoverStore → DefaultFailoverStore → raw (no async)")
+        @SuppressWarnings("unchecked")
+        void perTenantChainIsDefaultWrappingRawNoAsync() {
+            MultiTenantFailoverStore<Object> multiTenant = cast(failoverStore);
+            multiTenant.prewarm(Set.of("test-tenant"));
+            Map<String, FailoverStore<Object>> stores =
+                    (Map<String, FailoverStore<Object>>) ReflectionTestUtils.getField(multiTenant, "stores");
+            FailoverStore<Object> tenantStore = requireNonNull(stores).get("test-tenant");
+            assertThat(tenantStore)
+                    .isInstanceOf(DefaultFailoverStore.class)
+                    .isNotInstanceOf(FailoverStoreAsync.class);
+            assertThat(requireNonNull(((DefaultFailoverStore<Object>) tenantStore).getFailoverStore()))
+                    .isNotInstanceOf(FailoverStoreAsync.class)
+                    .isNotInstanceOf(DefaultFailoverStore.class)
+                    .isNotInstanceOf(MultiTenantFailoverStore.class);
         }
 
         @Test

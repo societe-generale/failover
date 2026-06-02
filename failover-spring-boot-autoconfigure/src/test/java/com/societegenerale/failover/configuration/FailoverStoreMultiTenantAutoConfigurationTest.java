@@ -18,7 +18,11 @@ package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.MyTestApplication;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
+import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.store.FailoverStoreAsync;
+import com.societegenerale.failover.store.FailoverStoreCaffeine;
+import com.societegenerale.failover.store.FailoverStoreInmemory;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.Jdbc;
 import com.societegenerale.failover.properties.MultiTenant;
@@ -58,7 +62,12 @@ import org.springframework.test.context.TestPropertySource;
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
@@ -271,16 +280,34 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
     // ── Autoconfig wiring tests ───────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, TenantResolverConfig.class})
+    @SpringBootTest(classes = {MyTestApplication.class, TenantContextConfig.class})
     @TestPropertySource(properties = {
             "failover.store.multitenant.enabled=true",
-            "failover.store.type=inmemory"
+            "failover.store.type=inmemory",
+            "failover.store.async=false"
     })
     @DisplayName("when multitenant enabled with inmemory store")
     class WhenMultiTenantEnabledInmemory {
 
-        @Autowired
-        private ApplicationContext applicationContext;
+        static final String NAME = "ref-service";
+        static final LocalDateTime NOW = LocalDateTime.now();
+
+        @Autowired ApplicationContext applicationContext;
+        @Autowired FailoverStore<Object> failoverStore;
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        void withTenant(String tenant, Runnable action) {
+            TenantContext.set(tenant);
+            try { action.run(); } finally { TenantContext.clear(); }
+        }
+
+        ReferentialPayload<Object> payload(String key, Object value, LocalDateTime expireOn) {
+            return new ReferentialPayload<>(NAME, key, false, NOW, expireOn, value);
+        }
 
         @Test
         @DisplayName("registers exactly one TenantStoreFactory")
@@ -296,24 +323,89 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("per-tenant chain is MultiTenantFailoverStore → DefaultFailoverStore → FailoverStoreInmemory (async=false)")
+        @SuppressWarnings("unchecked")
+        void perTenantChainIsDefaultWrappingInmemory() {
+            MultiTenantFailoverStore<Object> multiTenant = cast(failoverStore);
+            multiTenant.prewarm(Set.of("test-tenant"));
+            Map<String, FailoverStore<Object>> stores =
+                    (Map<String, FailoverStore<Object>>) ReflectionTestUtils.getField(multiTenant, "stores");
+            FailoverStore<Object> tenantStore = requireNonNull(stores).get("test-tenant");
+            assertThat(tenantStore)
+                    .isInstanceOf(DefaultFailoverStore.class)
+                    .isNotInstanceOf(FailoverStoreAsync.class);
+            assertThat(requireNonNull(((DefaultFailoverStore<Object>) tenantStore).getFailoverStore()))
+                    .isInstanceOf(FailoverStoreInmemory.class);
+        }
+
+        @Test
         @DisplayName("multitenant factory creates distinct store instances per tenant")
         void factoryCreatesDistinctStoresPerTenant() {
             TenantStoreFactory<Object> factory = applicationContext.getBean(TenantStoreFactory.class);
             assertThat(factory.create("acme")).isNotSameAs(factory.create("globex"));
         }
+
+        @Nested
+        @DisplayName("cleanByExpiry")
+        class CleanByExpiry {
+
+            @Test
+            @DisplayName("evicts expired entries from all tenant stores without TenantContext")
+            void evictsExpiredEntriesFromAllTenants() {
+                //Given
+                withTenant("acme",   () -> failoverStore.store(payload("exp-key",  "v", NOW.plusMinutes(1))));
+                withTenant("acme",   () -> failoverStore.store(payload("live-key", "v", NOW.plusHours(2))));
+                withTenant("globex", () -> failoverStore.store(payload("exp-key",  "v", NOW.plusMinutes(1))));
+                withTenant("globex", () -> failoverStore.store(payload("live-key", "v", NOW.plusHours(2))));
+
+                //When
+                failoverStore.cleanByExpiry(NOW.plusMinutes(2));
+
+                //Then
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "exp-key")).isEmpty());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "live-key")).isPresent());
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, "exp-key")).isEmpty());
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, "live-key")).isPresent());
+            }
+
+            @Test
+            @DisplayName("cleanByExpiry on empty store does not throw")
+            void cleanByExpiryOnEmptyStoreDoesNotThrow() {
+                assertThatNoException().isThrownBy(() -> failoverStore.cleanByExpiry(NOW.plusHours(1)));
+            }
+        }
     }
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, TenantResolverConfig.class})
+    @SpringBootTest(classes = {MyTestApplication.class, TenantContextConfig.class})
     @TestPropertySource(properties = {
             "failover.store.multitenant.enabled=true",
-            "failover.store.type=caffeine"
+            "failover.store.type=caffeine",
+            "failover.store.async=false"
     })
     @DisplayName("when multitenant enabled with caffeine store")
     class WhenMultiTenantEnabledCaffeine {
 
-        @Autowired
-        private ApplicationContext applicationContext;
+        static final String NAME = "ref-service";
+        static final String KEY  = "ref-001";
+        static final LocalDateTime NOW = LocalDateTime.now();
+
+        @Autowired ApplicationContext applicationContext;
+        @Autowired FailoverStore<Object> failoverStore;
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        void withTenant(String tenant, Runnable action) {
+            TenantContext.set(tenant);
+            try { action.run(); } finally { TenantContext.clear(); }
+        }
+
+        ReferentialPayload<Object> payload(String key, Object value, LocalDateTime expireOn) {
+            return new ReferentialPayload<>(NAME, key, false, NOW, expireOn, value);
+        }
 
         @Test
         @DisplayName("registers exactly one TenantStoreFactory")
@@ -329,25 +421,100 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("per-tenant chain is MultiTenantFailoverStore → DefaultFailoverStore → FailoverStoreCaffeine (async=false)")
+        @SuppressWarnings("unchecked")
+        void perTenantChainIsDefaultWrappingCaffeine() {
+            MultiTenantFailoverStore<Object> multiTenant = cast(failoverStore);
+            multiTenant.prewarm(Set.of("test-tenant"));
+            Map<String, FailoverStore<Object>> stores =
+                    (Map<String, FailoverStore<Object>>) ReflectionTestUtils.getField(multiTenant, "stores");
+            FailoverStore<Object> tenantStore = requireNonNull(stores).get("test-tenant");
+            assertThat(tenantStore)
+                    .isInstanceOf(DefaultFailoverStore.class)
+                    .isNotInstanceOf(FailoverStoreAsync.class);
+            assertThat(requireNonNull(((DefaultFailoverStore<Object>) tenantStore).getFailoverStore()))
+                    .isInstanceOf(FailoverStoreCaffeine.class);
+        }
+
+        @Test
         @DisplayName("multitenant factory creates distinct store instances per tenant")
         void factoryCreatesDistinctStoresPerTenant() {
             TenantStoreFactory<Object> factory = applicationContext.getBean(TenantStoreFactory.class);
             assertThat(factory.create("acme")).isNotSameAs(factory.create("globex"));
+        }
+
+        @Nested
+        @DisplayName("cleanByExpiry — no-op for Caffeine")
+        class CleanByExpiry {
+
+            @Test
+            @DisplayName("cleanByExpiry does not throw and per-tenant data remains — Caffeine manages eviction")
+            void cleanByExpiryIsNoOpAndDataRemainsPerTenant() {
+                withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val",   NOW.plusHours(1))));
+                withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val", NOW.plusHours(1))));
+                assertThatNoException().isThrownBy(() -> failoverStore.cleanByExpiry(NOW.plusHours(1)));
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
+            }
+
+            @Test
+            @DisplayName("cleanByExpiry on empty store does not throw")
+            void cleanByExpiryOnEmptyStoreDoesNotThrow() {
+                assertThatNoException().isThrownBy(() -> failoverStore.cleanByExpiry(NOW.plusHours(1)));
+            }
         }
     }
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, TenantResolverConfig.class})
+    @SpringBootTest(classes = {MyTestApplication.class, TenantContextConfig.class})
     @TestPropertySource(properties = {
             "failover.store.multitenant.enabled=true",
             "failover.store.type=jdbc",
-            "failover.store.jdbc.table-prefix=DEAL_"
+            "failover.store.async=false",
+            "failover.store.multitenant.strategy=table-prefix",
+            "failover.store.multitenant.default-tenant=acme",
+            "failover.store.jdbc.table-prefix=DEMO_",
+            "failover.store.multitenant.tenants.acme.table-prefix=ACME_",
+            "failover.store.multitenant.tenants.globex.table-prefix=GLOBEX_",
+            "spring.sql.init.schema-locations=classpath:multitenant-jdbc-table-prefix.sql"
     })
     @DisplayName("when multitenant enabled with jdbc store")
     class WhenMultiTenantEnabledJdbc {
 
-        @Autowired
-        private ApplicationContext applicationContext;
+        static final String NAME = "order-service";
+        static final LocalDateTime NOW = LocalDateTime.now();
+
+        @Autowired ApplicationContext applicationContext;
+        @Autowired FailoverStore<Object> failoverStore;
+        @Autowired JdbcTemplate jdbcTemplate;
+
+        @BeforeEach
+        void setUp() {
+            jdbcTemplate.update("DELETE FROM ACME_DEMO_FAILOVER_STORE");
+            jdbcTemplate.update("DELETE FROM GLOBEX_DEMO_FAILOVER_STORE");
+        }
+
+        @AfterEach
+        void tearDown() {
+            TenantContext.clear();
+        }
+
+        void withTenant(String tenant, Runnable action) {
+            TenantContext.set(tenant);
+            try { action.run(); } finally { TenantContext.clear(); }
+        }
+
+        ReferentialPayload<Object> payload(String key, Object value, LocalDateTime expireOn) {
+            return new ReferentialPayload<>(NAME, key, false, NOW, expireOn, value);
+        }
+
+        int countInTable(String table) {
+            return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
+        }
 
         @Test
         @DisplayName("registers exactly one TenantStoreFactory")
@@ -363,10 +530,58 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("per-tenant chain is MultiTenantFailoverStore → DefaultFailoverStore → FailoverStoreJdbc (async=false)")
+        @SuppressWarnings("unchecked")
+        void perTenantChainIsDefaultWrappingJdbc() {
+            MultiTenantFailoverStore<Object> multiTenant = cast(failoverStore);
+            Map<String, FailoverStore<Object>> stores =
+                    (Map<String, FailoverStore<Object>>) ReflectionTestUtils.getField(multiTenant, "stores");
+            FailoverStore<Object> tenantStore = requireNonNull(stores).get("acme");
+            assertThat(tenantStore)
+                    .isInstanceOf(DefaultFailoverStore.class)
+                    .isNotInstanceOf(FailoverStoreAsync.class);
+            assertThat(requireNonNull(((DefaultFailoverStore<Object>) tenantStore).getFailoverStore()))
+                    .isInstanceOf(FailoverStoreJdbc.class);
+        }
+
+        @Test
         @DisplayName("multitenant factory creates distinct store instances per tenant")
         void factoryCreatesDistinctStoresPerTenant() {
             TenantStoreFactory<Object> factory = applicationContext.getBean(TenantStoreFactory.class);
             assertThat(factory.create("acme")).isNotSameAs(factory.create("globex"));
+        }
+
+        @Nested
+        @DisplayName("cleanByExpiry")
+        class CleanByExpiry {
+
+            @Test
+            @DisplayName("evicts expired entries from all tenant tables without TenantContext")
+            void evictsExpiredEntriesFromAllTenants() {
+                withTenant("acme",   () -> failoverStore.store(payload("exp-a",  "v", NOW.plusMinutes(1))));
+                withTenant("acme",   () -> failoverStore.store(payload("live-a", "v", NOW.plusHours(2))));
+                withTenant("globex", () -> failoverStore.store(payload("exp-g",  "v", NOW.plusMinutes(1))));
+                withTenant("globex", () -> failoverStore.store(payload("live-g", "v", NOW.plusHours(2))));
+                failoverStore.cleanByExpiry(NOW.plusMinutes(30));
+                assertThat(countInTable("ACME_DEMO_FAILOVER_STORE")).isEqualTo(1);
+                assertThat(countInTable("GLOBEX_DEMO_FAILOVER_STORE")).isEqualTo(1);
+            }
+
+            @Test
+            @DisplayName("removes all expired rows when expiry covers all entries")
+            void removesAllExpiredRows() {
+                withTenant("acme",   () -> failoverStore.store(payload("exp-a", "v", NOW.plusMinutes(1))));
+                withTenant("globex", () -> failoverStore.store(payload("exp-g", "v", NOW.plusMinutes(1))));
+                failoverStore.cleanByExpiry(NOW.plusMinutes(30));
+                assertThat(countInTable("ACME_DEMO_FAILOVER_STORE")).isZero();
+                assertThat(countInTable("GLOBEX_DEMO_FAILOVER_STORE")).isZero();
+            }
+
+            @Test
+            @DisplayName("cleanByExpiry on empty store does not throw")
+            void cleanByExpiryOnEmptyStoreDoesNotThrow() {
+                assertThatNoException().isThrownBy(() -> failoverStore.cleanByExpiry(NOW.plusHours(1)));
+            }
         }
     }
 
@@ -465,8 +680,12 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             void sameKeyStoredByBothTenantsInIndependentMaps() {
                 withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val")));
                 withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val")));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
             }
 
             @Test
@@ -475,9 +694,15 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
                 withTenant("acme",   () -> failoverStore.store(payload("key-1", "acme-1")));
                 withTenant("acme",   () -> failoverStore.store(payload("key-2", "acme-2")));
                 withTenant("globex", () -> failoverStore.store(payload("key-1", "globex-1")));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-1")).isPresent());
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-2")).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, "key-1")).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-1"))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-1")));
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-2"))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-2")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, "key-1"))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-1")));
                 withTenant("globex", () -> assertThat(failoverStore.find(NAME, "key-2")).isEmpty());
             }
 
@@ -602,8 +827,12 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             void sameKeyStoredByBothTenantsInIndependentCaches() {
                 withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val")));
                 withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val")));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
             }
 
             @Test
@@ -612,9 +841,15 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
                 withTenant("acme",   () -> failoverStore.store(payload("key-1", "acme-1")));
                 withTenant("acme",   () -> failoverStore.store(payload("key-2", "acme-2")));
                 withTenant("globex", () -> failoverStore.store(payload("key-1", "globex-1")));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-1")).isPresent());
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-2")).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, "key-1")).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-1"))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-1")));
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, "key-2"))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-2")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, "key-1"))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-1")));
                 withTenant("globex", () -> assertThat(failoverStore.find(NAME, "key-2")).isEmpty());
             }
 
@@ -647,8 +882,12 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
                 withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val")));
                 withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val")));
                 failoverStore.cleanByExpiry(NOW.plusHours(1));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
             }
 
             @Test
@@ -761,8 +1000,12 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             void findReturnsCorrectRowForEachTenant() {
                 withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val",   NOW.plusHours(1))));
                 withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val", NOW.plusHours(1))));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
             }
 
             @Test
@@ -951,8 +1194,12 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             void findReturnsCorrectRowPerTenant() {
                 withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val",   NOW.plusHours(1))));
                 withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val", NOW.plusHours(1))));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
             }
 
             @Test
@@ -1131,8 +1378,12 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             void findReturnsCorrectRowPerTenant() {
                 withTenant("acme",   () -> failoverStore.store(payload(KEY, "acme-val",   NOW.plusHours(1))));
                 withTenant("globex", () -> failoverStore.store(payload(KEY, "globex-val", NOW.plusHours(1))));
-                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
-                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY)).isPresent());
+                withTenant("acme",   () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("acme-val")));
+                withTenant("globex", () -> assertThat(failoverStore.find(NAME, KEY))
+                        .isPresent()
+                        .hasValueSatisfying(p -> assertThat(p.getPayload()).isEqualTo("globex-val")));
             }
 
             @Test

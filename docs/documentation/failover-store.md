@@ -6,39 +6,6 @@ When a primary call succeeds, the result is written to the store (synchronously 
 
 ---
 
-## Store Types
-
-| Type       | Class                   | Production? | Notes                                                         |
-|------------|-------------------------|-------------|---------------------------------------------------------------|
-| `inmemory` | `FailoverStoreInmemory` | **No**      | `ConcurrentHashMap`; process-local; data lost on restart      |
-| `caffeine` | `FailoverStoreCaffeine` | Yes         | In-process; per-entry TTL managed by Caffeine; no persistence |
-| `jdbc`     | `FailoverStoreJdbc`     | Yes         | Durable; supports all major databases; fully configurable     |
-| `custom`   | *User-provided*         | Yes         | Implement `FailoverStore<T>` and register the bean            |
-
-The default store type when none is configured is `inmemory`.
-
----
-
-## Decorator Chain
-
-Every store bean goes through a standard decorator chain before being registered as the single `FailoverStore<Object>` bean:
-
-```
-FailoverStoreAsync              ← optional; offloads writes to a TaskExecutor
-  └─ DefaultFailoverStore       ← writes live payload; reads from raw store
-       └─ <raw store>           ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc
-```
-
-In multi-tenant mode the chain is replicated once per tenant inside `MultiTenantFailoverStore`:
-
-```
-MultiTenantFailoverStore        ← routes each call to the correct tenant store
-  ├─ tenant-a → FailoverStoreAsync(DefaultFailoverStore(rawStore-a))
-  └─ tenant-b → FailoverStoreAsync(DefaultFailoverStore(rawStore-b))
-```
-
----
-
 ## FailoverStoreInmemory
 
 A plain `ConcurrentHashMap`-backed store. Entries are evicted explicitly when `cleanByExpiry` is called by the scheduler.
@@ -323,6 +290,17 @@ failover:
 ## Multi-Tenant Store
 
 Multi-tenant mode creates an isolated `FailoverStore` instance per tenant. No data ever crosses tenant boundaries.
+
+## Store Types (Row Store Types)
+
+| Type       | Class                   | Production? | Notes                                                         |
+|------------|-------------------------|-------------|---------------------------------------------------------------|
+| `inmemory` | `FailoverStoreInmemory` | **No**      | `ConcurrentHashMap`; process-local; data lost on restart      |
+| `caffeine` | `FailoverStoreCaffeine` | Yes         | In-process; per-entry TTL managed by Caffeine; no persistence |
+| `jdbc`     | `FailoverStoreJdbc`     | Yes         | Durable; supports all major databases; fully configurable     |
+| `custom`   | *User-provided*         | Yes         | Implement `FailoverStore<T>` and register the bean            |
+
+The default store type when none is configured is `inmemory`.
 
 ### Enabling Multi-Tenant Mode
 
@@ -897,3 +875,55 @@ failover:
 | Row mapping           | `RowMapper<ReferentialPayload<Object>>` | Declare `@Bean RowMapper`                                  |
 
 All extension points are guarded by `@ConditionalOnMissingBean` — declaring your own bean in any `@Configuration` class is sufficient to replace the default.
+
+---
+
+## Decorator Chain
+
+Every store bean goes through a standard decorator chain before being registered as the single `FailoverStore<Object>` bean.
+The exact chain depends on whether async mode and multi-tenant mode are enabled.
+
+### Single-tenant (default)
+
+**`async=true` (default):**
+```
+MultiTenantFailoverStore        ← not present in single-tenant mode
+FailoverStoreAsync              ← offloads writes to a TaskExecutor; find is synchronous
+  └─ DefaultFailoverStore       ← forces upToDate=false on every read and write
+       └─ <raw store>           ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc / custom
+```
+
+**`async=false`:**
+```
+DefaultFailoverStore            ← forces upToDate=false on every read and write
+  └─ <raw store>                ← FailoverStoreInmemory / FailoverStoreCaffeine / FailoverStoreJdbc / custom
+```
+
+### Multi-tenant (`failover.store.multitenant.enabled=true`)
+
+`MultiTenantFailoverStore` is always the outermost bean. It routes each call to the correct per-tenant decorated store. The inner chain is replicated independently for each tenant.
+
+**`async=true` (default):**
+```
+MultiTenantFailoverStore        ← routes each call to the correct tenant store
+  ├─ tenant-a → FailoverStoreAsync → DefaultFailoverStore → rawStore-a
+  └─ tenant-b → FailoverStoreAsync → DefaultFailoverStore → rawStore-b
+```
+
+**`async=false`:**
+```
+MultiTenantFailoverStore        ← routes each call to the correct tenant store
+  ├─ tenant-a → DefaultFailoverStore → rawStore-a
+  └─ tenant-b → DefaultFailoverStore → rawStore-b
+```
+
+### Summary table
+
+| `multitenant.enabled` | `async` | Assembled chain (outermost → innermost)                                                   |
+|-----------------------|---------|-------------------------------------------------------------------------------------------|
+| `false` (default)     | `true`  | `FailoverStoreAsync → DefaultFailoverStore → raw`                                         |
+| `false` (default)     | `false` | `DefaultFailoverStore → raw`                                                              |
+| `true`                | `true`  | `MultiTenantFailoverStore → (per tenant) FailoverStoreAsync → DefaultFailoverStore → raw` |
+| `true`                | `false` | `MultiTenantFailoverStore → (per tenant) DefaultFailoverStore → raw`                      |
+
+---

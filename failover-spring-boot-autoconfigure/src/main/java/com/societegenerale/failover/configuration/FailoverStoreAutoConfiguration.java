@@ -61,24 +61,28 @@ import java.util.function.UnaryOperator;
 /**
  * Central assembler that creates the single {@link FailoverStore}{@code <Object>} bean by
  * combining a {@link TenantStoreFactory} (raw store) with the standard decorator chain
- * ({@link DefaultFailoverStore} + optionally {@link FailoverStoreAsync}).
+ * ({@link DefaultFailoverStore} + optionally {@link FailoverStoreAsync} and/or {@link MultiTenantFailoverStore}).
  *
  * <p>Also owns all single-tenant {@link TenantStoreFactory} registrations (inmemory, caffeine,
  * jdbc) via inner {@link Configuration} classes, keeping all store configuration in one place.
  *
- * <p>Four modes — single-tenant × async/sync and multi-tenant × async/sync:
- * <ul>
- *   <li><b>Single-tenant async (default)</b> — {@code FailoverStoreAsync(DefaultFailoverStore(raw))}.
- *       Write operations are offloaded to {@code failoverTaskExecutor}.</li>
- *   <li><b>Single-tenant sync</b> — {@code DefaultFailoverStore(raw)} only.
- *       Activated via {@code failover.store.async=false}.</li>
- *   <li><b>Multi-tenant async</b> — {@code MultiTenantFailoverStore} with per-tenant
- *       {@code FailoverStoreAsync(DefaultFailoverStore(raw))} decorator.
- *       Activated via {@code failover.store.multitenant.enabled=true}.</li>
- *   <li><b>Multi-tenant sync</b> — {@code MultiTenantFailoverStore} with per-tenant
- *       {@code DefaultFailoverStore(raw)} decorator.
- *       Activated via {@code failover.store.multitenant.enabled=true} and {@code failover.store.async=false}.</li>
- * </ul>
+ * <h2>Decorator chain — four modes</h2>
+ *
+ * <table border="1">
+ *   <tr><th>multitenant.enabled</th><th>async</th><th>Chain (outermost → innermost)</th></tr>
+ *   <tr><td>{@code false} (default)</td><td>{@code true} (default)</td>
+ *       <td>{@code FailoverStoreAsync → DefaultFailoverStore → raw}</td></tr>
+ *   <tr><td>{@code false} (default)</td><td>{@code false}</td>
+ *       <td>{@code DefaultFailoverStore → raw}</td></tr>
+ *   <tr><td>{@code true}</td><td>{@code true} (default)</td>
+ *       <td>{@code MultiTenantFailoverStore → (per tenant) FailoverStoreAsync → DefaultFailoverStore → raw}</td></tr>
+ *   <tr><td>{@code true}</td><td>{@code false}</td>
+ *       <td>{@code MultiTenantFailoverStore → (per tenant) DefaultFailoverStore → raw}</td></tr>
+ * </table>
+ *
+ * <p>{@code MultiTenantFailoverStore} is always the outermost bean in multi-tenant mode.
+ * It resolves the tenant on the calling thread before any executor boundary is crossed,
+ * then delegates to the correct per-tenant decorated store.
  *
  * @author Anand Manissery
  */
@@ -288,6 +292,7 @@ public class FailoverStoreAutoConfiguration {
          */
         @Bean
         @ConditionalOnMissingBean
+        @ConditionalOnProperty(prefix = "failover.store.multitenant", name = "enabled", havingValue = "false", matchIfMissing = true)
         public FailoverStoreQueryResolver failoverStoreQueryResolver(
                 FailoverProperties failoverProperties,
                 Serializer serializer,
