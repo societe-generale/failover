@@ -1,692 +1,192 @@
 # Customization
----------------
 
-> ## Customize Maven Dependency 
+This page covers all extension points: module dependencies, execution strategies, store types, JDBC customization, async mode, multi-tenant setup, and pluggable policies.
 
-> ### 1. **Failover Annotations and Domain**
-  
-  The basic annotations and domain classes are present in **failover-domain** module. This module has no other dependencies
-  
-```pom.xml
-    <dependency>
-        <groupId>com.societegenerale.failover</groupId>
-        <artifactId>failover-domain</artifactId>
-        <version> <!-- add latest version --> </version>
-    </dependency>
+---
+
+## 1. Maven Modules
+
+Each failover capability lives in its own module. Pull in only what you need.
+
+### failover-domain
+
+Basic annotations and domain classes. No transitive dependencies.
+
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-domain</artifactId>
+    <version><!-- latest --></version>
+</dependency>
 ```
 
-> ### 2. **Failover Core**  
+### failover-core
 
-  The core components of failover library is present in **failover-core** module. This module has all the major components of failover module, and does not have any big frameworks or libs
-      
-```pom.xml
-    <dependency>
-        <groupId>com.societegenerale.failover</groupId>
-        <artifactId>failover-core</artifactId>
-        <version> <!-- add latest version --> </version>
-    </dependency>
-```  
+All major framework components. Lightweight — no large framework dependencies.
 
-> ### 3. **Failover Store Inmemory**
-This module contains inmemory implementation of failover store. Please do not use this in the production mode.
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-core</artifactId>
+    <version><!-- latest --></version>
+</dependency>
+```
 
-To use inmemory failover store , you must provide the below configurations
+### failover-store-inmemory
+
+In-memory store backed by `ConcurrentHashMap`. **Not for production use.**
+
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-store-inmemory</artifactId>
+    <version><!-- latest --></version>
+</dependency>
+```
+
 ```yaml
 failover:
   store:
     type: inmemory
 ```
 
-The below are the dependency for failover-store-inmemory
-```pom.xml
-    <dependency>
-        <groupId>com.societegenerale.failover</groupId>
-        <artifactId>failover-store-inmemory</artifactId>
-        <version> <!-- add latest version --> </version>
-    </dependency>
+> **Warning:** Data is process-local and lost on restart. Use only for local development or testing.
+
+### failover-store-caffeine
+
+Caffeine cache-backed store with per-entry TTL. Eviction is managed automatically by Caffeine.
+
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-store-caffeine</artifactId>
+    <version><!-- latest --></version>
+</dependency>
+<dependency>
+    <groupId>com.github.ben-manes.caffeine</groupId>
+    <artifactId>caffeine</artifactId>
+    <version><!-- latest --></version>
+</dependency>
 ```
-> NOTE:  Please DO NOT use inmemory failover store in production
 
-
-> ### 4. **Failover Store Caffeine**  
-This module contains Caffeine Cache implementation of failover store.
-
-To use Caffeine failover store , you must provide the below configurations
 ```yaml
 failover:
   store:
     type: caffeine
 ```
 
-The below are the dependency for failover-store-caffeine
-```pom.xml
-    <dependency>
-        <groupId>com.societegenerale.failover</groupId>
-        <artifactId>failover-store-caffeine</artifactId>
-        <version> <!-- add latest version --> </version>
-    </dependency>
+### failover-store-jdbc
 
-    <dependency>
-        <groupId>com.github.ben-manes.caffeine</groupId>
-        <artifactId>caffeine</artifactId>-->
-        <version> <!-- add latest version --> </version>
-    </dependency>
+Durable JDBC-backed store. Requires a `DataSource` and `JdbcTemplate` bean.
+
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-store-jdbc</artifactId>
+    <version><!-- latest --></version>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-jdbc</artifactId>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+</dependency>
 ```
 
-> ### 5. **Failover Store Jdbc**
-This module contains jdbc implementation of failover store. You must provide the DataSource and JdbcTemplate beans
-
-To use jdbc failover store , you must provide the below configurations
 ```yaml
 failover:
   store:
     type: jdbc
 ```
 
-The below are the dependency for failover-store-jdbc
+### failover-store-multitenant
 
-```pom.xml
-    <dependency>
-        <groupId>com.societegenerale.failover</groupId>
-        <artifactId>failover-store-jdbc</artifactId>
-        <version> <!-- add latest version --> </version>
-    </dependency>
-     
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-jpa</artifactId>
-    </dependency>  
-    
-    <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>com.fasterxml.jackson.datatype</groupId>
-        <artifactId>jackson-datatype-jsr310</artifactId>
-    </dependency>
-```
-
-You also need to provide **spring-jdbc** dependency for the same.
-
-We require the ObjectMapper bean from jackson , JdbcTemplate bean from Spring for Failover Store Jdbc
-
-> ### 6. **Failover Store Multi-Tenant**
-This module contains the multi-tenant SPI (`TenantStoreFactory`, `TenantResolver`, `MultiTenantFailoverStore`, `TenantContext`).
+Multi-tenant SPI: `TenantStoreFactory`, `TenantResolver`, `MultiTenantFailoverStore`, `TenantContext`.
 Required when `failover.store.multitenant.enabled=true`.
 
-```pom.xml
-    <dependency>
-        <groupId>com.societegenerale.failover</groupId>
-        <artifactId>failover-store-multitenant</artifactId>
-        <version> <!-- add latest version --> </version>
-    </dependency>
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-store-multitenant</artifactId>
+    <version><!-- latest --></version>
+</dependency>
 ```
 
-This dependency is pulled in transitively by the autoconfigure starter when multi-tenant mode is enabled.
-Add it explicitly only when using `TenantStoreFactory` or `TenantResolver` directly in your application code.
+> Pulled in transitively by the autoconfigure starter when multi-tenant mode is enabled. Add explicitly only when referencing `TenantStoreFactory` or `TenantResolver` directly in application code.
 
 ---
 
-> ## Failover Execution
-* We have provided below Failover Execution
-1. BASIC : Basic failover execution with a simple try catch.
+## 2. Failover Execution
 
-For BASIC failover execution, you must provide the below yml configuration
+Controls how the primary call is attempted and how failures are handled.
+
+### BASIC _(default)_
+
+Simple try/catch execution. No external dependencies.
+
 ```yaml
-failover:  
+failover:
   type: basic
 ```
 
-2. RESILIENCE : failover execution with resilience4j implementation. We highly recommend ***NOT TO CLUB*** this with other resilience or retry solutions.
+### RESILIENCE
 
-For RESILIENCE failover execution, you must provide the below yml configuration
+Wraps execution with a Resilience4j circuit breaker. Do **not** combine with other retry or resilience libraries on the same call.
+
 ```yaml
 failover:
   type: resilience
 ```
 
-And you also need to provide the resilience4j dependency
-```pom.xml
-       <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-            <version> <!-- add latest version --> </version>
-       </dependency>  
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+    <version><!-- latest --></version>
+</dependency>
 ```
 
-3. CUSTOM : Allows each service to provide a custom Failover Execution.
+### CUSTOM
 
-For CUSTOM failover execution, you must provide the below yml configuration
+Provide your own `FailoverExecution<T>` bean for full control over the execution strategy.
 
 ```yaml
 failover:
   type: custom
 ```
 
-You must provide an implementation for failover execution.
 ```java
-
 public interface FailoverExecution<T> {
     T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args);
 }
 
-public class CustomFailoverExecution<Object> implements FailoverExecution<Object> {
+@Component
+public class CustomFailoverExecution<T> implements FailoverExecution<T> {
     @Override
     public T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args) {
-        //  implementation
+        // custom execution logic
     }
 }
-
 ```
 
 ---
 
-> ## ExpiryPolicy
-You can provide a custom ExpiryPolicy for managing failover recovery expiry
+## 3. Failover Store
 
-```java
-public interface ExpiryPolicy<T> {
+### Async Mode
 
-    LocalDateTime computeExpiry(Failover failover);
-
-    boolean isExpired(Failover failover, ReferentialPayload<T> referentialPayload);
-}
-```
-
-By default, we provided a DefaultExpiryPolicy.
-```java
-public class DefaultExpiryPolicy<T> implements ExpiryPolicy<T> {
-
-    private final FailoverClock clock;
-
-    @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        return clock.now().plus(failover.expiryDuration(), failover.expiryUnit());
-    }
-
-    @Override
-    public boolean isExpired(Failover failover, ReferentialPayload<T> referentialPayload) {
-        return clock.now().isAfter(referentialPayload.getExpireOn());
-    }
-}
-```
-
-By default, the **DefaultExpiryPolicy** is used.
-
-In case if you want to override the default expiry policy, please provide an expiry policy bean with name ***"defaultExpiryPolicy"*** 
-
-You can provide a custom expiry policy for each failover if needed by configuring the expiry policy bean name in @Failover annotation as below :
-
-```java
-@FeignClient(value = "client", url = "http://localhost:9090")
-public interface FeignClientReferential extends ClientReferential {
-
-    // Failover with custom expiry policy
-    @Failover(name = "client-by-id", expiryDuration = 1, expiryUnit = ChronoUnit.MINUTES, expiryPolicy = "custom-expiry-policy")   // Failover configuration
-    @GetMapping(value = "/api/v1/clients/{id}", produces = "application/json")
-    @Override
-    Client findClientById(@PathVariable("id") Long id);
-}
-```
-
-```java
-// CustomExpiryPolicy implementation
-public class CustomExpiryPolicy<T> implements ExpiryPolicy<T> {
-    @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        // compute expiry logic
-    }
-
-    @Override
-    public boolean isExpired(Failover failover, ReferentialPayload<T> referentialPayload) {
-        // expiry check logic
-    }
-}
-
-// CustomExpiryPolicy Bean configuration
-@Configuration
-public class ExpiryPolicyConfigurations {
-
-    // The name must match with the @Failover configuration expiry policy 
-    @Bean(name = "custom-expiry-policy")
-    public ExpiryPolicy<Object> customExpiryPolicy() {
-        return new CustomExpiryPolicy<>();
-    }
-}
-```
-In case if we did not find the bean with the given expiry policy name, an exception will be thrown.
-
----
-
-> ## RecoveredPayloadHandler
-You can provide a custom RecoveredPayloadHandler for managing failover recovered payload
-
-```java
-public interface RecoveredPayloadHandler {
-    <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload);
-}
-```
-
-* By default, we provided PassThroughRecoveredPayloadHandler which does nothing, just pass through the same data.
-```java
-public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandler {
-
-    @Override
-    public <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload) {
-        return payload;
-    }
-}
-```
-* Each team can plug their own RecoveredPayloadHandler to handle all the recovered data ( in case of returning null or non-null data )
-
-* Example of a custom RecoveredPayloadHandler as below :
-```java
-    public class CustomRecoveredPayloadHandler implements RecoveredPayloadHandler {
-        public <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload) {
-            if(payload==null) {
-                if(Client.class.isAssignableFrom(clazz)) {
-                    Client client = new Client(0L, "NA", 0);
-                    client.setUpToDate(false);
-                    client.setAsOf(LocalDateTime.now());
-                    return (T) client;
-                }
-            }
-            return null;
-        }        
-    }
-```
-
----
-> ## MethodExceptionPolicy
-
-`MethodExceptionPolicy` controls what happens after a primary call fails and failover recovery has been attempted.
-The decision point is: _should the original exception be propagated, or should the caller receive the recovered data (or `null`)?_
-
-```java
-@FunctionalInterface
-public interface MethodExceptionPolicy {
-    <T> T handle(MethodExceptionContext<T> context);
-}
-```
-
-`MethodExceptionContext<T>` carries everything available at the decision point:
-
-```java
-public record MethodExceptionContext<T>(
-        Failover failover,      // the @Failover annotation
-        Method method,          // the intercepted method
-        List<Object> args,      // original call arguments
-        T recoveredResult,      // null if recovery failed or store was empty
-        Throwable cause         // the original exception from the primary call
-) {}
-```
-
-### Built-in policies
-
-Three implementations are provided out of the box:
-
-#### 1. `RethrowIfNoRecoveryMethodExceptionPolicy` _(default)_
-Returns `recoveredResult` when the store had data; rethrows the original exception when recovery produced `null`.
-
-```yaml
-# no configuration needed — this is the default when exception-policy is absent
-```
-or
-```yaml
-failover:
-  exception-policy: rethrow
-```
-
-#### 2. `NeverRethrowMethodExceptionPolicy`
-Always returns `recoveredResult` or `null`. The original exception is never propagated — useful for pure degraded-mode services.
-
-```yaml
-failover:
-  exception-policy: never_throw
-```
-
-#### 3. Custom policy
-Register a `MethodExceptionPolicy` Spring bean. `@ConditionalOnMissingBean` ensures the auto-configured default is skipped.
-
-```yaml
-failover:
-  exception-policy: custom   # documents intent; the bean presence is what actually matters
-```
-
-```java
-@Configuration
-public class FailoverExceptionPolicyConfig {
-
-    @Bean
-    public MethodExceptionPolicy methodExceptionPolicy() {
-        return new CustomMethodExceptionPolicy();
-    }
-}
-```
-
-Example: rethrow for unexpected exception types, return recovered data for known transient failures:
-
-```java
-public class CustomMethodExceptionPolicy implements MethodExceptionPolicy {
-
-    @Override
-    public <T> T handle(MethodExceptionContext<T> context) {
-        if (context.recoveredResult() != null) {
-            return context.recoveredResult();
-        }
-        if (context.cause() instanceof TimeoutException) {
-            // transient — serve null gracefully
-            return null;
-        }
-        // unexpected failure — propagate
-        throw new RuntimeException("Failover: no recovery available for " + context.failover().name(), context.cause());
-    }
-}
-```
-
-> ## Scheduler
-We have two schedulers
-1. **Report publisher** : This is to publish the failover configuration reports for monitoring. The default value is **daily**
-2. **Referential Cleanup** : This is to cleanup the expired referential data from the store. The default value is **hourly**  
-
-However, you can configure these with any cron expressions as below
-
-```yml
-failover:
-  scheduler:
-    report-cron: 0 0 0 * * *    #default is daily
-    cleanup-cron: 0 0 * * * *   #default is hourly
-```
-
----
-
-> ## Key Generator
-
-By default, the **DefaultKeyGenerator** is used. 
-
-In case if you want to override the default key generator, please provide a key generatorbean with name "defaultKeyGenerator"
-
-
-You can provide a custom key generator for each failover if needed by configuring the key generator bean name in @Failover annotation as below: 
-
-```java
-@FeignClient(value = "client", url = "http://localhost:9090")
-public interface FeignClientReferential extends ClientReferential {
-
-    // Failover with custom key generator
-    @Failover(name = "client-by-id", expiryDuration = 1, expiryUnit = ChronoUnit.MINUTES, keyGenerator = "custom-key-generator")   // Failover configuration
-    @GetMapping(value = "/api/v1/clients/{id}", produces = "application/json")
-    @Override
-    Client findClientById(@PathVariable("id") Long id);
-}
-```
-
-```java
-// CustomKeyGenerator implementation
-public class CustomKeyGenerator implements KeyGenerator {
-    @Override
-    public String key(Failover failover, List<Object> args) {
-        // generate and return the key
-    }
-}
-
-// CustomKeyGenerator Bean configuration
-@Configuration
-public class KeyGeneratorConfigurations {
-
-    // The name must match with the @Failover configuration key generator 
-    @Bean(name = "custom-key-generator")
-    public KeyGenerator customKeyGenerator() {
-        return new CustomKeyGenerator();
-    }
-}
-```
-In case if we did not find the bean with the given key generator name, an exception will be thrown.  
-
----
-
-> ## **Customization FailoverStoreJdbc**
-
-> ### **Customization of FailoverStoreJdbc table with prefix**
-> 
-To use jdbc failover store with custom prefix, you need to provide the below configurations
-```yaml
-failover:
-  store:
-    type: jdbc
-    jdbc:
-      table-prefix: DEMO_
-```
-The failover information will be stored in **DEMO_FAILOVER_STORE** table as per the above configurations.
-
-Make sure you have the below failover store table created in your database!
-
-```sql
--- Table name should be :  %table-prefix%FAILOVER_STORE 
-CREATE TABLE DEMO_FAILOVER_STORE (
-     FAILOVER_NAME VARCHAR(50) NOT NULL,
-     FAILOVER_KEY VARCHAR(256) NOT NULL,
-     AS_OF TIMESTAMP(9) NOT NULL,
-     EXPIRE_ON TIMESTAMP(9) NOT NULL,
-     PAYLOAD VARCHAR(2000),       -- Provide the maximum size based on your payload
-     PAYLOAD_CLASS VARCHAR(256),
-     PRIMARY KEY(FAILOVER_NAME, FAILOVER_KEY)
-);
-```
-
-> ### **Customization of payload column in FailoverStoreJdbc**
-In case if FailoverStoreJdbc, Most of the time, for a simple referential use case the size of serialized (by JSON) payload will be with in varchar 2000.
-However, for more complex use case we may need a higher capacity to hold this data based on the database type we use.
-We are introducing **PayloadColumnResolver** to address this issue, now users can customize the payload column based on their needs (ex: to use TEXT or CLOB instead of default VARCHAR(2000))
-```java
-public interface PayloadColumnResolver {
-
-    /**
-     * @return the type of payload column ( refer java.sql.Types class for more details )
-     */
-    int payloadType();
-
-    /**
-     * @param resultSet : result set of payload row
-     * @param payloadColumn : payload column name
-     * @return : the payload as String from payload column
-     */
-    String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException;
-}
-```
-
-we have provided a default implementation to support varchar type as below :
-```java
-public class VarcharPayloadColumnResolver implements PayloadColumnResolver {
-
-    @Override
-    public int payloadType() {
-        return Types.VARCHAR;
-    }
-
-    @Override
-    public String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException {
-        return resultSet.getString(payloadColumn);
-    }
-}
-```
-
-> Users can provide their own custom PayloadColumnResolver in case if they choose to use the column type as TEXT or CLOB instead of default VARCHAR
-
----
-
-> ### **Customization of DatabaseResolver**
-
-`DatabaseResolver` is a strategy interface responsible for detecting the database product name from the live JDBC connection.
-The detected name is used by `DefaultFailoverStoreQueryResolver` to select the correct native merge/upsert SQL dialect.
-
-```java
-public interface DatabaseResolver {
-    @Nullable
-    String resolve();
-}
-```
-
-The default implementation `DefaultDatabaseResolver` reads the product name from `conn.getMetaData().getDatabaseProductName()`.
-Returning `null` disables native merge/upsert entirely — every `store()` call falls back to INSERT + UPDATE on duplicate key.
-
-**When to override:**
-
-* Your application uses a database proxy or middleware that misreports the product name (e.g. PgBouncer reporting a different string)
-* You want to hard-code a known dialect to skip the JDBC metadata round-trip at startup
-* You need to add observability (metrics, logging) around database detection
-
-**How to inject a custom `DatabaseResolver`:**
-
-```java
-@Configuration
-public class FailoverDatabaseResolverConfig {
-
-    /**
-     * Hard-code the dialect — useful when the DB product name from metadata
-     * is unreliable (e.g. proxied connections, test environments).
-     */
-    @Bean
-    public DatabaseResolver databaseResolver() {
-        return () -> "PostgreSQL";
-    }
-}
-```
-
-Or to delegate to the default and provide a fallback:
-
-```java
-@Configuration
-public class FailoverDatabaseResolverConfig {
-
-    @Bean
-    public DatabaseResolver databaseResolver(JdbcTemplate jdbcTemplate) {
-        DefaultDatabaseResolver defaultResolver = new DefaultDatabaseResolver(jdbcTemplate);
-        return () -> {
-            String product = defaultResolver.resolve();
-            return product != null ? product : "PostgreSQL"; // fall back to known dialect
-        };
-    }
-}
-```
-
-Because `DatabaseResolver` is registered with `@ConditionalOnMissingBean`, declaring your own bean in any `@Configuration` class is sufficient to replace the default.
-
----
-
-> ### **Customization of FailoverStoreQueryResolver**
-
-`FailoverStoreQueryResolver` is the single place that owns all JDBC query concerns for `FailoverStoreJdbc`:
-
-* SQL text for INSERT, UPDATE, SELECT, DELETE, CLEANUP, and native MERGE/UPSERT
-* Parameter arrays and SQL type arrays for each operation
-* `ResultSet` → `ReferentialPayload` row mapping
-* JSON payload deserialization
-
-```java
-public interface FailoverStoreQueryResolver {
-
-    String getInsertQuery();
-    String getUpdateQuery();
-    String getSelectQuery();
-    String getDeleteQuery();
-    String getCleanUpQuery();
-    @Nullable String getMergeQuery();
-
-    <T> Object[] buildInsertMergeParams(ReferentialPayload<T> payload);
-    int[]       buildInsertMergeTypes();
-
-    <T> Object[] buildUpdateParams(ReferentialPayload<T> payload);
-    int[]        buildUpdateTypes();
-
-    <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException;
-    @Nullable <T> T deserializePayload(@Nullable String payload, String clazzString);
-}
-```
-
-The default implementation `DefaultFailoverStoreQueryResolver` auto-selects the merge dialect from `DatabaseResolver` at construction time and owns all parameter-binding and result-set-mapping logic.
-
-**When to override:**
-
-* You need a different table schema (additional columns, different column names, different key structure)
-* You want to use a merge dialect not yet recognized by the default implementation
-* You need custom payload serialization/deserialization (e.g. Protobuf, Avro, encrypted payloads)
-* You want a CLOB/TEXT payload column (see `PayloadColumnResolver` for the simpler column-type-only override)
-
-**Option A — override only table prefix or payload column type (no full replacement needed):**
+By default, write operations (`store`, `delete`, `cleanByExpiry`) are offloaded to a background `TaskExecutor` so the calling thread is not blocked. `find` is always synchronous.
 
 ```yaml
 failover:
   store:
-    type: jdbc
-    jdbc:
-      table-prefix: MY_
+    async: true    # default — non-blocking writes
+    # async: false # synchronous writes on calling thread
 ```
 
-```java
-@Bean
-public PayloadColumnResolver payloadColumnHandler() {
-    // Use CLOB instead of VARCHAR for large payloads
-    return new ClobPayloadColumnResolver();
-}
-```
-
-**Option B — provide a fully custom `FailoverStoreQueryResolver`:**
-
-```java
-@Configuration
-public class FailoverQueryResolverConfig {
-
-    /**
-     * Replace the query resolver entirely.
-     * FailoverStoreJdbc receives this bean via constructor injection.
-     * @ConditionalOnMissingBean on the autoconfigured bean means this takes precedence.
-     */
-    @ConditionalOnMissingBean
-    @Bean
-    public FailoverStoreQueryResolver failoverStoreQueryResolver(
-            ObjectMapper objectMapper,
-            DatabaseResolver databaseResolver) {
-        // Use your own prefix and a CLOB payload column handler
-        return new DefaultFailoverStoreQueryResolver(
-                "MY_PREFIX_", objectMapper, databaseResolver, new ClobPayloadColumnResolver());
-    }
-}
-```
-
-Or implement the interface from scratch for complete control:
-
-```java
-@Bean
-public FailoverStoreQueryResolver failoverStoreQueryResolver() {
-    return new CustomFailoverStoreQueryResolver(); // full custom implementation
-}
-```
-
-Because `FailoverStoreQueryResolver` is registered with `@ConditionalOnMissingBean` in the auto-configuration, any user-declared bean of this type is picked up automatically — no other wiring is needed.
-
----
-
-> ## Async Store
-
-By default all write operations (`store`, `delete`, `cleanByExpiry`) are offloaded to a background `TaskExecutor` so the calling thread is not blocked. `find` is always synchronous.
-
-```yaml
-failover:
-  store:
-    async: true    # default — writes are non-blocking
-```
-
-To disable async (synchronous writes on the calling thread):
-
-```yaml
-failover:
-  store:
-    async: false
-```
-
-The autoconfiguration registers a `SimpleAsyncTaskExecutor` (virtual threads on JDK 21+) named `failoverTaskExecutor`. Override with your own:
+The autoconfiguration registers a `SimpleAsyncTaskExecutor` (virtual threads on JDK 21+) named `failoverTaskExecutor`. Override it with your own (if required) by defining a `TaskExecutor` bean named `failoverTaskExecutor`.:
 
 ```java
 @Bean("failoverTaskExecutor")
@@ -701,13 +201,13 @@ public TaskExecutor failoverTaskExecutor() {
 }
 ```
 
-> **Note:** The failover library does **not** enable `@Async` globally. If your application uses `@Async` for its own beans, add `@EnableAsync` to your own `@Configuration` class.
+> The failover library does **not** enable `@Async` globally. If your application uses `@Async`, add `@EnableAsync` to your own `@Configuration` class.
 
 ---
 
-> ## Custom Failover Store
+### Custom Store
 
-Implement `FailoverStore<T>` and register it as a Spring bean. The autoconfiguration will skip its own store bean when yours is present (`@ConditionalOnMissingBean(FailoverStore.class)`).
+Implement `FailoverStore<T>` and register it as a Spring bean. The autoconfiguration backs off via `@ConditionalOnMissingBean(FailoverStore.class)`.
 
 ```java
 public interface FailoverStore<T> {
@@ -729,21 +229,19 @@ public class MyStoreConfig {
 }
 ```
 
-Set `failover.store.type=custom` to document intent (no functional effect — the bean presence controls behaviour):
-
 ```yaml
 failover:
   store:
-    type: custom
+    type: custom    # documents intent; bean presence is what controls behaviour
 ```
 
-> **Multi-tenant custom store:** If you need per-tenant isolation with a custom store, implement `TenantStoreFactory` instead of `FailoverStore` directly (see below). The assembler will apply `DefaultFailoverStore` and `FailoverStoreAsync` wrapping automatically.
+> For per-tenant isolation with a custom store, implement `TenantStoreFactory` instead (see [Multi-Tenant Store](#multi-tenant-store)). The assembler applies `DefaultFailoverStore` and `FailoverStoreAsync` wrapping automatically.
 
 ---
 
-> ## Custom TenantStoreFactory
+### Custom TenantStoreFactory
 
-`TenantStoreFactory<T>` is the SPI for creating a raw store per tenant. Implementing it (instead of `FailoverStore` directly) gives the assembler the ability to create an isolated store instance for each tenant while still applying the standard decorator chain.
+`TenantStoreFactory<T>` is the SPI for creating an isolated raw store per tenant. Prefer this over implementing `FailoverStore` directly when multi-tenant support is needed.
 
 ```java
 @FunctionalInterface
@@ -753,7 +251,7 @@ public interface TenantStoreFactory<T> {
 }
 ```
 
-`create(tenantId)` is always called on the **calling (request) thread** — never inside an executor. Implementations may safely read `ThreadLocal` values during `create()`.
+`create(tenantId)` is always called on the calling thread. Implementations may safely read `ThreadLocal` values.
 
 ```java
 @Configuration
@@ -766,27 +264,25 @@ public class MyStoreFactoryConfig {
 }
 ```
 
-In single-tenant mode, `create(TenantStoreFactory.SINGLE_TENANT_ID)` is called once at startup. Implementations may ignore the sentinel value.
+In single-tenant mode, `create(TenantStoreFactory.SINGLE_TENANT_ID)` is called once at startup.
 
 ---
 
-> ## Multi-Tenant Store
+### Multi-Tenant Store
 
-Multi-tenant mode routes every failover operation to an isolated per-tenant store. See [failover-store.md](failover-store.md) for the full reference including JDBC strategies, SCHEMA routing, and `cleanByExpiry` behaviour.
-
-Enable multi-tenant mode:
+Multi-tenant mode routes every failover operation to an isolated per-tenant store. See [failover-store.md](failover-store.md) for the full reference.
 
 ```yaml
 failover:
   store:
     multitenant:
       enabled: true
-      default-tenant: acme        # fallback when TenantResolver returns null
+      default-tenant: acme    # fallback when TenantResolver returns null
 ```
 
-### TenantResolver
+#### TenantResolver
 
-The application **must** provide a `TenantResolver` bean — the library does not supply a default because tenant resolution is always an application concern.
+The application **must** provide a `TenantResolver` bean — the library does not supply a default.
 
 ```java
 @FunctionalInterface
@@ -798,7 +294,7 @@ public interface TenantResolver {
 Common patterns:
 
 ```java
-// From TenantContext (ThreadLocal — populate in a filter)
+// From TenantContext ThreadLocal — populate in a servlet filter
 @Bean
 public TenantResolver tenantResolver() {
     return new TenantContextTenantResolver();
@@ -813,14 +309,14 @@ public TenantResolver tenantResolver() {
     };
 }
 
-// Fixed — useful for testing
+// Fixed value — useful for testing or single-tenant migration
 @Bean
 public TenantResolver tenantResolver() {
     return new FixedTenantResolver("acme");
 }
 ```
 
-### TenantContext
+#### TenantContext
 
 `TenantContext` is a `ThreadLocal` holder. Populate it per-request in a filter and clear it in a `finally` block:
 
@@ -840,12 +336,12 @@ public class TenantContextFilter extends OncePerRequestFilter {
 }
 ```
 
-### JDBC Isolation Strategies
+#### JDBC Isolation Strategies
 
-| Strategy | How it works | Config |
-|---|---|---|
-| `table-prefix` (default) | `effectiveTable = tenantPrefix + globalPrefix + FAILOVER_STORE` | `tenants.<id>.table-prefix` |
-| `schema` | `AbstractRoutingDataSource` routes to tenant schema; same table name across schemas | Application-managed `DataSource` |
+| Strategy               | How it works                                                                    | Config key                       |
+|------------------------|---------------------------------------------------------------------------------|----------------------------------|
+| `table-prefix` _(default)_ | `effectiveTable = tenantPrefix + globalPrefix + FAILOVER_STORE`             | `tenants.<id>.table-prefix`      |
+| `schema`               | `AbstractRoutingDataSource` routes to tenant schema; same table name per schema | Application-managed `DataSource` |
 
 ```yaml
 failover:
@@ -861,9 +357,380 @@ failover:
         acme:
           table-prefix: ACME_      # effective table: ACME_DEMO_FAILOVER_STORE
         globex:
-          table-prefix: GLOBEX_   # effective table: GLOBEX_DEMO_FAILOVER_STORE
+          table-prefix: GLOBEX_    # effective table: GLOBEX_DEMO_FAILOVER_STORE
 ```
 
-> **SCHEMA + async:** When using the SCHEMA strategy with `AbstractRoutingDataSource`, `TenantContext` is a `ThreadLocal` that is **not** propagated to executor threads. Set `failover.store.async=false`, or propagate `TenantContext` via a `TaskDecorator` on the `failoverTaskExecutor`.
+> **SCHEMA + async:** `TenantContext` is a `ThreadLocal` not propagated to executor threads. Set `failover.store.async=false` when using the SCHEMA strategy, or propagate `TenantContext` via a `TaskDecorator` on `failoverTaskExecutor`.
 
-See [failover-store.md](failover-store.md) for complete multi-tenant documentation, including SQL schemas per tenant, `cleanByExpiry` behaviour, and full configuration reference.
+---
+
+## 4. JDBC Customization
+
+### Table Prefix
+
+Namespace the failover table with a prefix:
+
+```yaml
+failover:
+  store:
+    type: jdbc
+    jdbc:
+      table-prefix: DEMO_    # table becomes DEMO_FAILOVER_STORE
+```
+
+Create the matching table:
+
+```sql
+CREATE TABLE DEMO_FAILOVER_STORE (
+    FAILOVER_NAME  VARCHAR(50)   NOT NULL,
+    FAILOVER_KEY   VARCHAR(256)  NOT NULL,
+    AS_OF          TIMESTAMP(9)  NOT NULL,
+    EXPIRE_ON      TIMESTAMP(9)  NOT NULL,
+    PAYLOAD        VARCHAR(2000),
+    PAYLOAD_CLASS  VARCHAR(256),
+    PRIMARY KEY(FAILOVER_NAME, FAILOVER_KEY)
+);
+```
+
+### PayloadColumnResolver
+
+The default payload column is `VARCHAR(2000)`. Override with `PayloadColumnResolver` for `TEXT` or `CLOB`:
+
+```java
+public interface PayloadColumnResolver {
+    int payloadType();
+    String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException;
+}
+```
+
+Default implementation:
+
+```java
+public class VarcharPayloadColumnResolver implements PayloadColumnResolver {
+
+    @Override
+    public int payloadType() {
+        return Types.VARCHAR;
+    }
+
+    @Override
+    public String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException {
+        return resultSet.getString(payloadColumn);
+    }
+}
+```
+
+Declare your own bean to replace it — `@ConditionalOnMissingBean` backs off the default automatically.
+
+### DatabaseResolver
+
+`DatabaseResolver` detects the database product name to select the correct native merge/upsert dialect.
+
+```java
+public interface DatabaseResolver {
+    @Nullable String resolve();
+}
+```
+
+The default `DefaultDatabaseResolver` reads from `conn.getMetaData().getDatabaseProductName()`. Override when:
+
+- A proxy or middleware misreports the product name
+- You want to hard-code a known dialect and skip the JDBC metadata round-trip
+- You need observability (metrics, logging) around dialect detection
+
+```java
+@Configuration
+public class FailoverDatabaseResolverConfig {
+
+    // Hard-code dialect
+    @Bean
+    public DatabaseResolver databaseResolver() {
+        return () -> "PostgreSQL";
+    }
+}
+```
+
+Or delegate with a fallback:
+
+```java
+@Bean
+public DatabaseResolver databaseResolver(JdbcTemplate jdbcTemplate) {
+    DefaultDatabaseResolver defaultResolver = new DefaultDatabaseResolver(jdbcTemplate);
+    return () -> {
+        String product = defaultResolver.resolve();
+        return product != null ? product : "PostgreSQL";
+    };
+}
+```
+
+### FailoverStoreQueryResolver
+
+`FailoverStoreQueryResolver` owns all JDBC query concerns: SQL text, parameter binding, result-set mapping, and payload serialization.
+
+```java
+public interface FailoverStoreQueryResolver {
+
+    String getInsertQuery();
+    String getUpdateQuery();
+    String getSelectQuery();
+    String getDeleteQuery();
+    String getCleanUpQuery();
+    @Nullable String getMergeQuery();
+
+    <T> Object[] buildInsertMergeParams(ReferentialPayload<T> payload);
+    int[]        buildInsertMergeTypes();
+
+    <T> Object[] buildUpdateParams(ReferentialPayload<T> payload);
+    int[]        buildUpdateTypes();
+
+    <T> ReferentialPayload<T> mapRow(ResultSet rs) throws SQLException;
+    @Nullable <T> T deserializePayload(@Nullable String payload, String clazzString);
+}
+```
+
+Override when you need a different table schema, a custom merge dialect, or custom payload serialization (Protobuf, Avro, encrypted payloads).
+
+**Option A — prefix or payload column only (no full replacement):**
+
+```yaml
+failover:
+  store:
+    jdbc:
+      table-prefix: MY_
+```
+
+```java
+@Bean
+public PayloadColumnResolver payloadColumnHandler() {
+    return new ClobPayloadColumnResolver();
+}
+```
+
+**Option B — full custom `FailoverStoreQueryResolver`:**
+
+```java
+@Configuration
+public class FailoverQueryResolverConfig {
+
+    @Bean
+    public FailoverStoreQueryResolver failoverStoreQueryResolver(
+            DatabaseResolver databaseResolver,
+            PayloadColumnResolver payloadColumnResolver) {
+        return new DefaultFailoverStoreQueryResolver(
+                "MY_PREFIX_", new JsonSerializer(objectMapper), databaseResolver, payloadColumnResolver);
+    }
+}
+```
+
+Or implement the interface from scratch:
+
+```java
+@Bean
+public FailoverStoreQueryResolver failoverStoreQueryResolver() {
+    return new CustomFailoverStoreQueryResolver();
+}
+```
+
+---
+
+## 5. Extension Points
+
+### ExpiryPolicy
+
+Controls when a stored payload expires.
+
+```java
+public interface ExpiryPolicy<T> {
+    LocalDateTime computeExpiry(Failover failover);
+    boolean isExpired(Failover failover, ReferentialPayload<T> referentialPayload);
+}
+```
+
+The default `DefaultExpiryPolicy` uses the `expiryDuration` and `expiryUnit` from the `@Failover` annotation:
+
+```java
+public class DefaultExpiryPolicy<T> implements ExpiryPolicy<T> {
+
+    @Override
+    public LocalDateTime computeExpiry(Failover failover) {
+        return clock.now().plus(failover.expiryDuration(), failover.expiryUnit());
+    }
+
+    @Override
+    public boolean isExpired(Failover failover, ReferentialPayload<T> referentialPayload) {
+        return clock.now().isAfter(referentialPayload.getExpireOn());
+    }
+}
+```
+
+To replace the global default, declare a bean named `"defaultExpiryPolicy"`.
+
+To use a custom policy on a specific `@Failover`, set `expiryPolicy` to the bean name:
+
+```java
+@Failover(name = "client-by-id", expiryDuration = 1, expiryUnit = ChronoUnit.MINUTES,
+          expiryPolicy = "custom-expiry-policy")
+@GetMapping("/api/v1/clients/{id}")
+Client findClientById(@PathVariable Long id);
+```
+
+```java
+@Configuration
+public class ExpiryPolicyConfig {
+
+    @Bean("custom-expiry-policy")
+    public ExpiryPolicy<Object> customExpiryPolicy() {
+        return new CustomExpiryPolicy<>();
+    }
+}
+```
+
+> An exception is thrown if the bean named in `expiryPolicy` is not found in the application context.
+
+---
+
+### KeyGenerator
+
+Generates the cache key from method arguments.
+
+The default `DefaultKeyGenerator` is used unless overridden. To replace the global default, declare a bean named `"defaultKeyGenerator"`.
+
+To use a custom key generator on a specific `@Failover`, set `keyGenerator` to the bean name:
+
+```java
+@Failover(name = "client-by-id", expiryDuration = 1, expiryUnit = ChronoUnit.MINUTES,
+          keyGenerator = "custom-key-generator")
+@GetMapping("/api/v1/clients/{id}")
+Client findClientById(@PathVariable Long id);
+```
+
+```java
+public class CustomKeyGenerator implements KeyGenerator {
+    @Override
+    public String key(Failover failover, List<Object> args) {
+        // return generated key
+    }
+}
+
+@Configuration
+public class KeyGeneratorConfig {
+
+    @Bean("custom-key-generator")
+    public KeyGenerator customKeyGenerator() {
+        return new CustomKeyGenerator();
+    }
+}
+```
+
+> An exception is thrown if the bean named in `keyGenerator` is not found in the application context.
+
+---
+
+### RecoveredPayloadHandler
+
+Post-processes the payload returned from the failover store before it is handed back to the caller.
+
+```java
+public interface RecoveredPayloadHandler {
+    <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload);
+}
+```
+
+The default `PassThroughRecoveredPayloadHandler` returns the payload unchanged. Declare your own bean to replace it:
+
+```java
+@Component
+public class CustomRecoveredPayloadHandler implements RecoveredPayloadHandler {
+
+    @Override
+    public <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload) {
+        if (payload == null && Client.class.isAssignableFrom(clazz)) {
+            Client stub = new Client(0L, "NA", 0);
+            stub.setUpToDate(false);
+            stub.setAsOf(LocalDateTime.now());
+            return (T) stub;
+        }
+        return payload;
+    }
+}
+```
+
+---
+
+### MethodExceptionPolicy
+
+Controls whether the original exception is propagated or swallowed after a primary call fails and failover recovery has been attempted.
+
+```java
+@FunctionalInterface
+public interface MethodExceptionPolicy {
+    <T> T handle(MethodExceptionContext<T> context);
+}
+```
+
+`MethodExceptionContext<T>` carries the full decision context:
+
+```java
+public record MethodExceptionContext<T>(
+        Failover failover,
+        Method method,
+        List<Object> args,
+        T recoveredResult,      // null if store was empty or recovery failed
+        Throwable cause         // original exception from the primary call
+) {}
+```
+
+#### Built-in policies
+
+| Policy                                                 | Behaviour                                                                    | Config                              |
+|--------------------------------------------------------|------------------------------------------------------------------------------|-------------------------------------|
+| `RethrowIfNoRecoveryMethodExceptionPolicy` _(default)_ | Returns recovered data when available; rethrows when recovery produced `null` | `exception-policy: rethrow` or omit |
+| `NeverRethrowMethodExceptionPolicy`                    | Always returns recovered data or `null`; never propagates                    | `exception-policy: never_throw`     |
+| Custom                                                 | Any registered `MethodExceptionPolicy` bean                                  | `exception-policy: custom`          |
+
+```yaml
+failover:
+  exception-policy: rethrow       # default
+  # exception-policy: never_throw
+  # exception-policy: custom
+```
+
+Custom policy example — rethrow for unexpected failures, serve `null` for known transient errors:
+
+```java
+@Configuration
+public class FailoverExceptionPolicyConfig {
+
+    @Bean
+    public MethodExceptionPolicy methodExceptionPolicy() {
+        return context -> {
+            if (context.recoveredResult() != null) {
+                return context.recoveredResult();
+            }
+            if (context.cause() instanceof TimeoutException) {
+                return null;    // transient — degrade gracefully
+            }
+            throw new RuntimeException(
+                    "Failover: no recovery for " + context.failover().name(), context.cause());
+        };
+    }
+}
+```
+
+---
+
+## 6. Schedulers
+
+Two built-in schedulers run on configurable cron expressions:
+
+| Scheduler      | Purpose                                               | Default                  |
+|----------------|-------------------------------------------------------|--------------------------|
+| `report-cron`  | Publishes failover configuration reports for monitoring | Daily (`0 0 0 * * *`)  |
+| `cleanup-cron` | Removes expired entries from the store                | Hourly (`0 0 * * * *`)   |
+
+```yaml
+failover:
+  scheduler:
+    report-cron: 0 0 0 * * *    # daily
+    cleanup-cron: 0 0 * * * *   # hourly
+```

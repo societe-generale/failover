@@ -69,6 +69,7 @@ import java.util.function.UnaryOperator;
  * <h2>Decorator chain — four modes</h2>
  *
  * <table border="1">
+ *   <caption>Decorator chain modes</caption>
  *   <tr><th>multitenant.enabled</th><th>async</th><th>Chain (outermost → innermost)</th></tr>
  *   <tr><td>{@code false} (default)</td><td>{@code true} (default)</td>
  *       <td>{@code FailoverStoreAsync → DefaultFailoverStore → raw}</td></tr>
