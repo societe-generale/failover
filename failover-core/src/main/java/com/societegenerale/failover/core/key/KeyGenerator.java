@@ -21,8 +21,27 @@ import com.societegenerale.failover.annotations.Failover;
 import java.util.List;
 
 /**
+ * Strategy interface for generating a cache key from a failover operation's method arguments.
+ *
+ * <p>Implementations receive the {@link Failover} annotation metadata and the resolved
+ * argument list, and must return a stable, non-null string that uniquely identifies the call
+ * within the scope of that failover operation.
+ *
+ * <p>The raw key returned here is further processed by {@link FailoverKeyGenerator}, which
+ * prefixes it with {@code failover.name()} and converts the result to a deterministic UUID.
+ *
  * @author Anand Manissery
+ * @see DefaultKeyGenerator
+ * @see FailoverKeyGenerator
  */
 public interface KeyGenerator {
+
+    /**
+     * Generates a raw cache key for the given failover call.
+     *
+     * @param failover annotation metadata for the intercepted method
+     * @param args     resolved method arguments; may be {@code null} or empty
+     * @return non-null string key representing this call
+     */
     String key(Failover failover, List<Object> args);
 }

@@ -186,7 +186,7 @@ failover:
     # async: false # synchronous writes on calling thread
 ```
 
-The autoconfiguration registers a `SimpleAsyncTaskExecutor` (virtual threads on JDK 21+) named `failoverTaskExecutor`. Override it with your own (if required) by defining a `TaskExecutor` bean named `failoverTaskExecutor`.:
+The autoconfiguration registers a `SimpleAsyncTaskExecutor` (virtual threads on JDK 21+) named `failoverTaskExecutor`. Users can override it with your own (if required) by defining a `TaskExecutor` bean named `failoverTaskExecutor`.:
 
 ```java
 @Bean("failoverTaskExecutor")
