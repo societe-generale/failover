@@ -843,3 +843,54 @@ failover:
 * Per-tenant `TenantConfig` entries are optional for Caffeine and InMemory stores; only JDBC uses `tablePrefix`.
 * `defaultTenant` prevents exceptions for unauthenticated or internal requests that have no tenant context, at the cost of routing all such requests to a shared store.
 ___
+
+## 22. FailoverKeyGenerator — UUID-Based Key Normalisation for Fixed-Width Store Keys
+
+**Date : 03-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+`FailoverKeyGenerator` originally returned the raw key produced by the delegate `KeyGenerator` directly to the store (initial commit, 2022). No transformation was applied.
+
+This created two latent problems as the library's store options grew:
+
+1. **JDBC column overflow.** The `FAILOVER_KEY` column in the JDBC schema is `VARCHAR(256)`. `DefaultKeyGenerator` builds raw keys by joining all method arguments — a single `Collection<Long>` with hundreds of IDs produces a key far exceeding 256 characters. Storing such a key causes either a silent `DataTruncation` or a hard `SQLException`, with no warning at configuration time.
+
+2. **No cross-store key-size contract.** InMemory and Caffeine stores impose no column-width constraint, but the JDBC store does. With no normalisation at the framework level, the maximum safe key length was an invisible coupling between `DefaultKeyGenerator`'s output and the JDBC schema. Custom `KeyGenerator` implementors had to know this limit; nothing enforced it.
+
+Additionally, raw keys built from argument values exposed business data (IDs, names, codes) in the store's key column — a minor but avoidable privacy concern.
+
+#### Decision
+Introduce a `generateFinalKey` step in `FailoverKeyGenerator` that wraps the raw key from any delegate `KeyGenerator` in a deterministic type-3 UUID before returning:
+
+```java
+private String generateFinalKey(Failover failover, String tempKey) {
+    var key = failover.name() + ":" + tempKey;
+    return UUID.nameUUIDFromBytes(key.getBytes(UTF_8)).toString();
+}
+```
+
+**Why `UUID.nameUUIDFromBytes`:**
+- Produces a type-3 UUID (MD5-based, RFC 4122 §4.3). Output is always exactly 36 characters (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`), regardless of input size.
+- Deterministic: same byte input → same UUID every invocation, across JVM.
+- Character Encoding: The result of string.getBytes() depends on the default charset of the system. To ensure you get the same UUID across different machines or environments, it is safer to specify a fixed encoding (UUID.nameUUIDFromBytes("string".getBytes(StandardCharsets.UTF_8)); otherwise, you might get different UUIDs if the default charset differs.)
+- No collision risk for typical failover use cases: the effective namespace is `failover.name()` prefixed, and the method-argument space per failover is small relative to the 2^128 UUID space.
+
+**Why `failover.name()` is included in the hashed string:**
+Two failovers with different names but identical method arguments must produce different store keys to avoid cross-failover data leakage. Including `failover.name()` as a namespace prefix before hashing ensures this isolation without adding a separate lookup.
+
+**UTF-8 encoding:** `key.getBytes(UTF_8)` is explicit rather than platform-default, ensuring identical byte sequences — and therefore identical UUIDs — across JVMs with different default charsets.
+
+The change is applied uniformly: both the default path (`defaultKeyGenerator`) and the custom-generator path (`keyGeneratorLookup`) pass through `generateFinalKey`. The delegate `KeyGenerator` contract is unchanged — implementations continue to return an arbitrary string.
+
+#### Consequences
+* All store keys are exactly 36 characters. `FAILOVER_KEY VARCHAR(256)` is always satisfied with 220 characters to spare, regardless of argument size or custom `KeyGenerator` output.
+* Custom `KeyGenerator` implementors are freed from managing key length: any string they return is hashed. Length and character-set restrictions on the raw key are eliminated.
+* Keys are deterministic and stable: the same `failover.name()` and raw key always map to the same UUID. No randomness is introduced.
+* The raw key string is never stored. Business data in method arguments (IDs, codes, names) does not appear in the store's key column.
+* Two failovers with the same arguments but different names produce different stored keys — cross-failover isolation is enforced at the hashing step.
+* Keys are not human-readable in the store. Debugging which stored row corresponds to which call requires re-computing `UUID.nameUUIDFromBytes((name + ":" + rawKey).getBytes(UTF_8))` externally. Logging the raw key before hashing (at the `KeyGenerator` level) is the recommended debugging pattern.
+* Collision probability via MD5 is negligible at failover-argument cardinalities, but MD5 is not cryptographically strong. This is acceptable: the UUID is a cache key, not a security token. No authentication or authorisation decision is made from it.
+___

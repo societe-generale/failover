@@ -127,9 +127,7 @@ public class FailoverStoreAutoConfiguration {
             TenantStoreFactory<Object> storeFactory,
             @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor) {
         log.info("FailoverStore assembled: FailoverStoreAsync(DefaultFailoverStore(raw)) — async=true.");
-        return new FailoverStoreAsync<>(
-                new DefaultFailoverStore<>(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID)),
-                failoverTaskExecutor);
+        return new FailoverStoreAsync<>(new DefaultFailoverStore<>(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID)), failoverTaskExecutor);
     }
 
     /**

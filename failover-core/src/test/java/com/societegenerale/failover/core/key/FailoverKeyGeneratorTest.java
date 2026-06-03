@@ -17,15 +17,17 @@
 package com.societegenerale.failover.core.key;
 
 import com.societegenerale.failover.annotations.Failover;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.UUID;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.BDDMockito.given;
@@ -37,9 +39,17 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class FailoverKeyGeneratorTest {
 
-    private static final String KEY_GEN_NAME = "key-gen-name";
+    private static final String KEY_GEN_NAME = "key-gen-X";
 
-    private static final List<Object> ARGS = List.of("some-args");
+    private static final String FAILOVER_NAME = "failover-X";
+
+    private static final List<Object> ARGS = List.of("args-X");
+
+    private static final String KEY = "key-X";
+
+    private static final String FINAL_KEY = UUID.nameUUIDFromBytes((FAILOVER_NAME + ":" + KEY).getBytes(UTF_8)).toString();
+
+    private static final String FINAL_KEY_COPY = "ab731e45-8d4d-330c-b9a8-00651916d239";
 
     @Mock
     private Failover failover;
@@ -57,7 +67,7 @@ class FailoverKeyGeneratorTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(failover.name()).thenReturn("failover-xyz");
+        lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
         failoverKeyGenerator = new FailoverKeyGenerator(defaultKeyGenerator, keyGeneratorLookup);
     }
 
@@ -65,9 +75,11 @@ class FailoverKeyGeneratorTest {
     @DisplayName("generate key with default key generator when no key generator specified")
     void generateKeyWithDefaultKeyGeneratorWhenNoKeyGeneratorSpecified() {
         given(failover.keyGenerator()).willReturn("");
+        given(defaultKeyGenerator.key(failover, ARGS)).willReturn(KEY);
 
-        failoverKeyGenerator.key(failover, ARGS);
+        var key = failoverKeyGenerator.key(failover, ARGS);
 
+        assertThat(key).isEqualTo(FINAL_KEY);
         verify(defaultKeyGenerator).key(failover, ARGS);
         verify(customKeyGenerator, never()).key(failover, ARGS);
     }
@@ -76,10 +88,12 @@ class FailoverKeyGeneratorTest {
     @DisplayName("generate key with custom key generator when no key generator specified")
     void generateKeyWithCustomKeyGeneratorWhenNoKeyGeneratorSpecified() {
         given(failover.keyGenerator()).willReturn(KEY_GEN_NAME);
+        given(customKeyGenerator.key(failover, ARGS)).willReturn(KEY);
         given(keyGeneratorLookup.lookup(KEY_GEN_NAME)).willReturn(customKeyGenerator);
 
-        failoverKeyGenerator.key(failover, ARGS);
+        var key = failoverKeyGenerator.key(failover, ARGS);
 
+        assertThat(key).isEqualTo(FINAL_KEY);
         verify(customKeyGenerator).key(failover, ARGS);
         verify(defaultKeyGenerator, never()).key(failover, ARGS);
     }
@@ -93,6 +107,30 @@ class FailoverKeyGeneratorTest {
         KeyGeneratorNotFoundException exception = assertThrows(KeyGeneratorNotFoundException.class, () -> failoverKeyGenerator.key(failover, ARGS));
 
         assertThat(exception).isInstanceOf(KeyGeneratorNotFoundException.class);
-        assertThat(exception.getMessage()).isEqualTo("No matching KeyGenerator bean found for failover 'failover-xyz' with key generator qualifier 'key-gen-name'. Neither qualifier match nor bean name match!");
+        assertThat(exception.getMessage()).isEqualTo("No matching KeyGenerator bean found for failover 'failover-X' with key generator qualifier 'key-gen-X'. Neither qualifier match nor bean name match!");
+    }
+
+    @Test
+    @DisplayName("generate key with fixed length even the args are too long")
+    void generateKeyWithFixedLengthEvenTheArgsAreLong() {
+        given(failover.keyGenerator()).willReturn("");
+
+        given(defaultKeyGenerator.key(failover, ARGS)).willReturn(KEY);
+        var key1 = failoverKeyGenerator.key(failover, ARGS);
+
+        given(defaultKeyGenerator.key(failover, ARGS)).willReturn(KEY.repeat(100));
+        var key2 = failoverKeyGenerator.key(failover, ARGS);
+
+        assertThat(key1).isNotEqualTo(key2);
+        assertThat(key1).hasSameSizeAs(key2).hasSize(FINAL_KEY.length());
+        verify(defaultKeyGenerator, times(2)).key(failover, ARGS);
+        verify(customKeyGenerator, never()).key(failover, ARGS);
+    }
+
+    @Test
+    @DisplayName("generate same final key for same failover name and same args always")
+    void finalKeyShouldBeSameAsCopy() {
+        var newFinalKey = UUID.nameUUIDFromBytes((FAILOVER_NAME + ":" + KEY).getBytes(UTF_8)).toString();
+        assertThat(newFinalKey).isEqualTo(FINAL_KEY).isEqualTo(FINAL_KEY_COPY);
     }
 }

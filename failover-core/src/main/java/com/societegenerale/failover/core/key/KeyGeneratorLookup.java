@@ -17,8 +17,21 @@
 package com.societegenerale.failover.core.key;
 
 /**
+ * Strategy for resolving a {@link KeyGenerator} by qualifier or bean name.
+ *
+ * <p>Used by {@link FailoverKeyGenerator} to locate the {@link KeyGenerator} named in
+ * {@link com.societegenerale.failover.annotations.Failover#keyGenerator()}.
+ *
  * @author Anand Manissery
+ * @see FailoverKeyGenerator
  */
 public interface KeyGeneratorLookup {
+
+    /**
+     * Returns the {@link KeyGenerator} registered under {@code name}, or {@code null} if none found.
+     *
+     * @param name qualifier or bean name, as declared in {@code @Failover(keyGenerator = "...")}
+     * @return matching {@link KeyGenerator}, or {@code null} if no match exists
+     */
     KeyGenerator lookup(String name);
 }

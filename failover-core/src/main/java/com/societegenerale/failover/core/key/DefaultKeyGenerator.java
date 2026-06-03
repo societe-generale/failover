@@ -30,7 +30,22 @@ import static java.util.Objects.isNull;
 import static java.util.stream.Collectors.joining;
 
 /**
+ * Default {@link KeyGenerator} that derives a cache key from method arguments.
+ *
+ * <p>Key construction rules per argument:
+ * <ul>
+ *   <li>No args (null or empty list) → {@code "NO-ARG"}</li>
+ *   <li>Primitive, {@link Number}, {@link String}, or {@link Boolean} → {@link String#valueOf(Object)}</li>
+ *   <li>{@link java.util.Collection} → elements converted recursively, joined by {@code ","}</li>
+ *   <li>Array → elements converted recursively, joined by {@code ","}</li>
+ *   <li>Any other type → {@code "ClassName@hashCode"} (hex); a warning is logged recommending
+ *       {@code equals}/{@code hashCode} implementation or a custom {@link KeyGenerator}</li>
+ * </ul>
+ *
+ * <p>Multiple arguments are joined with {@code ":"}.
+ *
  * @author Anand Manissery
+ * @see FailoverKeyGenerator
  */
 @Slf4j
 public class DefaultKeyGenerator implements KeyGenerator {
@@ -45,6 +60,17 @@ public class DefaultKeyGenerator implements KeyGenerator {
 
     private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, String.class, Boolean.class);
 
+    /**
+     * Generates a cache key by converting each argument to its string representation
+     * and joining all arguments with {@code ":"}.
+     *
+     * <p>Returns {@code "NO-ARG"} when {@code args} is {@code null} or empty.
+     * See the class-level documentation for per-argument type rules.
+     *
+     * @param failover annotation metadata; used in warning logs for unrecognised argument types
+     * @param args     resolved method arguments; may be {@code null} or empty
+     * @return non-null key string
+     */
     @Override
     public String key(Failover failover, List<Object> args) {
         if (isNull(args) || args.isEmpty()) {
