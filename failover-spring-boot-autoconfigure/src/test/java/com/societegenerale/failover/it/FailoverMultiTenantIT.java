@@ -76,10 +76,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class FailoverMultiTenantIT {
 
-    static final ThirdParty TP_1 = RemoteThirdPartyService.getCopyOf("1");
-    static final ThirdParty TP_2 = RemoteThirdPartyService.getCopyOf("2");
+    private static final ThirdParty TP_1 = RemoteThirdPartyService.getCopyOf("1");
+    private static final ThirdParty TP_2 = RemoteThirdPartyService.getCopyOf("2");
 
-    static RecursiveComparisonAssert<?> assertTp(ThirdParty actual) {
+    private static RecursiveComparisonAssert<?> assertTp(ThirdParty actual) {
         return assertThat(actual)
                 .usingRecursiveComparison()
                 .ignoringFields("upToDate", "asOf", "metadata");
@@ -111,9 +111,24 @@ class FailoverMultiTenantIT {
     @DisplayName("10 · Multi-Tenant Store — TABLE_PREFIX strategy (ACME_DEMO_ vs GLOBEX_DEMO_FAILOVER_STORE)")
     class MultiTenantTablePrefixIT {
 
-        static final String FAILOVER_NAME = "it-tp-single";
-        static final String ACME_TABLE    = "ACME_DEMO_FAILOVER_STORE";
-        static final String GLOBEX_TABLE  = "GLOBEX_DEMO_FAILOVER_STORE";
+        private static final String FAILOVER_NAME = "it-tp-single";
+        private static final String ACME_TABLE = "ACME_DEMO_FAILOVER_STORE";
+        private static final String GLOBEX_TABLE = "GLOBEX_DEMO_FAILOVER_STORE";
+
+        @Autowired
+        private ThirdPartyService mtService;
+
+        @Autowired
+        private ThirdPartyServiceController mtCtrl;
+
+        @Autowired
+        private JdbcTemplate mtJdbc;
+
+        @Autowired
+        private FailoverClock mtClock;
+
+        @Autowired
+        private FailoverHandler<Object> mtFailoverHandler;
 
         @TestConfiguration
         static class MultiTenantConfig {
@@ -122,12 +137,6 @@ class FailoverMultiTenantIT {
                 return TenantContext::get;
             }
         }
-
-        @Autowired ThirdPartyService           mtService;
-        @Autowired ThirdPartyServiceController mtCtrl;
-        @Autowired JdbcTemplate                mtJdbc;
-        @Autowired FailoverClock               mtClock;
-        @Autowired FailoverHandler<Object>     mtFailoverHandler;
 
         @BeforeEach
         void reset() {
@@ -146,8 +155,11 @@ class FailoverMultiTenantIT {
 
         private ThirdParty callAs(String tenant, String id) {
             TenantContext.set(tenant);
-            try { return mtService.fetchOne(id); }
-            finally { TenantContext.clear(); }
+            try {
+                return mtService.fetchOne(id);
+            } finally {
+                TenantContext.clear();
+            }
         }
 
         private int rowsInTable(String table) {
@@ -195,26 +207,26 @@ class FailoverMultiTenantIT {
 
         @Test
         @DisplayName("same failover key — each tenant independently stores and recovers its own copy")
-        void sameKey_eachTenantRecoveryItsOwnCopy() {
-            callAs("acme",   "1");   // ThirdParty-1 → ACME table
+        void sameKeyEachTenantRecoveryItsOwnCopy() {
+            callAs("acme", "1");   // ThirdParty-1 → ACME table
             callAs("globex", "1");   // ThirdParty-1 → GLOBEX table
 
             mtJdbc.update("DELETE FROM " + ACME_TABLE);  // evict only ACME
 
             mtCtrl.simulatePrimaryFailure();
-            assertThat(callAs("acme",   "1")).isNull();       // ACME table is empty
+            assertThat(callAs("acme", "1")).isNull();       // ACME table is empty
             assertTp(callAs("globex", "1")).isEqualTo(TP_1);  // GLOBEX still has it
         }
 
         @Test
         @DisplayName("different IDs per tenant — each tenant recovers only its own entry")
-        void differentIds_eachTenantRecoveryOwnEntry() {
-            callAs("acme",   "1");   // ThirdParty-1 → ACME table
+        void differentIdsEachTenantRecoveryOwnEntry() {
+            callAs("acme", "1");   // ThirdParty-1 → ACME table
             callAs("globex", "2");   // ThirdParty-2 → GLOBEX table
 
             mtCtrl.simulatePrimaryFailure();
-            assertTp(callAs("acme",   "1")).isEqualTo(TP_1);
-            assertThat(callAs("acme",   "2")).isNull();    // acme has no row for id "2"
+            assertTp(callAs("acme", "1")).isEqualTo(TP_1);
+            assertThat(callAs("acme", "2")).isNull();    // acme has no row for id "2"
             assertThat(callAs("globex", "1")).isNull();    // globex has no row for id "1"
             assertTp(callAs("globex", "2")).isEqualTo(TP_2);
         }
@@ -222,7 +234,7 @@ class FailoverMultiTenantIT {
         @Test
         @DisplayName("clean() removes expired rows from all tenant tables in one sweep")
         void cleanRemovesExpiredRowsFromAllTenantTables() {
-            callAs("acme",   "1");
+            callAs("acme", "1");
             callAs("globex", "1");
             expireAllIn(ACME_TABLE);
             expireAllIn(GLOBEX_TABLE);
@@ -236,7 +248,7 @@ class FailoverMultiTenantIT {
         @Test
         @DisplayName("clean() leaves non-expired tenant rows untouched")
         void cleanLeavesNonExpiredTenantRowsUntouched() {
-            callAs("acme",   "1");
+            callAs("acme", "1");
             callAs("globex", "1");
             expireAllIn(ACME_TABLE);  // expire only ACME
 
@@ -279,8 +291,28 @@ class FailoverMultiTenantIT {
     @DisplayName("11 · Multi-Tenant Store — SCHEMA strategy (separate H2 database per tenant)")
     class MultiTenantSchemaIT {
 
-        static final String FAILOVER_NAME = "it-tp-single";
-        static final String TABLE         = "DEMO_FAILOVER_STORE";
+        private static final String FAILOVER_NAME = "it-tp-single";
+        private static final String TABLE = "DEMO_FAILOVER_STORE";
+
+        @Autowired
+        private ThirdPartyService schemaService;
+
+        @Autowired
+        private ThirdPartyServiceController schemaCtrl;
+
+        @Autowired
+        @Qualifier("acmeDataSource")
+        private DataSource acmeDs;
+
+        @Autowired
+        @Qualifier("globexDataSource")
+        private DataSource globexDs;
+
+        @Autowired
+        private FailoverClock schemaClock;
+
+        @Autowired
+        private FailoverHandler<Object> schemaFailoverHandler;
 
         /**
          * Provides:
@@ -335,7 +367,7 @@ class FailoverMultiTenantIT {
                     PayloadColumnResolver payloadColumnResolver,
                     RowMapper<ReferentialPayload<Object>> rowMapper) {
                 Map<String, JdbcTemplate> jdbcByTenant = Map.of(
-                        "acme",   new JdbcTemplate(acmeDs),
+                        "acme", new JdbcTemplate(acmeDs),
                         "globex", new JdbcTemplate(globexDs));
                 return tenantId -> {
                     JdbcTemplate jdbc = jdbcByTenant.get(tenantId);
@@ -347,13 +379,6 @@ class FailoverMultiTenantIT {
                 };
             }
         }
-
-        @Autowired ThirdPartyService                       schemaService;
-        @Autowired ThirdPartyServiceController             schemaCtrl;
-        @Autowired @Qualifier("acmeDataSource")   DataSource acmeDs;
-        @Autowired @Qualifier("globexDataSource") DataSource globexDs;
-        @Autowired FailoverClock                           schemaClock;
-        @Autowired FailoverHandler<Object>                 schemaFailoverHandler;
 
         @BeforeEach
         void reset() {
@@ -371,8 +396,11 @@ class FailoverMultiTenantIT {
 
         private ThirdParty callAs(String tenant, String id) {
             TenantContext.set(tenant);
-            try { return schemaService.fetchOne(id); }
-            finally { TenantContext.clear(); }
+            try {
+                return schemaService.fetchOne(id);
+            } finally {
+                TenantContext.clear();
+            }
         }
 
         private int rowsAs(String tenant) {
@@ -423,12 +451,12 @@ class FailoverMultiTenantIT {
         @Test
         @DisplayName("each tenant fails over from its own schema independently")
         void eachTenantFailsOverFromOwnSchema() {
-            callAs("acme",   "1");   // ThirdParty-1 → acme DB
+            callAs("acme", "1");   // ThirdParty-1 → acme DB
             callAs("globex", "2");   // ThirdParty-2 → globex DB
 
             schemaCtrl.simulatePrimaryFailure();
-            assertTp(callAs("acme",   "1")).isEqualTo(TP_1);
-            assertThat(callAs("acme",   "2")).isNull();    // acme DB has no id "2"
+            assertTp(callAs("acme", "1")).isEqualTo(TP_1);
+            assertThat(callAs("acme", "2")).isNull();    // acme DB has no id "2"
             assertThat(callAs("globex", "1")).isNull();    // globex DB has no id "1"
             assertTp(callAs("globex", "2")).isEqualTo(TP_2);
         }
@@ -436,20 +464,20 @@ class FailoverMultiTenantIT {
         @Test
         @DisplayName("expiry in one schema does not affect live entries in the other schema")
         void expiryIsolatedPerSchema() {
-            callAs("acme",   "1");
+            callAs("acme", "1");
             callAs("globex", "1");
 
             expireAllAs("acme");  // expire only acme's row
 
             schemaCtrl.simulatePrimaryFailure();
-            assertThat(callAs("acme",   "1")).isNull();       // expired → null
+            assertThat(callAs("acme", "1")).isNull();       // expired → null
             assertTp(callAs("globex", "1")).isEqualTo(TP_1);  // still valid
         }
 
         @Test
         @DisplayName("clean() removes expired rows from all tenant schemas — separate JdbcTemplate ensures correct routing")
         void cleanRemovesExpiredRowsFromAllSchemas() {
-            callAs("acme",   "1");
+            callAs("acme", "1");
             callAs("globex", "1");
             expireAllAs("acme");
             expireAllAs("globex");
@@ -463,7 +491,7 @@ class FailoverMultiTenantIT {
         @Test
         @DisplayName("clean() leaves non-expired schema rows untouched")
         void cleanLeavesNonExpiredSchemaRowsUntouched() {
-            callAs("acme",   "1");
+            callAs("acme", "1");
             callAs("globex", "1");
             expireAllAs("acme");   // expire only acme
 

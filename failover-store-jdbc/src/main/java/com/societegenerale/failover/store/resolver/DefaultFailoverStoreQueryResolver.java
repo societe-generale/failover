@@ -33,7 +33,24 @@ import static org.springframework.util.StringUtils.replace;
  * all parameter binding and result-set mapping logic.
  *
  * <p>Keeping SQL text, column order, SQL types, and parameter builders co-located here ensures
- * that a schema change (e.g. adding or reordering a column) requires edits in exactly one class.
+ * that a DDL change (e.g. adding or reordering a column) requires edits in exactly one class.
+ *
+ * <h2>No schema qualifier in SQL</h2>
+ * <p>All queries target {@code {tablePrefix}FAILOVER_STORE} with no schema prefix. Schema-level
+ * tenant isolation is achieved at the {@link javax.sql.DataSource} level: each tenant's
+ * {@code FailoverStoreJdbc} is wired with a dedicated {@link org.springframework.jdbc.core.JdbcTemplate}
+ * pointing to that tenant's schema or database. The SQL itself never changes between tenants —
+ * only the connection it runs on differs.
+ *
+ * <h2>Supported databases and merge strategy</h2>
+ * <ul>
+ *   <li><b>H2</b> — {@code MERGE INTO ... KEY (FAILOVER_NAME, FAILOVER_KEY)}</li>
+ *   <li><b>PostgreSQL</b> — {@code INSERT ... ON CONFLICT (FAILOVER_NAME, FAILOVER_KEY) DO UPDATE SET ...}
+ *       (requires a {@code UNIQUE} or {@code PRIMARY KEY} constraint on those two columns)</li>
+ *   <li><b>MySQL / MariaDB</b> — {@code INSERT ... ON DUPLICATE KEY UPDATE ...}</li>
+ *   <li><b>Oracle</b> — {@code MERGE INTO ... USING (SELECT ... FROM DUAL)}</li>
+ *   <li><b>Other</b> — falls back to separate INSERT + UPDATE (no native upsert)</li>
+ * </ul>
  *
  * <p>This class has no I/O dependencies and is fully unit-testable.
  *

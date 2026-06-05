@@ -112,11 +112,16 @@ class FailoverAppTestIT {
 
     // ── Spring-managed infrastructure ─────────────────────────────────────────
 
-    @Autowired ThirdPartyService           service;
-    @Autowired ThirdPartyServiceController ctrl;
-    @Autowired JdbcTemplate                jdbc;
-    @Autowired FailoverHandler<Object>     failoverHandler;
-    @Autowired FailoverClock failoverClock;
+    @Autowired
+    private ThirdPartyService           service;
+    @Autowired
+    private ThirdPartyServiceController ctrl;
+    @Autowired
+    private JdbcTemplate                jdbc;
+    @Autowired
+    private FailoverHandler<Object>     failoverHandler;
+    @Autowired
+    private FailoverClock failoverClock;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 

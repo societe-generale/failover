@@ -23,11 +23,7 @@ import com.societegenerale.failover.domain.Referential;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -98,7 +94,7 @@ class ScatterGatherFailoverHandlerTest {
         handler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup);
         given(failover.name()).willReturn(FAILOVER_NAME);
         given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
-        Mockito.doReturn(thirdPartyPayloadSplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+        doReturn(thirdPartyPayloadSplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
     }
 
     private static ThirdPartiesResult result(ThirdParty... parties) {
@@ -154,7 +150,7 @@ class ScatterGatherFailoverHandlerTest {
         @Test
         @DisplayName("should throw PayloadSplitterNotFoundException when splitter bean not found")
         void shouldThrowWhenSplitterBeanNotFound() {
-            Mockito.doReturn(null).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            doReturn(null).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
 
             assertThatThrownBy(() -> handler.store(failover, ARGS_1, result(TP_1)))
                     .isInstanceOf(PayloadSplitterNotFoundException.class)
@@ -213,7 +209,7 @@ class ScatterGatherFailoverHandlerTest {
         @Test
         @DisplayName("should throw PayloadSplitterNotFoundException when splitter not found during recover")
         void shouldThrowWhenSplitterNotFoundDuringRecover() {
-            Mockito.doReturn(null).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            doReturn(null).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
 
             assertThatThrownBy(() -> handler.recover(failover, ARGS_1_2, ThirdPartiesResult.class, cause))
                     .isInstanceOf(PayloadSplitterNotFoundException.class)

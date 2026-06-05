@@ -72,6 +72,20 @@ public class FailoverStoreMultiTenantAutoConfiguration {
 
     // ─── TenantStoreFactory (per store type) ─────────────────────────────────
 
+    /**
+     * Auto-configured JDBC {@link TenantStoreFactory} for the {@code TABLE_PREFIX} strategy.
+     *
+     * <p>All tenants share the application's single {@link JdbcTemplate}. Per-tenant isolation
+     * is achieved purely via a different table name
+     * ({@code tenantPrefix + globalPrefix + "FAILOVER_STORE"}).
+     *
+     * <p><b>SCHEMA strategy requires a custom {@link TenantStoreFactory}.</b>
+     * This bean is {@code @ConditionalOnMissingBean(TenantStoreFactory.class)} — declare your
+     * own {@code TenantStoreFactory} bean and it will replace this one. In the SCHEMA factory,
+     * map each {@code tenantId} to a dedicated {@link JdbcTemplate} backed by that tenant's
+     * own {@link javax.sql.DataSource}. See {@link com.societegenerale.failover.properties.TenantConfig#getSchema()}
+     * for a usage example.
+     */
     @Bean
     @ConditionalOnMissingBean(TenantStoreFactory.class)
     @ConditionalOnProperty(prefix = "failover.store", name = "type", havingValue = "jdbc")
