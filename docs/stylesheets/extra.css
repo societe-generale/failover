@@ -867,36 +867,56 @@ html[data-fo-font="sm"] { font-size: 15.5px; }
 html[data-fo-font="md"] { font-size: 17px; }    /* default — noticeably above browser 16px */
 html[data-fo-font="lg"] { font-size: 19px; }
 
-/* Font size control widget — fixed bottom-right */
+/* Font size widget — inline in header, next to palette toggle */
 .fo-fontsize-ctrl {
-  position: fixed;
-  bottom: 1.35rem;
-  right: 1.35rem;
-  z-index: 1000;
   display: flex;
-  gap: 2px;
-  background: var(--fo-sur);
-  border: 1px solid var(--fo-brd2);
-  border-radius: 8px;
-  padding: 3px;
-  box-shadow: var(--fo-shm);
+  align-items: center;
+  gap: 0;
+  margin: 0 .3rem;
+  padding: 0 .25rem;
+  border-right: 1px solid rgba(255,255,255,.15);
   user-select: none;
 }
-.fo-fontsize-btn {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  color: var(--fo-tx2);
-  font-weight: 700;
-  padding: .3rem .55rem;
-  font-size: .7rem;
-  line-height: 1;
-  transition: background .15s, color .15s;
-  font-family: inherit;
+[data-md-color-scheme="default"] .fo-fontsize-ctrl {
+  border-right-color: rgba(0,0,0,.1);
 }
-.fo-fontsize-btn:hover        { background: var(--fo-br-d); color: var(--fo-br); }
-.fo-fontsize-btn.fo-fontsize-active { background: var(--fo-br); color: #fff; }
+.fo-fontsize-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: .68rem;
+  line-height: 1;
+  font-family: inherit;
+  background: transparent;
+  color: var(--md-primary-bg-color);  /* white — matches header icon colour */
+  opacity: .7;
+  transition: background .15s, opacity .15s;
+  padding: 0;
+}
+.fo-fontsize-btn:hover {
+  background: rgba(255,255,255,.12);
+  opacity: 1;
+}
+.fo-fontsize-btn.fo-fontsize-active {
+  background: rgba(255,255,255,.2);
+  opacity: 1;
+}
+/* Light mode: dark text on white header */
+[data-md-color-scheme="default"] .fo-fontsize-btn {
+  color: var(--fo-tx) !important;
+}
+[data-md-color-scheme="default"] .fo-fontsize-btn:hover {
+  background: rgba(0,0,0,.06) !important;
+}
+[data-md-color-scheme="default"] .fo-fontsize-btn.fo-fontsize-active {
+  background: rgba(0,0,0,.1) !important;
+}
 
 /* ─── 17. MERMAID DARK MODE ──────────────────────────────────────── */
 

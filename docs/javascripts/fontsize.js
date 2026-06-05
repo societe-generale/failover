@@ -22,19 +22,24 @@
 
   function ensureFontWidget() {
     if (document.querySelector('.fo-fontsize-ctrl')) return;
+    /* Insert before the first palette toggle input in the header */
+    var anchor = document.getElementById('__palette_0')
+              || document.querySelector('input[id^="__palette"]');
+    if (!anchor) return;   /* header not rendered yet — boot() will retry */
+
     var ctrl = document.createElement('div');
     ctrl.className = 'fo-fontsize-ctrl';
     ctrl.setAttribute('role', 'group');
     ctrl.setAttribute('aria-label', 'Font size');
     ctrl.innerHTML =
-      '<button class="fo-fontsize-btn" data-size="sm" title="Smaller">A−</button>' +
-      '<button class="fo-fontsize-btn" data-size="md" title="Normal">A</button>'   +
-      '<button class="fo-fontsize-btn" data-size="lg" title="Larger">A+</button>';
+      '<button class="fo-fontsize-btn" data-size="sm" title="Smaller text">A−</button>' +
+      '<button class="fo-fontsize-btn" data-size="md" title="Normal text">A</button>'   +
+      '<button class="fo-fontsize-btn" data-size="lg" title="Larger text">A+</button>';
     ctrl.addEventListener('click', function (e) {
       var b = e.target.closest('.fo-fontsize-btn');
       if (b) applyFontScale(b.dataset.size);
     });
-    document.body.appendChild(ctrl);
+    anchor.parentNode.insertBefore(ctrl, anchor);
     var cur; try { cur = localStorage.getItem(FS_KEY); } catch (_) {}
     applyFontScale(cur || FS_DEFAULT);
   }
