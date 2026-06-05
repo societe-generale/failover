@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.societegenerale.failover.MyTestApplication;
 import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution;
 import org.junit.jupiter.api.DisplayName;

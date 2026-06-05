@@ -99,6 +99,14 @@ class MetadataTest {
     }
 
     @Test
+    @DisplayName("two metadata instances with same entries with different are equal")
+    void twoMetadataWithSameEntriesWithDifferentOrderAreEqual() {
+        var m1 = new Metadata().withInfo("k1", "v1").withInfo("k2", "v2" );
+        var m2 = new Metadata().withInfo("k2", "v2").withInfo("k1", "v1");
+        assertThat(m1).isEqualTo(m2);
+    }
+
+    @Test
     @DisplayName("two Metadata instances with different entries are not equal")
     void twoMetadataWithDifferentEntriesAreNotEqual() {
         var m1 = new Metadata().withInfo("k", "v1");

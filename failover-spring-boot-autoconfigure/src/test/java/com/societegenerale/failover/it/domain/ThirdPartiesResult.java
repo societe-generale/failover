@@ -14,25 +14,23 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover;
+package com.societegenerale.failover.it.domain;
 
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
+import com.societegenerale.failover.domain.Referential;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 /**
+ * Composite type — the method return type that is scattered into individual {@link ThirdParty} slices.
+ *
  * @author Anand Manissery
  */
-@SpringBootApplication
-public class MyTestApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(MyTestApplication.class);
-    }
-
-    @Bean
-    public ObjectMapper objectMapper() {
-        return new JsonMapper();
-    }
+@Data
+@NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+public class ThirdPartiesResult extends Referential {
+    private List<ThirdParty> thirdParties;
 }

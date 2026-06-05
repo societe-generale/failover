@@ -1,0 +1,12 @@
+-- IT integration test schema for FailoverScatterGatherJdbcIT
+-- Table prefix: IT_  (configured via failover.store.jdbc.table-prefix=IT_)
+DROP TABLE IF EXISTS IT_FAILOVER_STORE;
+CREATE TABLE IT_FAILOVER_STORE (
+    FAILOVER_NAME  VARCHAR(50)   NOT NULL,
+    FAILOVER_KEY   VARCHAR(256)  NOT NULL,
+    AS_OF          TIMESTAMP(9)  NOT NULL,
+    EXPIRE_ON      TIMESTAMP(9)  NOT NULL,
+    PAYLOAD        VARCHAR(4000),
+    PAYLOAD_CLASS  VARCHAR(256),
+    PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
+);

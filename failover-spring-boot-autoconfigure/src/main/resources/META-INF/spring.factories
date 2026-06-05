@@ -3,6 +3,7 @@ org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
 com.societegenerale.failover.configuration.FailoverAutoConfiguration,\
 com.societegenerale.failover.configuration.FailoverCaffeineStoreAutoConfiguration,\
 com.societegenerale.failover.configuration.FailoverJdbcStoreAutoConfiguration,\
+com.societegenerale.failover.configuration.MicrometerTracingAutoConfiguration,\
 com.societegenerale.failover.configuration.ResilienceFailoverExecutionAutoConfiguration
 
 # Failure Analyzer

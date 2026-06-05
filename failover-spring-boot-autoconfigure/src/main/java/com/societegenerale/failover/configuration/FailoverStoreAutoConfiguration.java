@@ -96,11 +96,16 @@ import java.util.function.UnaryOperator;
 @Slf4j
 public class FailoverStoreAutoConfiguration {
 
+    /** No-arg constructor for Spring autoconfiguration instantiation. */
+    public FailoverStoreAutoConfiguration() {}
+
     /**
      * Default {@link TaskExecutor} for async store operations.
      *
      * <p>Applications can override by declaring a bean named {@code failoverTaskExecutor}.
      * Uses virtual threads when available (JDK 21+), otherwise platform threads.
+     *
+     * @return virtual-thread {@link SimpleAsyncTaskExecutor} named {@code failover-async-*}
      */
     @Bean("failoverTaskExecutor")
     @ConditionalOnBean(TenantStoreFactory.class)
@@ -117,6 +122,10 @@ public class FailoverStoreAutoConfiguration {
     /**
      * Async store: {@code FailoverStoreAsync(DefaultFailoverStore(raw))}.
      * Active when {@code failover.store.async=true} (default) and multitenant disabled.
+     *
+     * @param storeFactory        raw store factory
+     * @param failoverTaskExecutor executor for async write offloading
+     * @return assembled async store chain
      */
     @Bean("failoverStore")
     @ConditionalOnBean(TenantStoreFactory.class)
@@ -133,6 +142,9 @@ public class FailoverStoreAutoConfiguration {
     /**
      * Sync store: {@code DefaultFailoverStore(raw)}.
      * Active when {@code failover.store.async=false} and multitenant disabled.
+     *
+     * @param storeFactory raw store factory
+     * @return assembled sync store chain
      */
     @Bean("failoverStore")
     @ConditionalOnBean(TenantStoreFactory.class)
@@ -150,6 +162,12 @@ public class FailoverStoreAutoConfiguration {
      * Async multi-tenant store: {@code MultiTenantFailoverStore} with per-tenant
      * {@code FailoverStoreAsync(DefaultFailoverStore(raw))} decorator.
      * Active when {@code failover.store.multitenant.enabled=true} and {@code failover.store.async=true} (default).
+     *
+     * @param tenantResolver       resolves the current tenant ID
+     * @param rawFactory           creates a raw store per tenant
+     * @param props                failover properties for strategy and default-tenant config
+     * @param failoverTaskExecutor executor for async per-tenant write offloading
+     * @return assembled multi-tenant async store
      */
     @Bean("failoverStore")
     @ConditionalOnBean(TenantStoreFactory.class)
@@ -175,6 +193,11 @@ public class FailoverStoreAutoConfiguration {
      * Sync multi-tenant store: {@code MultiTenantFailoverStore} with per-tenant
      * {@code DefaultFailoverStore(raw)} decorator.
      * Active when {@code failover.store.multitenant.enabled=true} and {@code failover.store.async=false}.
+     *
+     * @param tenantResolver resolves the current tenant ID
+     * @param rawFactory     creates a raw store per tenant
+     * @param props          failover properties for strategy and default-tenant config
+     * @return assembled multi-tenant sync store
      */
     @Bean("failoverStore")
     @ConditionalOnBean(TenantStoreFactory.class)

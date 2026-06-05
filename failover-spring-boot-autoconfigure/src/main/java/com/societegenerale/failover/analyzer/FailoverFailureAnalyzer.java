@@ -45,6 +45,9 @@ import java.util.Arrays;
  */
 public class FailoverFailureAnalyzer extends AbstractInjectionFailureAnalyzer<NoSuchBeanDefinitionException> implements Ordered, EnvironmentAware {
 
+    /** No-arg constructor for Spring failure-analyzer instantiation via service-loader. */
+    public FailoverFailureAnalyzer() {}
+
     private Environment environment;
 
     @Override

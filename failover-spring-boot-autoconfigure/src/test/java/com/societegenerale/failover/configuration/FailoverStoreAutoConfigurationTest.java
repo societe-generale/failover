@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.societegenerale.failover.MyTestApplication;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreAsync;

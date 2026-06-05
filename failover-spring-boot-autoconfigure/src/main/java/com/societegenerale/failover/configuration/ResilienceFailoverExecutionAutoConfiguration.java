@@ -22,7 +22,6 @@ import com.societegenerale.failover.core.exception.MethodExceptionHandler;
 import com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution;
 import com.societegenerale.failover.properties.FailoverType;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -45,11 +44,22 @@ import org.springframework.context.annotation.Bean;
  */
 @ConditionalOnExpression("${failover.enabled:true} eq true and '${failover.type:basic}'.toLowerCase() eq 'resilience'")
 @ConditionalOnClass(name = {"io.github.resilience4j.circuitbreaker.CircuitBreaker"})
-@AllArgsConstructor
 @AutoConfiguration(after = {FailoverAutoConfiguration.class})
 @Slf4j
 public class ResilienceFailoverExecutionAutoConfiguration {
 
+    /** No-arg constructor for Spring autoconfiguration instantiation. */
+    public ResilienceFailoverExecutionAutoConfiguration() {}
+
+    /**
+     * Registers {@link com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution}
+     * backed by the application's {@code CircuitBreakerRegistry}.
+     *
+     * @param failoverHandler         assembled failover handler
+     * @param methodExceptionHandler  exception handler applying the configured policy
+     * @param circuitBreakerRegistry  Resilience4j registry providing per-failover circuit breakers
+     * @return {@link ResilienceFailoverExecution} wrapping the handler with circuit-breaker protection
+     */
     @Bean
     public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
         log.info("FailoverExecution configured to ResilienceFailoverExecution. NOTE : You should not mix more than 1 framework for failover (like Resilience Retry and Feign Retry etc). Available options are : { {} }", (Object) FailoverType.values());
