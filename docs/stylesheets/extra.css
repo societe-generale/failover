@@ -765,7 +765,11 @@ body,
   background: linear-gradient(to bottom, transparent, var(--md-default-bg-color));
   pointer-events: none;
 }
-.fo-hero-inner { position: relative; z-index: 1; }
+.fo-hero-inner {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+}
 
 .fo-hero-eyebrow {
   display: inline-block;
@@ -792,7 +796,9 @@ body,
 
 .fo-hero-sub {
   font-size: .875rem; color: rgba(255,255,255,.66);
-  max-width: 540px; margin: 0 auto 2rem; line-height: 1.7;
+  max-width: 540px; width: 100%;
+  margin: 0 auto 2rem !important; /* !important overrides .md-typeset p { margin } */
+  line-height: 1.7; text-align: center;
   animation: fo-up .6s .25s cubic-bezier(.22,1,.36,1) both;
 }
 
