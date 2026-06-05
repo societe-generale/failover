@@ -16,8 +16,7 @@
 
 package com.societegenerale.failover.properties;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * Per-tenant configuration overrides (JDBC only).
@@ -36,8 +35,7 @@ import lombok.Setter;
  *
  * @author Anand Manissery
  */
-@Getter
-@Setter
+@Data
 public class TenantConfig {
 
     /**
@@ -47,9 +45,27 @@ public class TenantConfig {
     private String tablePrefix = "";
 
     /**
-     * Schema name for the SCHEMA isolation strategy.
-     * The application's {@code AbstractRoutingDataSource} must route connections to this
-     * schema based on {@code TenantContext.get()}.
+     * Schema (or database) name for the SCHEMA isolation strategy.
+     *
+     * <p>This field is a configuration placeholder — the framework never reads it.
+     * Declare a custom {@code TenantStoreFactory} bean and read
+     * {@code TenantContext.get()} (or this property via injected {@code FailoverProperties})
+     * inside {@code create(tenantId)} to select the correct {@link javax.sql.DataSource}.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * @Bean
+     * public TenantStoreFactory<Object> jdbcTenantStoreFactory(...) {
+     *     Map<String, JdbcTemplate> byTenant = Map.of(
+     *         "acme",   new JdbcTemplate(acmeDataSource),
+     *         "globex", new JdbcTemplate(globexDataSource));
+     *     return tenantId -> {
+     *         JdbcTemplate jdbc = byTenant.get(tenantId);
+     *         var qr = new DefaultFailoverStoreQueryResolver("FAILOVER_STORE", ...);
+     *         return new FailoverStoreJdbc<>(jdbc, qr, rowMapper);
+     *     };
+     * }
+     * }</pre>
      */
     private String schema;
 }

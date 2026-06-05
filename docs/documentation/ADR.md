@@ -894,3 +894,220 @@ The change is applied uniformly: both the default path (`defaultKeyGenerator`) a
 * Keys are not human-readable in the store. Debugging which stored row corresponds to which call requires re-computing `UUID.nameUUIDFromBytes((name + ":" + rawKey).getBytes(UTF_8))` externally. Logging the raw key before hashing (at the `KeyGenerator` level) is the recommended debugging pattern.
 * Collision probability via MD5 is negligible at failover-argument cardinalities, but MD5 is not cryptographically strong. This is acceptable: the UUID is a cache key, not a security token. No authentication or authorisation decision is made from it.
 ___
+
+## 23. PayloadSplitter — Scatter/Gather Storage for Composite-Key Failover
+
+**Date : 04-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+Methods annotated with `@Failover` that accept a comma-separated string (e.g. `ids = "1,2,3,4"`)
+or a collection argument are stored under a single composite key derived from the entire argument.
+This causes two classes of cache misses:
+
+1. **Subset miss**: a caller requests `"1,2,3"` but the cached entry was stored under `"1,2,3,4"` — different UUID, no hit.
+2. **Superset miss**: a caller requests `"1,2,3,4,5"` but only `"1,2,3,4"` is cached — miss, even though four of the five items are available.
+
+For batch-fetch patterns (fetch-by-ids), this means a failover cache is only useful if the
+calling site uses the exact same ID set as the last successful call. In practice, the cache is
+rarely useful.
+
+#### Decision
+
+Introduce a `PayloadSplitter<T>` extension point that enables **scatter/gather mode** when the
+`@Failover(payloadSplitter = "beanName")` attribute is populated.
+
+**Core data model:**
+
+- `SplitterContext(List<Object> args)` — a record that wraps the argument list for _one_ cache
+  entry (composite or individual).
+- `SplitResult<T>(SplitterContext context, T payload)` — pairs one individual context with its
+  payload slice (used on the store path only).
+
+**Interface:**
+
+```java
+public interface PayloadSplitter<T> {
+    List<SplitterContext> extract(SplitterContext context);          // recover path
+    List<SplitResult<T>>  split(SplitterContext context, T payload); // store path
+    T merge(List<T> items);                                          // recover path
+}
+```
+
+**Store path (`DefaultFailoverHandler.store`):** calls `split()` to decompose the composite
+payload into individual slices. Each `SplitResult.context().args()` is passed to the existing
+`FailoverKeyGenerator` chain to produce an individual UUID key. Each slice is stored
+independently under its own key.
+
+**Recover path (`DefaultFailoverHandler.recover`):** calls `extract()` to decompose the
+composite `SplitterContext` into individual contexts. Each individual context's args are passed
+to the same `FailoverKeyGenerator` chain. Available (non-expired) slices are collected and
+passed to `merge()`. Partial recovery (some IDs cached, others not) is handled gracefully — the
+merge of available slices is returned rather than null.
+
+**Key-generation guarantee:** `SplitterContext.args()` is passed directly to
+`keyGenerator.key(failover, args)`, which flows through `FailoverKeyGenerator.generateFinalKey`.
+Any future change to the UUID derivation algorithm (encoding, prefix, hash) automatically
+applies to scatter-path keys with no additional implementation work.
+
+**Backward compatibility:** `payloadSplitter` defaults to `""`. All existing `@Failover` usages
+without this attribute follow the unchanged single-key path.
+
+#### Consequences
+
+**Easier:**
+- Batch-fetch failover now works across any subset or superset of IDs, not only the exact
+  previously-seen combination.
+- Partial recovery: if 3 of 4 IDs are cached and the primary fails, the caller receives the
+  3 cached items rather than null.
+- Future key-generation changes (hash algorithm, prefix format) are automatically inherited by
+  the scatter path because it reuses `FailoverKeyGenerator`.
+- The extension point is purely additive — no existing API changes.
+
+**More complex:**
+- Implementors must keep `splitOnRecover()` and `splitOnStore()` in sync: the contexts returned
+  by each must match for the same composite input.
+- `merge()` must handle slices whose recovered payload is null (cache miss on individual entry).
+- Each scatter-store call writes N store entries instead of 1 — write amplification proportional
+  to the number of IDs in the batch.
+- Store expiry operates per-slice: if individual slices expire at different wall-clock times (due
+  to separate store calls), a gather may see mixed freshness.
+___
+
+## 24. Parallel Scatter/Gather — CompletableFuture with Injected Executor
+
+**Date: 04-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+
+The scatter/gather path in `ScatterGatherFailoverHandler` dispatches N slice operations (store
+or recover) sequentially. For I/O-bound stores (JDBC, remote cache) with many slices, sequential
+dispatch limits throughput to the sum of individual slice latencies. A 10-slice batch with 50ms
+per slice costs 500ms in the sequential model but only ~50ms in the parallel model.
+
+#### Decision
+
+`ScatterGatherFailoverHandler` accepts an optional `java.util.concurrent.Executor` via
+constructor injection. When non-null, slice operations are dispatched as `CompletableFuture`
+tasks via that executor. `CompletableFuture.allOf(...).join()` gates the calling thread until
+all slices complete, preserving the synchronous contract of `store()` and `recover()`.
+
+**Auto-configuration** (activated by `failover.scatter.parallel=true`) registers a
+`SimpleAsyncTaskExecutor` with virtual threads enabled. This avoids platform-thread pool
+exhaustion under high parallelism for I/O-bound workloads.
+
+**Why not ForkJoinPool / parallelStream?**  
+ForkJoin is optimised for CPU-bound recursive decomposition. Slice operations are I/O-bound
+(store hits a JDBC or cache backend). Using the common ForkJoin pool risks pool starvation.
+Injecting the executor keeps the concurrency strategy configurable and testable.
+
+**Backward compatibility:** passing `null` executor (the 3-arg constructor default) retains
+sequential dispatch. No existing behaviour changes without explicit opt-in.
+
+```java
+// Sequential (default):
+new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup);
+
+// Parallel with virtual threads:
+// failover.scatter.parallel=true  →  auto-configured
+```
+
+#### Consequences
+
+**Easier:**
+- Slice latency reduced from O(N) to O(1) for I/O-bound stores under parallel mode.
+- Thread strategy is fully configurable — users can supply their own named `Executor` bean
+  (`scatterGatherExecutor`) to tune pool size, rejection policy, or monitoring.
+
+**More complex:**
+- Thread-local context (tenant ID, MDC, security) is not propagated to executor threads by
+  default — requires explicit `ContextPropagator` (see ADR 25).
+- Any slice failure causes the entire `CompletableFuture.allOf().join()` to throw — there is
+  no partial-success path in the current implementation.
+___
+
+## 25. ContextPropagator SPI — Thread-Local Context Propagation for Parallel Scatter
+
+**Date: 04-JUN-2026**
+
+#### Status
+Accepted
+
+#### Context
+
+Parallel scatter (ADR 24) dispatches slice operations to executor threads. Virtual threads and
+platform thread pools do not inherit `ThreadLocal` values from the submitting thread. This
+breaks two existing mechanisms:
+
+1. **`TenantContext`** — `MultiTenantFailoverStore.tenantStore()` reads `TenantContext.get()`
+   on the calling thread. On an executor thread this returns `null`, causing fallback to the
+   `defaultTenant` and routing all slices to the wrong per-tenant store.
+2. **MDC** — SLF4J Mapped Diagnostic Context (carrying `traceId`, `spanId`, and other log
+   correlation keys) is thread-local. Log lines emitted from executor threads lose their trace
+   context.
+
+#### Decision
+
+A `ContextPropagator` functional interface captures thread-bound context on the calling thread
+at `wrap()` invocation time and returns a `Runnable` that restores it before executing the task
+on the executor thread:
+
+```java
+@FunctionalInterface
+public interface ContextPropagator {
+    Runnable wrap(Runnable task);               // context captured when wrap() is called
+    default <V> Supplier<V> wrapSupplier(Supplier<V> task) { ... }  // value-producing variant
+    static ContextPropagator noOp() { ... }
+}
+```
+
+**Built-in implementations:**
+
+| Class | Module | Propagates |
+|---|---|---|
+| `MdcContextPropagator` | `failover-core` | SLF4J MDC (traceId, spanId, all keys) |
+| `TenantContextPropagator` | `failover-store-multitenant` | `TenantContext` tenant ID |
+| `MicrometerContextPropagator` | `failover-spring-boot-autoconfigure` | Micrometer `Span` (actual span context, not just MDC keys) |
+
+**Auto-composition** by `FailoverAutoConfiguration.contextPropagator()`:
+
+| Condition | Composed bean |
+|---|---|
+| Single-tenant, no Micrometer | `MdcContextPropagator` |
+| Multi-tenant only | `Composite(Tenant, MDC)` |
+| Micrometer only | `Composite(Micrometer, MDC)` |
+| Multi-tenant + Micrometer | `Composite(Tenant, Micrometer, MDC)` |
+
+**Why functional interface, not Spring's `TaskDecorator`?**  
+`ContextPropagator` lives in `failover-core` (no Spring dependency). This keeps the core module
+framework-agnostic. The Spring `TaskDecorator` pattern achieves the same goal at the executor
+level, but requires Spring and couples the executor configuration to the propagation concern.
+`ContextPropagator` is injected into `ScatterGatherFailoverHandler` directly, keeping propagation
+visible and testable without a running Spring context.
+
+**Override point:** declare a `ContextPropagator` bean to replace the auto-composed default
+entirely (e.g. to add security-principal propagation or a custom `ThreadLocal`).
+
+#### Consequences
+
+**Easier:**
+- Thread-local context is propagated transparently to all executor threads without changes to
+  `MultiTenantFailoverStore`, MDC configuration, or Micrometer setup.
+- New context types (Spring Security principal, custom `ThreadLocal`) are added by implementing
+  `ContextPropagator` and declaring a bean — no framework changes required.
+- `CompositeContextPropagator` chains any number of propagators without modifying existing ones.
+
+**More complex:**
+- Each `wrap()` call performs a `ThreadLocal` read on the calling thread — negligible overhead
+  but non-zero.
+- `MicrometerContextPropagator` requires `io.micrometer.tracing.Tracer` on the classpath and a
+  `Tracer` bean; it silently does nothing when absent.
+- Users who declare a custom `ContextPropagator` bean replace the entire auto-composed chain —
+  they must explicitly include `MdcContextPropagator`, `TenantContextPropagator`, etc. if still
+  needed.
+___

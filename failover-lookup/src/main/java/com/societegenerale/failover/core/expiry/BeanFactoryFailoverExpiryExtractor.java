@@ -1,5 +1,6 @@
 package com.societegenerale.failover.core.expiry;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -14,7 +15,7 @@ public class BeanFactoryFailoverExpiryExtractor extends AbstractFailoverExpiryEx
     private ConfigurableBeanFactory beanFactory;
 
     @Override
-    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+    public void setBeanFactory(@NonNull BeanFactory beanFactory) throws BeansException {
         this.beanFactory = (ConfigurableBeanFactory) beanFactory;
     }
 

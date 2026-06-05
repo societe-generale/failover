@@ -21,7 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Default {@link MethodExceptionPolicy} — graceful handling with no exception propagation.
+ * Default {@link MethodExceptionPolicy} — graceful handling with no exception propagator.
  *
  * <p>Returns whatever the failover recovery produced: the recovered result if the store had a
  * valid entry, or {@code null} if recovery failed or the store was empty. The original exception
