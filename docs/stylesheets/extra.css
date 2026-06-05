@@ -95,7 +95,8 @@ body,
 
 /* ─── 3. LAYOUT ─────────────────────────────────────────────────── */
 
-.md-content { max-width: 54rem; }
+/* Widen Material's default grid (61rem ~976px) to use more screen on wide viewports */
+.md-grid { max-width: 84rem; }
 
 /* ─── 4. ANIMATIONS ─────────────────────────────────────────────── */
 
@@ -138,14 +139,14 @@ body,
 [data-md-color-scheme="default"] .md-header .md-icon,
 [data-md-color-scheme="default"] .md-header label { color: var(--fo-tx) !important; }
 
-.md-header__title { font-weight: 700; letter-spacing: -.02em; font-size: .875rem; }
+.md-header__title { font-weight: 700; letter-spacing: -.02em; font-size: .82rem; }
 
 /* Search */
 .md-search__input {
   border-radius: 8px;
   background: var(--fo-br-d);
   border: 1px solid var(--fo-brd);
-  font-size: .82rem;
+  font-size: .78rem;
   transition: border-color .18s, box-shadow .18s;
 }
 .md-search__input:focus {
@@ -160,7 +161,7 @@ body,
 [data-md-color-scheme="default"] .md-tabs { background: rgba(255,255,255,.92) !important; }
 
 .md-tabs__link {
-  font-size: .8rem;
+  font-size: .75rem;
   font-weight: 600;
   opacity: .55;
   letter-spacing: .01em;
@@ -177,7 +178,7 @@ body,
 .md-sidebar { background: transparent; }
 
 .md-nav__link {
-  font-size: .8rem;
+  font-size: .75rem;
   border-radius: 6px;
   padding: .22rem .5rem;
   color: var(--fo-tx2);
@@ -196,7 +197,7 @@ body,
   padding-left: .75rem;
 }
 .md-nav__title {
-  font-size: .65rem;
+  font-size: .62rem;
   text-transform: uppercase;
   letter-spacing: .1em;
   font-weight: 700;
@@ -205,7 +206,7 @@ body,
   padding: .45rem .5rem .15rem;
 }
 .md-nav__item--active > .md-nav__link:not([href]) { color: var(--fo-br); font-weight: 700; }
-.md-nav--secondary .md-nav__link { font-size: .76rem; line-height: 1.5; }
+.md-nav--secondary .md-nav__link { font-size: .72rem; line-height: 1.5; }
 .md-nav--secondary .md-nav__link--active {
   border-left: 2px solid var(--fo-br);
   padding-left: calc(.5rem - 2px);
@@ -264,7 +265,7 @@ body,
 
 .fo-page-banner-section {
   display: block;
-  font-size: .65rem;
+  font-size: .62rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .12em;
@@ -274,7 +275,7 @@ body,
 }
 
 .fo-page-banner-title {
-  font-size: 1.3rem;
+  font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: -.03em;
   line-height: 1.15;
@@ -287,7 +288,7 @@ body,
 /* ─── 8. TYPOGRAPHY ─────────────────────────────────────────────── */
 
 .md-typeset {
-  font-size: .875rem;
+  font-size: .9rem;
   line-height: 1.78;
   color: var(--fo-tx);
 }
@@ -297,7 +298,7 @@ body,
 .fo-hero h1        { display: block !important; }
 
 .md-typeset h2 {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: -.025em;
   color: var(--fo-tx);
@@ -309,7 +310,7 @@ body,
 }
 
 .md-typeset h3 {
-  font-size: .95rem;
+  font-size: .875rem;
   font-weight: 700;
   letter-spacing: -.01em;
   color: var(--fo-br);
@@ -317,7 +318,7 @@ body,
 }
 
 .md-typeset h4 {
-  font-size: .82rem;
+  font-size: .75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
@@ -344,7 +345,7 @@ body,
   color: var(--fo-br);
   border-radius: .3em;
   padding: .1em .38em;
-  font-size: .82em;
+  font-size: .79em;
   border: 1px solid var(--fo-br-d2);
   font-feature-settings: "zero","ss01","cv01";
 }
@@ -373,7 +374,7 @@ body,
   border: 1px solid var(--fo-brd2);
   border-radius: .3em;
   box-shadow: 0 2px 0 var(--fo-brd2);
-  font-size: .75em;
+  font-size: .72em;
   padding: .12em .4em;
 }
 
@@ -384,7 +385,7 @@ body,
 /* ─── 9. TABLES ─────────────────────────────────────────────────── */
 
 .md-typeset table:not([class]) {
-  font-size: .84rem;
+  font-size: .79rem;
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -397,7 +398,7 @@ body,
 .md-typeset table:not([class]) th {
   background: var(--fo-br-d);
   color: var(--fo-br);
-  font-size: .71rem;
+  font-size: .67rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
@@ -428,7 +429,7 @@ body,
   background: var(--fo-sur);
   border-bottom: 1px solid var(--fo-brd);
   padding: .45rem .9rem;
-  font-size: .76rem;
+  font-size: .72rem;
   font-weight: 600;
   color: var(--fo-tx2);
 }
@@ -441,7 +442,7 @@ body,
 
 /* Tabs (pymdownx) */
 .md-typeset .tabbed-labels > label {
-  font-size: .8rem;
+  font-size: .75rem;
   font-weight: 600;
   border-radius: 6px 6px 0 0;
   padding: .45rem .85rem;
@@ -466,7 +467,7 @@ body,
 }
 .md-typeset .admonition-title,
 .md-typeset summary {
-  font-size: .8rem;
+  font-size: .75rem;
   font-weight: 700;
   padding: .6rem .9rem .6rem 2.6rem;
   letter-spacing: .01em;
@@ -482,8 +483,8 @@ body,
 .md-footer-meta { opacity: .55; }
 .md-footer__link { border-radius: 6px; padding: .45rem; }
 .md-footer__link:hover { background: var(--fo-br-d); color: var(--fo-br); }
-.md-footer__title     { font-weight: 700; font-size: .8rem; }
-.md-footer__direction { font-size: .7rem; }
+.md-footer__title     { font-weight: 700; font-size: .76rem; }
+.md-footer__direction { font-size: .66rem; }
 
 /* ─── 13. COMPONENTS ────────────────────────────────────────────── */
 
@@ -518,11 +519,11 @@ body,
   border-radius: 6px;
   background: var(--fo-br-d2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.05rem; flex-shrink: 0;
+  font-size: 1rem; flex-shrink: 0;
 }
-.fo-sec-card h3 { font-size: .88rem; font-weight: 700; margin: 0; color: var(--fo-tx); line-height: 1.25; }
-.fo-sec-card p  { font-size: .79rem; color: var(--fo-tx2); margin: 0; line-height: 1.5; flex: 1; }
-.fo-sec-card-arrow { font-size: .74rem; font-weight: 700; color: var(--fo-br); margin-top: .1rem; }
+.fo-sec-card h3 { font-size: .82rem; font-weight: 700; margin: 0; color: var(--fo-tx); line-height: 1.25; }
+.fo-sec-card p  { font-size: .74rem; color: var(--fo-tx2); margin: 0; line-height: 1.5; flex: 1; }
+.fo-sec-card-arrow { font-size: .70rem; font-weight: 700; color: var(--fo-br); margin-top: .1rem; }
 
 /* ── Step cards ────────────────────────────────────────────── */
 .fo-steps {
@@ -541,12 +542,12 @@ body,
   background: var(--fo-br); color: #fff;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: .78rem; font-weight: 800;
+  font-size: .74rem; font-weight: 800;
   flex-shrink: 0; position: relative; z-index: 1;
   box-shadow: 0 0 0 4px var(--md-default-bg-color);
 }
-.fo-step-body h3 { margin: 0 0 .22rem; color: var(--fo-tx); font-size: .88rem; }
-.fo-step-body p  { margin: 0; font-size: .8rem; color: var(--fo-tx2); line-height: 1.5; }
+.fo-step-body h3 { margin: 0 0 .22rem; color: var(--fo-tx); font-size: .82rem; }
+.fo-step-body p  { margin: 0; font-size: .75rem; color: var(--fo-tx2); line-height: 1.5; }
 
 /* ── Feature cards ─────────────────────────────────────────── */
 .fo-feat-grid {
@@ -569,7 +570,7 @@ body,
   width: 2.4rem; height: 2.4rem;
   border-radius: 7px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem; margin-bottom: .8rem;
+  font-size: 1rem; margin-bottom: .75rem;
 }
 .fo-feat-icon.purple { background: rgba(99,102,241,.12); }
 .fo-feat-icon.blue   { background: rgba(59,130,246,.12); }
@@ -580,8 +581,8 @@ body,
 .fo-feat-icon.amber  { background: rgba(245,158,11,.12); }
 .fo-feat-icon.red    { background: rgba(239,68,68,.12);  }
 
-.fo-feat-card h3 { font-size: .86rem; font-weight: 700; margin: 0 0 .35rem; color: var(--fo-tx); line-height: 1.3; }
-.fo-feat-card p  { font-size: .79rem; color: var(--fo-tx2); margin: 0; line-height: 1.5; }
+.fo-feat-card h3 { font-size: .80rem; font-weight: 700; margin: 0 0 .35rem; color: var(--fo-tx); line-height: 1.3; }
+.fo-feat-card p  { font-size: .74rem; color: var(--fo-tx2); margin: 0; line-height: 1.5; }
 
 /* ── Before/After comparison ───────────────────────────────── */
 .fo-compare {
@@ -594,7 +595,7 @@ body,
 }
 .fo-compare-header {
   display: flex; align-items: center; gap: .45rem;
-  padding: .55rem .9rem; font-size: .76rem; font-weight: 700;
+  padding: .55rem .9rem; font-size: .72rem; font-weight: 700;
 }
 .fo-compare-panel.before .fo-compare-header {
   background: rgba(239,68,68,.09); color: #ef4444;
@@ -626,19 +627,19 @@ body,
 .fo-stat:last-child { border-right: none; }
 .fo-stat-num {
   display: block;
-  font-size: 1.65rem; font-weight: 800;
+  font-size: 1.1rem; font-weight: 800;
   color: var(--fo-br); line-height: 1; margin-bottom: .22rem;
   font-feature-settings: "tnum";
 }
 .fo-stat-label {
-  font-size: .7rem; text-transform: uppercase;
+  font-size: .66rem; text-transform: uppercase;
   letter-spacing: .1em; font-weight: 600; color: var(--fo-tx2);
 }
 
 /* ── Section heading ───────────────────────────────────────── */
 .fo-section { margin: 3rem 0 1.25rem; }
 .fo-section-eyebrow {
-  font-size: .68rem; font-weight: 700;
+  font-size: .64rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .12em;
   color: var(--fo-br); margin-bottom: .25rem;
 }
@@ -648,7 +649,7 @@ body,
   border: none; padding: 0;
 }
 .fo-section h2::after { display: none; }
-.fo-section p { color: var(--fo-tx2); font-size: .875rem; margin: 0; }
+.fo-section p { color: var(--fo-tx2); font-size: .82rem; margin: 0; }
 
 /* ── Flow diagram wrapper ──────────────────────────────────── */
 .fo-flow-wrap {
@@ -667,7 +668,7 @@ body,
 .fo-flow-dot   { width: .6rem; height: .6rem; border-radius: 50%; margin-top: .42rem; flex-shrink: 0; }
 .fo-flow-dot.success { background: #22c55e; }
 .fo-flow-dot.failure { background: #ef4444; }
-.fo-flow-item p      { margin: 0; font-size: .8rem; line-height: 1.5; color: var(--fo-tx2); }
+.fo-flow-item p      { margin: 0; font-size: .75rem; line-height: 1.5; color: var(--fo-tx2); }
 .fo-flow-item strong { color: var(--fo-tx); }
 
 /* ── Module tree ───────────────────────────────────────────── */
@@ -676,13 +677,13 @@ body,
   border-radius: 12px;
   padding: 1.35rem 1.75rem;
   font-family: var(--md-code-font);
-  font-size: .82rem; line-height: 1.95;
+  font-size: .77rem; line-height: 1.9;
   border: 1px solid var(--fo-brd);
   margin: 1.25rem 0 2.5rem;
   overflow-x: auto; box-shadow: var(--fo-sh);
 }
-.fo-module-tree .starter { font-weight: 800; color: var(--fo-br); font-size: .88rem; }
-.fo-module-tree .tag     { opacity: .42; font-size: .73rem; }
+.fo-module-tree .starter { font-weight: 800; color: var(--fo-br); font-size: .82rem; }
+.fo-module-tree .tag     { opacity: .42; font-size: .69rem; }
 
 /* ── Integration badges ────────────────────────────────────── */
 .fo-integrations {
@@ -695,7 +696,7 @@ body,
   border: 1px solid var(--fo-brd);
   border-radius: 6px;
   padding: .38rem .8rem;
-  font-size: .79rem; font-weight: 600;
+  font-size: .74rem; font-weight: 600;
   color: var(--fo-tx);
   transition: border-color .15s, box-shadow .15s;
 }
@@ -713,11 +714,11 @@ body,
 }
 .fo-origin::before {
   content: "\201C"; position: absolute; top: -.35rem; left: 1.35rem;
-  font-size: 4rem; line-height: 1;
+  font-size: 3.5rem; line-height: 1;
   color: var(--fo-br); opacity: .2; font-family: Georgia, serif;
 }
-.fo-origin p    { margin: 0 0 .6rem 1.75rem; font-size: .88rem; font-style: italic; line-height: 1.7; color: var(--fo-tx); }
-.fo-origin cite { margin-left: 1.75rem; font-size: .77rem; font-style: normal; font-weight: 600; color: var(--fo-tx2); }
+.fo-origin p    { margin: 0 0 .6rem 1.75rem; font-size: .82rem; font-style: italic; line-height: 1.7; color: var(--fo-tx); }
+.fo-origin cite { margin-left: 1.75rem; font-size: .72rem; font-style: normal; font-weight: 600; color: var(--fo-tx2); }
 
 /* ── CTA cards ─────────────────────────────────────────────── */
 .fo-cta-grid {
@@ -734,10 +735,10 @@ body,
   transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s, border-color .2s;
 }
 .fo-cta-card:hover { transform: translateY(-2px); box-shadow: var(--fo-shm); border-color: var(--fo-br); }
-.fo-cta-icon    { font-size: 1.55rem; }
-.fo-cta-card h3 { margin: 0; font-size: .86rem; font-weight: 700; color: var(--fo-tx); }
-.fo-cta-card p  { margin: 0; font-size: .78rem; color: var(--fo-tx2); line-height: 1.45; flex: 1; }
-.fo-cta-link    { font-size: .75rem; font-weight: 700; color: var(--fo-br); text-decoration: none; }
+.fo-cta-icon    { font-size: 1.35rem; }
+.fo-cta-card h3 { margin: 0; font-size: .80rem; font-weight: 700; color: var(--fo-tx); }
+.fo-cta-card p  { margin: 0; font-size: .73rem; color: var(--fo-tx2); line-height: 1.45; flex: 1; }
+.fo-cta-link    { font-size: .71rem; font-weight: 700; color: var(--fo-br); text-decoration: none; }
 .fo-cta-link:hover { text-decoration: underline; }
 
 /* ─── 14. HERO ──────────────────────────────────────────────────── */
@@ -771,7 +772,7 @@ body,
   background: rgba(99,102,241,.2);
   border: 1px solid rgba(99,102,241,.4);
   color: #a5b4fc;
-  font-size: .73rem; font-weight: 600;
+  font-size: .69rem; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
   padding: .26rem .88rem; border-radius: 99px;
   margin-bottom: 1.4rem;
@@ -780,7 +781,7 @@ body,
 
 .fo-hero h1 {
   display: block !important;
-  font-size: clamp(1.75rem, 3.8vw, 2.6rem);
+  font-size: clamp(1.35rem, 2.8vw, 2rem);
   font-weight: 900; letter-spacing: -.04em; line-height: 1.08;
   margin: 0 0 1rem; border: none;
   background: linear-gradient(135deg, #e0e7ff 0%, #a5b4fc 50%, #7dd3fc 100%);
@@ -790,7 +791,7 @@ body,
 }
 
 .fo-hero-sub {
-  font-size: .95rem; color: rgba(255,255,255,.66);
+  font-size: .875rem; color: rgba(255,255,255,.66);
   max-width: 540px; margin: 0 auto 2rem; line-height: 1.7;
   animation: fo-up .6s .25s cubic-bezier(.22,1,.36,1) both;
 }
@@ -809,7 +810,7 @@ body,
 .fo-btn {
   display: inline-flex; align-items: center; gap: .4rem;
   padding: .62rem 1.4rem; border-radius: 8px;
-  font-weight: 700; font-size: .875rem;
+  font-weight: 700; font-size: .82rem;
   text-decoration: none !important;
   transition: transform .18s ease, box-shadow .18s ease;
 }
@@ -828,5 +829,69 @@ body,
   .fo-section-grid { grid-template-columns: 1fr; }
   .fo-feat-grid    { grid-template-columns: 1fr; }
   .fo-cta-grid     { grid-template-columns: 1fr 1fr; }
-  .fo-stat-num     { font-size: 1.4rem; }
+  .fo-stat-num     { font-size: 1.2rem; }
+}
+
+/* ─── 16. FONT SCALE ─────────────────────────────────────────────── */
+
+/* sm → md → lg; "md" is default (applied by JS on load).
+   All rem values scale with the root font-size. */
+html[data-fo-font="sm"] { font-size: 15.5px; }
+html[data-fo-font="md"] { font-size: 17px; }    /* default — noticeably above browser 16px */
+html[data-fo-font="lg"] { font-size: 19px; }
+
+/* Font size control widget — fixed bottom-right */
+.fo-fontsize-ctrl {
+  position: fixed;
+  bottom: 1.35rem;
+  right: 1.35rem;
+  z-index: 1000;
+  display: flex;
+  gap: 2px;
+  background: var(--fo-sur);
+  border: 1px solid var(--fo-brd2);
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: var(--fo-shm);
+  user-select: none;
+}
+.fo-fontsize-btn {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--fo-tx2);
+  font-weight: 700;
+  padding: .3rem .55rem;
+  font-size: .7rem;
+  line-height: 1;
+  transition: background .15s, color .15s;
+  font-family: inherit;
+}
+.fo-fontsize-btn:hover        { background: var(--fo-br-d); color: var(--fo-br); }
+.fo-fontsize-btn.fo-fontsize-active { background: var(--fo-br); color: #fff; }
+
+/* ─── 17. MERMAID DARK MODE ──────────────────────────────────────── */
+
+/* CSS fallback — JS also patches inline styles after Mermaid renders */
+[data-md-color-scheme="slate"] .mermaid svg .labelBox {
+  fill: var(--fo-sur2) !important;
+  stroke: var(--fo-brd2) !important;
+}
+[data-md-color-scheme="slate"] .mermaid svg .labelText,
+[data-md-color-scheme="slate"] .mermaid svg .labelText > tspan,
+[data-md-color-scheme="slate"] .mermaid svg .loopText,
+[data-md-color-scheme="slate"] .mermaid svg .loopText > tspan {
+  fill: var(--fo-br2) !important;
+}
+[data-md-color-scheme="slate"] .mermaid svg .loopLine {
+  stroke: var(--fo-brd2) !important;
+}
+/* Catch-all: any SVG text with hardcoded black fill */
+[data-md-color-scheme="slate"] .mermaid svg text[fill="#000"],
+[data-md-color-scheme="slate"] .mermaid svg text[fill="#000000"],
+[data-md-color-scheme="slate"] .mermaid svg text[fill="black"],
+[data-md-color-scheme="slate"] .mermaid svg tspan[fill="#000"],
+[data-md-color-scheme="slate"] .mermaid svg tspan[fill="#000000"] {
+  fill: var(--fo-tx) !important;
 }
