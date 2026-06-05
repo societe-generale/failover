@@ -16,15 +16,16 @@
 
 package com.societegenerale.failover.properties;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
+ * JDBC store configuration properties.
+ *
  * @author Anand Manissery
  */
-@Getter
-@Setter
+@Data
 public class Jdbc {
+
     /**
      * Please provide the prefix for failover store table in case of jdbc storage
      * Default is empty

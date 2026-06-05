@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p><b>Threading note:</b> this value is NOT propagated to executor threads. Tenant routing in
  * {@link MultiTenantFailoverStore} reads this context on the calling thread — before any async
- * dispatch — so no propagation is needed.
+ * dispatch — so no propagator is needed.
  *
  * @author Anand Manissery
  */

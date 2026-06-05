@@ -96,4 +96,18 @@ public @interface Failover {
     /// If not configured, default expiry policy will be used
     /// @return expiry policy name
     String expiryPolicy() default "";
+
+    /// The bean name of the custom 'com.societegenerale.failover.core.payload.PayloadSplitter' to use.
+    ///
+    /// When set, enables scatter/gather mode:
+    /// - Store path: the composite method result is split into individual per-entity slices via
+    ///   PayloadSplitter#split, each stored under its own UUID key derived from the individual
+    ///   SplitterContext args through the standard FailoverKeyGenerator pipeline.
+    /// - Recover path: each individual key is looked up independently; available slices are
+    ///   merged via PayloadSplitter#merge. Partial recovery (some entities cached, others not)
+    ///   is handled gracefully.
+    ///
+    /// If empty (default), standard single-key behaviour applies.
+    /// @return payload splitter bean name
+    String payloadSplitter() default "";
 }

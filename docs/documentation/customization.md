@@ -626,6 +626,162 @@ public class KeyGeneratorConfig {
 
 ---
 
+### PayloadSplitter — Scatter/Gather Mode
+
+Enables per-entity storage and partial recovery for methods that accept composite arguments such
+as a comma-separated string (`ids = "1,2,3"`) or a collection.
+
+**Problem without scatter/gather:**
+Storing `getItems("1,2,3")` under a single composite key means `getItems("1,2")` — a subset —
+always misses the cache, even though items 1 and 2 are already stored.
+
+**Solution:**
+Implement `PayloadSplitter<T>` and set `payloadSplitter` in `@Failover`. The framework
+decomposes the composite payload into individual per-entity slices on store, and reassembles
+available slices on recover. Partial recovery (some IDs cached, others missing) is handled
+gracefully — only the available items are merged and returned.
+
+#### Core types
+
+```java
+// Wraps the argument list for one cache entry (composite or individual)
+public record SplitterContext(List<Object> args) {}
+
+// Pairs an individual context with its payload slice — used on the store path
+public record SplitResult<T>(SplitterContext context, T payload) {}
+```
+
+#### PayloadSplitter interface
+
+```java
+public interface PayloadSplitter<T> {
+
+    // RECOVER path — no payload available
+    // Decompose composite SplitterContext into N individual SplitterContexts (one per entity)
+    List<SplitterContext> extract(SplitterContext context);
+
+    // STORE path — payload is available
+    // Decompose composite payload into per-entity slices; each SplitResult.context() must
+    // match what extract() returns for the same composite context
+    List<SplitResult<T>> split(SplitterContext context, T compositePayload);
+
+    // RECOVER path — reassemble gathered slices into composite
+    // items may be smaller than requested when some IDs were absent or expired
+    T merge(List<T> items);
+}
+```
+
+#### Key-generation guarantee
+
+Each `SplitterContext.args()` is passed directly to `KeyGenerator.key(failover, args)`, which
+flows through `FailoverKeyGenerator` — the same UUID derivation pipeline as every standard
+(non-scatter) failover call. Any future change to the hashing algorithm or prefix automatically
+applies to scatter-path keys with no additional work.
+
+#### Example — single CSV string arg
+
+```java
+// @Failover(name = "items-by-ids", payloadSplitter = "itemsSplitter")
+// List<Item> getItems(String ids)   ids = "1,2,3"
+
+@Component("itemsSplitter")
+public class ItemsPayloadSplitter implements PayloadSplitter<List<Item>> {
+
+    @Override
+    public List<SplitterContext> extract(SplitterContext context) {
+        String csv = (String) context.args().getFirst();
+        return Arrays.stream(csv.split(","))
+                .map(id -> new SplitterContext(List.of(id.strip())))
+                .toList();
+    }
+
+    @Override
+    public List<SplitResult<List<Item>>> split(SplitterContext context, List<Item> payload) {
+        String csv = (String) context.args().getFirst();
+        String[] ids = csv.split(",");
+        List<SplitResult<List<Item>>> results = new ArrayList<>();
+        for (int i = 0; i < ids.length; i++) {
+            String id = ids[i].strip();
+            Item item = payload.get(i);           // assumes payload order matches ids order
+            results.add(new SplitResult<>(
+                    new SplitterContext(List.of(id)),
+                    List.of(item)));              // store single-element list per entry
+        }
+        return results;
+    }
+
+    @Override
+    public List<Item> merge(List<List<Item>> items) {
+        return items.stream().flatMap(List::stream).toList();
+    }
+}
+```
+
+#### Example — multi-arg with one CSV column
+
+```java
+// @Failover(name = "items", payloadSplitter = "multiArgItemsSplitter")
+// List<Item> getItems(String status, String ids, String region)
+//   status="active", ids="1,2,3", region="india"
+
+@Component("multiArgItemsSplitter")
+public class MultiArgItemsPayloadSplitter implements PayloadSplitter<List<Item>> {
+
+    @Override
+    public List<SplitterContext> extract(SplitterContext context) {
+        String status = (String) context.args().get(0);
+        String ids    = (String) context.args().get(1);
+        String region = (String) context.args().get(2);
+        return Arrays.stream(ids.split(","))
+                .map(id -> new SplitterContext(List.of(status, id.strip(), region)))
+                .toList();
+    }
+
+    @Override
+    public List<SplitResult<List<Item>>> split(SplitterContext context, List<Item> payload) {
+        List<SplitterContext> individualCtxs = extract(context);
+        List<SplitResult<List<Item>>> results = new ArrayList<>();
+        for (int i = 0; i < individualCtxs.size(); i++) {
+            results.add(new SplitResult<>(individualCtxs.get(i), List.of(payload.get(i))));
+        }
+        return results;
+    }
+
+    @Override
+    public List<Item> merge(List<List<Item>> items) {
+        return items.stream().flatMap(List::stream).toList();
+    }
+}
+```
+
+#### Wiring
+
+```java
+@Failover(name = "items-by-ids",
+          expiryDuration = 1, expiryUnit = ChronoUnit.HOURS,
+          payloadSplitter = "itemsSplitter")
+List<Item> getItems(String ids);
+```
+
+> An exception is thrown if the bean named in `payloadSplitter` is not found in the application context.
+
+#### Partial recovery semantics
+
+| IDs requested | IDs cached | Behaviour |
+|---|---|---|
+| `"1,2,3"` | `1`, `2`, `3` | All found — merge returns full list |
+| `"1,2,3"` | `1`, `3` only | Partial — merge receives `[item1, item3]` |
+| `"1,2,3,4"` | `1`, `2`, `3` cached from earlier `"1,2,3"` call | All three cached IDs found; `4` is a miss |
+| `"1,2,3"` | none | All miss — returns `null` (or `RecoveredPayloadHandler` result) |
+| `"1,2,3"` | `1` expired, `2` valid, `3` valid | Expired entry deleted; merge receives `[item2, item3]` |
+
+#### Write amplification note
+
+Each scatter-store writes N entries for N IDs. If a method is called frequently with large ID
+sets, consider the throughput and storage impact before enabling scatter/gather mode.
+
+---
+
 ### RecoveredPayloadHandler
 
 Post-processes the payload returned from the failover store before it is handed back to the caller.
@@ -734,3 +890,217 @@ failover:
     report-cron: 0 0 0 * * *    # daily
     cleanup-cron: 0 0 * * * *   # hourly
 ```
+
+---
+
+## 7. Scatter/Gather Parallel Execution
+
+Scatter/gather (`@Failover(payloadSplitter = "...")`) dispatches N slice operations per request.
+By default slices execute **sequentially**. Enable parallel dispatch with virtual threads:
+
+```yaml
+failover:
+  scatter:
+    parallel: true    # default: false
+```
+
+When enabled, `ScatterGatherFailoverHandler` uses a `SimpleAsyncTaskExecutor` with virtual
+threads to dispatch all slices concurrently. Slice latency drops from O(N) to O(1) for
+I/O-bound stores.
+
+### Custom Executor
+
+Override the auto-configured executor by declaring a bean named `scatterGatherExecutor`:
+
+```java
+@Bean("scatterGatherExecutor")
+public TaskExecutor scatterGatherExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(10);
+    executor.setMaxPoolSize(50);
+    executor.setThreadNamePrefix("failover-scatter-");
+    executor.initialize();
+    return executor;
+}
+```
+
+---
+
+## 8. Context Propagation for Parallel Scatter
+
+When `failover.scatter.parallel=true`, slice tasks run on executor threads. Thread-local context
+(tenant ID, MDC, Micrometer span) is not propagated automatically. The `ContextPropagator` SPI
+handles this.
+
+### Auto-configured Composition
+
+| Condition | Active propagators |
+|---|---|
+| Single-tenant, no Micrometer | MDC |
+| Multi-tenant only | Tenant → MDC |
+| Micrometer Tracer bean present | Micrometer → MDC |
+| Multi-tenant + Micrometer | Tenant → Micrometer → MDC |
+
+`MicrometerContextPropagator` activates automatically when `io.micrometer:micrometer-tracing` is
+on the classpath and a `Tracer` bean is present (e.g. via Spring Boot Actuator + tracing bridge).
+
+### Custom ContextPropagator
+
+Declare a `ContextPropagator` bean to replace the auto-composed default:
+
+```java
+@Configuration
+public class FailoverContextConfig {
+
+    @Bean
+    public ContextPropagator contextPropagator(
+            TenantContextPropagator tenant,
+            Tracer tracer) {
+
+        // Custom propagator — e.g. Spring Security principal
+        ContextPropagator security = task -> {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            return () -> {
+                SecurityContext ctx = SecurityContextHolder.createEmptyContext();
+                ctx.setAuthentication(auth);
+                SecurityContextHolder.setContext(ctx);
+                try {
+                    task.run();
+                } finally {
+                    SecurityContextHolder.clearContext();
+                }
+            };
+        };
+
+        return CompositeContextPropagator.of(
+            tenant,                              // TenantContext
+            new MicrometerContextPropagator(tracer),  // Span context
+            security,                            // Spring Security principal
+            new MdcContextPropagator()           // MDC (always last)
+        );
+    }
+}
+```
+
+### Built-in Propagators
+
+| Class | Module | Propagates |
+|---|---|---|
+| `MdcContextPropagator` | `failover-core` | SLF4J MDC — covers trace/span IDs when Micrometer Tracing bridge is active |
+| `TenantContextPropagator` | `failover-store-multitenant` | `TenantContext` tenant ID — required for correct per-tenant store routing |
+| `MicrometerContextPropagator` | `failover-spring-boot-autoconfigure` | Micrometer `Span` — records slice work as child spans in distributed traces |
+| `CompositeContextPropagator` | `failover-core` | Chains multiple propagators; applied in list order |
+
+---
+
+## 9. PayloadSplitter — Scatter/Gather Implementation
+
+Register a `PayloadSplitter<T, R>` Spring bean and reference it by name in `@Failover`:
+
+```java
+@Failover(name = "third-parties-failover", expiry = 24, expiryUnit = ChronoUnit.HOURS,
+          payloadSplitter = "thirdPartiesSplitter")
+ThirdPartiesResult fetchThirdParties(String csvIds);
+```
+
+### Sample Implementation
+
+```java
+/**
+ * Splits a ThirdPartiesResult (composite) into individual ThirdParty slices.
+ * T = ThirdPartiesResult (composite), R = ThirdParty (slice)
+ */
+@Component("thirdPartiesSplitter")
+public class ThirdPartyPayloadSplitter implements PayloadSplitter<ThirdPartiesResult, ThirdParty> {
+
+    /**
+     * Store path: one StoreContext per ThirdParty in the composite result.
+     * Each slice uses the ThirdParty's own ID as its key argument.
+     */
+    @Override
+    public List<StoreContext<ThirdParty>> splitOnStore(StoreContext<ThirdPartiesResult> context) {
+        return context.getPayload().getThirdParties().stream()
+                .map(tp -> StoreContext.<ThirdParty>builder()
+                        .failover(context.getFailover())
+                        .args(List.of(String.valueOf(tp.getId())))
+                        .payload(tp)
+                        .build())
+                .toList();
+    }
+
+    /**
+     * Recover path: one RecoverContext per ID in the comma-separated arg.
+     * Each slice recovers a single ThirdParty by its individual ID.
+     */
+    @Override
+    public List<RecoverContext<ThirdParty>> splitOnRecover(RecoverContext<ThirdPartiesResult> context) {
+        String csvArg = (String) context.getArgs().getFirst();
+        return Arrays.stream(csvArg.split(","))
+                .map(id -> RecoverContext.<ThirdParty>builder()
+                        .failover(context.getFailover())
+                        .args(List.of(id.trim()))
+                        .clazz(ThirdParty.class)
+                        .cause(context.getCause())
+                        .build())
+                .toList();
+    }
+
+    /**
+     * Merge path: collect recovered ThirdParty payloads back into ThirdPartiesResult.
+     * Null payloads (cache miss for that ID) are filtered out.
+     */
+    @Override
+    public RecoverContext<ThirdPartiesResult> merge(List<RecoverContext<ThirdParty>> contexts) {
+        List<ThirdParty> parties = contexts.stream()
+                .map(RecoverContext::getPayload)
+                .filter(Objects::nonNull)           // handle partial cache hits
+                .toList();
+        ThirdPartiesResult merged = new ThirdPartiesResult();
+        merged.setThirdParties(parties);
+        String compositeArg = contexts.stream()
+                .map(ctx -> (String) ctx.getArgs().getFirst())
+                .collect(Collectors.joining(","));
+        return RecoverContext.<ThirdPartiesResult>builder()
+                .failover(contexts.getFirst().getFailover())
+                .args(List.of(compositeArg))
+                .clazz(ThirdPartiesResult.class)
+                .cause(contexts.getFirst().getCause())
+                .payload(merged)
+                .build();
+    }
+}
+```
+
+### Scatter/Gather + Multi-Tenant + Parallel — Full Example
+
+```yaml
+failover:
+  package-to-scan: com.example.app
+  store:
+    type: jdbc
+    multitenant:
+      enabled: true
+      default-tenant: default
+      tenants:
+        acme:
+          schema: acme_schema
+        globex:
+          schema: globex_schema
+  scatter:
+    parallel: true
+```
+
+```java
+// TenantContextPropagator is auto-registered by FailoverStoreMultiTenantAutoConfiguration.
+// MicrometerContextPropagator is auto-registered when Tracer bean present.
+// MdcContextPropagator is always registered.
+// All three are auto-composed into the contextPropagator bean — no extra config needed.
+
+@Failover(name = "third-parties-failover", expiry = 24, expiryUnit = ChronoUnit.HOURS,
+          payloadSplitter = "thirdPartiesSplitter")
+ThirdPartiesResult fetchThirdParties(String csvIds);
+```
+
+Each tenant's request routes to its own JDBC store. Slices are dispatched in parallel on
+virtual threads. Tenant ID, MDC trace keys, and Micrometer span are all propagated to each
+slice thread automatically.

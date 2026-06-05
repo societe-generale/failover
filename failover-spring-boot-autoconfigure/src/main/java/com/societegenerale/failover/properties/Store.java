@@ -16,32 +16,35 @@
 
 package com.societegenerale.failover.properties;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 import static com.societegenerale.failover.properties.StoreType.INMEMORY;
 
-/// Configuration properties for `failover.store.*`.
-///
-/// Controls which backing store implementation is used, whether writes are
-/// asynchronous, JDBC-specific settings (table prefix), and multi-tenant settings.
-///
-/// The default store type is `INMEMORY`. Do **not** use `INMEMORY` in production.
-///
-/// @author Anand Manissery
-@Getter
-@Setter
+/**
+ * Configuration properties for {@code failover.store.*}.
+ *
+ * <p>Controls which backing store implementation is used, whether writes are
+ * asynchronous, JDBC-specific settings (table prefix), and multi-tenant settings.
+ * The default store type is {@link StoreType#INMEMORY} — do not use in production.
+ *
+ * @author Anand Manissery
+ */
+@Data
 public class Store {
 
-    /// Type of storage. Default: `INMEMORY` (not suitable for production).
-    /// Available options: `INMEMORY`, `CAFFEINE`, `JDBC`, `CUSTOM`.
+    /**
+     * Type of backing store. Default: {@link StoreType#INMEMORY} (not suitable for production).
+     * Available options: {@code INMEMORY}, {@code CAFFEINE}, {@code JDBC}, {@code CUSTOM}.
+     */
     private StoreType type = INMEMORY;
 
-    /// Whether write operations (`store`, `delete`, `cleanByExpiry`) are offloaded to a
-    /// background `TaskExecutor`. `find` is always synchronous.
-    /// Default: `true` (non-blocking writes). Set to `false` for synchronous mode,
-    /// which is required when using the JDBC SCHEMA multi-tenant strategy.
+    /**
+     * Whether write operations ({@code store}, {@code delete}, {@code cleanByExpiry}) are offloaded
+     * to a background {@code TaskExecutor}. {@code find} is always synchronous.
+     * Default: {@code true} (non-blocking writes). Set to {@code false} for synchronous mode,
+     * which is required when using the JDBC SCHEMA multi-tenant strategy.
+     */
     private boolean async = true;
 
     @NestedConfigurationProperty

@@ -16,8 +16,7 @@
 
 package com.societegenerale.failover.properties;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
@@ -31,10 +30,11 @@ import static com.societegenerale.failover.properties.ExceptionPolicy.RETHROW;
 import static com.societegenerale.failover.properties.FailoverType.BASIC;
 
 /**
+ * Root configuration properties for the failover framework, bound to the {@code failover} prefix.
+ *
  * @author Anand Manissery
  */
-@Getter
-@Setter
+@Data
 @Validated
 @ConfigurationProperties(prefix = "failover")
 public class FailoverProperties implements InitializingBean {
@@ -64,11 +64,19 @@ public class FailoverProperties implements InitializingBean {
     private ExceptionPolicy exceptionPolicy = RETHROW;
 
     @NestedConfigurationProperty()
+    private Scatter  scatter = new Scatter();
+
+    @NestedConfigurationProperty()
     private Store store = new Store();
 
     @NestedConfigurationProperty()
     private Scheduler scheduler = new Scheduler();
 
+    /**
+     * Returns a flat map of key failover properties for inclusion in startup reports.
+     *
+     * @return map of property names to their string values
+     */
     public Map<String,String> additionalInfo() {
         var info = new LinkedHashMap<String,String>();
         info.put("enabled", Boolean.toString(enabled));
@@ -86,6 +94,11 @@ public class FailoverProperties implements InitializingBean {
         validate();
     }
 
+    /**
+     * Validates that mandatory properties are set when failover is enabled.
+     *
+     * @throws IllegalStateException if {@code failover.package-to-scan} is blank when failover is enabled
+     */
     public void validate() {
         if (enabled && !StringUtils.hasText(packageToScan)) {
             throw new IllegalStateException(

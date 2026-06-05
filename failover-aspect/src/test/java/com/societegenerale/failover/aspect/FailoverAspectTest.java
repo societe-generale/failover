@@ -155,6 +155,7 @@ class FailoverAspectTest {
             @Override public String expiryUnitExpression() { return ""; }
             @Override public String keyGenerator() { return ""; }
             @Override public String expiryPolicy() { return ""; }
+            @Override public String payloadSplitter() { return ""; }
         };
     }
 
