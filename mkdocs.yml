@@ -70,6 +70,8 @@ plugins:
       minify_html: true
   - git-revision-date-localized:
       enable_creation_date: true
+      exclude:
+        - api/javadoc/*
 
 markdown_extensions:
   - admonition
@@ -135,6 +137,9 @@ nav:
   - Contributing: contributing.md
   - Support: support.md
   - About: about.md
+
+not_in_nav: |
+  api/javadoc/**
 
 validation:
   links:

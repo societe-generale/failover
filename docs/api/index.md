@@ -6,6 +6,8 @@ icon: material/book-open-variant
 
 Full Javadoc for all modules, generated via `mvn javadoc:aggregate`.
 
+[Browse Javadoc :material-arrow-right:](javadoc/index.html){ .md-button .md-button--primary target="_blank" }
+
 !!! note "Generating Javadoc"
     The embedded Javadoc is available after building the site with Javadoc generated:
 
