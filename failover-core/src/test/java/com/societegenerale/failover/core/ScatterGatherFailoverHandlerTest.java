@@ -26,7 +26,6 @@ import lombok.EqualsAndHashCode;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -240,7 +239,7 @@ class ScatterGatherFailoverHandlerTest {
         @DisplayName("should not call clean on both delegateT and delegateR if its same reference — same instance should not be called twice")
         @SuppressWarnings({"unchecked", "rawtypes"})
         void shouldNotCleanBothDelegatesWhenSameInstance() {
-            FailoverHandler sameDelegate = Mockito.mock(FailoverHandler.class);
+            FailoverHandler sameDelegate = mock(FailoverHandler.class);
             var h = new ScatterGatherFailoverHandler<>(sameDelegate, sameDelegate, payloadSplitterLookup);
             h.clean();
             verify(sameDelegate).clean();
@@ -297,14 +296,16 @@ class ScatterGatherFailoverHandlerTest {
 
         private ExecutorService executorService;
         private AtomicInteger propagatorCallCount;
-        private ContextPropagator countingPropagator;
         private ScatterGatherFailoverHandler<ThirdPartiesResult, ThirdParty> parallelHandler;
 
         @BeforeEach
         void setUp() {
             executorService = Executors.newFixedThreadPool(4);
             propagatorCallCount = new AtomicInteger();
-            countingPropagator = task -> { propagatorCallCount.incrementAndGet(); return task; };
+            ContextPropagator countingPropagator = task -> {
+                propagatorCallCount.incrementAndGet();
+                return task;
+            };
             parallelHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, countingPropagator);
         }
 
@@ -358,7 +359,7 @@ class ScatterGatherFailoverHandlerTest {
             };
             var capturingHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, capturingPropagator);
 
-            doAnswer(inv -> { seenOnExecutorThread.add(ctx.get()); return null; })
+            doAnswer(_ -> { seenOnExecutorThread.add(ctx.get()); return null; })
                     .when(delegateR).store(any(), any(), any());
 
             capturingHandler.store(failover, ARGS_1_2, result(TP_1, TP_2));

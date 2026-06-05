@@ -461,7 +461,7 @@ class FailoverAutoConfigurationTest {
             @Override public void execute(Runnable task) { task.run(); }
         }
 
-        @org.springframework.context.annotation.Bean(name = "scatterGatherExecutor")
+        @Bean(name = "scatterGatherExecutor")
         public TaskExecutor scatterGatherExecutor() { return new StubExecutor(); }
     }
 

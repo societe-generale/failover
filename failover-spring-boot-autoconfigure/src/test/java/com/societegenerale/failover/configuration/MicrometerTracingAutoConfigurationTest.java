@@ -32,6 +32,7 @@ import static org.mockito.Mockito.mock;
  *
  * @author Anand Manissery
  */
+@SuppressWarnings("java:S2699")
 class MicrometerTracingAutoConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()

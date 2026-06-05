@@ -113,13 +113,13 @@ class FailoverAppTestIT {
     // ── Spring-managed infrastructure ─────────────────────────────────────────
 
     @Autowired
-    private ThirdPartyService           service;
+    private ThirdPartyService service;
     @Autowired
     private ThirdPartyServiceController ctrl;
     @Autowired
-    private JdbcTemplate                jdbc;
+    private JdbcTemplate jdbc;
     @Autowired
-    private FailoverHandler<Object>     failoverHandler;
+    private FailoverHandler<Object> failoverHandler;
     @Autowired
     private FailoverClock failoverClock;
 
@@ -689,7 +689,16 @@ class FailoverAppTestIT {
     @DisplayName("9 · Custom RecoveredPayloadHandler — empty object with error metadata on zero recovery")
     class CustomRecoveredPayloadHandlerIT {
 
-        static final String NAME = "it-tp-single";
+        private static final String NAME = "it-tp-single";
+
+        @Autowired
+        private ThirdPartyService handlerService;
+        @Autowired
+        private ThirdPartyServiceController handlerCtrl;
+        @Autowired
+        private JdbcTemplate handlerJdbc;
+        @Autowired
+        private FailoverClock handlerClock;
 
         @TestConfiguration
         static class EmptyFallbackConfig {
@@ -715,11 +724,6 @@ class FailoverAppTestIT {
                 };
             }
         }
-
-        @Autowired ThirdPartyService           handlerService;
-        @Autowired ThirdPartyServiceController handlerCtrl;
-        @Autowired JdbcTemplate                handlerJdbc;
-        @Autowired FailoverClock               handlerClock;
 
         @BeforeEach
         void reset() {
