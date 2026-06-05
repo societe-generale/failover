@@ -96,6 +96,10 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
 
     /**
      * Sequential constructor — no executor, no context propagator. Backward-compatible default.
+     *
+     * @param delegateT             handler for composite-type operations
+     * @param delegateR             handler for slice-type operations
+     * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
      */
     public ScatterGatherFailoverHandler(
             FailoverHandler<T> delegateT,
@@ -105,9 +109,15 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     }
 
     /**
-     * Stores {@code payload} via scatter when a {@link com.societegenerale.failover.annotations.Failover#payloadSplitter()}
-     * is configured; otherwise delegates unchanged to {@code delegateT}.
-     * Returns {@code null} immediately if {@code payload} is null.
+     * Stores {@code payload} via scatter when {@link Failover#payloadSplitter()} is configured;
+     * otherwise delegates unchanged to {@code delegateT}.
+     * Returns {@code null} immediately if {@code payload} is {@code null}.
+     *
+     * @param failover the {@link Failover} annotation on the intercepted method
+     * @param args     the method arguments
+     * @param payload  the method return value to store; {@code null} is a no-op
+     * @return the original {@code payload} (scatter path) or the delegate's return value (pass-through path)
+     * @throws PayloadSplitterNotFoundException if {@link Failover#payloadSplitter()} names a bean that does not exist
      */
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
@@ -123,8 +133,19 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     }
 
     /**
-     * Recovers the composite payload via gather when a splitter is configured;
+     * Recovers the composite payload via gather when {@link Failover#payloadSplitter()} is configured;
      * otherwise delegates unchanged to {@code delegateT}.
+     *
+     * <p>In scatter mode each slice is recovered individually via {@code delegateR} and the results
+     * are merged back into a {@code T} by the {@link PayloadSplitter#merge} method. Returns
+     * {@code null} if the splitter's {@code merge} produces a context with a {@code null} payload.
+     *
+     * @param failover the {@link Failover} annotation on the intercepted method
+     * @param args     the method arguments (used to derive per-slice keys via the splitter)
+     * @param clazz    the composite return type {@code T}
+     * @param cause    the exception thrown by the primary method invocation
+     * @return the recovered composite payload, or {@code null} if recovery produced no data
+     * @throws PayloadSplitterNotFoundException if {@link Failover#payloadSplitter()} names a bean that does not exist
      */
     @Override
     public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
@@ -136,7 +157,11 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     }
 
     /**
-     * Delegates cleanup to both {@code delegateT} and {@code delegateR}.
+     * Triggers expiry cleanup on both {@code delegateT} and {@code delegateR}.
+     *
+     * <p>When both delegates are the same instance (the common auto-configured case),
+     * {@code clean()} is called twice — once per role — so each delegate's cleanup
+     * semantics are honoured independently of object identity.
      */
     @Override
     public void clean() {
