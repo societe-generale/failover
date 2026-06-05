@@ -180,44 +180,52 @@ Country findByCode(String code);
 <p>Spring AOP intercepts every annotated method. The rest is automatic.</p>
 </div>
 
+
+
 <div class="fo-flow-wrap">
+<p class="fo-diagram-label">Call flow</p>
 
 ```mermaid
-sequenceDiagram
-    participant C as 🖥️ Your Code
-    participant A as FailoverAspect
-    participant K as KeyGenerator
-    participant S as FailoverStore
-    participant U as 🌐 Upstream API
-
-    C->>A: findByCode("FR")
-    A->>U: HTTP call
-
-    alt ✅ Success
-        U-->>A: Country{code=FR, name=France}
-        A->>K: key(args=["FR"]) → "FR"
-        A->>S: store("FR", payload, expiry=now+24h)
-        A-->>C: Country{upToDate=true}
-    else ❌ Failure
-        U-->>A: ConnectException / timeout / 5xx
-        A->>K: key(args=["FR"]) → "FR"
-        A->>S: find("FR")
-        S-->>A: Country{stored 3h ago}
-        A-->>C: Country{upToDate=false, asOf=3h ago}
-    end
+flowchart LR
+    C([Your Code]) --> A{FailoverAspect}
+    A -->|invoke| U([Upstream API])
+    U -- "✅ success" --> ST[Store payload + TTL]
+    ST --> R1([return upToDate=true])
+    U -- "❌ failure" --> Q[Query store]
+    Q -- "fresh entry" --> R2([return upToDate=false])
+    Q -- "expired / missing" --> R3([re-throw])
 ```
 
-<div class="fo-flow-caption">
-  <div class="fo-flow-item">
-    <div class="fo-flow-dot success"></div>
-    <p><strong>On success</strong> — result persisted under the derived key with the configured TTL. <code>upToDate=true</code> set on the returned object.</p>
-  </div>
-  <div class="fo-flow-item">
-    <div class="fo-flow-dot failure"></div>
-    <p><strong>On failure</strong> — last stored result returned. If none or expired: re-throw (default) or return <code>null</code> via <code>exception-policy: never_throw</code>.</p>
-  </div>
 </div>
 
+<div class="fo-flow-wrap">
+<p class="fo-diagram-label">Entry lifecycle</p>
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*]     --> Live    : first successful call
+    Live    --> Live    : success — TTL refreshed
+    Live    --> Stale   : upstream fails, entry still fresh
+    Stale   --> Live    : upstream recovers
+    Stale   --> Expired : TTL exceeded
+    Expired --> [*]     : re-throw / null
+```
+
+</div>
+
+
+<div class="fo-flow-wrap">
+    <div class="fo-flow-caption">
+      <div class="fo-flow-item">
+        <div class="fo-flow-dot success"></div>
+        <p><strong>On success</strong> — result persisted under the derived key with the configured TTL. <code>upToDate=true</code> set on the returned object.</p>
+      </div>
+      <div class="fo-flow-item">
+        <div class="fo-flow-dot failure"></div>
+        <p><strong>On failure</strong> — last stored result returned. If none or expired: re-throw (default) or return <code>null</code> via <code>exception-policy: never_throw</code>.</p>
+      </div>
+    </div>
 </div>
 
 <!-- ══════════════════ INTEGRATIONS ══════════════════ -->

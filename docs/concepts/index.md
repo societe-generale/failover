@@ -32,6 +32,33 @@ stateDiagram-v2
     Expired --> [*]     : re-throw / null
 ```
 
+## Detailed sequence
+
+```mermaid
+sequenceDiagram
+    participant C as 🖥️ Your Code
+    participant A as FailoverAspect
+    participant K as KeyGenerator
+    participant S as FailoverStore
+    participant U as 🌐 Upstream API
+
+    C->>A: findByCode("FR")
+    A->>U: HTTP call
+
+    alt ✅ Success
+        U-->>A: Country{code=FR, name=France}
+        A->>K: key(args=["FR"]) → "FR"
+        A->>S: store("FR", payload, expiry=now+24h)
+        A-->>C: Country{upToDate=true}
+    else ❌ Failure
+        U-->>A: ConnectException / timeout / 5xx
+        A->>K: key(args=["FR"]) → "FR"
+        A->>S: find("FR")
+        S-->>A: Country{stored 3h ago}
+        A-->>C: Country{upToDate=false, asOf=3h ago}
+    end
+```
+
 ## Topic reference
 
 | Concept | Description |

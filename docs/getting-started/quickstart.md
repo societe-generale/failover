@@ -30,28 +30,53 @@ Build a complete failover-enabled service in 5 minutes.
 
 ## 2. Configure
 
-```yaml title="application.yml"
-failover:
-  package-to-scan: com.example.myapp
-  store:
-    type: jdbc
-    jdbc:
-      table-prefix: DEMO_
-```
+=== "In-memory Store"
 
-Create the database table:
+    ```yaml title="application.yml"
+    failover:
+      package-to-scan: com.example.myapp
+    
+    # Non Prod ( default ) configuration with in-memory store. Not recommended for production use.
+    
+    ```
 
-```sql
-CREATE TABLE DEMO_FAILOVER_STORE (
-    FAILOVER_NAME  VARCHAR(50)  NOT NULL,
-    FAILOVER_KEY   VARCHAR(256) NOT NULL,
-    AS_OF          TIMESTAMP    NOT NULL,
-    EXPIRE_ON      TIMESTAMP    NOT NULL,
-    PAYLOAD        VARCHAR(4000),
-    PAYLOAD_CLASS  VARCHAR(256),
-    PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
-);
-```
+=== "Caffeine Store"
+
+    ```yaml title="application.yml"
+    failover:
+      package-to-scan: com.example.myapp
+      store:
+        type: caffeine
+
+    # Non Prod configuration with caffeine store. Not recommended for production use.
+
+    ```
+
+=== "Jdbc Store"
+
+    ```yaml title="application.yml"
+    failover:
+      package-to-scan: com.example.myapp
+      store:
+        type: jdbc
+        jdbc:
+          table-prefix: DEMO_
+    
+    # Production-ready configuration with jdbc store. Make sure to have the failover store table created in your database.
+
+    ```
+     
+    ```sql title="failover_store.sql"
+    CREATE TABLE DEMO_FAILOVER_STORE (
+        FAILOVER_NAME  VARCHAR(50)  NOT NULL,
+        FAILOVER_KEY   VARCHAR(256) NOT NULL,
+        AS_OF          TIMESTAMP    NOT NULL,
+        EXPIRE_ON      TIMESTAMP    NOT NULL,
+        PAYLOAD        VARCHAR(4000),
+        PAYLOAD_CLASS  VARCHAR(256),
+        PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
+    );
+    ```
 
 ---
 
@@ -59,35 +84,43 @@ CREATE TABLE DEMO_FAILOVER_STORE (
 
 If you want failover metadata (`upToDate`, `asOf`) embedded in your response object, extend `Referential` or implement `ReferentialAware`.
 
-```java
-// Option A: extend Referential (adds upToDate, asOf, metadata fields)
-@Data
-@EqualsAndHashCode(callSuper = false)
-public class Country extends Referential {
-    private String code;
-    private String name;
-    private String currency;
-}
+=== "Referential"
+    
+    ```java
+    // Option A: extend Referential (adds upToDate, asOf, metadata fields)
+    @Data
+    @EqualsAndHashCode(callSuper = false)
+    public class Country extends Referential {
+        private String code;
+        private String name;
+        private String currency;
+    }
 
-// Option B: implement ReferentialAware (any existing class, no inheritance)
-@Data
-public class Country implements ReferentialAware {
-    private String code;
-    private String name;
-    private String currency;
+    ```
 
-    // failover metadata — populated automatically on recovery
-    private Boolean upToDate;
-    private LocalDateTime asOf;
-    private Metadata metadata = new Metadata();
+=== "ReferentialAware"
 
-    @Override public void setUpToDate(Boolean upToDate) { this.upToDate = upToDate; }
-    @Override public void setAsOf(LocalDateTime asOf)   { this.asOf = asOf; }
-    @Override public void setMetadata(Metadata metadata){ this.metadata = metadata; }
-}
-```
 
-Both options are optional. If your domain type implements neither, failover still works — you just won't get the `upToDate`/`asOf` fields populated on recovery.
+    ```java
+    // Option B: implement ReferentialAware (any existing class, no inheritance)
+    @Data
+    public class Country implements ReferentialAware {
+        private String code;
+        private String name;
+        private String currency;
+    
+        // failover metadata — populated automatically on recovery
+        private Boolean upToDate;
+        private LocalDateTime asOf;
+        private Metadata metadata = new Metadata();
+    
+        @Override public void setUpToDate(Boolean upToDate) { this.upToDate = upToDate; }
+        @Override public void setAsOf(LocalDateTime asOf)   { this.asOf = asOf; }
+        @Override public void setMetadata(Metadata metadata){ this.metadata = metadata; }
+    }
+    ```
+
+Both options are optional. If your domain type implements neither, failover still works — you just won't get the `upToDate`/`asOf`/`metadata` fields populated on recovery.
 
 ---
 
