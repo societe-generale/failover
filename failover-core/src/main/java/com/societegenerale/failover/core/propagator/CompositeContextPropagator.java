@@ -17,8 +17,10 @@
 package com.societegenerale.failover.core.propagator;
 
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * {@link ContextPropagator} that chains multiple propagators, applying each in order.
@@ -49,10 +51,11 @@ public class CompositeContextPropagator implements ContextPropagator {
      * All context is captured on the calling thread at this point.
      */
     @Override
-    public Runnable wrap(Runnable task) {
+    public @NonNull Runnable wrap(@NonNull Runnable task) {
         Runnable wrapped = task;
         for (ContextPropagator propagator : propagators) {
-            wrapped = propagator.wrap(wrapped);
+            wrapped = Objects.requireNonNull(propagator.wrap(wrapped),
+                    () -> propagator.getClass().getSimpleName() + ".wrap() returned null");
         }
         return wrapped;
     }

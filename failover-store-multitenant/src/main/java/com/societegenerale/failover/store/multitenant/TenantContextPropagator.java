@@ -19,6 +19,7 @@ package com.societegenerale.failover.store.multitenant;
 import com.societegenerale.failover.core.propagator.CompositeContextPropagator;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.core.propagator.MdcContextPropagator;
+import org.jspecify.annotations.NonNull;
 
 /**
  * {@link ContextPropagator} that propagates the current tenant ID from {@link TenantContext}
@@ -44,7 +45,7 @@ import com.societegenerale.failover.core.propagator.MdcContextPropagator;
 public class TenantContextPropagator implements ContextPropagator {
 
     @Override
-    public Runnable wrap(Runnable task) {
+    public @NonNull Runnable wrap(@NonNull Runnable task) {
         String capturedTenantId = TenantContext.get();
         return () -> {
             String previousTenantId = TenantContext.get();

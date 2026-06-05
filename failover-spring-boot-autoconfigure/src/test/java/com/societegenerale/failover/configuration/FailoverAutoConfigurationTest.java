@@ -50,6 +50,7 @@ import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
 import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
 import io.micrometer.tracing.Tracer;
+import org.jspecify.annotations.NonNull;
 import org.mockito.Mockito;
 import org.springframework.core.task.TaskExecutor;
 import org.junit.jupiter.api.DisplayName;
@@ -492,7 +493,7 @@ class FailoverAutoConfigurationTest {
     static class CustomContextPropagatorConfig {
 
         static class StubPropagator implements ContextPropagator {
-            @Override public Runnable wrap(Runnable task) { return task; }
+            @Override public @NonNull Runnable wrap(@NonNull Runnable task) { return task; }
         }
 
         @Bean

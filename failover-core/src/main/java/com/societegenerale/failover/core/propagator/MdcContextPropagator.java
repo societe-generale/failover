@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.core.propagator;
 
+import org.jspecify.annotations.NonNull;
 import org.slf4j.MDC;
 
 import java.util.Map;
@@ -39,7 +40,7 @@ import java.util.Map;
 public class MdcContextPropagator implements ContextPropagator {
 
     @Override
-    public Runnable wrap(Runnable task) {
+    public @NonNull Runnable wrap(@NonNull Runnable task) {
         Map<String, String> capturedMdc = MDC.getCopyOfContextMap();
         return () -> {
             Map<String, String> previousMdc = MDC.getCopyOfContextMap();

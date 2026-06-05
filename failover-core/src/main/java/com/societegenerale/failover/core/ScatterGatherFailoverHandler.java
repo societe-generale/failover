@@ -141,7 +141,9 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     @Override
     public void clean() {
         delegateT.clean();
-        delegateR.clean();
+        if(delegateR != delegateT) {
+            delegateR.clean();
+        }
     }
 
     // ── Scatter / Gather ──────────────────────────────────────────────────────
@@ -177,7 +179,6 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
                         ctx -> CompletableFuture.supplyAsync(contextPropagator.wrapSupplier(() -> recoverSlice(ctx)), executor)
                     )
                     .toList();
-            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
             recovered = futures.stream().map(CompletableFuture::join).toList();
         } else {
             recovered = slices.stream().map(this::recoverSlice).toList();

@@ -241,13 +241,13 @@ class ScatterGatherFailoverHandlerTest {
         }
 
         @Test
-        @DisplayName("should call clean on both delegateT and delegateR independently — same instance gets called twice")
+        @DisplayName("should not call clean on both delegateT and delegateR if its same reference — same instance should not be called twice")
         @SuppressWarnings({"unchecked", "rawtypes"})
-        void shouldCleanBothDelegatesEvenWhenSameInstance() {
+        void shouldNotCleanBothDelegatesWhenSameInstance() {
             FailoverHandler sameDelegate = Mockito.mock(FailoverHandler.class);
             var h = new ScatterGatherFailoverHandler<>(sameDelegate, sameDelegate, payloadSplitterLookup);
             h.clean();
-            verify(sameDelegate, times(2)).clean();
+            verify(sameDelegate).clean();
         }
     }
 

@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CompositeContextPropagatorTest {
 
@@ -74,6 +75,44 @@ class CompositeContextPropagatorTest {
         // Just verify both construct without error and the task runs
         assertThat(varargsCount.get()).isEqualTo(0);
         assertThat(listCount.get()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("empty propagator list — wrap() returns task unchanged")
+    void emptyPropagatorListReturnsTaskUnchanged() {
+        AtomicInteger count = new AtomicInteger();
+        Runnable task = count::incrementAndGet;
+
+        Runnable wrapped = CompositeContextPropagator.of().wrap(task);
+        wrapped.run();
+
+        assertThat(count.get()).isEqualTo(1);
+        assertThat(wrapped).isSameAs(task);
+    }
+
+    @Test
+    @DisplayName("wrap() throws NullPointerException when a propagator returns null — fails fast with clear message")
+    @SuppressWarnings("DataFlowIssue")
+    void wrapThrowsWhenPropagatorReturnsNull() {
+        ContextPropagator nullReturning = ignored -> null;
+        CompositeContextPropagator composite = CompositeContextPropagator.of(nullReturning);
+
+        assertThatThrownBy(() -> composite.wrap(() -> {}))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("wrap() returned null");
+    }
+
+    @Test
+    @DisplayName("wrap() throws NullPointerException naming the offending propagator when second in chain returns null")
+    @SuppressWarnings("DataFlowIssue")
+    void wrapThrowsNamingOffendingPropagatorWhenSecondReturnsNull() {
+        ContextPropagator good = task -> task;
+        ContextPropagator nullReturning = ignored -> null;
+        CompositeContextPropagator composite = CompositeContextPropagator.of(good, nullReturning);
+
+        assertThatThrownBy(() -> composite.wrap(() -> {}))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("wrap() returned null");
     }
 
     @Test

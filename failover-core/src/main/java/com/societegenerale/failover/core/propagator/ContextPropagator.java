@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core.propagator;
 
 import com.societegenerale.failover.core.ScatterGatherFailoverHandler;
+import org.jspecify.annotations.NonNull;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -59,7 +60,7 @@ public interface ContextPropagator {
      * @param task the task to wrap with context propagator
      * @return a context-restoring wrapper around {@code task}
      */
-    Runnable wrap(Runnable task);
+    @NonNull Runnable wrap(@NonNull Runnable task);
 
     /**
      * Variant of {@link #wrap} for tasks that produce a value.
@@ -81,7 +82,7 @@ public interface ContextPropagator {
      * No-op propagator — passes tasks through unchanged.
      * Suitable when no thread-bound context needs to be propagated.
      */
-    static ContextPropagator noOp() {
+    static @NonNull ContextPropagator noOp() {
         return task -> task;
     }
 }
