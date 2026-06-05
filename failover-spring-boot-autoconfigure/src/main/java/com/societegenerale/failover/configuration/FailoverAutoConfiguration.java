@@ -30,6 +30,13 @@ import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
+import com.societegenerale.failover.core.payload.splitter.BeanFactoryPayloadSplitterLookup;
+import com.societegenerale.failover.core.payload.splitter.PayloadSplitterLookup;
+import com.societegenerale.failover.core.propagator.CompositeContextPropagator;
+import com.societegenerale.failover.core.propagator.ContextPropagator;
+import com.societegenerale.failover.core.propagator.MdcContextPropagator;
+import com.societegenerale.failover.propagator.MicrometerContextPropagator;
+import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
 import com.societegenerale.failover.core.report.*;
 import com.societegenerale.failover.core.report.manifest.*;
 import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
@@ -41,6 +48,7 @@ import com.societegenerale.failover.properties.FailoverType;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ReportScheduler;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -50,13 +58,15 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.List;
 
 /**
- * Root Spring Boot auto-configuration for the failover framework.
+ * Root Spring Boot autoconfiguration for the failover framework.
  *
  * <p>Activates when {@code failover.enabled=true} (the default). Registers all core
  * failover infrastructure beans: AOP aspect, expiry policy, key generators, payload
@@ -133,6 +143,51 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean
+    public PayloadSplitterLookup<Object, Object> payloadSplitterLookup() {
+        return new BeanFactoryPayloadSplitterLookup<>();
+    }
+
+    /**
+     * Composes the active {@link ContextPropagator} from available propagator beans:
+     * <ol>
+     *   <li>{@link TenantContextPropagator} — present when {@code failover.store.multitenant.enabled=true}</li>
+     *   <li>{@link MicrometerContextPropagator} — present when {@code io.micrometer.tracing.Tracer} is on classpath and a {@code Tracer} bean exists</li>
+     *   <li>{@link MdcContextPropagator} — always included</li>
+     * </ol>
+     * Declare your own {@code ContextPropagator} bean to replace this composition entirely.
+     */
+    @ConditionalOnMissingBean(name = "contextPropagator")
+    @Bean
+    public ContextPropagator contextPropagator(
+            ObjectProvider<TenantContextPropagator> tenantPropagatorProvider,
+            ObjectProvider<MicrometerContextPropagator> micrometerPropagatorProvider) {
+        List<ContextPropagator> propagators = new java.util.ArrayList<>();
+        tenantPropagatorProvider.ifAvailable(propagators::add);
+        micrometerPropagatorProvider.ifAvailable(propagators::add);
+        propagators.add(new MdcContextPropagator());
+        return propagators.size() == 1
+                ? propagators.getFirst()
+                : CompositeContextPropagator.of(propagators);
+    }
+
+    /**
+     * Virtual-thread executor for parallel slice dispatch in scatter/gather operations.
+     * Activated only when {@code failover.scatter.parallel=true}.
+     *
+     * <p>Override by declaring a bean named {@code scatterGatherExecutor}.
+     */
+    @ConditionalOnMissingBean(name = "scatterGatherExecutor")
+    @ConditionalOnProperty(prefix = "failover.scatter", name = "parallel", havingValue = "true")
+    @Bean(name = "scatterGatherExecutor")
+    public TaskExecutor scatterGatherExecutor() {
+        var executor = new SimpleAsyncTaskExecutor("failover-scatter-");
+        executor.setVirtualThreads(true);
+        log.info("ScatterGather executor configured with virtual threads (failover.scatter.parallel=true).");
+        return executor;
+    }
+
+    @ConditionalOnMissingBean
+    @Bean
     public FailoverScanner failoverScanner(FailoverProperties failoverProperties) {
         return new DefaultFailoverScanner(failoverProperties.getPackageToScan());
     }
@@ -161,8 +216,22 @@ public class FailoverAutoConfiguration {
 
     @ConditionalOnMissingBean
     @Bean
-    public FailoverHandler<Object> failoverHandler(@Qualifier("failoverKeyGenerator") KeyGenerator keyGenerator, @Qualifier("failoverExpiryPolicy")ExpiryPolicy<Object> expiryPolicy, FailoverClock clock, FailoverStore<Object> failoverStore, PayloadEnricher<Object> payloadEnricher, RecoveredPayloadHandler recoveredPayloadHandler, CompositeReportPublisher reportPublisher, FailoverExpiryExtractor failoverExpiryExtractor) {
-        return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
+    public FailoverHandler<Object> failoverHandler(
+            @Qualifier("failoverKeyGenerator") KeyGenerator keyGenerator,
+            @Qualifier("failoverExpiryPolicy") ExpiryPolicy<Object> expiryPolicy,
+            FailoverClock clock,
+            FailoverStore<Object> failoverStore,
+            PayloadEnricher<Object> payloadEnricher,
+            RecoveredPayloadHandler recoveredPayloadHandler,
+            CompositeReportPublisher reportPublisher,
+            FailoverExpiryExtractor failoverExpiryExtractor,
+            PayloadSplitterLookup<Object,Object> payloadSplitterLookup,
+            @Qualifier("contextPropagator") ContextPropagator contextPropagator,
+            @Qualifier("scatterGatherExecutor") ObjectProvider<TaskExecutor> scatterGatherExecutorProvider) {
+        var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
+        var scatterHandler = new ScatterGatherFailoverHandler<>(defaultHandler, defaultHandler, payloadSplitterLookup,
+                scatterGatherExecutorProvider.getIfAvailable(), contextPropagator);
+        return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
     }
 
     @ConditionalOnMissingBean

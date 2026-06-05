@@ -18,12 +18,14 @@ package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
+import com.societegenerale.failover.core.propagator.CompositeContextPropagator;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.MultiTenant;
 import com.societegenerale.failover.properties.TenantConfig;
 import com.societegenerale.failover.store.FailoverStoreCaffeine;
 import com.societegenerale.failover.store.FailoverStoreJdbc;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
+import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
 import com.societegenerale.failover.store.multitenant.TenantStoreFactory;
 import com.societegenerale.failover.store.resolver.DatabaseResolver;
 import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
@@ -56,6 +58,17 @@ import org.springframework.jdbc.core.RowMapper;
 @EnableConfigurationProperties(FailoverProperties.class)
 @Slf4j
 public class FailoverStoreMultiTenantAutoConfiguration {
+
+    /**
+     * Registers {@link TenantContextPropagator} so that scatter/gather slice tasks dispatched to
+     * executor threads carry the correct tenant ID. Picked up by {@link FailoverAutoConfiguration}
+     * and composed into the {@link CompositeContextPropagator}.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public TenantContextPropagator tenantContextPropagator() {
+        return new TenantContextPropagator();
+    }
 
     // ─── TenantStoreFactory (per store type) ─────────────────────────────────
 

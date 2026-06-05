@@ -64,6 +64,9 @@ public class FailoverProperties implements InitializingBean {
     private ExceptionPolicy exceptionPolicy = RETHROW;
 
     @NestedConfigurationProperty()
+    private Scatter  scatter = new Scatter();
+
+    @NestedConfigurationProperty()
     private Store store = new Store();
 
     @NestedConfigurationProperty()

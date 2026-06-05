@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.expiry;
+package com.societegenerale.failover.core.payload.splitter;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.BeansException;
@@ -24,15 +24,20 @@ import org.springframework.beans.factory.BeanFactoryAware;
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 
 /**
+ * Spring {@link BeanFactory}-backed implementation of {@link PayloadSplitterLookup}.
+ *
+ * <p>Resolves a {@link PayloadSplitter} by delegating to
+ * {@link BeanFactory#getBean(String, Class)}, which matches by both qualifier and bean name.
+ *
  * @author Anand Manissery
  */
-public class BeanFactoryExpiryPolicyLookup<T> implements ExpiryPolicyLookup<T>, BeanFactoryAware {
+public class BeanFactoryPayloadSplitterLookup<T,R> implements PayloadSplitterLookup<T,R>, BeanFactoryAware {
 
     private BeanFactory beanFactory;
 
     @Override
-    public ExpiryPolicy<T> lookup(String name) {
-        return cast(beanFactory.getBean(name, ExpiryPolicy.class));
+    public PayloadSplitter<T, R> lookup(String name) {
+        return cast(beanFactory.getBean(name, PayloadSplitter.class));
     }
 
     @Override
