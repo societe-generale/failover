@@ -1,0 +1,53 @@
+# API Reference
+
+Full Javadoc for all modules, generated via `mvn javadoc:aggregate`.
+
+!!! note "Generating Javadoc"
+    The embedded Javadoc is available after building the site with Javadoc generated:
+
+    ```bash
+    # 1. Generate aggregate Javadoc
+    mvn javadoc:aggregate -q
+
+    # 2. Copy into docs tree
+    mkdir -p docs/api/javadoc
+    cp -r target/site/apidocs/. docs/api/javadoc/
+
+    # 3. Build and serve
+    mkdocs serve
+    ```
+
+    On GitHub Pages, the CI workflow does this automatically on every push to `main`.
+
+## Public API Overview
+
+### failover-domain
+
+| Type | Description |
+|---|---|
+| `@Failover` | Method-level annotation. Declares a failover point with name, expiry, key generator, expiry policy, and optional payload splitter. |
+| `Referential` | Abstract base class. Extend to get `upToDate`, `asOf`, `metadata` populated automatically on recovery. |
+| `ReferentialAware` | Interface alternative to `Referential`. Implement to receive metadata without inheriting from an abstract class. |
+| `Metadata` | Container for additional recovery metadata. |
+
+### failover-core
+
+| Type | Description |
+|---|---|
+| `FailoverHandler<T>` | Central handler: `store`, `recover`, `clean`. |
+| `FailoverStore<T>` | Store abstraction: `store`, `find`, `delete`, `cleanByExpiry`. |
+| `KeyGenerator` | Derives a store key from method arguments. |
+| `ExpiryPolicy<T>` | Computes and checks TTL. |
+| `PayloadEnricher<T>` | Populates metadata on domain objects at store/recover time. |
+| `RecoveredPayloadHandler` | Post-recovery payload transformer. |
+| `ContextPropagator` | Captures and restores thread-local context for async dispatch. |
+| `FailoverReporter` | Emits store/recover events. |
+
+### failover-store-multitenant
+
+| Type | Description |
+|---|---|
+| `TenantResolver` | Implement and declare as a bean to provide the current tenant ID. |
+| `TenantContext` | Thread-local holder for tenant ID. |
+| `TenantContextPropagator` | `ContextPropagator` implementation for tenant context. |
+| `TenantStoreFactory<T>` | Creates a `FailoverStore` per tenant. |

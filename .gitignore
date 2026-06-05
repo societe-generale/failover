@@ -33,3 +33,7 @@ build/
 .vscode/
 
 .temp/
+
+### MkDocs ###
+site/
+docs/api/javadoc/

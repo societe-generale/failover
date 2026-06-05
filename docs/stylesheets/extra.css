@@ -1,0 +1,174 @@
+/* ── Hero ────────────────────────────────────────────────── */
+.fo-hero {
+  padding: 4rem 1rem 3rem;
+  text-align: center;
+  background: linear-gradient(135deg, #1a237e 0%, #283593 40%, #1565c0 100%);
+  border-radius: 1rem;
+  margin-bottom: 2.5rem;
+  color: #fff;
+}
+
+.fo-hero h1 {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.75rem;
+  color: #fff;
+  border: none;
+}
+
+.fo-hero p {
+  font-size: 1.2rem;
+  opacity: 0.9;
+  max-width: 680px;
+  margin: 0 auto 1.75rem;
+  line-height: 1.6;
+}
+
+.fo-badges {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.fo-badges img {
+  height: 22px;
+}
+
+.fo-hero-btns {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.fo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1.5rem;
+  border-radius: 0.4rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none !important;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.fo-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+
+.fo-btn-primary {
+  background: #fff;
+  color: #1a237e !important;
+}
+
+.fo-btn-secondary {
+  background: rgba(255,255,255,0.15);
+  color: #fff !important;
+  border: 1px solid rgba(255,255,255,0.4);
+}
+
+/* ── One-liner callout ───────────────────────────────────── */
+.fo-oneliner {
+  text-align: center;
+  font-size: 1.05rem;
+  margin: -1rem 0 2rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* ── Why section ─────────────────────────────────────────── */
+.fo-why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0 2.5rem;
+}
+
+.fo-why-card {
+  background: var(--md-code-bg-color);
+  border-radius: 0.75rem;
+  padding: 1.4rem 1.25rem;
+  border-left: 4px solid var(--md-accent-fg-color);
+}
+
+.fo-why-card .fo-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.fo-why-card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.fo-why-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--md-default-fg-color--light);
+}
+
+/* ── Feature pills ───────────────────────────────────────── */
+.fo-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1rem 0 2.5rem;
+}
+
+.fo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 2rem;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── Module tree ─────────────────────────────────────────── */
+.fo-module-tree {
+  background: var(--md-code-bg-color);
+  border-radius: 0.75rem;
+  padding: 1.5rem 1.75rem;
+  font-family: var(--md-code-font);
+  font-size: 0.875rem;
+  line-height: 1.9;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.fo-module-tree .starter {
+  font-weight: 700;
+  color: var(--md-accent-fg-color);
+  font-size: 1rem;
+}
+
+.fo-module-tree .tag {
+  opacity: 0.55;
+  font-size: 0.8rem;
+}
+
+/* ── Section headers ─────────────────────────────────────── */
+.fo-section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--md-accent-fg-color);
+  margin-bottom: 0.25rem;
+}
+
+/* ── Responsive tweaks ───────────────────────────────────── */
+@media (max-width: 600px) {
+  .fo-hero h1 { font-size: 2rem; }
+  .fo-hero p  { font-size: 1rem; }
+}
