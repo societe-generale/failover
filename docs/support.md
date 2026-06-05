@@ -1,3 +1,7 @@
+---
+icon: material/lifebuoy
+---
+
 # Support
 
 ## Bug Reports

@@ -1,3 +1,7 @@
+---
+icon: material/book-open-variant
+---
+
 # API Reference
 
 Full Javadoc for all modules, generated via `mvn javadoc:aggregate`.

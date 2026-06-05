@@ -1,3 +1,7 @@
+---
+icon: material/database-outline
+---
+
 # Store Types
 
 The backing store is configured via `failover.store.type`. Four implementations are available.

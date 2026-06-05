@@ -1,3 +1,7 @@
+---
+icon: material/domain
+---
+
 # Multi-Tenant Store Module
 
 `failover-store-multitenant` adds tenant routing on top of any backing store. Each request is routed to the correct tenant store based on the current thread's tenant ID.

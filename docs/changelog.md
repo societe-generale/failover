@@ -1,3 +1,7 @@
+---
+icon: material/history
+---
+
 # Changelog
 
 All notable changes are documented here. Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.

@@ -1,3 +1,7 @@
+---
+icon: material/key-variant
+---
+
 # Custom Key Generator
 
 Use a custom `KeyGenerator` when:

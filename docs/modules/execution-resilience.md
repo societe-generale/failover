@@ -1,3 +1,7 @@
+---
+icon: material/shield-check-outline
+---
+
 # Execution Resilience Module
 
 `failover-execution-resilience` integrates the Failover framework with [Resilience4j](https://resilience4j.readme.io/) circuit breakers. Instead of a simple try/catch, the upstream call is wrapped in a circuit breaker that trips after repeated failures and rejects calls during the open state.

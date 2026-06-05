@@ -1,3 +1,7 @@
+---
+icon: material/rocket-launch
+---
+
 # Getting Started
 
 Three steps to add transparent failover to any Spring Boot application.

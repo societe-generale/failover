@@ -1,3 +1,7 @@
+---
+icon: material/information-outline
+---
+
 # About
 
 **Failover** is an open-source Spring Boot library built at [Société Générale](https://www.societegenerale.com) to provide transparent failover for referential data.

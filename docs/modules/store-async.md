@@ -1,3 +1,7 @@
+---
+icon: material/lightning-bolt-outline
+---
+
 # Async Store Module
 
 `failover-store-async` is a decorator that wraps any `FailoverStore` and offloads write operations to a background `TaskExecutor`. Read operations (`find`) remain synchronous to guarantee consistent recovery.

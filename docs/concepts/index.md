@@ -1,3 +1,7 @@
+---
+icon: material/brain
+---
+
 # Concepts
 
 Core ideas behind the Failover framework.

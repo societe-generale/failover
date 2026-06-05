@@ -1,3 +1,7 @@
+---
+icon: material/lightning-bolt
+---
+
 # Quickstart
 
 Build a complete failover-enabled service in 5 minutes.

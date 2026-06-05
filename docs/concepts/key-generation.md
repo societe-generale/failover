@@ -1,3 +1,7 @@
+---
+icon: material/key-outline
+---
+
 # Key Generation
 
 The store key uniquely identifies a stored entry within a named failover. It is derived from the method arguments at both store time and recover time, so the same arguments always map to the same stored value.

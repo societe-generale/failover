@@ -1,3 +1,7 @@
+---
+icon: material/tune
+---
+
 # Configuration
 
 All failover properties are bound to the `failover.*` prefix and are available as YAML, properties, or environment variables.

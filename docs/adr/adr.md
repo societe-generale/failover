@@ -1,3 +1,7 @@
+---
+icon: material/file-document-multiple-outline
+---
+
 # Architecture Decisions
 
 !!! info "Immutable history"

@@ -1,3 +1,7 @@
+---
+icon: material/cog-outline
+---
+
 # How It Works
 
 ## The Store / Recover Lifecycle

@@ -1,3 +1,7 @@
+---
+icon: material/memory
+---
+
 # Caffeine Store Module
 
 `failover-store-caffeine` provides an in-process cache-backed `FailoverStore` using [Caffeine](https://github.com/ben-manes/caffeine). Entries survive method failures but are lost on application restart.

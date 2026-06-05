@@ -1,3 +1,7 @@
+---
+icon: material/domain
+---
+
 # Multi-Tenant
 
 Multi-tenant mode routes each request to the correct tenant store based on the current thread's tenant context.

@@ -1,3 +1,7 @@
+---
+icon: material/code-braces
+---
+
 # Custom Payload Enricher
 
 `PayloadEnricher` populates metadata fields on domain objects. The default implementation sets `upToDate`, `asOf`, and `metadata` on types that implement `Referential` or `ReferentialAware`.

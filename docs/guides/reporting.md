@@ -1,3 +1,7 @@
+---
+icon: material/chart-line
+---
+
 # Reporting
 
 The failover framework emits events on every store and recover operation. Two report publishers are auto-configured; you can add your own or extend the existing ones.

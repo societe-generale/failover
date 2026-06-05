@@ -1,3 +1,7 @@
+---
+icon: material/clock-outline
+---
+
 # Scheduler Module
 
 `failover-scheduler` provides two background jobs that maintain the health of the failover store.

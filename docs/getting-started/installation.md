@@ -1,3 +1,7 @@
+---
+icon: material/package-variant-closed
+---
+
 # Installation
 
 ## Starter Dependency

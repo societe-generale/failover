@@ -1,3 +1,7 @@
+---
+icon: material/source-pull
+---
+
 # Contributing
 
 Contributions are welcome — bug fixes, new features, documentation improvements, and test coverage.

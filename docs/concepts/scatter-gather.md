@@ -1,3 +1,7 @@
+---
+icon: material/scatter-plot
+---
+
 # Scatter / Gather
 
 Standard failover stores the entire method result under one key. For methods that return a collection of entities keyed by ID, this means:

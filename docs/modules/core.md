@@ -1,3 +1,7 @@
+---
+icon: material/cube-outline
+---
+
 # Core Module
 
 `failover-core` contains the central abstractions: handler, key generation, expiry policy, payload enrichment, store interface, and reporting.

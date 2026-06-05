@@ -1,3 +1,7 @@
+---
+icon: material/timer-cog-outline
+---
+
 # Custom Expiry Policy
 
 Use a custom `ExpiryPolicy` when:

@@ -1,3 +1,7 @@
+---
+icon: material/database
+---
+
 # JDBC Store Module
 
 `failover-store-jdbc` provides a relational database-backed `FailoverStore`. Data survives application restarts and is accessible from all application instances simultaneously.

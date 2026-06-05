@@ -1,3 +1,7 @@
+---
+icon: material/format-list-bulleted
+---
+
 # Properties Reference
 
 All properties are prefixed with `failover`.

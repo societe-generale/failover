@@ -1,3 +1,7 @@
+---
+icon: material/timer-outline
+---
+
 # Expiry Policies
 
 Every stored entry has an expiry timestamp. Expired entries are never served on recovery — they are deleted on first access or by the cleanup scheduler.

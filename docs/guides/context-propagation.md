@@ -1,3 +1,7 @@
+---
+icon: material/transit-connection-variant
+---
+
 # Context Propagation
 
 When Failover dispatches work to background threads (async store writes, scatter/gather parallel slices), thread-bound context — tenant ID, MDC log entries, security principal — must be explicitly captured and restored on the executor thread.
