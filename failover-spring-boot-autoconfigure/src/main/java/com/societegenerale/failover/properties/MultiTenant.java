@@ -55,6 +55,9 @@ import java.util.Map;
 @Setter
 public class MultiTenant {
 
+    /** No-arg constructor for Spring property binding. */
+    public MultiTenant() {}
+
     /** Opt-in flag. Defaults to {@code false} — zero impact on existing deployments. */
     private boolean enabled = false;
 
@@ -77,12 +80,33 @@ public class MultiTenant {
     @NestedConfigurationProperty
     private Map<String, TenantConfig> tenants = new LinkedHashMap<>();
 
+    /**
+     * Tenant isolation strategy for the JDBC store.
+     * Ignored by Caffeine and InMemory stores.
+     */
     public enum JdbcMultiTenantStrategy {
         /** Separate table per tenant: {@code tenantPrefix + globalPrefix + "FAILOVER_STORE"}. */
         TABLE_PREFIX,
+
         /**
-         * Separate schema per tenant. The application provides an {@code AbstractRoutingDataSource}
-         * that routes to the correct schema using {@code TenantContext.get()} as the lookup key.
+         * Separate schema (or separate database) per tenant.
+         *
+         * <p>The auto-configured {@code TenantStoreFactory} is TABLE_PREFIX-only and does NOT
+         * implement schema routing. For the SCHEMA strategy you must declare your own
+         * {@code TenantStoreFactory} bean (the auto-configured one is
+         * {@code @ConditionalOnMissingBean} so your bean will replace it).
+         *
+         * <p>The recommended implementation creates a dedicated {@link javax.sql.DataSource}
+         * (and therefore a separate connection pool) per tenant, and maps
+         * {@code tenantId → JdbcTemplate(tenantDataSource)} inside {@code TenantStoreFactory.create()}.
+         * Each {@code FailoverStoreJdbc} then owns its connection — no shared routing needed.
+         *
+         * <p><b>Why not {@code AbstractRoutingDataSource}?</b>
+         * {@code clean()} is invoked by the expiry-cleanup scheduler on its own thread where
+         * {@code TenantContext.get()} is {@code null}. A routing DataSource would resolve
+         * {@code null} to the default schema and clean only that tenant's rows.
+         * Per-tenant DataSources eliminate this problem because each store queries its own
+         * physical database directly with no dependency on {@code TenantContext}.
          */
         SCHEMA
     }

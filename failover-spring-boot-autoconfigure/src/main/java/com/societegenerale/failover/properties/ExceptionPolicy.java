@@ -1,5 +1,11 @@
 package com.societegenerale.failover.properties;
 
+/**
+ * Strategy that governs how the failover framework handles exceptions thrown by
+ * the primary method when recovery is unavailable or the stored entry has expired.
+ *
+ * @author Anand Manissery
+ */
 public enum ExceptionPolicy {
 
     /**

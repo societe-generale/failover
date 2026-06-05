@@ -16,9 +16,12 @@
 
 package com.societegenerale.failover.core.expiry;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
+
+import static com.societegenerale.failover.core.util.CastingUtils.cast;
 
 /**
  * @author Anand Manissery
@@ -29,11 +32,11 @@ public class BeanFactoryExpiryPolicyLookup<T> implements ExpiryPolicyLookup<T>, 
 
     @Override
     public ExpiryPolicy<T> lookup(String name) {
-        return beanFactory.getBean(name, ExpiryPolicy.class);
+        return cast(beanFactory.getBean(name, ExpiryPolicy.class));
     }
 
     @Override
-    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+    public void setBeanFactory(@NonNull BeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;
     }
 }

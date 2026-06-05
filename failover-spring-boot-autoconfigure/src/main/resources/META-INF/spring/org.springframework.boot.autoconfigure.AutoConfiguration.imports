@@ -1,4 +1,5 @@
 com.societegenerale.failover.configuration.FailoverAutoConfiguration
 com.societegenerale.failover.configuration.FailoverStoreMultiTenantAutoConfiguration
 com.societegenerale.failover.configuration.FailoverStoreAutoConfiguration
+com.societegenerale.failover.configuration.MicrometerTracingAutoConfiguration
 com.societegenerale.failover.configuration.ResilienceFailoverExecutionAutoConfiguration
