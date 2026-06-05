@@ -816,6 +816,17 @@ body,
   text-align: center;
 }
 
+.fo-hero-icon {
+  width: 72px; height: 72px;
+  object-fit: contain;
+  margin-bottom: .5rem;
+}
+.fo-hero-brand {
+  font-size: 1rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: #a5b4fc;
+  margin-bottom: .35rem;
+}
+
 .fo-hero-eyebrow {
   display: inline-block;
   background: rgba(99,102,241,.2);
