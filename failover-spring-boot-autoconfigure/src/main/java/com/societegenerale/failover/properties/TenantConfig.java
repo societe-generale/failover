@@ -16,8 +16,7 @@
 
 package com.societegenerale.failover.properties;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * Per-tenant configuration overrides (JDBC only).
@@ -36,8 +35,7 @@ import lombok.Setter;
  *
  * @author Anand Manissery
  */
-@Getter
-@Setter
+@Data
 public class TenantConfig {
 
     /**

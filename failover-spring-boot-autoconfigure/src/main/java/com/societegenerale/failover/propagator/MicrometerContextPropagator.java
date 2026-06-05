@@ -21,7 +21,6 @@ import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.core.propagator.MdcContextPropagator;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
-import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -53,10 +52,18 @@ import org.jspecify.annotations.NonNull;
  * @see ContextPropagator
  * @see CompositeContextPropagator
  */
-@RequiredArgsConstructor
 public class MicrometerContextPropagator implements ContextPropagator {
 
     private final Tracer tracer;
+
+    /**
+     * Creates a propagator backed by the given tracer.
+     *
+     * @param tracer active Micrometer tracer used to capture and restore the current span
+     */
+    public MicrometerContextPropagator(Tracer tracer) {
+        this.tracer = tracer;
+    }
 
     @Override
     public @NonNull Runnable wrap(@NonNull Runnable task) {

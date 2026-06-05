@@ -47,6 +47,15 @@ import org.springframework.context.annotation.Bean;
 @Slf4j
 public class MicrometerTracingAutoConfiguration {
 
+    /** No-arg constructor for Spring autoconfiguration instantiation. */
+    public MicrometerTracingAutoConfiguration() {}
+
+    /**
+     * Registers a {@link MicrometerContextPropagator} that carries the active span across scatter executor threads.
+     *
+     * @param tracer active Micrometer {@link Tracer} bean
+     * @return {@link MicrometerContextPropagator}
+     */
     @ConditionalOnMissingBean
     @ConditionalOnBean(Tracer.class)
     @Bean

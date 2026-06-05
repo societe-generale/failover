@@ -55,6 +55,9 @@ import java.util.Map;
 @Setter
 public class MultiTenant {
 
+    /** No-arg constructor for Spring property binding. */
+    public MultiTenant() {}
+
     /** Opt-in flag. Defaults to {@code false} — zero impact on existing deployments. */
     private boolean enabled = false;
 
@@ -77,6 +80,10 @@ public class MultiTenant {
     @NestedConfigurationProperty
     private Map<String, TenantConfig> tenants = new LinkedHashMap<>();
 
+    /**
+     * Tenant isolation strategy for the JDBC store.
+     * Ignored by Caffeine and InMemory stores.
+     */
     public enum JdbcMultiTenantStrategy {
         /** Separate table per tenant: {@code tenantPrefix + globalPrefix + "FAILOVER_STORE"}. */
         TABLE_PREFIX,

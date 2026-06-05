@@ -59,10 +59,15 @@ import org.springframework.jdbc.core.RowMapper;
 @Slf4j
 public class FailoverStoreMultiTenantAutoConfiguration {
 
+    /** No-arg constructor for Spring autoconfiguration instantiation. */
+    public FailoverStoreMultiTenantAutoConfiguration() {}
+
     /**
      * Registers {@link TenantContextPropagator} so that scatter/gather slice tasks dispatched to
      * executor threads carry the correct tenant ID. Picked up by {@link FailoverAutoConfiguration}
      * and composed into the {@link CompositeContextPropagator}.
+     *
+     * @return {@link TenantContextPropagator} that captures and restores the tenant ID across thread boundaries
      */
     @Bean
     @ConditionalOnMissingBean
@@ -83,8 +88,16 @@ public class FailoverStoreMultiTenantAutoConfiguration {
      * This bean is {@code @ConditionalOnMissingBean(TenantStoreFactory.class)} — declare your
      * own {@code TenantStoreFactory} bean and it will replace this one. In the SCHEMA factory,
      * map each {@code tenantId} to a dedicated {@link JdbcTemplate} backed by that tenant's
-     * own {@link javax.sql.DataSource}. See {@link com.societegenerale.failover.properties.TenantConfig#getSchema()}
-     * for a usage example.
+     * own {@link javax.sql.DataSource}. See {@link com.societegenerale.failover.properties.TenantConfig}
+     * ({@code schema} field) for a usage example.
+     *
+     * @param props                 failover properties containing per-tenant configuration
+     * @param jdbcTemplate          shared JDBC template (all tenants use the same DataSource in TABLE_PREFIX mode)
+     * @param serializer            payload serializer
+     * @param databaseResolver      detects the database product for merge dialect selection
+     * @param payloadColumnResolver determines the SQL type of the PAYLOAD column
+     * @param rowMapper             maps result-set rows to {@link com.societegenerale.failover.core.payload.ReferentialPayload}
+     * @return per-tenant JDBC store factory using the TABLE_PREFIX strategy
      */
     @Bean
     @ConditionalOnMissingBean(TenantStoreFactory.class)
@@ -104,6 +117,12 @@ public class FailoverStoreMultiTenantAutoConfiguration {
         };
     }
 
+    /**
+     * Registers a per-tenant Caffeine store factory (one isolated cache per tenant).
+     *
+     * @param failoverClock clock used by each per-tenant Caffeine cache for expiry
+     * @return per-tenant Caffeine store factory
+     */
     @Bean
     @ConditionalOnMissingBean(TenantStoreFactory.class)
     @ConditionalOnProperty(prefix = "failover.store", name = "type", havingValue = "caffeine")
@@ -112,6 +131,11 @@ public class FailoverStoreMultiTenantAutoConfiguration {
         return _ -> new FailoverStoreCaffeine<>(failoverClock);
     }
 
+    /**
+     * Registers a per-tenant in-memory store factory (one independent map per tenant).
+     *
+     * @return per-tenant in-memory store factory
+     */
     @Bean
     @ConditionalOnMissingBean(TenantStoreFactory.class)
     @ConditionalOnProperty(prefix = "failover.store", name = "type",

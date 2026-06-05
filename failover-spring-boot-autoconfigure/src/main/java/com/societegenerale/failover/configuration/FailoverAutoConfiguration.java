@@ -87,60 +87,85 @@ import java.util.List;
 @EnableAspectJAutoProxy
 public class FailoverAutoConfiguration {
 
+    /** No-arg constructor for Spring autoconfiguration instantiation. */
+    public FailoverAutoConfiguration() {}
+
+    /** @return default {@link com.societegenerale.failover.core.clock.DefaultFailoverClock} */
     @ConditionalOnMissingBean
     @Bean
     public FailoverClock failoverClock() {
         return new DefaultFailoverClock();
     }
 
+    /** @return {@link DefaultKeyGenerator} using MD5-based fixed-length key hashing */
     @ConditionalOnMissingBean(name = "defaultKeyGenerator")
     @Bean(name = "defaultKeyGenerator")
     public KeyGenerator defaultKeyGenerator() {
         return new DefaultKeyGenerator();
     }
 
+    /** @return {@link BeanFactoryKeyGeneratorLookup} resolving named key-generator beans */
     @ConditionalOnMissingBean
     @Bean
     public KeyGeneratorLookup keyGeneratorLookup() {
         return new BeanFactoryKeyGeneratorLookup();
     }
 
+    /**
+     * @param defaultKeyGenerator fallback key generator when no named override is found
+     * @param keyGeneratorLookup  lookup that resolves per-{@code @Failover} named key generators
+     * @return composite {@link FailoverKeyGenerator} that delegates to named generators or the default
+     */
     @ConditionalOnMissingBean(name = "failoverKeyGenerator")
     @Bean(name = "failoverKeyGenerator")
     public KeyGenerator failoverKeyGenerator(@Qualifier("defaultKeyGenerator") KeyGenerator defaultKeyGenerator, KeyGeneratorLookup keyGeneratorLookup) {
         return new FailoverKeyGenerator(defaultKeyGenerator, keyGeneratorLookup);
     }
 
+    /** @return {@link BeanFactoryFailoverExpiryExtractor} resolving named expiry-policy beans */
     @ConditionalOnMissingBean
     @Bean
     public FailoverExpiryExtractor failoverExpiryExtractor() {
         return new BeanFactoryFailoverExpiryExtractor();
     }
 
+    /**
+     * @param clock                  clock used to compute expiry timestamps
+     * @param failoverExpiryExtractor extractor that reads expiry duration from {@code @Failover}
+     * @return default expiry policy based on the annotation's configured duration
+     */
     @ConditionalOnMissingBean(name = "defaultExpiryPolicy")
     @Bean
     public ExpiryPolicy<Object> defaultExpiryPolicy(FailoverClock clock, FailoverExpiryExtractor failoverExpiryExtractor) {
         return new DefaultExpiryPolicy<>(clock, failoverExpiryExtractor);
     }
 
+    /** @return {@link BeanFactoryExpiryPolicyLookup} resolving named expiry-policy beans */
     @ConditionalOnMissingBean
     @Bean
     public ExpiryPolicyLookup<Object> expiryPolicyLookup() {
         return new BeanFactoryExpiryPolicyLookup<>();
     }
 
+    /**
+     * @param defaultExpiryPolicy fallback expiry policy when no named override is found
+     * @param expiryPolicyLookup  lookup that resolves per-{@code @Failover} named expiry policies
+     * @return composite expiry policy that delegates to named policies or the default
+     */
     @ConditionalOnMissingBean(name = "failoverExpiryPolicy")
     @Bean
     public ExpiryPolicy<Object> failoverExpiryPolicy(@Qualifier("defaultExpiryPolicy") ExpiryPolicy<Object> defaultExpiryPolicy, ExpiryPolicyLookup<Object> expiryPolicyLookup) {
         return new FailoverExpiryPolicy<>(defaultExpiryPolicy, expiryPolicyLookup);
     }
 
+    /** @return default pass-through {@link DefaultPayloadEnricher} */
     @ConditionalOnMissingBean
     @Bean
     public PayloadEnricher<Object> payloadEnricher() {
         return new DefaultPayloadEnricher<>();
     }
 
+    /** @return {@link BeanFactoryPayloadSplitterLookup} resolving named splitter beans */
     @ConditionalOnMissingBean
     @Bean
     public PayloadSplitterLookup<Object, Object> payloadSplitterLookup() {
@@ -155,6 +180,10 @@ public class FailoverAutoConfiguration {
      *   <li>{@link MdcContextPropagator} — always included</li>
      * </ol>
      * Declare your own {@code ContextPropagator} bean to replace this composition entirely.
+     *
+     * @param tenantPropagatorProvider    optional {@link TenantContextPropagator} bean
+     * @param micrometerPropagatorProvider optional {@link MicrometerContextPropagator} bean
+     * @return a single propagator or a {@link CompositeContextPropagator} when multiple are present
      */
     @ConditionalOnMissingBean(name = "contextPropagator")
     @Bean
@@ -175,6 +204,8 @@ public class FailoverAutoConfiguration {
      * Activated only when {@code failover.scatter.parallel=true}.
      *
      * <p>Override by declaring a bean named {@code scatterGatherExecutor}.
+     *
+     * @return virtual-thread {@link SimpleAsyncTaskExecutor} named {@code failover-scatter-*}
      */
     @ConditionalOnMissingBean(name = "scatterGatherExecutor")
     @ConditionalOnProperty(prefix = "failover.scatter", name = "parallel", havingValue = "true")
@@ -186,34 +217,77 @@ public class FailoverAutoConfiguration {
         return executor;
     }
 
+    /**
+     * Registers a scanner that locates all {@code @Failover}-annotated methods in the configured package.
+     *
+     * @param failoverProperties properties providing the base package to scan
+     * @return {@link DefaultFailoverScanner} that scans for {@code @Failover}-annotated methods
+     */
     @ConditionalOnMissingBean
     @Bean
     public FailoverScanner failoverScanner(FailoverProperties failoverProperties) {
         return new DefaultFailoverScanner(failoverProperties.getPackageToScan());
     }
 
+    /** Registers the default no-op {@link RecoveredPayloadHandler} that returns the payload unchanged.
+     * @return pass-through {@link PassThroughRecoveredPayloadHandler} */
     @ConditionalOnMissingBean
     @Bean
     public RecoveredPayloadHandler recoveredPayloadHandler() {
         return new PassThroughRecoveredPayloadHandler();
     }
 
+    /**
+     * Registers a {@link ReportPublisher} that writes failover reports to SLF4J.
+     *
+     * @param clock clock used to timestamp report events
+     * @return {@link LoggerReportPublisher}
+     */
     @Bean
     public ReportPublisher loggerReportPublisher(FailoverClock clock) {
         return new LoggerReportPublisher(clock);
     }
 
+    /**
+     * Registers a {@link ReportPublisher} that records failover metrics (counters/gauges).
+     *
+     * @param clock clock used to timestamp metrics events
+     * @return {@link MetricsReportPublisher}
+     */
     @Bean
     public ReportPublisher metricsReportPublisher(FailoverClock clock) {
         return new MetricsReportPublisher(clock);
     }
 
+    /**
+     * Registers a composite publisher that broadcasts to every {@link ReportPublisher} in the context.
+     *
+     * @param reportPublishers all {@link ReportPublisher} beans in the context
+     * @return composite publisher
+     */
     @ConditionalOnMissingBean
     @Bean
     public CompositeReportPublisher compositeReportPublisher(List<ReportPublisher> reportPublishers) {
         return new CompositeReportPublisher(reportPublishers);
     }
 
+    /**
+     * Assembles the full {@link FailoverHandler} decorator chain:
+     * {@code AdvancedFailoverHandler(ScatterGatherFailoverHandler(DefaultFailoverHandler))}.
+     *
+     * @param keyGenerator               composite key generator
+     * @param expiryPolicy               composite expiry policy
+     * @param clock                      failover clock
+     * @param failoverStore              the assembled store (async/sync, single/multi-tenant)
+     * @param payloadEnricher            enriches payloads on store
+     * @param recoveredPayloadHandler    handles recovered (or null) payloads
+     * @param reportPublisher            composite report publisher
+     * @param failoverExpiryExtractor    reads expiry from {@code @Failover}
+     * @param payloadSplitterLookup      looks up named splitter beans
+     * @param contextPropagator          propagates thread context to scatter executor threads
+     * @param scatterGatherExecutorProvider optional executor for parallel scatter (null = sequential)
+     * @return assembled {@link AdvancedFailoverHandler}
+     */
     @ConditionalOnMissingBean
     @Bean
     public FailoverHandler<Object> failoverHandler(
@@ -234,12 +308,25 @@ public class FailoverAutoConfiguration {
         return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
     }
 
+    /**
+     * Registers the {@link MethodExceptionHandler} that applies the active exception policy.
+     *
+     * @param methodExceptionPolicy active exception policy (rethrow, never-throw, or custom)
+     * @return {@link MethodExceptionHandler}
+     */
     @ConditionalOnMissingBean
     @Bean
     public MethodExceptionHandler methodExceptionHandler(MethodExceptionPolicy  methodExceptionPolicy) {
         return new MethodExceptionHandler(methodExceptionPolicy);
     }
 
+    /**
+     * Registers {@link BasicFailoverExecution}, active when {@code failover.type=basic} (the default).
+     *
+     * @param failoverHandler        assembled failover handler
+     * @param methodExceptionHandler exception handler applying the configured policy
+     * @return {@link BasicFailoverExecution}
+     */
     @ConditionalOnProperty(prefix = "failover", name = "type", havingValue = "basic", matchIfMissing = true)
     @ConditionalOnMissingBean
     @Bean
@@ -248,24 +335,49 @@ public class FailoverAutoConfiguration {
         return new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler);
     }
 
+    /**
+     * Registers the AOP aspect that intercepts {@code @Failover}-annotated methods.
+     *
+     * @param failoverExecution the configured failover execution strategy
+     * @return {@link FailoverAspect}
+     */
     @ConditionalOnProperty(prefix = "failover", name = "aspect.enabled", havingValue = "true", matchIfMissing = true)
     @Bean
     public FailoverAspect<Object> failoverAspect(FailoverExecution<Object> failoverExecution) {
         return new FailoverAspect<>(failoverExecution);
     }
 
+    /**
+     * Registers a resource loader for reading classpath resources (e.g. {@code MANIFEST.MF}).
+     * @return {@link ClassPathResourceLoader}
+     */
     @ConditionalOnMissingBean
     @Bean
     public ResourceLoader resourceLoader() {
         return new ClassPathResourceLoader();
     }
 
+    /**
+     * Registers a caching manifest extractor for reading build metadata from {@code MANIFEST.MF}.
+     *
+     * @param resourceLoader resource loader for reading MANIFEST.MF
+     * @return caching wrapper around {@link com.societegenerale.failover.core.report.manifest.DefaultManifestInfoExtractor}
+     */
     @ConditionalOnMissingBean
     @Bean
     public ManifestInfoExtractor manifestInfoExtractor(ResourceLoader resourceLoader) {
         return new CacheableManifestInfoExtractor(new DefaultManifestInfoExtractor(resourceLoader));
     }
 
+    /**
+     * @param reportPublisher        composite publisher that receives the startup report
+     * @param failoverScanner        scans for all {@code @Failover}-annotated methods
+     * @param clock                  clock for the report timestamp
+     * @param manifestInfoExtractor  extracts build info from MANIFEST.MF
+     * @param failoverExpiryExtractor reads expiry config from {@code @Failover}
+     * @param failoverProperties     active failover properties for inclusion in the report
+     * @return reporter that publishes a full failover summary on application startup
+     */
     @ConditionalOnMissingBean
     @Bean(initMethod = "report")
     public FailoverReporter failoverReporter(CompositeReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor, FailoverProperties failoverProperties) {
