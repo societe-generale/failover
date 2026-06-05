@@ -14,18 +14,18 @@ theme:
     text: Inter
     code: JetBrains Mono
   palette:
-    - scheme: default
-      primary: custom
-      accent: indigo
-      toggle:
-        icon: material/weather-night
-        name: Switch to dark mode
     - scheme: slate
       primary: custom
-      accent: indigo
+      accent: deep purple
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
   icon:
     repo: fontawesome/brands/github
     edit: material/pencil

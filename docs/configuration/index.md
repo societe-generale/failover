@@ -4,7 +4,36 @@ icon: material/tune
 
 # Configuration
 
-All failover properties are bound to the `failover.*` prefix and are available as YAML, properties, or environment variables.
+All failover properties are bound to the `failover.*` prefix — YAML, properties files, or environment variables.
+
+## Property hierarchy
+
+```mermaid
+mindmap
+  root((failover))
+    package-to-scan
+      Required
+    store
+      type
+        jdbc
+        caffeine
+        inmemory
+      jdbc
+        table-prefix
+        datasource-url
+      caffeine
+        spec
+    exception-policy
+      throw
+      never_throw
+    multi-tenant
+      enabled
+      isolation-strategy
+        TABLE_PREFIX
+        SCHEMA
+```
+
+## Sections
 
 | Section | Description |
 |---|---|
