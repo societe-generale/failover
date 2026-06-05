@@ -90,21 +90,33 @@ public class FailoverAutoConfiguration {
     /** No-arg constructor for Spring autoconfiguration instantiation. */
     public FailoverAutoConfiguration() {}
 
-    /** @return default {@link com.societegenerale.failover.core.clock.DefaultFailoverClock} */
+    /**
+     * Creates the default failover clock bean.
+     *
+     * @return default {@link com.societegenerale.failover.core.clock.DefaultFailoverClock}
+     */
     @ConditionalOnMissingBean
     @Bean
     public FailoverClock failoverClock() {
         return new DefaultFailoverClock();
     }
 
-    /** @return {@link DefaultKeyGenerator} using MD5-based fixed-length key hashing */
+    /**
+     * Creates the default key generator bean.
+     *
+     * @return {@link DefaultKeyGenerator} using MD5-based fixed-length key hashing
+     */
     @ConditionalOnMissingBean(name = "defaultKeyGenerator")
     @Bean(name = "defaultKeyGenerator")
     public KeyGenerator defaultKeyGenerator() {
         return new DefaultKeyGenerator();
     }
 
-    /** @return {@link BeanFactoryKeyGeneratorLookup} resolving named key-generator beans */
+    /**
+     * Creates the key-generator lookup bean.
+     *
+     * @return {@link BeanFactoryKeyGeneratorLookup} resolving named key-generator beans
+     */
     @ConditionalOnMissingBean
     @Bean
     public KeyGeneratorLookup keyGeneratorLookup() {
@@ -112,6 +124,8 @@ public class FailoverAutoConfiguration {
     }
 
     /**
+     * Creates the composite failover key generator.
+     *
      * @param defaultKeyGenerator fallback key generator when no named override is found
      * @param keyGeneratorLookup  lookup that resolves per-{@code @Failover} named key generators
      * @return composite {@link FailoverKeyGenerator} that delegates to named generators or the default
@@ -122,7 +136,11 @@ public class FailoverAutoConfiguration {
         return new FailoverKeyGenerator(defaultKeyGenerator, keyGeneratorLookup);
     }
 
-    /** @return {@link BeanFactoryFailoverExpiryExtractor} resolving named expiry-policy beans */
+    /**
+     * Creates the failover expiry extractor bean.
+     *
+     * @return {@link BeanFactoryFailoverExpiryExtractor} resolving named expiry-policy beans
+     */
     @ConditionalOnMissingBean
     @Bean
     public FailoverExpiryExtractor failoverExpiryExtractor() {
@@ -130,6 +148,8 @@ public class FailoverAutoConfiguration {
     }
 
     /**
+     * Creates the default expiry policy bean.
+     *
      * @param clock                  clock used to compute expiry timestamps
      * @param failoverExpiryExtractor extractor that reads expiry duration from {@code @Failover}
      * @return default expiry policy based on the annotation's configured duration
@@ -140,7 +160,11 @@ public class FailoverAutoConfiguration {
         return new DefaultExpiryPolicy<>(clock, failoverExpiryExtractor);
     }
 
-    /** @return {@link BeanFactoryExpiryPolicyLookup} resolving named expiry-policy beans */
+    /**
+     * Creates the expiry-policy lookup bean.
+     *
+     * @return {@link BeanFactoryExpiryPolicyLookup} resolving named expiry-policy beans
+     */
     @ConditionalOnMissingBean
     @Bean
     public ExpiryPolicyLookup<Object> expiryPolicyLookup() {
@@ -148,6 +172,8 @@ public class FailoverAutoConfiguration {
     }
 
     /**
+     * Creates the composite failover expiry policy.
+     *
      * @param defaultExpiryPolicy fallback expiry policy when no named override is found
      * @param expiryPolicyLookup  lookup that resolves per-{@code @Failover} named expiry policies
      * @return composite expiry policy that delegates to named policies or the default
@@ -158,14 +184,22 @@ public class FailoverAutoConfiguration {
         return new FailoverExpiryPolicy<>(defaultExpiryPolicy, expiryPolicyLookup);
     }
 
-    /** @return default pass-through {@link DefaultPayloadEnricher} */
+    /**
+     * Creates the default payload enricher bean.
+     *
+     * @return default pass-through {@link DefaultPayloadEnricher}
+     */
     @ConditionalOnMissingBean
     @Bean
     public PayloadEnricher<Object> payloadEnricher() {
         return new DefaultPayloadEnricher<>();
     }
 
-    /** @return {@link BeanFactoryPayloadSplitterLookup} resolving named splitter beans */
+    /**
+     * Creates the payload-splitter lookup bean.
+     *
+     * @return {@link BeanFactoryPayloadSplitterLookup} resolving named splitter beans
+     */
     @ConditionalOnMissingBean
     @Bean
     public PayloadSplitterLookup<Object, Object> payloadSplitterLookup() {
@@ -370,6 +404,8 @@ public class FailoverAutoConfiguration {
     }
 
     /**
+     * Creates the failover reporter bean that publishes a startup summary.
+     *
      * @param reportPublisher        composite publisher that receives the startup report
      * @param failoverScanner        scans for all {@code @Failover}-annotated methods
      * @param clock                  clock for the report timestamp
