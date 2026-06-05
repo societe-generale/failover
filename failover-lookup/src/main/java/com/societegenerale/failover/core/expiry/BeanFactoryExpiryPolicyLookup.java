@@ -24,17 +24,34 @@ import org.springframework.beans.factory.BeanFactoryAware;
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 
 /**
+ * Spring {@link BeanFactory}-backed implementation of {@link ExpiryPolicyLookup}.
+ * Resolves an {@link ExpiryPolicy} by delegating to {@link BeanFactory#getBean(String, Class)},
+ * which matches by both qualifier and bean name.
+ *
+ * @param <T> the payload type the resolved policy operates on
  * @author Anand Manissery
  */
 public class BeanFactoryExpiryPolicyLookup<T> implements ExpiryPolicyLookup<T>, BeanFactoryAware {
 
     private BeanFactory beanFactory;
 
+    /**
+     * Returns the {@link ExpiryPolicy} bean registered under {@code name}.
+     *
+     * @param name qualifier or bean name as declared in {@code @Failover(expiryPolicy = "...")}
+     * @return matching {@link ExpiryPolicy}
+     */
     @Override
     public ExpiryPolicy<T> lookup(String name) {
         return cast(beanFactory.getBean(name, ExpiryPolicy.class));
     }
 
+    /**
+     * Injects the Spring {@link BeanFactory} used for expiry-policy lookups.
+     *
+     * @param beanFactory the bean factory to use
+     * @throws BeansException if setting the bean factory fails
+     */
     @Override
     public void setBeanFactory(@NonNull BeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;

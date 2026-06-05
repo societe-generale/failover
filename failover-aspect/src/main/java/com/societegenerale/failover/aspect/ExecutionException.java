@@ -17,9 +17,18 @@
 package com.societegenerale.failover.aspect;
 
 /**
+ * Wraps a {@link Throwable} thrown during the actual method execution inside the failover aspect.
+ *
  * @author Anand Manissery
  */
 public class ExecutionException extends RuntimeException {
+
+    /**
+     * Creates an exception with the given detail message and cause.
+     *
+     * @param message description of the execution failure
+     * @param cause   the original throwable from the method invocation
+     */
     public ExecutionException(String message, Throwable cause) {
         super(message, cause);
     }

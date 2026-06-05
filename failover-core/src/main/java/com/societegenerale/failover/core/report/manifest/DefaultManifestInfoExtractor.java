@@ -24,6 +24,9 @@ import java.util.Map;
 import java.util.jar.Manifest;
 
 /**
+ * {@link ManifestInfoExtractor} that searches all {@code META-INF/MANIFEST.MF} resources on
+ * the classpath for an entry whose {@code Implementation-Title} matches the requested title.
+ *
  * @author Anand Manissery
  */
 @Slf4j
@@ -31,6 +34,11 @@ public class DefaultManifestInfoExtractor implements ManifestInfoExtractor {
 
     private final ResourceLoader resourceLoader;
 
+    /**
+     * Creates an extractor backed by the given resource loader.
+     *
+     * @param resourceLoader loader used to locate {@code META-INF/MANIFEST.MF} resources
+     */
     public DefaultManifestInfoExtractor(ResourceLoader resourceLoader) {
         this.resourceLoader = resourceLoader;
     }

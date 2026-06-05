@@ -22,17 +22,33 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 
 /**
+ * Spring {@link BeanFactory}-backed implementation of {@link KeyGeneratorLookup}.
+ * Resolves a {@link KeyGenerator} by delegating to {@link BeanFactory#getBean(String, Class)},
+ * which matches by both qualifier and bean name.
+ *
  * @author Anand Manissery
  */
 public class BeanFactoryKeyGeneratorLookup implements KeyGeneratorLookup, BeanFactoryAware {
 
     private BeanFactory beanFactory;
 
+    /**
+     * Returns the {@link KeyGenerator} bean registered under {@code name}.
+     *
+     * @param name qualifier or bean name as declared in {@code @Failover(keyGenerator = "...")}
+     * @return matching {@link KeyGenerator}
+     */
     @Override
     public KeyGenerator lookup(String name) {
         return beanFactory.getBean(name, KeyGenerator.class);
     }
 
+    /**
+     * Injects the Spring {@link BeanFactory} used for key-generator lookups.
+     *
+     * @param beanFactory the bean factory to use
+     * @throws BeansException if setting the bean factory fails
+     */
     @Override
     public void setBeanFactory(@NonNull BeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;

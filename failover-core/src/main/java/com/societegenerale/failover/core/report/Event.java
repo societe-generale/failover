@@ -28,6 +28,9 @@ import java.util.Map;
 
 
 /**
+ * Structured technical event that writes its attributes to MDC before emitting a single INFO log line.
+ * Used by {@link MetricsReportPublisher} to emit failover metrics as structured log events.
+ *
  * @author Anand Manissery
  */
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
@@ -52,19 +55,41 @@ public final class Event {
         this.logger = LoggerFactory.getLogger(TECHNICAL_TYPE);
     }
 
+    /**
+     * Creates a technical event with the given metric name.
+     *
+     * @param name the metric name (stored as the {@code metricName} attribute)
+     * @return new event instance
+     */
     public static Event technical(String name) {
         return new Event(name);
     }
 
+    /**
+     * Adds an attribute to this event if the key is not already present.
+     *
+     * @param name  the attribute key
+     * @param value the attribute value
+     * @return this event for chaining
+     */
     public synchronized Event addAttribute(String name, String value) {
         attributes.putIfAbsent(name, value);
         return this;
     }
 
+    /**
+     * Returns an unmodifiable view of all attributes collected on this event.
+     *
+     * @return unmodifiable map of attribute key-value pairs
+     */
     public Map<String, String> getAttributes(){
         return Collections.unmodifiableMap(attributes);
     }
 
+    /**
+     * Publishes this event by setting all attributes into the MDC and emitting a single INFO log line,
+     * then restoring the previous MDC state.
+     */
     public synchronized void publish() {
         final Map<String, String> copyOfMDC = MDC.getCopyOfContextMap();
         attributes.forEach(MDC::put);

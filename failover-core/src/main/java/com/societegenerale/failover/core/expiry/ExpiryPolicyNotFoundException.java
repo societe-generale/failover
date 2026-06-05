@@ -17,9 +17,17 @@
 package com.societegenerale.failover.core.expiry;
 
 /**
+ * Thrown when no {@link ExpiryPolicy} bean is found for the qualifier specified in a {@code @Failover} annotation.
+ *
  * @author Anand Manissery
  */
 public class ExpiryPolicyNotFoundException extends RuntimeException {
+
+    /**
+     * Creates an exception with the given detail message.
+     *
+     * @param message description of which expiry policy was not found and for which failover
+     */
     public ExpiryPolicyNotFoundException(String message) {
         super(message);
     }

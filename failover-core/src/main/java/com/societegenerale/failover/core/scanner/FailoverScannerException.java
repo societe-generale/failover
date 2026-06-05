@@ -17,13 +17,28 @@
 package com.societegenerale.failover.core.scanner;
 
 /**
+ * Thrown when the {@link FailoverScanner} encounters an error during classpath scanning
+ * or detects duplicate {@code @Failover} names.
+ *
  * @author Anand Manissery
  */
 public class FailoverScannerException extends RuntimeException {
+
+    /**
+     * Creates an exception with the given detail message.
+     *
+     * @param message description of the scanner error
+     */
     public FailoverScannerException(String message) {
         super(message);
     }
 
+    /**
+     * Creates an exception with the given detail message and cause.
+     *
+     * @param message   description of the scanner error
+     * @param throwable the underlying exception from the Reflections library
+     */
     public FailoverScannerException(String message, Throwable throwable) {
         super(message, throwable);
     }
