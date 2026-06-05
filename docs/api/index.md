@@ -15,7 +15,7 @@ Full Javadoc for all modules, generated via `mvn javadoc:aggregate`.
 
     # 2. Copy into docs tree
     mkdir -p docs/api/javadoc
-    cp -r target/site/apidocs/. docs/api/javadoc/
+    cp -r target/reports/apidocs/. docs/api/javadoc/
 
     # 3. Build and serve
     mkdocs serve

@@ -32,7 +32,7 @@ jobs:
       - name: Copy Javadoc into docs tree
         run: |
           mkdir -p docs/api/javadoc
-          cp -r target/site/apidocs/. docs/api/javadoc/
+          cp -r target/reports/apidocs/. docs/api/javadoc/
 
       - uses: actions/setup-python@v5
         with:
