@@ -1034,6 +1034,7 @@ html[data-fo-font="lg"] { font-size: 19px; }
 }
 .fo-img-card img { width: 100%; height: auto; display: block; border-radius: 8px; }
 .fo-img-card-wide { margin: 1.25rem 0 2.5rem; }
+.fo-img-card-mb   { margin-bottom: 1rem; }
 
 .md-typeset .fo-img-caption {
   font-size: .71rem; color: var(--fo-tx2);
