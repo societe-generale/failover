@@ -30,7 +30,13 @@ import org.springframework.core.task.TaskExecutor;
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicReference;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -74,6 +80,23 @@ class FailoverStoreAsyncTest {
     void shouldCallFind() {
         failoverStoreAsync.find("name", "key");
         verify(failoverStore).find("name", "key");
+    }
+
+    @Test
+    @DisplayName("find() returns the result from the inner store")
+    void findShouldReturnResultFromDelegate() {
+        given(failoverStore.find("name", "key")).willReturn(Optional.of(referentialPayload));
+        Optional<ReferentialPayload<String>> result = failoverStoreAsync.find("name", "key");
+        assertThat(result).contains(referentialPayload);
+    }
+
+    @Test
+    @DisplayName("find() propagates exception from delegate — unlike write methods, no exception is swallowed")
+    void findShouldPropagateExceptionFromDelegate() {
+        doThrow(new RuntimeException("DB unavailable")).when(failoverStore).find("name", "key");
+        assertThatThrownBy(() -> failoverStoreAsync.find("name", "key"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("DB unavailable");
     }
 
     @Test
@@ -130,6 +153,28 @@ class FailoverStoreAsyncTest {
         asyncStore.find("name", "key");
 
         assertThat(capturedTask.get()).as("find() must NOT submit to executor — it is synchronous").isNull();
+    }
+
+    @Test
+    @DisplayName("store() swallows exception from delegate — caller thread is not disrupted")
+    void storeShouldNotPropagateExceptionFromDelegate() {
+        doThrow(new RuntimeException("DB unavailable")).when(failoverStore).store(referentialPayload);
+        assertThatNoException().isThrownBy(() -> failoverStoreAsync.store(referentialPayload));
+    }
+
+    @Test
+    @DisplayName("delete() swallows exception from delegate — caller thread is not disrupted")
+    void deleteShouldNotPropagateExceptionFromDelegate() {
+        doThrow(new RuntimeException("DB unavailable")).when(failoverStore).delete(referentialPayload);
+        assertThatNoException().isThrownBy(() -> failoverStoreAsync.delete(referentialPayload));
+    }
+
+    @Test
+    @DisplayName("cleanByExpiry() swallows exception from delegate — caller thread is not disrupted")
+    void cleanByExpiryShouldNotPropagateExceptionFromDelegate() {
+        LocalDateTime now = LocalDateTime.now();
+        doThrow(new RuntimeException("DB unavailable")).when(failoverStore).cleanByExpiry(now);
+        assertThatNoException().isThrownBy(() -> failoverStoreAsync.cleanByExpiry(now));
     }
 
     /**
