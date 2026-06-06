@@ -19,9 +19,31 @@ package com.societegenerale.failover.core.payload;
 import com.societegenerale.failover.annotations.Failover;
 
 /**
+ * Strategy for enriching payloads before they are stored or after they are recovered.
+ *
+ * @param <T> the type of the payload to enrich
  * @author Anand Manissery
  */
 public interface PayloadEnricher<T> {
+
+    /**
+     * Enriches the payload before it is written to the failover store.
+     *
+     * @param failover           annotation metadata for the failover point
+     * @param clazz              expected payload type
+     * @param referentialPayload the wrapper holding the payload to enrich
+     * @return the enriched referential payload
+     */
     ReferentialPayload<T> enrichOnStore(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload);
+
+    /**
+     * Enriches the payload after it has been recovered from the failover store.
+     *
+     * @param failover           annotation metadata for the failover point
+     * @param clazz              expected payload type
+     * @param referentialPayload the wrapper holding the recovered payload; may be {@code null}
+     * @param cause              the exception that triggered recovery
+     * @return the enriched referential payload
+     */
     ReferentialPayload<T> enrichOnRecover(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, Throwable cause);
 }

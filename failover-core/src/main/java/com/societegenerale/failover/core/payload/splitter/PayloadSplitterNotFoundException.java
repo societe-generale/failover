@@ -25,6 +25,11 @@ package com.societegenerale.failover.core.payload.splitter;
  */
 public class PayloadSplitterNotFoundException extends RuntimeException {
 
+    /**
+     * Creates an exception with the given detail message.
+     *
+     * @param message description of which payload splitter was not found and for which failover
+     */
     public PayloadSplitterNotFoundException(String message) {
         super(message);
     }

@@ -18,23 +18,34 @@ package com.societegenerale.failover.domain;
 
 import java.time.LocalDateTime;
 
-/// Interface to be implemented by referential entities that wish to be aware of the failover metadata information.
-/// The failover metadata information contains UpToDate [Boolean] , AsOf [LocalDateTime] information.
-///
-/// @author Anand Manissery
-/// @since 1.0.0
+/**
+ * Interface to be implemented by referential entities that wish to be aware of the failover
+ * metadata information. The failover metadata information contains {@code upToDate} (Boolean)
+ * and {@code asOf} (LocalDateTime) information.
+ *
+ * @author Anand Manissery
+ * @since 1.0.0
+ */
 public interface ReferentialAware {
 
-    /// Whether the value of the referential data is up-to-date or not.
-    /// @param upToDate flag to be set.
+    /**
+     * Sets whether the referential value is up-to-date or not.
+     *
+     * @param upToDate {@code true} for a live value, {@code false} for a failover-recovered value
+     */
     void setUpToDate(Boolean upToDate);
 
-
-    /// The value of referential data is as of the given time
-    /// @param asOf time to be set.
+    /**
+     * Sets the timestamp indicating when the referential value was captured.
+     *
+     * @param asOf the capture time to set
+     */
     void setAsOf(LocalDateTime asOf);
 
-    /// The value of the 'Metadata' to hold the additional metadata.
-    /// @param metadata to be set if required.
+    /**
+     * Sets the metadata holding additional failover information.
+     *
+     * @param metadata the metadata to set
+     */
     void setMetadata(Metadata metadata);
 }

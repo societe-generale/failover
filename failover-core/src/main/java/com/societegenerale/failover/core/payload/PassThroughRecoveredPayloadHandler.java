@@ -21,6 +21,8 @@ import com.societegenerale.failover.annotations.Failover;
 import java.util.List;
 
 /**
+ * No-op {@link RecoveredPayloadHandler} that returns the recovered payload unchanged.
+ *
  * @author Anand Manissery
  */
 public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandler {

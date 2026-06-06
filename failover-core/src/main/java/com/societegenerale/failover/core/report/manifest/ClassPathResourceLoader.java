@@ -21,6 +21,8 @@ import java.net.URL;
 import java.util.Enumeration;
 
 /**
+ * {@link ResourceLoader} that resolves resources via the current thread's class loader.
+ *
  * @author Anand Manissery
  */
 public class ClassPathResourceLoader implements ResourceLoader {

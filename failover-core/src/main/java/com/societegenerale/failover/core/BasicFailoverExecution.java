@@ -29,6 +29,10 @@ import java.util.function.Supplier;
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 
 /**
+ * Basic {@link FailoverExecution} that invokes the supplier, stores the result on success,
+ * and attempts recovery via the {@link FailoverHandler} on any exception.
+ *
+ * @param <T> the return type of the protected method
  * @author Anand Manissery
  */
 @Slf4j
@@ -64,6 +68,15 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
                 }, args);
     }
 
+    /**
+     * Extension point for subclasses to wrap the supplier (e.g. to add context propagation).
+     * This base implementation is a pass-through.
+     *
+     * @param failover annotation metadata for the failover point
+     * @param supplier the supplier to optionally wrap
+     * @param args     method arguments
+     * @return the (possibly wrapped) supplier
+     */
     protected Supplier<T> decorateSupplier(Failover failover, Supplier<T> supplier, List<Object> args) {
         log.trace("Simple pass through supplier decorator for failover {} with args {}", failover.name(), args);
         return supplier;

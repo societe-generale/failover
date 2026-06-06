@@ -41,7 +41,7 @@ import static java.util.Optional.ofNullable;
  *
  * <h2>Per-entry expiry</h2>
  * <p>A custom {@link Expiry} policy derives each entry's TTL individually from its own
- * {@link ReferentialPayload#getExpireOn()} timestamp at the moment of creation or update:
+ * {@link ReferentialPayload} {@code expireOn} timestamp at the moment of creation or update:
  * <pre>
  *   TTL = Duration.between(clock.now(), payload.getExpireOn())
  * </pre>

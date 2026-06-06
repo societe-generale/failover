@@ -36,13 +36,21 @@ public final class TenantContext {
 
     private TenantContext() {}
 
-    /** @return the current tenant ID, or {@code null} if not set */
+    /**
+     * Returns the current tenant ID for this thread.
+     *
+     * @return the current tenant ID, or {@code null} if not set
+     */
     @Nullable
     public static String get() {
         return CURRENT.get();
     }
 
-    /** Sets the current tenant ID on this thread. */
+    /**
+     * Sets the current tenant ID on this thread.
+     *
+     * @param tenantId the tenant ID to set
+     */
     public static void set(String tenantId) {
         CURRENT.set(tenantId);
     }

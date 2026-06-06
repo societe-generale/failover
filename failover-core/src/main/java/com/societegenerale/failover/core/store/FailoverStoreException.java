@@ -17,13 +17,27 @@
 package com.societegenerale.failover.core.store;
 
 /**
+ * Thrown when a {@link FailoverStore} operation (store, find, delete, or clean) fails.
+ *
  * @author Anand Manissery
  */
 public class FailoverStoreException extends RuntimeException {
+
+    /**
+     * Creates an exception with the given detail message.
+     *
+     * @param message description of the store operation failure
+     */
     public FailoverStoreException(String message) {
         super(message);
     }
 
+    /**
+     * Creates an exception with the given detail message and cause.
+     *
+     * @param message description of the store operation failure
+     * @param cause   the underlying exception
+     */
     public FailoverStoreException(String message, Throwable cause) {
         super(message, cause);
     }

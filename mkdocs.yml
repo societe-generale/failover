@@ -1,0 +1,162 @@
+site_name: Failover
+site_description: Transparent failover for referential data — annotation-driven, Spring Boot native.
+site_url: https://societegenerale.github.io/failover
+repo_url: https://github.com/societe-generale/failover
+repo_name: societegenerale/failover
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+    admonition:
+      note:     octicons/tag-16
+      abstract: octicons/checklist-16
+      info:     octicons/info-16
+      tip:      octicons/squirrel-16
+      success:  octicons/check-16
+      question: octicons/question-16
+      warning:  octicons/alert-16
+      failure:  octicons/x-circle-16
+      danger:   octicons/zap-16
+      bug:      octicons/bug-16
+      example:  octicons/beaker-16
+      quote:    octicons/quote-16
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - navigation.prune
+    - search.highlight
+    - search.suggest
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+    - announce.dismiss
+    - toc.follow
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      exclude:
+        - api/javadoc/*
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quickstart: getting-started/quickstart.md
+  - Concepts:
+    - concepts/index.md
+    - How It Works: concepts/how-it-works.md
+    - Expiry Policies: concepts/expiry.md
+    - Key Generation: concepts/key-generation.md
+    - Scatter / Gather: concepts/scatter-gather.md
+  - Configuration:
+    - configuration/index.md
+    - Properties Reference: configuration/properties-reference.md
+    - Store Types: configuration/store-types.md
+    - Multi-Tenant: configuration/multi-tenant.md
+  - Modules:
+    - modules/core.md
+    - modules/store-jdbc.md
+    - modules/store-caffeine.md
+    - modules/store-async.md
+    - modules/store-multitenant.md
+    - modules/execution-resilience.md
+    - modules/scheduler.md
+  - Guides:
+    - Custom Key Generator: guides/custom-key-generator.md
+    - Custom Expiry Policy: guides/custom-expiry-policy.md
+    - Custom Payload Enricher: guides/custom-payload-enricher.md
+    - Context Propagation: guides/context-propagation.md
+    - Reporting: guides/reporting.md
+  - Architecture Decisions:
+    - Decision Index: adr/index.md
+    - All Decisions: adr/adr.md
+  - API Reference: api/index.md
+  - Changelog: changelog.md
+  - Contributing: contributing.md
+  - Support: support.md
+  - About: about.md
+
+not_in_nav: |
+  api/javadoc/**
+
+validation:
+  links:
+    absolute_links: ignore
+    unrecognized_links: ignore
+    anchors: warn
+    not_found: warn
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/fontsize.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/societegenerale/failover
+  version:
+    provider: mike

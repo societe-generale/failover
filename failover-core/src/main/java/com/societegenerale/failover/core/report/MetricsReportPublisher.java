@@ -19,10 +19,18 @@ package com.societegenerale.failover.core.report;
 import com.societegenerale.failover.core.clock.FailoverClock;
 
 /**
+ * {@link AbstractReportPublisher} that emits failover metrics as a technical {@link Event}
+ * via MDC-based structured logging.
+ *
  * @author Anand Manissery
  */
 public class MetricsReportPublisher extends AbstractReportPublisher {
 
+    /**
+     * Creates a metrics publisher backed by the given clock.
+     *
+     * @param clock clock used to stamp each published metric with a timestamp
+     */
     public MetricsReportPublisher(FailoverClock clock) {
         super(clock);
     }

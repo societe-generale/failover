@@ -17,8 +17,18 @@
 package com.societegenerale.failover.core.expiry;
 
 /**
+ * Strategy for resolving an {@link ExpiryPolicy} by qualifier or bean name.
+ *
+ * @param <T> the payload type the resolved policy operates on
  * @author Anand Manissery
  */
 public interface ExpiryPolicyLookup<T> {
+
+    /**
+     * Returns the {@link ExpiryPolicy} registered under {@code name}, or {@code null} if not found.
+     *
+     * @param name qualifier or bean name as declared in {@code @Failover(expiryPolicy = "...")}
+     * @return matching policy, or {@code null} if no match exists
+     */
     ExpiryPolicy<T> lookup(String name);
 }
