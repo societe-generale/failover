@@ -69,7 +69,7 @@ public class MicrometerContextPropagator implements ContextPropagator {
     public @NonNull Runnable wrap(@NonNull Runnable task) {
         Span capturedSpan = tracer.currentSpan();
         return () -> {
-            try (Tracer.SpanInScope _ = tracer.withSpan(capturedSpan)) {
+            try (Tracer.SpanInScope scope = tracer.withSpan(capturedSpan)) {
                 task.run();
             }
         };

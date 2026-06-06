@@ -19,14 +19,14 @@ package com.societegenerale.failover.core.payload;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /// @author Anand Manissery
 class ReferentialPayloadTest {
 
-    private final static LocalDateTime NOW = LocalDateTime.now();
+    private final static Instant NOW = Instant.now();
 
     private final ReferentialPayload<String> referentialPayload = new ReferentialPayload<>("NAME", "KEY", true, NOW, NOW, "PAYLOAD");
 

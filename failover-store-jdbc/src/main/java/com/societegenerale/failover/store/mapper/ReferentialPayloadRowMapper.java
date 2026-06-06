@@ -70,8 +70,8 @@ public class ReferentialPayloadRowMapper<T> implements RowMapper<ReferentialPayl
                     "Corrupt row: AS_OF or EXPIRE_ON is null for name='%s', key='%s'"
                             .formatted(failoverName, failoverKey));
         }
-        var asOf            = asOfTs.toLocalDateTime();
-        var expireOn        = expireOnTs.toLocalDateTime();
+        var asOf            = asOfTs.toInstant();
+        var expireOn        = expireOnTs.toInstant();
         String payloadClass = rs.getString("PAYLOAD_CLASS");
         Class<T> clazz = serializer.toClass(payloadClass); //cast(forName(payloadClass));
         T payload = serializer.deserialize(payloadColumnResolver.extractPayload(rs, "PAYLOAD"), clazz);

@@ -128,7 +128,7 @@ public class FailoverStoreMultiTenantAutoConfiguration {
     @ConditionalOnProperty(prefix = "failover.store", name = "type", havingValue = "caffeine")
     public TenantStoreFactory<Object> caffeineMultiTenantStoreFactory(FailoverClock failoverClock) {
         log.info("MultiTenant TenantStoreFactory: Caffeine (one cache per tenant)");
-        return _ -> new FailoverStoreCaffeine<>(failoverClock);
+        return tenantId -> new FailoverStoreCaffeine<>(failoverClock);
     }
 
     /**
@@ -142,7 +142,7 @@ public class FailoverStoreMultiTenantAutoConfiguration {
                            havingValue = "inmemory", matchIfMissing = true)
     public TenantStoreFactory<Object> inmemoryMultiTenantStoreFactory() {
         log.info("MultiTenant TenantStoreFactory: InMemory (one map per tenant)");
-        return _ -> new FailoverStoreInmemory<>();
+        return tenantId -> new FailoverStoreInmemory<>();
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
