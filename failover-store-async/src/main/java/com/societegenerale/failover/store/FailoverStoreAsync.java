@@ -73,9 +73,14 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
         executor.execute(() -> {
-            log.info("Failover Store : Async call for storing information on '{}' for failover. ReferentialPayload : {{}}",
-                    referentialPayload.getName(), referentialPayload);
-            failoverStore.store(referentialPayload);
+            try {
+                log.info("Failover Store : Async call for storing information on '{}' for failover. ReferentialPayload : {{}}",
+                        referentialPayload.getName(), referentialPayload);
+                failoverStore.store(referentialPayload);
+            } catch (Exception e) {
+                log.error("Failover Store : Async store failed for '{}'. Failover data not persisted. Cause: {}",
+                        referentialPayload.getName(), e.getMessage(), e);
+            }
         });
     }
 
@@ -86,9 +91,14 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
     @Override
     public void delete(ReferentialPayload<T> referentialPayload) {
         executor.execute(() -> {
-            log.info("Failover Store : Async call for deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}",
-                    referentialPayload.getName(), referentialPayload);
-            failoverStore.delete(referentialPayload);
+            try {
+                log.info("Failover Store : Async call for deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}",
+                        referentialPayload.getName(), referentialPayload);
+                failoverStore.delete(referentialPayload);
+            } catch (Exception e) {
+                log.error("Failover Store : Async delete failed for '{}'. Cause: {}",
+                        referentialPayload.getName(), e.getMessage(), e);
+            }
         });
     }
 
@@ -107,6 +117,13 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
      */
     @Override
     public void cleanByExpiry(LocalDateTime expiry) {
-        executor.execute(() -> failoverStore.cleanByExpiry(expiry));
+        executor.execute(() -> {
+            try {
+                log.info("Failover Store : Async call for clean the expired payload by the given expiry '{}'", expiry);
+                failoverStore.cleanByExpiry(expiry);
+            } catch (Exception e) {
+                log.error("Failover Store : Async cleanByExpiry failed. Cause: {}", e.getMessage(), e);
+            }
+        });
     }
 }
