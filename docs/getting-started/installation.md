@@ -54,7 +54,7 @@ If you need finer control, you can declare individual modules instead of the sta
 ```xml
 <dependency>
     <groupId>com.societegenerale.failover</groupId>
-    <artifactId>failover-spring-boot-autoconfigure</artifactId>
+    <artifactId>failover-core</artifactId>
     <version>3.0.0</version>
 </dependency>
 ```
@@ -119,10 +119,10 @@ Enable with `failover.type: resilience`. Requires `spring-cloud-starter-circuitb
 
 ## Requirements
 
-| Requirement | Minimum |
-|---|---|
-| Java | 21 |
-| Spring Boot | 4.x |
+| Requirement  | Minimum                             |
+|--------------|-------------------------------------|
+| Java         | 21                                  |
+| Spring Boot  | 4.x                                 |
 | Spring Cloud | 2025.x (optional, for Resilience4j) |
 
 ---
