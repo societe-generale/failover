@@ -16,7 +16,17 @@
 
 package com.societegenerale.failover.core.report;
 
-/// @author Anand Manissery
+/**
+ * SPI for publishing failover metrics to an external sink (log, metrics system, event bus, etc.).
+ *
+ * @author Anand Manissery
+ */
 public interface ReportPublisher {
+
+    /**
+     * Publishes the given metrics to the underlying sink.
+     *
+     * @param metrics the failover metrics to publish
+     */
     void publish(Metrics metrics);
 }

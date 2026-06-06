@@ -16,9 +16,15 @@
 
 package com.societegenerale.failover.core.scanner;
 
-/// @author Anand Manissery
+/**
+ * {@link ExceptionHandler} that wraps unexpected {@link RuntimeException}s from the Reflections
+ * library into a {@link FailoverScannerException} with a diagnostic message.
+ *
+ * @author Anand Manissery
+ */
 public class ReflectionsExceptionHandler implements ExceptionHandler {
 
+    /** Diagnostic message included when a Reflections library exception is wrapped. */
     protected static final String REFLECTION_ERR_MESSAGE = """
             Exception occurred while executing the scanner with reflections.\
             NOTE : If this exception is due to reflections library, Please check your version for reflections library ( we recommend to use the stable version 0.9.9 )""";

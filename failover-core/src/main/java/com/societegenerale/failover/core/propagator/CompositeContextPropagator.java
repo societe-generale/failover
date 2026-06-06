@@ -60,10 +60,22 @@ public class CompositeContextPropagator implements ContextPropagator {
         return wrapped;
     }
 
+    /**
+     * Creates a composite from a varargs array of propagators.
+     *
+     * @param propagators the propagators to chain, in application order
+     * @return composite propagator
+     */
     public static CompositeContextPropagator of(ContextPropagator... propagators) {
         return new CompositeContextPropagator(List.of(propagators));
     }
 
+    /**
+     * Creates a composite from a list of propagators.
+     *
+     * @param propagators the propagators to chain, in application order
+     * @return composite propagator backed by an immutable copy of the list
+     */
     public static CompositeContextPropagator of(List<ContextPropagator> propagators) {
         return new CompositeContextPropagator(List.copyOf(propagators));
     }

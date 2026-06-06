@@ -20,7 +20,25 @@ import com.societegenerale.failover.annotations.Failover;
 
 import java.util.List;
 
-/// @author Anand Manissery
+/**
+ * Post-processor for payloads recovered from the failover store.
+ *
+ * <p>Implementations may enrich, transform, or substitute the recovered payload.
+ * The default pass-through implementation is {@link PassThroughRecoveredPayloadHandler}.
+ *
+ * @author Anand Manissery
+ */
 public interface RecoveredPayloadHandler {
+    /**
+     * Handles the recovered payload after a failover recovery attempt.
+     *
+     * @param <T>     the payload type
+     * @param failover annotation metadata for the failover point
+     * @param args     method arguments used to look up the payload
+     * @param clazz    expected return type
+     * @param payload  the recovered payload, or {@code null} if recovery failed
+     * @param cause    the exception that triggered recovery
+     * @return the final payload to return to the caller
+     */
     <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload, Throwable cause);
 }

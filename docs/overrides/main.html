@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {# Inject a styled page-banner on every non-home content page #}
+  {% if page.meta and page.meta.get('hide') and 'navigation' in (page.meta.get('hide', [])) %}
+    {# Home page — no banner #}
+  {% elif page.title %}
+  <div class="fo-page-banner">
+    <div class="fo-page-banner-inner">
+      {% if page.meta and page.meta.get('icon') %}
+      <span class="fo-page-banner-icon twemoji">
+        {% include ".icons/" ~ page.meta.icon ~ ".svg" ignore missing %}
+      </span>
+      {% endif %}
+      <div>
+        {% if page.parent %}
+        <span class="fo-page-banner-section">{{ page.parent.title }}</span>
+        {% endif %}
+        <h1 class="fo-page-banner-title">{{ page.title }}</h1>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {{ super() }}
+{% endblock %}

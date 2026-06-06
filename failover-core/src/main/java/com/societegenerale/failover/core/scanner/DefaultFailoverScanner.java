@@ -30,6 +30,10 @@ import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
 
 /**
+ * Default {@link FailoverScanner} backed by the Reflections library.
+ * Scans the given base package for all methods annotated with {@link Failover}
+ * and indexes them by name for fast lookup.
+ *
  * @author Anand Manissery
  */
 public class DefaultFailoverScanner implements FailoverScanner {
@@ -40,6 +44,13 @@ public class DefaultFailoverScanner implements FailoverScanner {
 
     private Map<String, Failover> failoverMap;
 
+    /**
+     * Creates a scanner and immediately scans the given package for {@code @Failover} annotations.
+     *
+     * @param packageToScan base package to scan; must not be blank
+     * @throws IllegalStateException if {@code packageToScan} is blank
+     * @throws FailoverScannerException if the Reflections scan fails or duplicate names are found
+     */
     public DefaultFailoverScanner(String packageToScan) {
         if (packageToScan == null || packageToScan.isBlank()) {
             throw new IllegalStateException(

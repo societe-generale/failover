@@ -32,6 +32,10 @@ import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static java.util.Arrays.asList;
 
 /**
+ * AspectJ around-advice that intercepts methods annotated with {@link Failover} and delegates
+ * execution to the configured {@link FailoverExecution} strategy.
+ *
+ * @param <T> the return type of the intercepted methods
  * @author Anand Manissery
  */
 @Aspect
@@ -41,6 +45,14 @@ public class FailoverAspect<T> {
 
     private final FailoverExecution<T> failoverExecution;
 
+    /**
+     * Around advice applied to all methods annotated with {@link Failover}.
+     * Stores the result on success and recovers from the store on failure.
+     *
+     * @param joinPoint the proceeding join point for the intercepted method
+     * @param failover  the {@link Failover} annotation on the intercepted method
+     * @return the method result or a recovered failover value
+     */
     @Around(value = "@annotation(com.societegenerale.failover.annotations.Failover) && @annotation(failover)", argNames = "joinPoint, failover")
     public T failoverAroundAdvice(ProceedingJoinPoint joinPoint, @Nullable Failover failover) {
         Method method = ((MethodSignature)joinPoint.getSignature()).getMethod();

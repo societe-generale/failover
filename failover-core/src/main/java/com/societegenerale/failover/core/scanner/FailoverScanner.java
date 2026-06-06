@@ -21,10 +21,25 @@ import com.societegenerale.failover.annotations.Failover;
 import java.util.List;
 
 /**
+ * Scans the application classpath for methods annotated with {@link Failover}
+ * and provides lookup by name.
+ *
  * @author Anand Manissery
  */
 public interface FailoverScanner {
+
+    /**
+     * Returns the {@link Failover} annotation with the given name, or {@code null} if not found.
+     *
+     * @param name the value of {@link Failover#name()}
+     * @return the matching annotation, or {@code null}
+     */
     Failover findFailoverByName(String name);
 
+    /**
+     * Returns all {@link Failover} annotations discovered during scanning.
+     *
+     * @return list of all failover annotations; never {@code null}
+     */
     List<Failover> findAllFailover();
 }

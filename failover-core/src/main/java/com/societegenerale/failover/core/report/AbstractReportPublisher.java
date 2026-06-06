@@ -20,6 +20,9 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import lombok.AllArgsConstructor;
 
 /**
+ * Base {@link ReportPublisher} that stamps each {@link Metrics} object with the current timestamp
+ * before delegating to {@link #doPublish}.
+ *
  * @author Anand Manissery
  */
 @AllArgsConstructor
@@ -33,5 +36,10 @@ public abstract class AbstractReportPublisher implements ReportPublisher {
         doPublish(metrics);
     }
 
+    /**
+     * Performs the actual publishing of the timestamped metrics.
+     *
+     * @param metrics the metrics object to publish, already stamped with publish timestamp
+     */
     public abstract void doPublish(Metrics metrics);
 }

@@ -53,61 +53,77 @@ import java.time.temporal.ChronoUnit;
 @Documented
 public @interface Failover {
 
-    /// The name of the failover.
-    ///
-    /// A unique name must be provided
-    /// @return name of the failover
+    /**
+     * The name of the failover. A unique name must be provided.
+     *
+     * @return name of the failover
+     */
     String name();
 
-    /// The expiry duration for computing the expiry of the entities stored in the failover store.
-    ///
-    /// The default value is 1
-    /// @return expiry duration of the failover
+    /**
+     * The expiry duration for computing the expiry of the entities stored in the failover store.
+     * The default value is 1.
+     *
+     * @return expiry duration of the failover
+     */
     long expiryDuration() default 1;
 
-    /// The expiry duration expression for computing the expiry of the entities stored in the failover store.
-    /// If you specify expression it will be taken for computing expiry otherwise expiryDuration will be taken
-    ///
-    /// The default value is ""
-    /// @return expiry duration of the failover
+    /**
+     * The expiry duration expression for computing the expiry of the entities stored in the failover store.
+     * If you specify expression it will be taken for computing expiry otherwise expiryDuration will be taken.
+     * The default value is {@code ""}.
+     *
+     * @return expiry duration expression of the failover
+     */
     String expiryDurationExpression() default "";
 
-    /// The expiry unit @see java.time.temporal.ChronoUnit for computing the expiry of the entities stored in the failover store.
-    ///
-    /// The default value is HOURS
-    /// @return expiry unit of the failover
+    /**
+     * The expiry unit for computing the expiry of the entities stored in the failover store.
+     * See {@link java.time.temporal.ChronoUnit}. The default value is {@link ChronoUnit#HOURS}.
+     *
+     * @return expiry unit of the failover
+     */
     ChronoUnit expiryUnit() default ChronoUnit.HOURS;
 
-    /// The expiry unit expression @see java.time.temporal.ChronoUnit for computing the expiry of the entities stored in the failover store.
-    /// If you specify expression it will be taken for computing expiry otherwise expiryUnit will be taken
-    ///
-    /// The default value is ""
-    /// @return expiry unit of the failover
+    /**
+     * The expiry unit expression for computing the expiry of the entities stored in the failover store.
+     * If you specify expression it will be taken for computing expiry otherwise expiryUnit will be taken.
+     * The default value is {@code ""}.
+     *
+     * @return expiry unit expression of the failover
+     */
     String expiryUnitExpression() default "";
 
-    /// The bean name of the custom 'com.societegenerale.failover.core.key.KeyGenerator' to use.
-    ///
-    /// If not configured, default key generator will be used
-    /// @return key generator name
+    /**
+     * The bean name of the custom {@code KeyGenerator} to use.
+     * If not configured, the default key generator will be used.
+     *
+     * @return key generator bean name
+     */
     String keyGenerator() default "";
 
-    /// The bean name of the custom 'com.societegenerale.failover.core.expiry.ExpiryPolicy' to use.
-    ///
-    /// If not configured, default expiry policy will be used
-    /// @return expiry policy name
+    /**
+     * The bean name of the custom {@code ExpiryPolicy} to use.
+     * If not configured, the default expiry policy will be used.
+     *
+     * @return expiry policy bean name
+     */
     String expiryPolicy() default "";
 
-    /// The bean name of the custom 'com.societegenerale.failover.core.payload.PayloadSplitter' to use.
-    ///
-    /// When set, enables scatter/gather mode:
-    /// - Store path: the composite method result is split into individual per-entity slices via
-    ///   PayloadSplitter#split, each stored under its own UUID key derived from the individual
-    ///   SplitterContext args through the standard FailoverKeyGenerator pipeline.
-    /// - Recover path: each individual key is looked up independently; available slices are
-    ///   merged via PayloadSplitter#merge. Partial recovery (some entities cached, others not)
-    ///   is handled gracefully.
-    ///
-    /// If empty (default), standard single-key behaviour applies.
-    /// @return payload splitter bean name
+    /**
+     * The bean name of the custom {@code PayloadSplitter} to use for scatter/gather mode.
+     *
+     * <p>When set, enables scatter/gather mode:
+     * <ul>
+     *   <li>Store path: the composite method result is split into individual per-entity slices via
+     *       {@code PayloadSplitter#split}, each stored under its own UUID key.</li>
+     *   <li>Recover path: each individual key is looked up independently; available slices are
+     *       merged via {@code PayloadSplitter#merge}. Partial recovery is handled gracefully.</li>
+     * </ul>
+     *
+     * <p>If empty (default), standard single-key behaviour applies.
+     *
+     * @return payload splitter bean name
+     */
     String payloadSplitter() default "";
 }

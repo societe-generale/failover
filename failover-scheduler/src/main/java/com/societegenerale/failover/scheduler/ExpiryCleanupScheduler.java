@@ -23,6 +23,11 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /**
+ * Spring scheduler that periodically removes expired entries from the failover store via
+ * {@link FailoverHandler#clean()}. Runs on the cron schedule configured by
+ * {@code failover.scheduler.cleanup-cron} (default: hourly).
+ *
+ * @param <T> the payload type of the failover handler
  * @author Anand Manissery
  */
 @AllArgsConstructor
@@ -31,6 +36,7 @@ public class ExpiryCleanupScheduler<T> {
 
     private final FailoverHandler<T> failoverHandler;
 
+    /** Removes expired failover entries asynchronously on the configured cron schedule. */
     @Async
     @Scheduled(cron = "${failover.scheduler.cleanup-cron:0 0 * * * *}")
     public void cleanup() {
