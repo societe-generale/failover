@@ -66,7 +66,7 @@ class DefaultFailoverReporterTest {
     void setUp() {
         lenient().when(clock.now()).thenReturn(NOW);
         lenient().when(manifestInfoExtractor.extract(any())).thenReturn(METADATA_INFO);
-        reportPublisher = new DefaultFailoverReporterTest.InMemoryReportPublisher(clock);
+        reportPublisher = new DefaultFailoverReporterTest.InMemoryReportPublisher();
         FailoverScanner failoverScanner = new DefaultFailoverScanner("com.societegenerale.failover.core.report");
         log.info("The class {} is used for @Failover Scan", SomeReferential.class);
         defaultFailoverReporter = new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, new BasicFailoverExpiryExtractor(), ADDITIONAL_INFO);
@@ -77,7 +77,6 @@ class DefaultFailoverReporterTest {
     void shouldPublishReport() {
         defaultFailoverReporter.report();
         assertThat(reportPublisher.getMetricsMap().get("failover-report-find-by-id").getInfo())
-                .containsEntry("failover-report-publish-on", NOW.toString())
                 .containsEntry("failover-metrics-as-on", NOW.toString())
                 .containsEntry("failover-service-start-time", NOW.toString())
                 .containsEntry("failover-lib-metadata-title", "failover-core")
@@ -87,7 +86,6 @@ class DefaultFailoverReporterTest {
                 .containsEntry("failover-expiry-duration", "1")
                 .containsEntry("failover-expiry-unit", "HOURS");
         assertThat(reportPublisher.getMetricsMap().get("failover-report-find-by-code").getInfo())
-                .containsEntry("failover-report-publish-on", NOW.toString())
                 .containsEntry("failover-metrics-as-on", NOW.toString())
                 .containsEntry("failover-service-start-time", NOW.toString())
                 .containsEntry("failover-lib-metadata-title", "failover-core")
@@ -101,12 +99,7 @@ class DefaultFailoverReporterTest {
     @Getter
     static class InMemoryReportPublisher extends AbstractReportPublisher {
 
-        private final Map<String,Metrics> metricsMap;
-
-        public InMemoryReportPublisher(FailoverClock clock) {
-            super(clock);
-            this.metricsMap = new ConcurrentHashMap<>();
-        }
+        private final Map<String,Metrics> metricsMap = new ConcurrentHashMap<>();
 
         @Override
         public void doPublish(Metrics metrics) {

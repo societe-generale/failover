@@ -16,16 +16,20 @@
 
 package com.societegenerale.failover.core.report;
 
-import org.junit.jupiter.api.DisplayName;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author Anand Manissery
@@ -33,11 +37,16 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class CompositeReportPublisherTest {
 
+    private static final LocalDateTime NOW = LocalDateTime.now();
+
     @Mock
     private ReportPublisher publisher1;
 
     @Mock
     private ReportPublisher publisher2;
+
+    @Mock
+    private FailoverClock failoverClock;
 
     private Metrics metrics;
 
@@ -46,13 +55,15 @@ class CompositeReportPublisherTest {
     @BeforeEach
     void setUp() {
         metrics = Metrics.of("failover");
-        compositeReportPublisher = new CompositeReportPublisher(Arrays.asList(publisher1, publisher2));
+        compositeReportPublisher = new CompositeReportPublisher(Arrays.asList(publisher1, publisher2), failoverClock);
     }
 
     @Test
     @DisplayName("should publish metrics with all publishers")
     void shouldPublishMetricsWithAllPublishers() {
+        when(failoverClock.now()).thenReturn(NOW);
         compositeReportPublisher.publish(metrics);
+        assertThat(metrics.getInfo()).containsEntry("failover-report-publish-on", NOW.toString());
         verify(publisher1).publish(metrics);
         verify(publisher2).publish(metrics);
     }

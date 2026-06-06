@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.core.report;
 
-import com.societegenerale.failover.core.clock.FailoverClock;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -26,15 +25,6 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public class LoggerReportPublisher extends AbstractReportPublisher {
-
-    /**
-     * Creates a logger publisher backed by the given clock.
-     *
-     * @param clock clock used to stamp each published metric with a timestamp
-     */
-    public LoggerReportPublisher(FailoverClock clock) {
-        super(clock);
-    }
 
     @Override
     public void doPublish(Metrics metrics) {

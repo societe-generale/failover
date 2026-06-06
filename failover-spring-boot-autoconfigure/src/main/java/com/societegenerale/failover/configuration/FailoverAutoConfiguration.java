@@ -274,35 +274,36 @@ public class FailoverAutoConfiguration {
     /**
      * Registers a {@link ReportPublisher} that writes failover reports to SLF4J.
      *
-     * @param clock clock used to timestamp report events
      * @return {@link LoggerReportPublisher}
      */
     @Bean
-    public ReportPublisher loggerReportPublisher(FailoverClock clock) {
-        return new LoggerReportPublisher(clock);
+    public ReportPublisher loggerReportPublisher() {
+        return new LoggerReportPublisher();
     }
 
     /**
      * Registers a {@link ReportPublisher} that records failover metrics (counters/gauges).
      *
-     * @param clock clock used to timestamp metrics events
      * @return {@link MetricsReportPublisher}
      */
     @Bean
-    public ReportPublisher metricsReportPublisher(FailoverClock clock) {
-        return new MetricsReportPublisher(clock);
+    public ReportPublisher metricsReportPublisher() {
+        return new MetricsReportPublisher();
     }
 
     /**
-     * Registers a composite publisher that broadcasts to every {@link ReportPublisher} in the context.
+     * Registers a composite publisher that stamps the publish timestamp once and broadcasts
+     * to every {@link ReportPublisher} in the context. Stamping once here ensures all delegates
+     * receive the same timestamp regardless of how many publishers are registered.
      *
      * @param reportPublishers all {@link ReportPublisher} beans in the context
+     * @param clock            clock used to stamp the single publish timestamp
      * @return composite publisher
      */
     @ConditionalOnMissingBean
     @Bean
-    public CompositeReportPublisher compositeReportPublisher(List<ReportPublisher> reportPublishers) {
-        return new CompositeReportPublisher(reportPublishers);
+    public CompositeReportPublisher compositeReportPublisher(List<ReportPublisher> reportPublishers, FailoverClock clock) {
+        return new CompositeReportPublisher(reportPublishers, clock);
     }
 
     /**

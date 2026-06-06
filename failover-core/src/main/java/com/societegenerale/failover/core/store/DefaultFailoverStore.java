@@ -71,12 +71,12 @@ public class DefaultFailoverStore<T> implements FailoverStore<T> {
      *
      * @param name the referential name
      * @param key  the unique key within that referential
-     * @return an {@link Optional} containing the payload with {@code upToDate=false}, or empty if not found
+     * @return an {@link Optional} containing a defensive copy of the stored payload with {@code upToDate=false}, or empty if not found
      * @throws FailoverStoreException if the delegate lookup operation fails
      */
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException {
-        return failoverStore.find(name, key).map(r -> r.copy().withUpToDate(false));
+        return failoverStore.find(name, key).map(r -> r.copy().withUpToDate(FALSE));
     }
 
     /**

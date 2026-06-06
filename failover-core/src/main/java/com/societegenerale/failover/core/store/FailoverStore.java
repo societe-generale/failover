@@ -52,6 +52,13 @@ public interface FailoverStore<T> {
     /**
      * Looks up a referential payload by its logical name and key.
      *
+     * <p><strong>Implementation contract:</strong> return a defensive copy of the stored entry,
+     * not a live internal reference. Callers may mutate the returned object (e.g. set
+     * {@code upToDate = false}) without affecting the data held in the store.
+     * {@link com.societegenerale.failover.core.store.DefaultFailoverStore} already satisfies this contract
+     * for all standard store implementations. Custom stores that do not delegate to
+     * {@code DefaultFailoverStore} must ensure this themselves.
+     *
      * @param name the referential name (e.g. the entity or endpoint identifier)
      * @param key  the unique key within that referential
      * @return an {@link Optional} containing the stored payload, or empty if not found
