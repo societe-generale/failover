@@ -1130,3 +1130,37 @@ html[data-fo-font="lg"] { font-size: 19px; }
   letter-spacing: .03em;
 }
 .fo-mz-wrap:hover::before { opacity: .55; }
+
+/* ─── Javadoc iframe container ─────────────────────────────────── */
+.fo-javadoc-wrap {
+  border: 1px solid var(--fo-brd);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+  box-shadow: var(--fo-shm);
+}
+.fo-javadoc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .5rem 1rem;
+  background: var(--fo-sur2);
+  border-bottom: 1px solid var(--fo-brd);
+  font-size: .8rem;
+  color: var(--fo-tx2);
+}
+.fo-javadoc-toolbar a {
+  color: var(--fo-br);
+  text-decoration: none;
+  font-size: 1rem;
+  line-height: 1;
+}
+.fo-javadoc-toolbar a:hover { color: var(--fo-br2); }
+.fo-javadoc-frame {
+  display: block;
+  width: 100%;
+  height: 80vh;
+  min-height: 600px;
+  border: none;
+  background: #fff;
+}

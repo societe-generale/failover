@@ -6,10 +6,22 @@ icon: material/book-open-variant
 
 Full Javadoc for all modules, generated via `mvn javadoc:aggregate`.
 
-[Browse Javadoc :material-arrow-right:](javadoc/index.html){ .md-button .md-button--primary target="_blank" }
+<div class="fo-javadoc-wrap">
+  <div class="fo-javadoc-toolbar">
+    <span>Javadoc — all modules</span>
+    <a href="javadoc/index.html" target="_blank" title="Open in new tab">&#x2197;</a>
+  </div>
+  <iframe
+    src="javadoc/index.html"
+    class="fo-javadoc-frame"
+    title="Failover Javadoc"
+    loading="lazy">
+  </iframe>
+</div>
+
 
 !!! note "Generating Javadoc"
-    The embedded Javadoc is available after building the site with Javadoc generated:
+The embedded Javadoc is available after building the site with Javadoc generated:
 
     ```bash
     # 1. Generate aggregate Javadoc
