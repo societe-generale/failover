@@ -23,6 +23,10 @@ import lombok.AllArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
+ * Composite {@link ExpiryPolicy} that delegates to a named policy from the lookup when
+ * {@code @Failover#expiryPolicy()} is set, falling back to the default policy otherwise.
+ *
+ * @param <T> the payload type whose expiry this policy governs
  * @author Anand Manissery
  */
 @AllArgsConstructor

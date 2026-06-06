@@ -23,8 +23,21 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
+ * Strategy for executing a method call with failover semantics.
+ *
+ * @param <T> the return type of the protected method
  * @author Anand Manissery
  */
 public interface FailoverExecution<T> {
+
+    /**
+     * Executes the given supplier with failover protection.
+     *
+     * @param failover annotation metadata for the failover point
+     * @param supplier the actual method invocation to execute
+     * @param method   the reflected method, used for logging and type resolution
+     * @param args     resolved method arguments
+     * @return the result from the supplier, or a recovered value on failure
+     */
     T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args);
 }

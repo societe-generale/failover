@@ -19,8 +19,17 @@ package com.societegenerale.failover.core.report.manifest;
 import java.util.Map;
 
 /**
+ * Extracts build metadata from {@code META-INF/MANIFEST.MF} for a given artifact title.
+ *
  * @author Anand Manissery
  */
 public interface ManifestInfoExtractor {
+
+    /**
+     * Returns build metadata (title, version, etc.) for the artifact with the given title.
+     *
+     * @param title the {@code Implementation-Title} value to look up
+     * @return map of metadata key-value pairs; empty if no matching artifact is found
+     */
     Map<String,String> extract(String title);
 }

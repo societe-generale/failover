@@ -17,9 +17,17 @@
 package com.societegenerale.failover.core.key;
 
 /**
+ * Thrown when no {@link KeyGenerator} bean is found for the qualifier specified in a {@code @Failover} annotation.
+ *
  * @author Anand Manissery
  */
 public class KeyGeneratorNotFoundException extends RuntimeException {
+
+    /**
+     * Creates an exception with the given detail message.
+     *
+     * @param message description of which key generator was not found and for which failover
+     */
     public KeyGeneratorNotFoundException(String message) {
         super(message);
     }

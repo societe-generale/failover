@@ -17,9 +17,12 @@
 package com.societegenerale.failover.core.scanner;
 
 /**
+ * Functional interface for a scanner operation that may throw a runtime exception.
+ *
  * @author Anand Manissery
  */
 @FunctionalInterface
 public interface ExceptionHandlerExecutor {
+    /** Executes the scanner operation. */
     void execute();
 }

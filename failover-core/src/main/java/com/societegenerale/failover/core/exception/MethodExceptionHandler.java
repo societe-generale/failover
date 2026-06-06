@@ -39,6 +39,13 @@ public class MethodExceptionHandler {
 
     private final MethodExceptionPolicy methodExceptionPolicy;
 
+    /**
+     * Handles the exception from a failed primary method call by delegating to the configured policy.
+     *
+     * @param <T>     the return type of the failed method
+     * @param context full context of the failure, including the recovered result (may be {@code null})
+     * @return the result determined by the policy (recovered value, {@code null}, or rethrows)
+     */
     public <T> T handle(MethodExceptionContext<T> context) {
         log.debug("Failover: primary call failed for '{}'. Returning recovered result (may be null). Cause: {}",
                 context.method().getName(), context.cause().getMessage(), context.cause());

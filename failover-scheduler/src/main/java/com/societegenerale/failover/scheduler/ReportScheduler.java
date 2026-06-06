@@ -22,13 +22,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 
-/// @author Anand Manissery
+/**
+ * Spring scheduler that periodically publishes the failover startup report via
+ * {@link FailoverReporter}. Runs on the cron schedule configured by
+ * {@code failover.scheduler.report-cron} (default: daily at midnight).
+ *
+ * @author Anand Manissery
+ */
 @AllArgsConstructor
 @Slf4j
 public class ReportScheduler {
 
     private final FailoverReporter failoverReporter;
 
+    /** Publishes the failover report asynchronously on the configured cron schedule. */
     @Async
     @Scheduled(cron = "${failover.scheduler.report-cron:0 0 0 * * *}")
     public void report() {

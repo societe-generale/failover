@@ -20,6 +20,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 /**
+ * Default {@link FailoverClock} that returns the current UTC time from the system clock.
+ *
  * @author Anand Manissery
  */
 public class DefaultFailoverClock implements FailoverClock {

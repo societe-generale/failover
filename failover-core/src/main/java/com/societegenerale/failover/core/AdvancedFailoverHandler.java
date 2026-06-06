@@ -28,6 +28,10 @@ import java.util.List;
 import static com.societegenerale.failover.core.report.Metrics.of;
 
 /**
+ * {@link FailoverHandler} decorator that publishes metrics on every store/recover operation
+ * and delegates payload post-processing to a {@link RecoveredPayloadHandler}.
+ *
+ * @param <T> the type of the payload managed by this handler
  * @author Anand Manissery
  */
 @Slf4j

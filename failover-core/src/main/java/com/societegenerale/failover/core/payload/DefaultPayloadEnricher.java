@@ -22,6 +22,11 @@ import com.societegenerale.failover.domain.Referential;
 import com.societegenerale.failover.domain.ReferentialAware;
 
 /**
+ * Default {@link PayloadEnricher} that propagates failover metadata ({@code upToDate}, {@code asOf},
+ * exception info) into payloads that implement {@link com.societegenerale.failover.domain.Referential}
+ * or {@link com.societegenerale.failover.domain.ReferentialAware}.
+ *
+ * @param <T> the type of the payload to enrich
  * @author Anand Manissery
  */
 public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
@@ -72,13 +77,33 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
         }
     }
 
+    /**
+     * Extracts the payload from the referential wrapper. Override to supply a non-null fallback
+     * when the stored payload is absent (so metadata is still populated in the unrecovered case).
+     *
+     * @param clazz              expected payload type
+     * @param referentialPayload the wrapper holding the stored payload
+     * @return the extracted payload, possibly {@code null}
+     */
     protected T extractPayload(Class<T> clazz, ReferentialPayload<T> referentialPayload) {
-        // you can override this to provide an empty payload in case payload is null, in that case error info will be populated in all scenarios (unrecovered case)
+        // override to provide an empty payload when null so error info is populated in the unrecovered case
         return referentialPayload.getPayload();
     }
 
+    /**
+     * Extension point for adding custom entries to the recovery metadata.
+     * Called when the payload implements {@link com.societegenerale.failover.domain.Referential}
+     * or {@link com.societegenerale.failover.domain.ReferentialAware} and a cause is present.
+     *
+     * @param failover           annotation metadata for the failover point
+     * @param clazz              expected payload type
+     * @param referentialPayload the referential wrapper
+     * @param payload            the extracted payload
+     * @param cause              the exception that triggered recovery
+     * @param metadata           the metadata map to populate
+     */
     protected void populateAdditionalInfoOnMetadata(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, T payload, Throwable cause, Metadata metadata) {
-        // do nothing, this can be used if users want to provide additional information to the payload metadata
+        // do nothing; override to add application-specific metadata entries
     }
 
 }
