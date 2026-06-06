@@ -27,8 +27,8 @@ import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
-import java.sql.Types;
-import java.time.LocalDateTime;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -132,8 +132,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     @Override
     public void delete(ReferentialPayload<T> referentialPayload) {
         var count = jdbcTemplate.update(queryResolver.getDeleteQuery(),
-                new Object[]{referentialPayload.getName(), referentialPayload.getKey()},
-                new int[]{Types.VARCHAR, Types.VARCHAR});
+                referentialPayload.getName(), referentialPayload.getKey());
         log.debug("Referential payload deleted. No of record deleted : '{}'", count);
     }
 
@@ -149,9 +148,8 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                     queryResolver.getSelectQuery(),
-                    new Object[]{name, key},
-                    new int[]{Types.VARCHAR, Types.VARCHAR},
-                    rowMapper));
+                    rowMapper,
+                    name, key));
         } catch (EmptyResultDataAccessException e) {
             log.debug("No referential found for name : '{}'", name, e);
             return Optional.empty();
@@ -161,12 +159,11 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     /**
      * Deletes all rows whose {@code EXPIRE_ON} is before {@code expiry}.
      *
-     * @param expiry the cut-off timestamp; rows with {@code EXPIRE_ON < expiry} are removed
+     * @param expiry the cut-off instant; rows with {@code EXPIRE_ON < expiry} are removed
      */
     @Override
-    public void cleanByExpiry(LocalDateTime expiry) {
-        var count = jdbcTemplate.update(queryResolver.getCleanUpQuery(),
-                new Object[]{expiry}, new int[]{Types.TIMESTAMP});
+    public void cleanByExpiry(Instant expiry) {
+        var count = jdbcTemplate.update(queryResolver.getCleanUpQuery(), Timestamp.from(expiry));
         log.debug("Referential payload cleaned up by given expiry : '{}' . No of record deleted : '{}'", expiry, count);
     }
 }

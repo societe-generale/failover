@@ -26,7 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -110,7 +110,7 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> null, twoTenantFactory(), identity, "acme");
             store.prewarm(Set.of("acme", "globex"));
 
-            LocalDateTime expiry = LocalDateTime.now();
+            Instant expiry = Instant.now();
             store.cleanByExpiry(expiry);
 
             verify(acmeStore).cleanByExpiry(expiry);
@@ -123,7 +123,7 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> "acme", twoTenantFactory(), identity, null);
             store.store(payload); // only acme accessed
 
-            LocalDateTime expiry = LocalDateTime.now();
+            Instant expiry = Instant.now();
             store.cleanByExpiry(expiry);
 
             verify(acmeStore).cleanByExpiry(expiry);
@@ -141,7 +141,7 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> null, twoTenantFactory(), identity, "acme");
             store.prewarm(Set.of("acme", "globex"));
 
-            LocalDateTime expiry = LocalDateTime.now();
+            Instant expiry = Instant.now();
             store.cleanByExpiry(expiry);
 
             verify(acmeStore).cleanByExpiry(expiry);
@@ -151,9 +151,9 @@ class MultiTenantFailoverStoreTest {
         @Test
         @DisplayName("prewarm with empty set is a no-op")
         void prewarmEmptySetDoesNothing() {
-            var store = new MultiTenantFailoverStore<>(() -> "acme", _ -> acmeStore, identity, null);
+            var store = new MultiTenantFailoverStore<>(() -> "acme", tenantId -> acmeStore, identity, null);
             store.prewarm(Set.of());
-            store.cleanByExpiry(LocalDateTime.now());
+            store.cleanByExpiry(Instant.now());
             verifyNoInteractions(acmeStore);
         }
     }
@@ -165,7 +165,7 @@ class MultiTenantFailoverStoreTest {
         @Test
         @DisplayName("falls back to defaultTenant when resolver returns null")
         void usesDefaultTenantWhenResolverReturnsNull() {
-            var store = new MultiTenantFailoverStore<>(() -> null, _ -> acmeStore, identity, "acme");
+            var store = new MultiTenantFailoverStore<>(() -> null, tenantId -> acmeStore, identity, "acme");
             store.store(payload);
             verify(acmeStore).store(payload);
         }
@@ -173,7 +173,7 @@ class MultiTenantFailoverStoreTest {
         @Test
         @DisplayName("throws FailoverStoreException when resolver and defaultTenant both null")
         void throwsWhenBothNullTenant() {
-            var store = new MultiTenantFailoverStore<>(() -> null, _ -> acmeStore, identity, null);
+            var store = new MultiTenantFailoverStore<>(() -> null, tenantId -> acmeStore, identity, null);
             assertThatThrownBy(() -> store.store(payload))
                     .isInstanceOf(FailoverStoreException.class)
                     .hasMessageContaining("No tenant resolved and no default-tenant configured");
@@ -192,7 +192,7 @@ class MultiTenantFailoverStoreTest {
                 count[0]++;
                 return raw;
             };
-            var store = new MultiTenantFailoverStore<>(() -> "acme", _ -> acmeStore, countingDecorator, null);
+            var store = new MultiTenantFailoverStore<>(() -> "acme", tenantId -> acmeStore, countingDecorator, null);
 
             store.store(payload);
             store.store(payload);

@@ -135,7 +135,7 @@ class FailoverStoreAutoConfigurationTest {
     static class CustomStoreFactoryConfig {
         @Bean
         public TenantStoreFactory<Object> tenantStoreFactory() {
-            return _ -> new FailoverStoreInmemory<>();
+            return tenantId -> new FailoverStoreInmemory<>();
         }
     }
 

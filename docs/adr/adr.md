@@ -84,7 +84,7 @@ public abstract class Referential implements Serializable {
 
     private Boolean upToDate;
 
-    private LocalDateTime asOf;
+    private Instant asOf;
 }
 ```
 
@@ -92,7 +92,7 @@ public abstract class Referential implements Serializable {
 ```java
 public interface ReferentialAware {
     void setUpToDate(Boolean upToDate);
-    void setAsOf(LocalDateTime asOf);
+    void setAsOf(Instant asOf);
 }
 ```
 * 
@@ -1088,4 +1088,106 @@ entirely (e.g. to add security-principal propagation or a custom `ThreadLocal`).
 - Users who declare a custom `ContextPropagator` bean replace the entire auto-composed chain —
   they must explicitly include `MdcContextPropagator`, `TenantContextPropagator`, etc. if still
   needed.
+___
+
+## ADR 26 — Replace `LocalDateTime` with `Instant` for Timezone-Aware Expiry Timestamps
+
+**Date : 06-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+All expiry-related timestamps (`asOf`, `expireOn`) used `java.time.LocalDateTime` throughout the expiry chain — `FailoverClock`, `ReferentialPayload`, `ExpiryPolicy`, `FailoverStore.cleanByExpiry()`, and the JDBC layer.
+
+`LocalDateTime` has no timezone concept. Two JVM nodes running in different time zones (or with different `TZ` environment variables) interpret the same stored `LocalDateTime` value differently:
+
+- Node A (UTC): stores `2026-06-06T10:00:00` meaning 10:00 UTC.
+- Node B (UTC+2): reads `2026-06-06T10:00:00` as 10:00 local time → 08:00 UTC.
+
+In containerised deployments, cloud environments, or any multi-node setup, this creates two failure modes:
+
+1. **Early eviction**: a node with a later local time sees an entry as expired before its actual UTC expiry.
+2. **Phantom survival**: a node with an earlier local time serves data past its intended UTC expiry.
+
+The JDBC store uses a `TIMESTAMP` column (not `TIMESTAMP(9) WITH TIME ZONE`). `Timestamp.valueOf(LocalDateTime)` writes the local representation — losing timezone information at the database boundary.
+
+Additionally, `DefaultExpiryPolicy` used `LocalDateTime.now(ZoneId.of("UTC"))`, which creates a `LocalDateTime` with UTC wall-clock values but no attached timezone offset. This prevented correct comparison against entries stored by nodes in other zones.
+
+### Decision
+Replace `java.time.LocalDateTime` with `java.time.Instant` throughout the expiry chain.
+
+`Instant` is always UTC-relative, unambiguous across JVM timezone settings, and directly comparable regardless of where it was produced.
+
+**Contract changes:**
+
+| Interface / Class | Before | After |
+|---|---|---|
+| `FailoverClock.now()` | `LocalDateTime` | `Instant` |
+| `ExpiryPolicy.computeExpiry()` | `LocalDateTime` | `Instant` |
+| `FailoverStore.cleanByExpiry()` | `LocalDateTime expiry` | `Instant expiry` |
+| `ReferentialPayload.asOf` | `LocalDateTime` | `Instant` |
+| `ReferentialPayload.expireOn` | `LocalDateTime` | `Instant` |
+| `Referential.asOf` | `LocalDateTime` | `Instant` |
+| `ReferentialAware.setAsOf()` | `LocalDateTime` | `Instant` |
+
+**`DefaultExpiryPolicy.computeExpiry()` uses a `ZonedDateTime` intermediate** to support calendar-based `ChronoUnit` values (`MONTHS`, `YEARS`) that `Instant.plus()` rejects with `UnsupportedTemporalTypeException`:
+
+```java
+public Instant computeExpiry(Failover failover) {
+    return clock.now()
+            .atZone(ZoneOffset.UTC)
+            .plus(failoverExpiryExtractor.expiryDuration(failover),
+                  failoverExpiryExtractor.expiryUnit(failover))
+            .toInstant();
+}
+```
+
+**JDBC binding** uses `Timestamp.from(Instant)` for writes and `Timestamp.toInstant()` for reads, preserving UTC semantics at the database boundary.
+
+### Consequences
+* Expiry calculations are correct and identical across all JVM nodes regardless of system timezone.
+* All `FailoverStore` implementations (`InMemory`, `Caffeine`, `JDBC`, `Async`, `MultiTenant`) accept `Instant` for `cleanByExpiry()` — consistent interface.
+* Custom `ExpiryPolicy` implementations must update their `computeExpiry()` return type from `LocalDateTime` to `Instant` — this is a source-incompatible API change.
+* Custom `ReferentialAware` implementations must update `setAsOf(LocalDateTime)` to `setAsOf(Instant)` — source-incompatible.
+* JDBC stores using existing `TIMESTAMP` columns continue to work; `Timestamp.from(Instant)` writes UTC epoch milliseconds. No schema migration is required for databases that interpret `TIMESTAMP` as UTC internally (H2, PostgreSQL with `UTC` session timezone). For databases that apply local timezone during storage, changing the column to `TIMESTAMP(9) WITH TIME ZONE` is recommended but not mandatory.
+___
+
+## ADR 27 — Migrate Deprecated `JdbcTemplate` Overloads in `FailoverStoreJdbc`
+
+**Date : 06-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`FailoverStoreJdbc` used the `JdbcTemplate` overloads that take explicit `Object[]` parameter arrays and `int[]` SQL type arrays:
+
+```java
+jdbcTemplate.queryForObject(sql, new Object[]{name, key}, new int[]{Types.VARCHAR, Types.VARCHAR}, rowMapper);
+jdbcTemplate.update(sql, new Object[]{name, key}, new int[]{Types.VARCHAR, Types.VARCHAR});
+```
+
+These overloads were deprecated in Spring Framework 5.3 and are not recommended for use with Spring Boot 4.x (Spring Framework 6.x). The `int[]` SQL type hints are unnecessary when the JDBC driver can infer types from the bound values, and the `Object[]` form adds boilerplate with no benefit.
+
+### Decision
+Migrate to the non-deprecated varargs overloads:
+
+```java
+jdbcTemplate.queryForObject(sql, rowMapper, name, key);
+jdbcTemplate.update(sql, name, key);
+```
+
+For `cleanByExpiry()`, the `Instant` expiry value (introduced in ADR 26) is bound as `Timestamp.from(expiry)` so the JDBC driver receives a proper SQL `TIMESTAMP` value without requiring an `int[]` type hint:
+
+```java
+jdbcTemplate.update(sql, Timestamp.from(expiry));
+```
+
+The `java.sql.Types` import is removed from `FailoverStoreJdbc` as it is no longer referenced.
+
+### Consequences
+* No deprecated API usage in `FailoverStoreJdbc`.
+* `int[]` SQL type arrays removed — less boilerplate; driver-inferred types are sufficient for `VARCHAR` and `TIMESTAMP` parameters.
+* Behaviour is identical: Spring's varargs overload internally delegates to the same `PreparedStatementSetter` path as the deprecated forms.
 ___

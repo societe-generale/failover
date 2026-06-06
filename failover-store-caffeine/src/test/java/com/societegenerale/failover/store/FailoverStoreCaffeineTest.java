@@ -27,10 +27,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
-import static java.time.LocalDateTime.now;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.BDDMockito.given;
@@ -43,14 +42,14 @@ class FailoverStoreCaffeineTest {
 
     private static final String NAME = "third-party-failover";
 
-    private static final LocalDateTime NOW = now();
+    private static final Instant NOW = Instant.now();
 
     @Mock
     private FailoverClock clock;
 
     private FailoverStoreCaffeine<ThirdParty> failoverStoreCaffeine;
 
-    private ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(NAME, "1", true, NOW, NOW.plusMinutes(1L), new ThirdParty(1L, "TATA", 5));
+    private ReferentialPayload<ThirdParty> referentialPayload = new ReferentialPayload<>(NAME, "1", true, NOW, NOW.plusSeconds(60L), new ThirdParty(1L, "TATA", 5));
 
     @BeforeEach
     void setUp() {
@@ -114,7 +113,7 @@ class FailoverStoreCaffeineTest {
         failoverStoreCaffeine.store(referentialPayload);
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
 
-        failoverStoreCaffeine.delete(new ReferentialPayload<>("DUMMY-NAME", "1", true, now(), now(), new ThirdParty(1L, "TATA", 5)));
+        failoverStoreCaffeine.delete(new ReferentialPayload<>("DUMMY-NAME", "1", true, Instant.now(), Instant.now(), new ThirdParty(1L, "TATA", 5)));
 
         var result = failoverStoreCaffeine.find(NAME, "1");
         assertThat(result).isPresent();
@@ -126,7 +125,7 @@ class FailoverStoreCaffeineTest {
         failoverStoreCaffeine.store(referentialPayload);
         assertThat(failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey())).isPresent().contains(referentialPayload);
 
-        failoverStoreCaffeine.delete(new ReferentialPayload<>(NAME, "DUMMY-KEY", true, now(), now(), new ThirdParty(1L, "TATA", 5)));
+        failoverStoreCaffeine.delete(new ReferentialPayload<>(NAME, "DUMMY-KEY", true, Instant.now(), Instant.now(), new ThirdParty(1L, "TATA", 5)));
 
         var result = failoverStoreCaffeine.find(NAME, "1");
         assertThat(result).isPresent();
@@ -142,7 +141,7 @@ class FailoverStoreCaffeineTest {
         failoverStoreCaffeine.store(referentialPayload);
 
         // and : do nothing on clear
-        failoverStoreCaffeine.cleanByExpiry(now());
+        failoverStoreCaffeine.cleanByExpiry(Instant.now());
 
         // then : wait and assert for cache expiry
         await().atMost(3, TimeUnit.SECONDS).until(()-> failoverStoreCaffeine.find(referentialPayload.getName(), referentialPayload.getKey()).isEmpty());
@@ -165,7 +164,6 @@ class FailoverStoreCaffeineTest {
         // Payload A: short-lived (2s). Storing this first creates the NAME cache with expireAfterWrite=2s.
         var shortLivedPayload = new ReferentialPayload<>(NAME, "key-short", true, NOW, NOW.plusSeconds(2L),
                 new ThirdParty(1L, "SHORT", 1));
-        // Payload B: logically long-lived (30s). Its expireOn is 30s from NOW.
         var longLivedPayload  = new ReferentialPayload<>(NAME, "key-long",  true, NOW, NOW.plusSeconds(30L),
                 new ThirdParty(2L, "LONG",  2));
 
@@ -200,8 +198,6 @@ class FailoverStoreCaffeineTest {
         // Sentinel: 2s TTL on a separate key — expires at ~T+2s, used as a wall-clock timer.
         var sentinel = new ReferentialPayload<>(NAME, "sentinel-key", true, NOW, NOW.plusSeconds(2L),
                 new ThirdParty(0L, "SENTINEL", 0));
-        // Target entry: initially stored with 2s TTL, then immediately updated with 30s TTL.
-        // The update triggers expireAfterUpdate, which must re-derive TTL from the new expireOn.
         var initialPayload = new ReferentialPayload<>(NAME, "update-key", true, NOW, NOW.plusSeconds(2L),
                 new ThirdParty(1L, "INITIAL", 1));
         var updatedPayload = new ReferentialPayload<>(NAME, "update-key", true, NOW, NOW.plusSeconds(30L),

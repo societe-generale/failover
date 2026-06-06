@@ -24,7 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CompositeReportPublisherTest {
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     @Mock
     private ReportPublisher publisher1;

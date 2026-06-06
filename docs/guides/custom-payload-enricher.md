@@ -34,7 +34,7 @@ public class AuditingPayloadEnricher<T> implements PayloadEnricher<T> {
         ReferentialPayload<T> enriched = delegate.enrichOnStore(failover, clazz, payload);
         // add custom audit info
         if (enriched.getPayload() instanceof Auditable auditable) {
-            auditable.setStoredAt(LocalDateTime.now());
+            auditable.setStoredAt(Instant.now());
         }
         return enriched;
     }

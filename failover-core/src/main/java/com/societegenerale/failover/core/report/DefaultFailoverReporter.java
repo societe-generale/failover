@@ -21,7 +21,7 @@ import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.report.manifest.ManifestInfoExtractor;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -45,7 +45,7 @@ public class DefaultFailoverReporter implements FailoverReporter {
 
     private final FailoverExpiryExtractor failoverExpiryExtractor;
 
-    private final LocalDateTime serviceStartTime;
+    private final Instant serviceStartTime;
 
     /**
      * Creates a reporter with all required collaborators.

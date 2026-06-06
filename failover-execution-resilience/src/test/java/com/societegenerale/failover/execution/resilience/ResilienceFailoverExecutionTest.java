@@ -29,7 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
@@ -38,7 +38,7 @@ import static org.mockito.BDDMockito.given;
 @SpringBootTest
 class ResilienceFailoverExecutionTest {
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     private final Client client = new Client(1L, "TATA");
 
@@ -74,7 +74,7 @@ class ResilienceFailoverExecutionTest {
         assertThat(result.getAsOf()).isEqualTo(NOW);
 
         var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
-        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusHours(1), client));
+        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusSeconds(3600), client));
     }
 
     @Test
@@ -99,14 +99,14 @@ class ResilienceFailoverExecutionTest {
         assertThat(recovered.getAsOf()).isEqualTo(NOW);
 
         var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
-        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusHours(1), client));
+        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusSeconds(3600), client));
     }
 
     @Test
     @DisplayName("should not recover the client info is expired")
     void shouldNotRecoverTheClientInfoIsExpired() {
         //Given
-        given(clock.now()).willReturn(NOW, NOW, NOW.plusHours(2));
+        given(clock.now()).willReturn(NOW, NOW, NOW.plusSeconds(7200));
         given(clientReferentialExecutor.findClientById(1L)).willReturn(client);
         Client result = clientService.findClientById(1L);
         assertThat(result).isEqualTo(client);
@@ -163,6 +163,6 @@ class ResilienceFailoverExecutionTest {
         //Then
         assertThat(recovered).isNull();
         var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
-        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusHours(1), client));
+        assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusSeconds(3600), client));
     }
 }

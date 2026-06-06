@@ -16,7 +16,7 @@
 
 package com.societegenerale.failover.core.clock;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Abstraction over the system clock used by the failover framework for computing
@@ -27,9 +27,9 @@ import java.time.LocalDateTime;
 public interface FailoverClock {
 
     /**
-     * Returns the current date-time, typically in UTC.
+     * Returns the current instant in UTC.
      *
-     * @return current date-time; never {@code null}
+     * @return current instant; never {@code null}
      */
-    LocalDateTime now();
+    Instant now();
 }

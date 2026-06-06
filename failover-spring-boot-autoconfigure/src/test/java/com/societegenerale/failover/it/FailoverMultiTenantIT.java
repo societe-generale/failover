@@ -50,6 +50,7 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.test.context.TestPropertySource;
 
 import javax.sql.DataSource;
+import java.sql.Timestamp;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -171,7 +172,7 @@ class FailoverMultiTenantIT {
         private void expireAllIn(String table) {
             mtJdbc.update(
                     "UPDATE " + table + " SET EXPIRE_ON = ? WHERE FAILOVER_NAME = ?",
-                    mtClock.now().minusHours(1), FAILOVER_NAME);
+                    Timestamp.from(mtClock.now().minusSeconds(3600)), FAILOVER_NAME);
         }
 
         // ── tests ─────────────────────────────────────────────────────────────
@@ -414,7 +415,7 @@ class FailoverMultiTenantIT {
             DataSource ds = "acme".equals(tenant) ? acmeDs : globexDs;
             new JdbcTemplate(ds).update(
                     "UPDATE " + TABLE + " SET EXPIRE_ON = ? WHERE FAILOVER_NAME = ?",
-                    schemaClock.now().minusHours(1), FAILOVER_NAME);
+                    Timestamp.from(schemaClock.now().minusSeconds(3600)), FAILOVER_NAME);
         }
 
         // ── tests ─────────────────────────────────────────────────────────────

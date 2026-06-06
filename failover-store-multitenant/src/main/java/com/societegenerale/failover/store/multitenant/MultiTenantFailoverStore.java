@@ -22,7 +22,7 @@ import com.societegenerale.failover.core.store.FailoverStoreException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -122,7 +122,7 @@ public class MultiTenantFailoverStore<T> implements FailoverStore<T> {
      * Called by the scheduler — not on a request thread, so no tenant resolution is needed.
      */
     @Override
-    public void cleanByExpiry(LocalDateTime expiry) {
+    public void cleanByExpiry(Instant expiry) {
         stores.values().forEach(s -> s.cleanByExpiry(expiry));
     }
 

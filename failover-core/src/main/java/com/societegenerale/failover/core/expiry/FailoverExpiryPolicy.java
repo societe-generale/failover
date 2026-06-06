@@ -20,7 +20,7 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import lombok.AllArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Composite {@link ExpiryPolicy} that delegates to a named policy from the lookup when
@@ -37,7 +37,7 @@ public class FailoverExpiryPolicy<T> implements ExpiryPolicy<T> {
     private final ExpiryPolicyLookup<T> expiryPolicyLookup;
 
     @Override
-    public LocalDateTime computeExpiry(Failover failover) {
+    public Instant computeExpiry(Failover failover) {
         return getExpiryPolicy(failover).computeExpiry(failover);
     }
 
