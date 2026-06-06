@@ -55,7 +55,7 @@ class FailoverStoreJdbcTest {
 
     private static final String NAME = "Failover-Name";
     private static final String KEY  = "Failover-Key";
-    private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.MICROS);
+    private static final Instant NOW = Instant.now();
 
     @Autowired
     private JdbcTemplate jdbcTemplate;

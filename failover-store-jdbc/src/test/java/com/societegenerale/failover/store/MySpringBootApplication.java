@@ -77,14 +77,4 @@ public class MySpringBootApplication {
     public Serializer serializer(ObjectMapper objectMapper) {
         return new JsonSerializer(objectMapper);
     }
-
-    @Bean
-    public FailoverClock failoverClock() {
-        return new FailoverClock() {
-            @Override
-            public Instant now() {
-                return Instant.now().truncatedTo(ChronoUnit.MICROS);
-            }
-        };
-    }
 }
