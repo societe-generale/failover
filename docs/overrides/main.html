@@ -6,19 +6,28 @@
     {# Home page — no banner #}
   {% elif page.title %}
   <div class="fo-page-banner">
+
+    {# Large faded watermark icon — decorative, top-right #}
+    {% if page.meta and page.meta.get('icon') %}
+    <span class="fo-page-banner-watermark" aria-hidden="true">
+      {% include ".icons/" ~ page.meta.icon ~ ".svg" ignore missing %}
+    </span>
+    {% endif %}
+
     <div class="fo-page-banner-inner">
       {% if page.meta and page.meta.get('icon') %}
-      <span class="fo-page-banner-icon twemoji">
+      <span class="fo-page-banner-icon">
         {% include ".icons/" ~ page.meta.icon ~ ".svg" ignore missing %}
       </span>
       {% endif %}
-      <div>
-        {% if page.parent %}
-        <span class="fo-page-banner-section">{{ page.parent.title }}</span>
-        {% endif %}
+      <div class="fo-page-banner-text">
+        <span class="fo-page-banner-section">
+          {%- if page.parent -%}{{ page.parent.title }}{%- else -%}{{ config.site_name }}{%- endif -%}
+        </span>
         <h1 class="fo-page-banner-title">{{ page.title }}</h1>
       </div>
     </div>
+
   </div>
   {% endif %}
   {{ super() }}

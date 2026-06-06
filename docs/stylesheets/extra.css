@@ -217,33 +217,54 @@ body,
 .fo-page-banner {
   position: relative;
   overflow: hidden;
-  padding: 1.75rem 1.6rem 1.5rem;
+  padding: 1.6rem 1.6rem 1.4rem 1.9rem;
   margin: 0 0 2.25rem;
   background: var(--fo-sur);
   border: 1px solid var(--fo-brd);
   border-radius: 14px;
 }
 
-/* Dot-grid texture */
+/* Left accent stripe */
 .fo-page-banner::before {
   content: "";
-  position: absolute; inset: 0;
-  background-image: radial-gradient(circle, var(--fo-brd2) 1px, transparent 1px);
-  background-size: 22px 22px;
-  opacity: .45;
-  pointer-events: none;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--fo-br) 0%, var(--fo-br2) 100%);
+  border-radius: 14px 0 0 14px;
 }
 
-/* Radial glow from bottom-left */
+/* Dot-grid texture + radial glow combined */
 .fo-page-banner::after {
   content: "";
   position: absolute; inset: 0;
-  background: radial-gradient(ellipse at 0% 100%, var(--fo-br-d2) 0%, transparent 55%);
+  background:
+    radial-gradient(circle, var(--fo-brd2) 1px, transparent 1px),
+    radial-gradient(ellipse at 0% 110%, var(--fo-br-d2) 0%, transparent 60%);
+  background-size: 22px 22px, 100% 100%;
+  opacity: .5;
   pointer-events: none;
 }
 
 @media (min-width: 76.25em) {
-  .fo-page-banner { margin: 0 0 2.5rem; padding: 2rem 2.4rem 1.75rem; }
+  .fo-page-banner { margin: 0 0 2.5rem; padding: 1.9rem 2.4rem 1.65rem 2.2rem; }
+}
+
+/* Background watermark icon — large, faded, top-right */
+.fo-page-banner-watermark {
+  position: absolute;
+  right: 1.5rem; top: 50%;
+  transform: translateY(-50%);
+  width: 6.5rem; height: 6.5rem;
+  line-height: 0; font-size: 0;
+  opacity: .055;
+  pointer-events: none;
+  z-index: 0;
+}
+.fo-page-banner-watermark svg {
+  display: block;
+  width: 100%; height: 100%;
+  fill: var(--fo-br);
 }
 
 .fo-page-banner-inner {
@@ -251,39 +272,66 @@ body,
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.2rem;
 }
+
+.fo-page-banner-text { display: flex; flex-direction: column; gap: .28rem; }
 
 .fo-page-banner-icon {
   flex-shrink: 0;
-  width: 2.6rem; height: 2.6rem;
-  background: var(--fo-br-d2);
+  width: 3.2rem; height: 3.2rem;
+  background: linear-gradient(135deg, var(--fo-br-d2) 0%, var(--fo-br-d) 100%);
   border: 1px solid var(--fo-brd2);
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
+  line-height: 0; font-size: 0;
+  box-shadow:
+    0 0 0 3px var(--fo-br-d),
+    0 4px 12px rgba(0,0,0,.25);
+  transition: box-shadow .2s, transform .2s;
 }
-.fo-page-banner-icon svg { width: 1.3rem; height: 1.3rem; fill: var(--fo-br); }
-
-.fo-page-banner-section {
+.fo-page-banner-icon:hover {
+  box-shadow:
+    0 0 0 4px var(--fo-br-d2),
+    0 6px 18px rgba(0,0,0,.35);
+  transform: translateY(-1px);
+}
+.fo-page-banner-icon svg {
   display: block;
-  font-size: .62rem;
+  width: 1.8rem; height: 1.8rem;
+  fill: var(--fo-br);
+  filter: drop-shadow(0 1px 3px rgba(129,140,248,.35));
+}
+
+/* Section pill / chip */
+.fo-page-banner-section {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: .18rem .55rem;
+  background: var(--fo-br-d);
+  border: 1px solid var(--fo-brd2);
+  border-radius: 999px;
+  font-size: .58rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .12em;
+  letter-spacing: .13em;
   color: var(--fo-br);
-  margin-bottom: .22rem;
-  opacity: .85;
+  line-height: 1.6;
 }
 
 .fo-page-banner-title {
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -.03em;
-  line-height: 1.15;
+  line-height: 1.2;
   margin: 0;
   border: none;
   display: block !important;
-  color: var(--fo-tx);
+  background: linear-gradient(120deg, var(--fo-tx) 55%, var(--fo-br2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* ─── 8. TYPOGRAPHY ─────────────────────────────────────────────── */
