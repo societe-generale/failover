@@ -81,7 +81,7 @@ For `acme` with `table-prefix: MYAPP_`:
 - Tenant prefix: `ACME_`
 - Effective table: `ACME_MYAPP_FAILOVER_STORE`
 
-Create one table per tenant before starting the application. Use the same DDL as the single-tenant schema — `TIMESTAMP WITH TIME ZONE` ensures expiry timestamps are correct across nodes in different JVM timezones (see [Store Types — Timezone Support](store-types.md#timezone-support-by-database) for database-specific column types):
+Create one table per tenant before starting the application. Use the same DDL as the single-tenant schema — `TIMESTAMP(9) WITH TIME ZONE` ensures expiry timestamps are correct across nodes in different JVM timezones (see [Store Types — Timezone Support](store-types.md#timezone-support-by-database) for database-specific column types):
 
 === "H2 / PostgreSQL / Oracle"
 
@@ -89,8 +89,8 @@ Create one table per tenant before starting the application. Use the same DDL as
     CREATE TABLE ACME_MYAPP_FAILOVER_STORE (
         FAILOVER_NAME  VARCHAR(50)   NOT NULL,
         FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          TIMESTAMP WITH TIME ZONE NOT NULL,
-        EXPIRE_ON      TIMESTAMP WITH TIME ZONE NOT NULL,
+        AS_OF          TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE NOT NULL,
         PAYLOAD        VARCHAR(4000),
         PAYLOAD_CLASS  VARCHAR(256),
         PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
@@ -99,8 +99,8 @@ Create one table per tenant before starting the application. Use the same DDL as
     CREATE TABLE GLOBEX_MYAPP_FAILOVER_STORE (
         FAILOVER_NAME  VARCHAR(50)   NOT NULL,
         FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          TIMESTAMP WITH TIME ZONE NOT NULL,
-        EXPIRE_ON      TIMESTAMP WITH TIME ZONE NOT NULL,
+        AS_OF          TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE NOT NULL,
         PAYLOAD        VARCHAR(4000),
         PAYLOAD_CLASS  VARCHAR(256),
         PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)

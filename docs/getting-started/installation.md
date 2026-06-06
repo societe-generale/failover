@@ -138,8 +138,8 @@ Create the store table before starting your application. The table name is `{tab
 CREATE TABLE MYAPP_FAILOVER_STORE (
     FAILOVER_NAME    VARCHAR(50)   NOT NULL,
     FAILOVER_KEY     VARCHAR(256)  NOT NULL,
-    AS_OF            TIMESTAMP WITH TIME ZONE     NOT NULL,
-    EXPIRE_ON        TIMESTAMP WITH TIME ZONE     NOT NULL,
+    AS_OF            TIMESTAMP(9) WITH TIME ZONE     NOT NULL,
+    EXPIRE_ON        TIMESTAMP(9) WITH TIME ZONE     NOT NULL,
     PAYLOAD          VARCHAR(4000),           -- size to fit your largest payload
     PAYLOAD_CLASS    VARCHAR(256),
     PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)

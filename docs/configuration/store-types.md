@@ -79,12 +79,12 @@ The framework stores all timestamps as `java.time.Instant` (UTC-relative). `AS_O
 === "H2 / PostgreSQL / Oracle"
 
     ```sql
-    -- TIMESTAMP WITH TIME ZONE preserves UTC offset on write and read
+    -- TIMESTAMP(9) WITH TIME ZONE preserves UTC offset on write and read
     CREATE TABLE MYAPP_FAILOVER_STORE (
         FAILOVER_NAME  VARCHAR(50)   NOT NULL,
         FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          TIMESTAMP WITH TIME ZONE NOT NULL,
-        EXPIRE_ON      TIMESTAMP WITH TIME ZONE NOT NULL,
+        AS_OF          TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE NOT NULL,
         PAYLOAD        VARCHAR(4000),
         PAYLOAD_CLASS  VARCHAR(256),
         PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
@@ -94,7 +94,7 @@ The framework stores all timestamps as `java.time.Instant` (UTC-relative). `AS_O
 === "MySQL / MariaDB"
 
     ```sql
-    -- MySQL/MariaDB do not support TIMESTAMP WITH TIME ZONE.
+    -- MySQL/MariaDB do not support TIMESTAMP(9) WITH TIME ZONE.
     -- Use DATETIME(6) and pin the server (or JDBC URL) to UTC:
     --   jdbc:mysql://host/db?serverTimezone=UTC
     CREATE TABLE MYAPP_FAILOVER_STORE (
@@ -125,23 +125,23 @@ The framework stores all timestamps as `java.time.Instant` (UTC-relative). `AS_O
 
 ### Timezone Support by Database
 
-| Database   | TZ-aware column type       | Native `TIMESTAMP WITH TIME ZONE` | Upsert dialect                                   | JDBC URL requirement  |
-|------------|----------------------------|:---------------------------------:|--------------------------------------------------|-----------------------|
-| H2 2.x     | `TIMESTAMP WITH TIME ZONE` | ✅                                | `MERGE INTO … KEY(…)`                            | —                     |
-| PostgreSQL | `TIMESTAMP WITH TIME ZONE` | ✅                                | `INSERT … ON CONFLICT DO UPDATE`                 | —                     |
-| Oracle     | `TIMESTAMP WITH TIME ZONE` | ✅                                | `MERGE INTO … USING (SELECT … FROM DUAL)`        | —                     |
-| MySQL      | `DATETIME(6)`              | ❌                                | `INSERT … ON DUPLICATE KEY UPDATE`               | `?serverTimezone=UTC` |
-| MariaDB    | `DATETIME(6)`              | ❌                                | `INSERT … ON DUPLICATE KEY UPDATE`               | `?timezone=UTC`       |
-| SQL Server | `DATETIMEOFFSET`           | ✅                                | INSERT + UPDATE fallback (no native upsert)      | —                     |
+| Database   | TZ-aware column type          | Native `TIMESTAMP(9) WITH TIME ZONE` | Upsert dialect                              | JDBC URL requirement  |
+|------------|-------------------------------|:------------------------------------:|---------------------------------------------|-----------------------|
+| H2 2.x     | `TIMESTAMP(9) WITH TIME ZONE` |                  ✅                   | `MERGE INTO … KEY(…)`                       | —                     |
+| PostgreSQL | `TIMESTAMP(9) WITH TIME ZONE` |                  ✅                   | `INSERT … ON CONFLICT DO UPDATE`            | —                     |
+| Oracle     | `TIMESTAMP(9) WITH TIME ZONE` |                  ✅                   | `MERGE INTO … USING (SELECT … FROM DUAL)`   | —                     |
+| MySQL      | `DATETIME(6)`                 |                  ❌                   | `INSERT … ON DUPLICATE KEY UPDATE`          | `?serverTimezone=UTC` |
+| MariaDB    | `DATETIME(6)`                 |                  ❌                   | `INSERT … ON DUPLICATE KEY UPDATE`          | `?timezone=UTC`       |
+| SQL Server | `DATETIMEOFFSET`              |                  ✅                   | INSERT + UPDATE fallback (no native upsert) | —                     |
 
 !!! warning "MySQL / MariaDB — JDBC URL required"
     Without `serverTimezone=UTC` in the JDBC URL, `Timestamp.from(Instant)` binds using the JVM's local timezone, shifting stored values by the UTC offset. Always set `?serverTimezone=UTC` (MySQL Connector/J) or `?timezone=UTC` (MariaDB Connector/J).
 
 !!! note "H2 2.x — `getObject()` return type"
-    `queryForList()` and `getObject()` return `OffsetDateTime` for `TIMESTAMP WITH TIME ZONE` columns in H2 2.x. Cast to `OffsetDateTime` (not `java.sql.Timestamp`) before calling `.toInstant()`. `rs.getTimestamp()` still returns `Timestamp` — only the raw `getObject()` path differs.
+    `queryForList()` and `getObject()` return `OffsetDateTime` for `TIMESTAMP(9) WITH TIME ZONE` columns in H2 2.x. Cast to `OffsetDateTime` (not `java.sql.Timestamp`) before calling `.toInstant()`. `rs.getTimestamp()` still returns `Timestamp` — only the raw `getObject()` path differs.
 
 !!! note "PostgreSQL alias"
-    `TIMESTAMPTZ` is identical to `TIMESTAMP WITH TIME ZONE`; both are accepted by PostgreSQL.
+    `TIMESTAMPTZ` is identical to `TIMESTAMP(9) WITH TIME ZONE`; both are accepted by PostgreSQL.
 
 !!! tip "Payload column size"
     `PAYLOAD` stores a JSON-serialised representation of your domain object. Size the column to fit the largest expected payload. `VARCHAR(4000)` is a safe starting point; use `CLOB`/`TEXT` for very large payloads.
@@ -183,9 +183,9 @@ public FailoverStore<Object> myFailoverStore() {
 
 ## Choosing a Store
 
-| Store | Persistence | Suitable for |
-|---|---|---|
-| INMEMORY | No | Local dev, unit tests |
-| CAFFEINE | No (in-process) | Single-instance apps, test environments |
-| JDBC | Yes | Production; multi-instance; audit requirements |
-| CUSTOM | Depends | Redis, Hazelcast, custom backends |
+| Store    | Persistence     | Suitable for                                   |
+|----------|-----------------|------------------------------------------------|
+| INMEMORY | No              | Local dev, unit tests                          |
+| CAFFEINE | No (in-process) | Single-instance apps, test environments        |
+| JDBC     | Yes             | Production; multi-instance; audit requirements |
+| CUSTOM   | Depends         | Redis, Hazelcast, custom backends              |

@@ -1110,7 +1110,7 @@ In containerised deployments, cloud environments, or any multi-node setup, this 
 1. **Early eviction**: a node with a later local time sees an entry as expired before its actual UTC expiry.
 2. **Phantom survival**: a node with an earlier local time serves data past its intended UTC expiry.
 
-The JDBC store uses a `TIMESTAMP` column (not `TIMESTAMP WITH TIME ZONE`). `Timestamp.valueOf(LocalDateTime)` writes the local representation — losing timezone information at the database boundary.
+The JDBC store uses a `TIMESTAMP` column (not `TIMESTAMP(9) WITH TIME ZONE`). `Timestamp.valueOf(LocalDateTime)` writes the local representation — losing timezone information at the database boundary.
 
 Additionally, `DefaultExpiryPolicy` used `LocalDateTime.now(ZoneId.of("UTC"))`, which creates a `LocalDateTime` with UTC wall-clock values but no attached timezone offset. This prevented correct comparison against entries stored by nodes in other zones.
 
@@ -1150,7 +1150,7 @@ public Instant computeExpiry(Failover failover) {
 * All `FailoverStore` implementations (`InMemory`, `Caffeine`, `JDBC`, `Async`, `MultiTenant`) accept `Instant` for `cleanByExpiry()` — consistent interface.
 * Custom `ExpiryPolicy` implementations must update their `computeExpiry()` return type from `LocalDateTime` to `Instant` — this is a source-incompatible API change.
 * Custom `ReferentialAware` implementations must update `setAsOf(LocalDateTime)` to `setAsOf(Instant)` — source-incompatible.
-* JDBC stores using existing `TIMESTAMP` columns continue to work; `Timestamp.from(Instant)` writes UTC epoch milliseconds. No schema migration is required for databases that interpret `TIMESTAMP` as UTC internally (H2, PostgreSQL with `UTC` session timezone). For databases that apply local timezone during storage, changing the column to `TIMESTAMP WITH TIME ZONE` is recommended but not mandatory.
+* JDBC stores using existing `TIMESTAMP` columns continue to work; `Timestamp.from(Instant)` writes UTC epoch milliseconds. No schema migration is required for databases that interpret `TIMESTAMP` as UTC internally (H2, PostgreSQL with `UTC` session timezone). For databases that apply local timezone during storage, changing the column to `TIMESTAMP(9) WITH TIME ZONE` is recommended but not mandatory.
 ___
 
 ## ADR 27 — Migrate Deprecated `JdbcTemplate` Overloads in `FailoverStoreJdbc`

@@ -384,8 +384,8 @@ Create the matching table:
 CREATE TABLE DEMO_FAILOVER_STORE (
     FAILOVER_NAME  VARCHAR(50)   NOT NULL,
     FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-    AS_OF          TIMESTAMP WITH TIME ZONE  NOT NULL,
-    EXPIRE_ON      TIMESTAMP WITH TIME ZONE  NOT NULL,
+    AS_OF          TIMESTAMP(9) WITH TIME ZONE  NOT NULL,
+    EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE  NOT NULL,
     PAYLOAD        VARCHAR(2000),
     PAYLOAD_CLASS  VARCHAR(256),
     PRIMARY KEY(FAILOVER_NAME, FAILOVER_KEY)
@@ -767,13 +767,13 @@ List<Item> getItems(String ids);
 
 #### Partial recovery semantics
 
-| IDs requested | IDs cached | Behaviour |
-|---|---|---|
-| `"1,2,3"` | `1`, `2`, `3` | All found — merge returns full list |
-| `"1,2,3"` | `1`, `3` only | Partial — merge receives `[item1, item3]` |
-| `"1,2,3,4"` | `1`, `2`, `3` cached from earlier `"1,2,3"` call | All three cached IDs found; `4` is a miss |
-| `"1,2,3"` | none | All miss — returns `null` (or `RecoveredPayloadHandler` result) |
-| `"1,2,3"` | `1` expired, `2` valid, `3` valid | Expired entry deleted; merge receives `[item2, item3]` |
+| IDs requested | IDs cached                                       | Behaviour                                                       |
+|---------------|--------------------------------------------------|-----------------------------------------------------------------|
+| `"1,2,3"`     | `1`, `2`, `3`                                    | All found — merge returns full list                             |
+| `"1,2,3"`     | `1`, `3` only                                    | Partial — merge receives `[item1, item3]`                       |
+| `"1,2,3,4"`   | `1`, `2`, `3` cached from earlier `"1,2,3"` call | All three cached IDs found; `4` is a miss                       |
+| `"1,2,3"`     | none                                             | All miss — returns `null` (or `RecoveredPayloadHandler` result) |
+| `"1,2,3"`     | `1` expired, `2` valid, `3` valid                | Expired entry deleted; merge receives `[item2, item3]`          |
 
 #### Write amplification note
 
@@ -838,11 +838,11 @@ public record MethodExceptionContext<T>(
 
 #### Built-in policies
 
-| Policy                                                 | Behaviour                                                                    | Config                              |
-|--------------------------------------------------------|------------------------------------------------------------------------------|-------------------------------------|
+| Policy                                                 | Behaviour                                                                     | Config                              |
+|--------------------------------------------------------|-------------------------------------------------------------------------------|-------------------------------------|
 | `RethrowIfNoRecoveryMethodExceptionPolicy` _(default)_ | Returns recovered data when available; rethrows when recovery produced `null` | `exception-policy: rethrow` or omit |
-| `NeverRethrowMethodExceptionPolicy`                    | Always returns recovered data or `null`; never propagates                    | `exception-policy: never_throw`     |
-| Custom                                                 | Any registered `MethodExceptionPolicy` bean                                  | `exception-policy: custom`          |
+| `NeverRethrowMethodExceptionPolicy`                    | Always returns recovered data or `null`; never propagates                     | `exception-policy: never_throw`     |
+| Custom                                                 | Any registered `MethodExceptionPolicy` bean                                   | `exception-policy: custom`          |
 
 ```yaml
 failover:
@@ -879,10 +879,10 @@ public class FailoverExceptionPolicyConfig {
 
 Two built-in schedulers run on configurable cron expressions:
 
-| Scheduler      | Purpose                                               | Default                  |
-|----------------|-------------------------------------------------------|--------------------------|
+| Scheduler      | Purpose                                                 | Default                |
+|----------------|---------------------------------------------------------|------------------------|
 | `report-cron`  | Publishes failover configuration reports for monitoring | Daily (`0 0 0 * * *`)  |
-| `cleanup-cron` | Removes expired entries from the store                | Hourly (`0 0 * * * *`)   |
+| `cleanup-cron` | Removes expired entries from the store                  | Hourly (`0 0 * * * *`) |
 
 ```yaml
 failover:
