@@ -37,4 +37,4 @@ See [ADR 1](../adr/index.md) for the founding decision.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](https://github.com/societegenerale/failover/blob/main/LICENSE).
+Apache License 2.0 — see [LICENSE](https://github.com/societe-generale/failover/blob/main/LICENSE).
