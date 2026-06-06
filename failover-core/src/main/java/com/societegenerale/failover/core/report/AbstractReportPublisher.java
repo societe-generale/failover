@@ -16,23 +16,18 @@
 
 package com.societegenerale.failover.core.report;
 
-import com.societegenerale.failover.core.clock.FailoverClock;
-import lombok.AllArgsConstructor;
-
 /**
- * Base {@link ReportPublisher} that stamps each {@link Metrics} object with the current timestamp
- * before delegating to {@link #doPublish}.
+ * Base {@link ReportPublisher} that delegates publishing to {@link #doPublish}.
+ *
+ * <p>The publish timestamp is stamped once by {@link CompositeReportPublisher} before
+ * fan-out, so individual publishers receive an already-timestamped {@link Metrics} object.
  *
  * @author Anand Manissery
  */
-@AllArgsConstructor
 public abstract class AbstractReportPublisher implements ReportPublisher {
-
-    private final FailoverClock clock;
 
     @Override
     public void publish(Metrics metrics) {
-        metrics.collect("report-publish-on", clock.now().toString());
         doPublish(metrics);
     }
 

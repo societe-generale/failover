@@ -48,19 +48,27 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
-        reportPublisher.publish(of(failover.name())
-                .collect("action", "store")
-                .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
-                .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name()));
-        return failoverHandler.store(failover, args, payload);
+        T result = null;
+        try {
+            result = failoverHandler.store(failover, args, payload);
+        } finally {
+            reportPublisher.publish(of(failover.name())
+                    .collect("action", "store")
+                    .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                    .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
+                    .collect("is-stored", Boolean.toString(result!=null)));
+        }
+        return result;
     }
 
     @Override
     public T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         T result = null;
+        String recoveryFailureMsg = null;
         try {
             result = failoverHandler.recover(failover, args, clazz, cause);
         } catch( Exception exception) {
+            recoveryFailureMsg = exception.getMessage();
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover. This will impact only the failover flow. However a 'null' payload will be handled by RecoveredPayloadHandler and returned.", exception);
         } finally {
             reportPublisher.publish(of(failover.name())
@@ -71,7 +79,9 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("exception-cause-type", cause.getCause() !=null ? cause.getCause().getClass().getCanonicalName() : "")
                     .collect("exception-message", cause.getMessage() != null ? cause.getMessage() : "")
                     .collect("exception-cause-message", cause.getCause() != null && cause.getCause().getMessage() != null ? cause.getCause().getMessage() : "")
-                    .collect("is-recovered", Boolean.toString(result != null)));
+                    .collect("is-recovered", Boolean.toString(result != null))
+                    .collect("is-recovery-failed", Boolean.toString(recoveryFailureMsg!=null))
+                    .collect("recovery-failure-message", recoveryFailureMsg));
         }
         return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);
     }

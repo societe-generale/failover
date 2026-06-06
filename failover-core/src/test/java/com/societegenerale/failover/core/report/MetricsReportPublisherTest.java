@@ -18,20 +18,16 @@ package com.societegenerale.failover.core.report;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
-import com.societegenerale.failover.core.clock.FailoverClock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.BDDMockito;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -42,15 +38,10 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class MetricsReportPublisherTest {
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
-
     private static final Metrics METRICS = Metrics.of("failover");
 
     @Mock
     private Appender<ILoggingEvent> appender;
-
-    @Mock
-    private FailoverClock clock;
 
     @Captor
     private ArgumentCaptor<ILoggingEvent> captor;
@@ -61,8 +52,7 @@ class MetricsReportPublisherTest {
     void setUp() {
         var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
         logger.addAppender(appender);
-        metricsReportPublisher = new MetricsReportPublisher(clock);
-        BDDMockito.given(clock.now()).willReturn(NOW);
+        metricsReportPublisher = new MetricsReportPublisher();
     }
 
     @Test
