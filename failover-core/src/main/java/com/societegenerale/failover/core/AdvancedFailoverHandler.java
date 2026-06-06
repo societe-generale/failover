@@ -48,11 +48,12 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public T store(Failover failover, List<Object> args, T payload) {
+        var T = failoverHandler.store(failover, args, payload);
         reportPublisher.publish(of(failover.name())
                 .collect("action", "store")
                 .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
                 .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name()));
-        return failoverHandler.store(failover, args, payload);
+        return T;
     }
 
     @Override

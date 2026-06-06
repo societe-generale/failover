@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class TenantContext {
 
-    private static final ThreadLocal<String> CURRENT = new ThreadLocal<>();
+    private static final ThreadLocal<String> CURRENT_TENANT = new ThreadLocal<>();
 
     private TenantContext() {}
 
@@ -43,7 +43,7 @@ public final class TenantContext {
      */
     @Nullable
     public static String get() {
-        return CURRENT.get();
+        return CURRENT_TENANT.get();
     }
 
     /**
@@ -52,11 +52,11 @@ public final class TenantContext {
      * @param tenantId the tenant ID to set
      */
     public static void set(String tenantId) {
-        CURRENT.set(tenantId);
+        CURRENT_TENANT.set(tenantId);
     }
 
     /** Removes the tenant ID from this thread. Must be called in a {@code finally} block. */
     public static void clear() {
-        CURRENT.remove();
+        CURRENT_TENANT.remove();
     }
 }
