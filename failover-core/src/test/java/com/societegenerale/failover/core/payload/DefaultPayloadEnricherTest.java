@@ -27,7 +27,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -42,7 +42,7 @@ class DefaultPayloadEnricherTest {
     private static final String FAILOVER_KEY = "failover-key";
     private static final Failover FAILOVER = mock(Failover.class);
 
-    private final LocalDateTime now = LocalDateTime.now();
+    private final Instant now = Instant.now();
 
     // -----------------------------------------------------------------------
     // Shared payload stubs
@@ -65,7 +65,7 @@ class DefaultPayloadEnricherTest {
         private int score;
 
         private Boolean upToDate;
-        private LocalDateTime asOf;
+        private Instant asOf;
         private Metadata metadata;
 
         ReferentialAwareThirdParty(Long id, String name, int score) {
@@ -75,7 +75,7 @@ class DefaultPayloadEnricherTest {
         }
 
         @Override public void setUpToDate(Boolean upToDate) { this.upToDate = upToDate; }
-        @Override public void setAsOf(LocalDateTime asOf) { this.asOf = asOf; }
+        @Override public void setAsOf(Instant asOf) { this.asOf = asOf; }
         @Override public void setMetadata(Metadata metadata) { this.metadata = metadata; }
     }
 
@@ -86,7 +86,7 @@ class DefaultPayloadEnricherTest {
         private String name;
         private int score;
         private Boolean upToDate;
-        private LocalDateTime asOf;
+        private Instant asOf;
 
         PlainThirdParty(Long id, String name, int score) {
             this.id = id;

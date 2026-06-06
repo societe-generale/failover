@@ -19,7 +19,7 @@ package com.societegenerale.failover.store;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,12 +81,12 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
     }
 
     /**
-     * Evicts all entries whose {@code expireOn} timestamp is strictly before the given cutoff.
+     * Evicts all entries whose {@code expireOn} instant is strictly before the given cutoff.
      *
-     * @param expiry the cutoff datetime; entries with {@code expireOn} before this value are removed
+     * @param expiry the cutoff instant; entries with {@code expireOn} before this value are removed
      */
     @Override
-    public void cleanByExpiry(LocalDateTime expiry) {
+    public void cleanByExpiry(Instant expiry) {
         store.entrySet().removeIf(entry -> expiry.isAfter(entry.getValue().getExpireOn()));
     }
 

@@ -19,7 +19,7 @@ package com.societegenerale.failover.core.clock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,9 +31,9 @@ class DefaultFailoverClockTest {
     private final DefaultFailoverClock clock = new DefaultFailoverClock();
 
     @Test
-    @DisplayName("should return current date time")
+    @DisplayName("should return current instant")
     void shouldReturnCurrentDateTime() {
-        LocalDateTime now = clock.now();
+        Instant now = clock.now();
         assertThat(now).isNotNull();
     }
 }

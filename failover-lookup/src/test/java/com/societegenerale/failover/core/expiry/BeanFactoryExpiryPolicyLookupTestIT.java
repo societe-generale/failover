@@ -27,7 +27,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SpringBootTest
 class BeanFactoryExpiryPolicyLookupTestIT {
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     @Autowired
     private ExpiryPolicyLookup<Object> expiryPolicyLookup;
@@ -74,7 +74,7 @@ class BeanFactoryExpiryPolicyLookupTestIT {
 
     static class CustomExpiryPolicy<T> implements ExpiryPolicy<T> {
         @Override
-        public LocalDateTime computeExpiry(Failover failover) {
+        public Instant computeExpiry(Failover failover) {
             return NOW;
         }
 

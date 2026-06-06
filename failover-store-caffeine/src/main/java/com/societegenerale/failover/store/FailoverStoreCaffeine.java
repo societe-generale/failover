@@ -26,7 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 import static java.util.Optional.ofNullable;
@@ -154,7 +154,7 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
      * @param expiry ignored
      */
     @Override
-    public void cleanByExpiry(LocalDateTime expiry) {
+    public void cleanByExpiry(Instant expiry) {
         log.debug("Ignoring the clean up as the expiry is already managed by Caffeine Cache with per-entry expiry policy");
     }
 

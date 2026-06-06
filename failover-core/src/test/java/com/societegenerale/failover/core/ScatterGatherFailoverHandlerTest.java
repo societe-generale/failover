@@ -359,7 +359,7 @@ class ScatterGatherFailoverHandlerTest {
             };
             var capturingHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, capturingPropagator);
 
-            doAnswer(_ -> { seenOnExecutorThread.add(ctx.get()); return null; })
+            doAnswer(invocation -> { seenOnExecutorThread.add(ctx.get()); return null; })
                     .when(delegateR).store(any(), any(), any());
 
             capturingHandler.store(failover, ARGS_1_2, result(TP_1, TP_2));

@@ -21,7 +21,7 @@ import com.societegenerale.failover.core.expiry.ExpiryPolicy;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Custom {@link ExpiryPolicy} used by the IT tests to prove that the expiry policy extension
@@ -40,12 +40,12 @@ import java.time.LocalDateTime;
 public class ImmediatelyExpiredExpiryPolicy implements ExpiryPolicy<Object> {
 
     @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        return LocalDateTime.now().minusHours(1);   // always in the past → entry expired on arrival
+    public Instant computeExpiry(Failover failover) {
+        return Instant.now().minusSeconds(3600);   // always in the past → entry expired on arrival
     }
 
     @Override
     public boolean isExpired(Failover failover, ReferentialPayload<Object> payload) {
-        return LocalDateTime.now().isAfter(payload.getExpireOn());
+        return Instant.now().isAfter(payload.getExpireOn());
     }
 }

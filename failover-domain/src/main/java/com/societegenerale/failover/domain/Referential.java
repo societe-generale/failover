@@ -19,7 +19,7 @@ package com.societegenerale.failover.domain;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Base class for referential entities which need to be aware of the failover metadata information.
@@ -37,7 +37,7 @@ public abstract class Referential implements Serializable {
     private Boolean upToDate;
 
     /** The timestamp at which the referential value was captured from the live source. */
-    private LocalDateTime asOf;
+    private Instant asOf;
 
     /** Additional metadata populated during failover recovery. */
     private Metadata metadata = new Metadata();

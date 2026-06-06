@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.store;
 
+import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.store.mapper.ReferentialPayloadRowMapper;
 import com.societegenerale.failover.store.resolver.*;
@@ -28,6 +29,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 /**
  * @author Anand Manissery
