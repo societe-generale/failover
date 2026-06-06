@@ -26,7 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,7 +44,7 @@ class DefaultExpiryPolicyTest {
 
     private static final java.lang.String PAYLOAD = "Payload";
 
-    private static final LocalDateTime now = LocalDateTime.now();
+    private static final Instant now = Instant.now();
 
     @Mock
     private Failover failover;
@@ -65,7 +65,7 @@ class DefaultExpiryPolicyTest {
         given(failover.expiryDuration()).willReturn(10L);
         given(failover.expiryUnit()).willReturn(ChronoUnit.SECONDS);
         given(clock.now()).willReturn(now);
-        LocalDateTime result = defaultExpiryPolicy.computeExpiry(failover);
+        Instant result = defaultExpiryPolicy.computeExpiry(failover);
         assertThat(result).isEqualTo(now.plusSeconds(10L));
     }
 

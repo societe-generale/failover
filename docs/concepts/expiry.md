@@ -80,14 +80,14 @@ List<Price> findPrices(String productId);
 public class PricingExpiryPolicy implements ExpiryPolicy<List<Price>> {
 
     @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        // expire at next business day midnight
-        return LocalDate.now().plusDays(1).atStartOfDay();
+    public Instant computeExpiry(Failover failover) {
+        // expire at next business day midnight (UTC)
+        return LocalDate.now(ZoneOffset.UTC).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 
     @Override
     public boolean isExpired(Failover failover, ReferentialPayload<List<Price>> payload) {
-        return payload.getExpireOn().isBefore(LocalDateTime.now());
+        return payload.getExpireOn().isBefore(Instant.now());
     }
 }
 ```

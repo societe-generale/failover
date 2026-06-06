@@ -9,7 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,9 +20,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class DefaultFailoverStoreTest {
 
-    private static final LocalDateTime AS_OF = LocalDateTime.of(2024, 1, 1, 10, 0);
+    private static final Instant AS_OF = Instant.parse("2024-01-01T10:00:00Z");
 
-    private static final LocalDateTime EXPIRE_ON = LocalDateTime.of(2024, 1, 2, 10, 0);
+    private static final Instant EXPIRE_ON = Instant.parse("2024-01-02T10:00:00Z");
 
     @Mock
     private FailoverStore<String> delegate;
@@ -136,7 +136,7 @@ class DefaultFailoverStoreTest {
     @Test
     @DisplayName("clean by expiry delegates directly")
     void cleanByExpiryDelegatesDirectly() throws FailoverStoreException {
-        LocalDateTime expiry = LocalDateTime.now();
+        Instant expiry = Instant.now();
 
         store.cleanByExpiry(expiry);
 
@@ -146,7 +146,7 @@ class DefaultFailoverStoreTest {
     @Test
     @DisplayName("clean by expiry propagates failover store exception")
     void cleanByExpiryPropagatesFailoverStoreException() throws FailoverStoreException {
-        LocalDateTime expiry = LocalDateTime.now();
+        Instant expiry = Instant.now();
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).cleanByExpiry(any());
 
         assertThatThrownBy(() -> store.cleanByExpiry(expiry)).isInstanceOf(FailoverStoreException.class);

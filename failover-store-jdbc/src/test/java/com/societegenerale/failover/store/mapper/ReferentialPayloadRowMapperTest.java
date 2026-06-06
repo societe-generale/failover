@@ -34,7 +34,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,8 +46,8 @@ class ReferentialPayloadRowMapperTest {
 
     private static final String FAILOVER_NAME   = "myReferential";
     private static final String FAILOVER_KEY    = "key-123";
-    private static final LocalDateTime AS_OF     = LocalDateTime.of(2024, 1, 10, 8, 0);
-    private static final LocalDateTime EXPIRE_ON = LocalDateTime.of(2024, 1, 11, 8, 0);
+    private static final Instant AS_OF     = Instant.parse("2024-01-10T08:00:00Z");
+    private static final Instant EXPIRE_ON = Instant.parse("2024-01-11T08:00:00Z");
     private static final String PAYLOAD_CLASS   = "com.societegenerale.failover.store.mapper.ReferentialPayloadRowMapperTest$SamplePayload";
     private static final String PAYLOAD_JSON    = "{\"label\":\"hello\"}";
 
@@ -77,8 +77,8 @@ class ReferentialPayloadRowMapperTest {
     private void stubHappyPath() throws SQLException {
         when(resultSet.getString("FAILOVER_NAME")).thenReturn(FAILOVER_NAME);
         when(resultSet.getString("FAILOVER_KEY")).thenReturn(FAILOVER_KEY);
-        when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.valueOf(AS_OF));
-        when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.valueOf(EXPIRE_ON));
+        when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.from(AS_OF));
+        when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.from(EXPIRE_ON));
         when(resultSet.getString("PAYLOAD_CLASS")).thenReturn(PAYLOAD_CLASS);
         when(payloadColumnResolver.extractPayload(resultSet, "PAYLOAD")).thenReturn(PAYLOAD_JSON);
         when(serializer.toClass(PAYLOAD_CLASS)).thenReturn((Class) SamplePayload.class);
@@ -167,8 +167,8 @@ class ReferentialPayloadRowMapperTest {
         void nullPayloadMappedCorrectly() throws SQLException {
             when(resultSet.getString("FAILOVER_NAME")).thenReturn(FAILOVER_NAME);
             when(resultSet.getString("FAILOVER_KEY")).thenReturn(FAILOVER_KEY);
-            when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.valueOf(AS_OF));
-            when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.valueOf(EXPIRE_ON));
+            when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.from(AS_OF));
+            when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.from(EXPIRE_ON));
             when(resultSet.getString("PAYLOAD_CLASS")).thenReturn(PAYLOAD_CLASS);
             when(payloadColumnResolver.extractPayload(resultSet, "PAYLOAD")).thenReturn(null);
             when(serializer.toClass(PAYLOAD_CLASS)).thenReturn((Class) SamplePayload.class);
@@ -191,7 +191,7 @@ class ReferentialPayloadRowMapperTest {
             when(resultSet.getString("FAILOVER_NAME")).thenReturn(FAILOVER_NAME);
             when(resultSet.getString("FAILOVER_KEY")).thenReturn(FAILOVER_KEY);
             when(resultSet.getTimestamp("AS_OF")).thenReturn(null);
-            when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.valueOf(EXPIRE_ON));
+            when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(Timestamp.from(EXPIRE_ON));
 
             assertThatThrownBy(() -> mapper.mapRow(resultSet, 0))
                     .isInstanceOf(FailoverStoreException.class)
@@ -204,7 +204,7 @@ class ReferentialPayloadRowMapperTest {
         void expireOnNullThrowsException() throws SQLException {
             when(resultSet.getString("FAILOVER_NAME")).thenReturn(FAILOVER_NAME);
             when(resultSet.getString("FAILOVER_KEY")).thenReturn(FAILOVER_KEY);
-            when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.valueOf(AS_OF));
+            when(resultSet.getTimestamp("AS_OF")).thenReturn(Timestamp.from(AS_OF));
             when(resultSet.getTimestamp("EXPIRE_ON")).thenReturn(null);
 
             assertThatThrownBy(() -> mapper.mapRow(resultSet, 0))

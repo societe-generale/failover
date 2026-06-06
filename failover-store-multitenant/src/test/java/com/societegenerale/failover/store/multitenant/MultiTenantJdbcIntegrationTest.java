@@ -39,7 +39,7 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,7 +68,7 @@ class MultiTenantJdbcIntegrationTest {
 
     private static final String NAME = "product-service";
     private static final String KEY  = "product-001";
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     @BeforeAll
     static void setUpDatabase() {
@@ -123,10 +123,10 @@ class MultiTenantJdbcIntegrationTest {
     }
 
     private ReferentialPayload<String> payload(String key, String value) {
-        return new ReferentialPayload<>(NAME, key, true, NOW, NOW.plusHours(1), value);
+        return new ReferentialPayload<>(NAME, key, true, NOW, NOW.plusSeconds(3600), value);
     }
 
-    private ReferentialPayload<String> expiringPayload(String key, LocalDateTime expireOn) {
+    private ReferentialPayload<String> expiringPayload(String key, Instant expireOn) {
         return new ReferentialPayload<>(NAME, key, true, NOW, expireOn, "value-" + key);
     }
 
@@ -213,22 +213,22 @@ class MultiTenantJdbcIntegrationTest {
             withTenant("globex", () -> store.store(payload(KEY, "globex-val")));
 
             assertThatNoException().isThrownBy(() ->
-                    store.cleanByExpiry(NOW.plusHours(1)));
+                    store.cleanByExpiry(NOW.plusSeconds(3600)));
         }
 
         @Test
         @DisplayName("cleanByExpiry evicts expired entries from all tenant tables")
         void evictsExpiredEntriesFromAllTenants() {
             var store = buildStore();
-            LocalDateTime expiresSoon = NOW.plusMinutes(1);
-            LocalDateTime expiresFar  = NOW.plusHours(2);
+            Instant expiresSoon = NOW.plusSeconds(60);
+            Instant expiresFar  = NOW.plusSeconds(7200);
 
             withTenant("acme",   () -> store.store(expiringPayload("exp-key",  expiresSoon)));
             withTenant("acme",   () -> store.store(expiringPayload("live-key", expiresFar)));
             withTenant("globex", () -> store.store(expiringPayload("exp-key",  expiresSoon)));
             withTenant("globex", () -> store.store(expiringPayload("live-key", expiresFar)));
 
-            store.cleanByExpiry(NOW.plusMinutes(2));
+            store.cleanByExpiry(NOW.plusSeconds(120));
 
             withTenant("acme",   () -> assertThat(store.find(NAME, "exp-key")).isEmpty());
             withTenant("acme",   () -> assertThat(store.find(NAME, "live-key")).isPresent());
@@ -240,13 +240,13 @@ class MultiTenantJdbcIntegrationTest {
         @DisplayName("expiry in one tenant does not remove live entries in the other")
         void expiryDoesNotCrossTenantsForLiveEntries() {
             var store = buildStore();
-            LocalDateTime expiresSoon = NOW.plusMinutes(1);
-            LocalDateTime expiresFar  = NOW.plusHours(2);
+            Instant expiresSoon = NOW.plusSeconds(60);
+            Instant expiresFar  = NOW.plusSeconds(7200);
 
             withTenant("acme",   () -> store.store(expiringPayload("exp-key", expiresSoon)));
             withTenant("globex", () -> store.store(expiringPayload("exp-key", expiresFar)));
 
-            store.cleanByExpiry(NOW.plusMinutes(90));
+            store.cleanByExpiry(NOW.plusSeconds(5400));
 
             withTenant("acme",   () -> assertThat(store.find(NAME, "exp-key")).isEmpty());
             withTenant("globex", () -> assertThat(store.find(NAME, "exp-key")).isPresent());
@@ -256,7 +256,7 @@ class MultiTenantJdbcIntegrationTest {
         @DisplayName("cleanByExpiry on empty store does not throw")
         void cleanByExpiryOnEmptyStoreDoesNotThrow() {
             assertThatNoException().isThrownBy(() ->
-                    buildStore().cleanByExpiry(NOW.plusHours(1)));
+                    buildStore().cleanByExpiry(NOW.plusSeconds(3600)));
         }
     }
 }

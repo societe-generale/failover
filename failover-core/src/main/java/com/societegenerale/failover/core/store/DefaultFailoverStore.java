@@ -20,7 +20,7 @@ import com.societegenerale.failover.core.payload.ReferentialPayload;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 import static java.lang.Boolean.FALSE;
@@ -82,11 +82,11 @@ public class DefaultFailoverStore<T> implements FailoverStore<T> {
     /**
      * Delegates expiry-based cleanup directly to the underlying store without modification.
      *
-     * @param expiry the cutoff datetime; entries expiring at or before this value are removed
+     * @param expiry the cutoff instant; entries whose expireOn is before this value are removed
      * @throws FailoverStoreException if the delegate cleanup operation fails
      */
     @Override
-    public void cleanByExpiry(LocalDateTime expiry) throws FailoverStoreException {
+    public void cleanByExpiry(Instant expiry) throws FailoverStoreException {
         failoverStore.cleanByExpiry(expiry);
     }
 }

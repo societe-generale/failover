@@ -33,7 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.function.Supplier;
@@ -48,7 +48,7 @@ import static org.mockito.BDDMockito.given;
 @ExtendWith(MockitoExtension.class)
 class FailoverAspectTest {
 
-    private final LocalDateTime now = LocalDateTime.now();
+    private final Instant now = Instant.now();
 
     private final Client client = new Client(1L, "Client-1");
 

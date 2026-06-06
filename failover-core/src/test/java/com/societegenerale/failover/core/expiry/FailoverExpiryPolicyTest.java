@@ -25,7 +25,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static java.time.LocalDateTime.now;
+import java.time.Instant;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.BDDMockito.given;
@@ -39,7 +40,7 @@ class FailoverExpiryPolicyTest {
 
     private static final String EXPIRY_POLICY_NAME = "failover-expiry-policy";
 
-    private static final ReferentialPayload<String> REFERENTIAL_PAYLOAD = new ReferentialPayload<>("name", "key", true, now(),  now(), "PAYLOAD");
+    private static final ReferentialPayload<String> REFERENTIAL_PAYLOAD = new ReferentialPayload<>("name", "key", true, Instant.now(), Instant.now(), "PAYLOAD");
 
     @Mock
     private Failover failover;

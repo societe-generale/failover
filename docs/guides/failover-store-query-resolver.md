@@ -262,8 +262,8 @@ class RegionAwareQueryResolverTest {
     private ReferentialPayload<Object> buildSamplePayload() {
         return ReferentialPayload.builder()
                 .name("countries").key("FR")
-                .asOf(LocalDateTime.now())
-                .expireOn(LocalDateTime.now().plusHours(1))
+                .asOf(Instant.now())
+                .expireOn(Instant.now().plusSeconds(3600))
                 .payload(new Object())
                 .build();
     }
