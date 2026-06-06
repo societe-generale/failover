@@ -33,9 +33,9 @@ pip install mkdocs-material mkdocs-minify-plugin mkdocs-git-revision-date-locali
 
 ```yaml
 site_name: Failover
-site_url: https://societegenerale.github.io/failover
-repo_url: https://github.com/societegenerale/failover
-repo_name: societegenerale/failover
+site_url: https://societe-generale.github.io/failover
+repo_url: https://github.com/societe-generale/failover
+repo_name: societe-generale/failover
 
 theme:
   name: material
@@ -388,11 +388,11 @@ mvn test
 - No breaking changes to public API without a deprecation cycle and a new ADR.
 
 ## Reporting a bug
-Open a [GitHub Issue](https://github.com/societegenerale/failover/issues/new?template=bug_report.md)
+Open a [GitHub Issue](https://github.com/societe-generale/failover/issues/new?template=bug_report.md)
 with steps to reproduce, expected vs actual behaviour, and your Spring Boot / Java version.
 
 ## Proposing a feature
-Open a [GitHub Issue](https://github.com/societegenerale/failover/issues/new?template=feature_request.md)
+Open a [GitHub Issue](https://github.com/societe-generale/failover/issues/new?template=feature_request.md)
 describing the use case. Large changes should start as a discussion before any code is written.
 ```
 
@@ -421,7 +421,7 @@ bespoke try/catch logic, the team built a reusable, annotation-driven solution. 
 | Anand Manissery | Creator & Lead Maintainer |
 
 ## License
-Apache License 2.0 — see [LICENSE](https://github.com/societegenerale/failover/blob/main/LICENSE).
+Apache License 2.0 — see [LICENSE](https://github.com/societe-generale/failover/blob/main/LICENSE).
 ```
 
 ### 9.3 `docs/support.md` — Queries & Support
@@ -432,7 +432,7 @@ Content:
 # Support
 
 ## Bug reports
-Use [GitHub Issues](https://github.com/societegenerale/failover/issues) with the **bug** label.
+Use [GitHub Issues](https://github.com/societe-generale/failover/issues) with the **bug** label.
 Include:
 - Spring Boot version
 - Java version
@@ -441,11 +441,11 @@ Include:
 - Stack trace if applicable
 
 ## Feature requests
-Use [GitHub Issues](https://github.com/societegenerale/failover/issues) with the **enhancement** label.
+Use [GitHub Issues](https://github.com/societe-generale/failover/issues) with the **enhancement** label.
 Describe the use case, not just the solution — this helps evaluate fit with the library's scope.
 
 ## Questions & discussions
-Use [GitHub Discussions](https://github.com/societegenerale/failover/discussions) for:
+Use [GitHub Discussions](https://github.com/societe-generale/failover/discussions) for:
 - "How do I…" questions
 - Architectural advice
 - Sharing how you use the library
