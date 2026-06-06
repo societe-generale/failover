@@ -5,22 +5,6 @@
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/about/</loc>
-         <lastmod>2026-06-06</lastmod>
-    </url>
-    <url>
-         <loc>https://societegenerale.github.io/failover/changelog/</loc>
-         <lastmod>2026-06-06</lastmod>
-    </url>
-    <url>
-         <loc>https://societegenerale.github.io/failover/contributing/</loc>
-         <lastmod>2026-06-06</lastmod>
-    </url>
-    <url>
-         <loc>https://societegenerale.github.io/failover/support/</loc>
-         <lastmod>2026-06-06</lastmod>
-    </url>
-    <url>
          <loc>https://societegenerale.github.io/failover/adr/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
@@ -33,6 +17,10 @@
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
+         <loc>https://societegenerale.github.io/failover/api/javadocs/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
          <loc>https://societegenerale.github.io/failover/api/javadoc/legal/dejavufonts/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
@@ -42,6 +30,14 @@
     </url>
     <url>
          <loc>https://societegenerale.github.io/failover/api/javadoc/legal/jqueryUI/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/changelog/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/changelog/changelog/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
@@ -93,6 +89,10 @@
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
+         <loc>https://societegenerale.github.io/failover/guides/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
          <loc>https://societegenerale.github.io/failover/guides/context-propagation/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
@@ -109,7 +109,35 @@
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
+         <loc>https://societegenerale.github.io/failover/guides/database-resolver/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/guides/exception-policy/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/guides/failover-store-query-resolver/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/guides/payload-column-resolver/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/guides/payload-splitter/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/guides/recovered-payload-handler/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
          <loc>https://societegenerale.github.io/failover/guides/reporting/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/modules/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
@@ -138,6 +166,26 @@
     </url>
     <url>
          <loc>https://societegenerale.github.io/failover/modules/store-multitenant/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/support/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/support/about/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/support/contributing/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/support/faq/</loc>
+         <lastmod>2026-06-06</lastmod>
+    </url>
+    <url>
+         <loc>https://societegenerale.github.io/failover/support/support/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
 </urlset>

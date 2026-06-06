@@ -1,0 +1,27 @@
+{% macro feat_card(color, icon, title, desc) %}
+<div class="fo-feat-card">
+  <div class="fo-feat-icon {{ color }}">{{ icon }}</div>
+  <h3>{{ title }}</h3>
+  <p>{{ desc }}</p>
+</div>
+{% endmacro %}
+
+{% macro cta_card(icon, title, desc, href, link_text) %}
+<div class="fo-cta-card">
+  <div class="fo-cta-icon">{{ icon }}</div>
+  <h3>{{ title }}</h3>
+  <p>{{ desc }}</p>
+  <a href="{{ href }}" class="fo-cta-link">{{ link_text }}</a>
+</div>
+{% endmacro %}
+
+{% macro int_badge(label) %}
+<span class="fo-int-badge"><span class="dot"></span> {{ label }}</span>
+{% endmacro %}
+
+{% macro stat_item(num, label) %}
+<div class="fo-stat">
+  <span class="fo-stat-num">{{ num }}</span>
+  <span class="fo-stat-label">{{ label }}</span>
+</div>
+{% endmacro %}
