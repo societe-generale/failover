@@ -141,6 +141,47 @@ body,
 
 .md-header__title { font-weight: 700; letter-spacing: -.02em; font-size: .82rem; }
 
+/* Announcement bar — explicit bg so text is visible in both themes */
+.md-announce {
+  background: var(--fo-br);
+}
+[data-md-color-scheme="default"] .md-announce {
+  background: var(--fo-br);
+}
+.md-announce__inner {
+  color: #fff !important;
+  font-size: .74rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  flex-wrap: wrap;
+}
+.md-announce__inner a {
+  color: #fff !important;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: .9;
+  transition: opacity .15s;
+}
+.md-announce__inner a:hover { opacity: 1; }
+
+.fo-ann-badge {
+  display: inline-block;
+  background: rgba(255,255,255,.22);
+  color: #fff;
+  font-size: .60rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: .08rem .48rem;
+  border-radius: 4px;
+  margin-right: .2rem;
+  border: 1px solid rgba(255,255,255,.3);
+}
+
 /* Lock header title to site name — never slide in the page title */
 [data-md-component="header-topic"] {
   opacity: 0 !important;
