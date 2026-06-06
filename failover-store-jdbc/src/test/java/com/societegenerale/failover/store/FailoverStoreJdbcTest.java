@@ -36,6 +36,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -54,7 +55,7 @@ class FailoverStoreJdbcTest {
 
     private static final String NAME = "Failover-Name";
     private static final String KEY  = "Failover-Key";
-    private static final Instant NOW = Instant.now();
+    private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
