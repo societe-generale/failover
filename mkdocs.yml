@@ -7,9 +7,9 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
-  custom_dir: docs/overrides
-  logo: assets/logo.svg
-  favicon: assets/logo.svg
+  custom_dir: docs/web/html
+  logo: web/assets/logo.svg
+  favicon: web/assets/logo.svg
   font:
     text: Inter
     code: JetBrains Mono
@@ -116,27 +116,42 @@ nav:
     - Store Types: configuration/store-types.md
     - Multi-Tenant: configuration/multi-tenant.md
   - Modules:
-    - modules/core.md
-    - modules/store-jdbc.md
-    - modules/store-caffeine.md
-    - modules/store-async.md
-    - modules/store-multitenant.md
-    - modules/execution-resilience.md
-    - modules/scheduler.md
+    - modules/index.md
+    - Core: modules/core.md
+    - JDBC Store: modules/store-jdbc.md
+    - Caffeine Store: modules/store-caffeine.md
+    - Async Store: modules/store-async.md
+    - Multi-Tenant Store: modules/store-multitenant.md
+    - Resilience: modules/execution-resilience.md
+    - Scheduler: modules/scheduler.md
   - Guides:
-    - Custom Key Generator: guides/custom-key-generator.md
-    - Custom Expiry Policy: guides/custom-expiry-policy.md
-    - Custom Payload Enricher: guides/custom-payload-enricher.md
+    - guides/index.md
+    - Key Generator: guides/custom-key-generator.md
+    - Expiry Policy: guides/custom-expiry-policy.md
+    - Exception Policy: guides/exception-policy.md
+    - Recovered Payload Handler: guides/recovered-payload-handler.md
+    - Payload Enricher: guides/custom-payload-enricher.md
+    - Payload Splitter: guides/payload-splitter.md
     - Context Propagation: guides/context-propagation.md
+    - Payload Column Resolver: guides/payload-column-resolver.md
+    - Database Resolver: guides/database-resolver.md
+    - Failover Store Query Resolver: guides/failover-store-query-resolver.md
     - Reporting: guides/reporting.md
   - Architecture Decisions:
     - Decision Index: adr/index.md
     - All Decisions: adr/adr.md
-  - API Reference: api/index.md
-  - Changelog: changelog.md
-  - Contributing: contributing.md
-  - Support: support.md
-  - About: about.md
+  - API Reference:
+    - api/index.md
+    - Java Docs: api/javadocs.md
+  - Changelog:
+    - changelog/index.md
+    - Changelog: changelog/changelog.md
+  - Support:
+    - support/index.md
+    - FAQ: support/faq.md
+    - Support: support/support.md
+    - About: support/about.md
+    - Contributing: support/contributing.md
 
 not_in_nav: |
   api/javadoc/**
@@ -149,10 +164,10 @@ validation:
     not_found: warn
 
 extra_css:
-  - stylesheets/extra.css
+  - web/css/extra.css
 
 extra_javascript:
-  - javascripts/fontsize.js
+  - web/javascript/fontsize.js
 
 extra:
   social:
