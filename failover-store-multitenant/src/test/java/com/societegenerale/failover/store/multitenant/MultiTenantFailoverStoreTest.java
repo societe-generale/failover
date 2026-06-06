@@ -151,7 +151,7 @@ class MultiTenantFailoverStoreTest {
         @Test
         @DisplayName("prewarm with empty set is a no-op")
         void prewarmEmptySetDoesNothing() {
-            var store = new MultiTenantFailoverStore<>(() -> "acme", _ -> acmeStore, identity, null);
+            var store = new MultiTenantFailoverStore<>(() -> "acme", tenantId -> acmeStore, identity, null);
             store.prewarm(Set.of());
             store.cleanByExpiry(Instant.now());
             verifyNoInteractions(acmeStore);
@@ -165,7 +165,7 @@ class MultiTenantFailoverStoreTest {
         @Test
         @DisplayName("falls back to defaultTenant when resolver returns null")
         void usesDefaultTenantWhenResolverReturnsNull() {
-            var store = new MultiTenantFailoverStore<>(() -> null, _ -> acmeStore, identity, "acme");
+            var store = new MultiTenantFailoverStore<>(() -> null, tenantId -> acmeStore, identity, "acme");
             store.store(payload);
             verify(acmeStore).store(payload);
         }
@@ -173,7 +173,7 @@ class MultiTenantFailoverStoreTest {
         @Test
         @DisplayName("throws FailoverStoreException when resolver and defaultTenant both null")
         void throwsWhenBothNullTenant() {
-            var store = new MultiTenantFailoverStore<>(() -> null, _ -> acmeStore, identity, null);
+            var store = new MultiTenantFailoverStore<>(() -> null, tenantId -> acmeStore, identity, null);
             assertThatThrownBy(() -> store.store(payload))
                     .isInstanceOf(FailoverStoreException.class)
                     .hasMessageContaining("No tenant resolved and no default-tenant configured");
@@ -192,7 +192,7 @@ class MultiTenantFailoverStoreTest {
                 count[0]++;
                 return raw;
             };
-            var store = new MultiTenantFailoverStore<>(() -> "acme", _ -> acmeStore, countingDecorator, null);
+            var store = new MultiTenantFailoverStore<>(() -> "acme", tenantId -> acmeStore, countingDecorator, null);
 
             store.store(payload);
             store.store(payload);

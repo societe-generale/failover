@@ -49,7 +49,7 @@ class MultiTenantInmemoryIntegrationTest {
      * Factory that creates a fresh {@link FailoverStoreInmemory} per tenant,
      * ensuring each tenant starts with an empty, independent store.
      */
-    private final TenantStoreFactory<String> inmemoryFactory = _ -> new FailoverStoreInmemory<>();
+    private final TenantStoreFactory<String> inmemoryFactory = tenantId -> new FailoverStoreInmemory<>();
     private final UnaryOperator<FailoverStore<String>> identity = raw -> raw;
     private final TenantResolver resolver = TenantContext::get;
 

@@ -231,7 +231,7 @@ public class FailoverStoreAutoConfiguration {
         @ConditionalOnMissingBean(TenantStoreFactory.class)
         public TenantStoreFactory<Object> inmemoryTenantStoreFactory() {
             log.warn("FailoverStore configured to FailoverStoreInmemory. We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", (Object) StoreType.values());
-            return _ -> new FailoverStoreInmemory<>();
+            return tenantId -> new FailoverStoreInmemory<>();
         }
     }
 
@@ -250,7 +250,7 @@ public class FailoverStoreAutoConfiguration {
         @ConditionalOnMissingBean(TenantStoreFactory.class)
         public TenantStoreFactory<Object> caffeineTenantStoreFactory(FailoverClock failoverClock) {
             log.warn("FailoverStore configured to FailoverStoreCaffeine. This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", (Object) StoreType.values());
-            return _ -> new FailoverStoreCaffeine<>(failoverClock);
+            return tenantId -> new FailoverStoreCaffeine<>(failoverClock);
         }
     }
 
@@ -342,7 +342,7 @@ public class FailoverStoreAutoConfiguration {
                 FailoverStoreQueryResolver failoverStoreQueryResolver,
                 RowMapper<ReferentialPayload<Object>> rowMapper) {
             log.info("FailoverStore configured to FailoverStoreJdbc.");
-            return _ -> new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
+            return tenantId -> new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
         }
     }
 }

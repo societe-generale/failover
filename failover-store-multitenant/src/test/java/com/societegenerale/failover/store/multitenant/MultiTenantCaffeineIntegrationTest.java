@@ -58,7 +58,7 @@ class MultiTenantCaffeineIntegrationTest {
      * Factory that creates a fresh {@link FailoverStoreCaffeine} per tenant.
      * Uses a fixed clock anchored to {@code NOW} so TTL computation is deterministic.
      */
-    private final TenantStoreFactory<String> caffeineFactory = _ -> new FailoverStoreCaffeine<>(() -> NOW);
+    private final TenantStoreFactory<String> caffeineFactory = tenantId -> new FailoverStoreCaffeine<>(() -> NOW);
     private final UnaryOperator<FailoverStore<String>> identity = raw -> raw;
     private final TenantResolver resolver = TenantContext::get;
 
