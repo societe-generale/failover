@@ -33,6 +33,7 @@ import java.util.List;
 
 import static java.time.temporal.ChronoUnit.MINUTES;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -78,10 +79,24 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should store along with reporting")
     void shouldStoreAlongWithReporting() {
+        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
         advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
         verify(failoverHandler).store(failover, ARGS, PAYLOAD);
         assertThat(reportPublisher.getMetrics().getInfo()).containsEntry("failover-action", "store")
-                .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES");
+                .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
+                .containsEntry("failover-is-stored", "true");
+    }
+
+    @Test
+    @DisplayName("should publish metrics with is-stored=false when store delegate throws exception")
+    void shouldPublishMetricsEvenWhenStoreDelegateThrowsException() {
+        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willThrow(new RuntimeException("Store failure"));
+        assertThatThrownBy(() -> advancedFailoverHandler.store(failover, ARGS, PAYLOAD))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Store failure");
+        assertThat(reportPublisher.getMetrics().getInfo())
+                .containsEntry("failover-action", "store")
+                .containsEntry("failover-is-stored", "false");
     }
 
     @Test
@@ -152,7 +167,22 @@ class AdvancedFailoverHandlerTest {
                 .containsEntry("failover-exception-message", "Dummy-Exception")
                 .containsEntry("failover-exception-cause-type", "")
                 .containsEntry("failover-exception-cause-message", "")
-                .containsEntry("failover-is-recovered", "false");
+                .containsEntry("failover-is-recovered", "false")
+                .containsEntry("failover-is-recovery-failed", "true")
+                .containsEntry("failover-recovery-failure-message", "Exception on recover");
+    }
+
+    @Test
+    @DisplayName("should capture recovery failure message in metrics when recover delegate throws exception")
+    void shouldCaptureRecoveryFailureMessageInMetricsWhenRecoverDelegateThrowsException() {
+        cause = new RuntimeException("Original-Exception");
+        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Recovery failed - store unavailable"));
+        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
+        assertThat(reportPublisher.getMetrics().getInfo())
+                .containsEntry("failover-is-recovered", "false")
+                .containsEntry("failover-is-recovery-failed", "true")
+                .containsEntry("failover-recovery-failure-message", "Recovery failed - store unavailable");
     }
 
     @Test
