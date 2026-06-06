@@ -21,7 +21,8 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import lombok.AllArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 /**
  * Default {@link ExpiryPolicy} that computes expiry by adding the annotation-configured duration
@@ -38,8 +39,12 @@ public class DefaultExpiryPolicy<T> implements ExpiryPolicy<T> {
     private final FailoverExpiryExtractor failoverExpiryExtractor;
 
     @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        return clock.now().plus(failoverExpiryExtractor.expiryDuration(failover), failoverExpiryExtractor.expiryUnit(failover));
+    public Instant computeExpiry(Failover failover) {
+        // Use ZonedDateTime for the addition so all ChronoUnit values (including MONTHS, YEARS) are supported.
+        return clock.now()
+                .atZone(ZoneOffset.UTC)
+                .plus(failoverExpiryExtractor.expiryDuration(failover), failoverExpiryExtractor.expiryUnit(failover))
+                .toInstant();
     }
 
     @Override

@@ -27,7 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.Optional;
@@ -102,7 +102,7 @@ class FailoverStoreAsyncTest {
     @Test
     @DisplayName("should delegate cleanByExpiry to the inner store via the executor")
     void shouldCallCleanByExpiry() {
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         failoverStoreAsync.cleanByExpiry(now);
         verify(failoverStore).cleanByExpiry(now);
     }
@@ -138,7 +138,7 @@ class FailoverStoreAsyncTest {
         TaskExecutor capturingExecutor = capturedTask::set;
 
         FailoverStoreAsync<String> asyncStore = new FailoverStoreAsync<>(failoverStore, capturingExecutor);
-        asyncStore.cleanByExpiry(LocalDateTime.now());
+        asyncStore.cleanByExpiry(Instant.now());
 
         assertThat(capturedTask.get()).as("cleanByExpiry() must submit a task to the executor").isNotNull();
     }
@@ -172,7 +172,7 @@ class FailoverStoreAsyncTest {
     @Test
     @DisplayName("cleanByExpiry() swallows exception from delegate — caller thread is not disrupted")
     void cleanByExpiryShouldNotPropagateExceptionFromDelegate() {
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         doThrow(new RuntimeException("DB unavailable")).when(failoverStore).cleanByExpiry(now);
         assertThatNoException().isThrownBy(() -> failoverStoreAsync.cleanByExpiry(now));
     }

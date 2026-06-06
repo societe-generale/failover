@@ -20,7 +20,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Envelope that wraps a referential payload with metadata used by the failover mechanism.
@@ -50,11 +50,11 @@ public class ReferentialPayload<T> {
      */
     private boolean upToDate;
 
-    /** Timestamp at which this payload was last retried from the golden source. */
-    private LocalDateTime asOf;
+    /** Instant at which this payload was last retrieved from the golden source. */
+    private Instant asOf;
 
-    /** Timestamp after which this payload is eligible for eviction. */
-    private LocalDateTime expireOn;
+    /** Instant after which this payload is eligible for eviction. */
+    private Instant expireOn;
 
     /** The actual business payload. */
     private T payload;

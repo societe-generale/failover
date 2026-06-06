@@ -46,7 +46,7 @@
 <!-- STATS -->
 <div class="fo-stats">
   {{ stat_item("11", "Modules") }}
-  {{ stat_item("25", "ADRs") }}
+  {{ stat_item("27", "ADRs") }}
   {{ stat_item("1",  "Annotation") }}
   {{ stat_item("4",  "Store types") }}
   {{ stat_item("0",  "Boilerplate") }}
@@ -61,9 +61,7 @@
 <div class="fo-compare">
 <div class="fo-compare-panel before">
 <div class="fo-compare-header">❌ Without Failover — bespoke, brittle, repeated everywhere</div>
-
-```java
-public Country findByCode(String code) {
+<pre><code class="language-java">public Country findByCode(String code) {
     try {
         Country c = upstream.findByCode(code);
         localRepo.save(c, computeExpiry());
@@ -77,22 +75,16 @@ public Country findByCode(String code) {
         cached.setUpToDate(false);
         return cached;
     }
-}
-```
-
+}</code></pre>
 </div>
 <div class="fo-compare-panel after">
 <div class="fo-compare-header">✅ With Failover — declarative, consistent, zero boilerplate</div>
-
-```java
-@Failover(
+<pre><code class="language-java">@Failover(
     name = "country-by-code",
     expiryDuration = 24,
     expiryUnit = ChronoUnit.HOURS
 )
-Country findByCode(String code);
-```
-
+Country findByCode(String code);</code></pre>
 </div>
 </div>
 
@@ -307,7 +299,7 @@ Country findByCode(String code);
      "Every <code>failover.*</code> property with types, defaults, and full examples.",
      'configuration/properties-reference/' | url, "Browse properties →") }}
   {{ cta_card("🏗️", "ADR Index",
-     "25 architecture decisions — the why behind every design choice in the framework.",
+     "27 architecture decisions — the why behind every design choice in the framework.",
      'adr/' | url, "Browse decisions →") }}
   {{ cta_card("🤝", "Contributing",
      "Bug reports, feature proposals, pull requests — all welcome.",

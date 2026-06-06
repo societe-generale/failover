@@ -16,17 +16,16 @@
 
 package com.societegenerale.failover.core.clock;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Instant;
 
 /**
- * Default {@link FailoverClock} that returns the current UTC time from the system clock.
+ * Default {@link FailoverClock} that returns the current UTC instant from the system clock.
  *
  * @author Anand Manissery
  */
 public class DefaultFailoverClock implements FailoverClock {
     @Override
-    public LocalDateTime now() {
-        return LocalDateTime.now(ZoneId.of("UTC"));
+    public Instant now() {
+        return Instant.now();
     }
 }

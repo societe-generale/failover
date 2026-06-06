@@ -18,7 +18,7 @@ package com.societegenerale.failover.core.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -67,10 +67,10 @@ public interface FailoverStore<T> {
     Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException;
 
     /**
-     * Evicts all entries whose expiry timestamp is on or before the given datetime.
+     * Evicts all entries whose expiry instant is before the given cutoff.
      *
-     * @param expiry the cutoff datetime; entries expiring at or before this value are removed
+     * @param expiry the cutoff instant; entries whose expireOn is before this value are removed
      * @throws FailoverStoreException if the underlying cleanup operation fails
      */
-    void cleanByExpiry(LocalDateTime expiry) throws FailoverStoreException;
+    void cleanByExpiry(Instant expiry) throws FailoverStoreException;
 }

@@ -50,7 +50,7 @@ Backing store abstraction.
 public interface FailoverStore<T> {
     void store(ReferentialPayload<T> payload);
     Optional<ReferentialPayload<T>> find(String name, String key);
-    void cleanByExpiry(LocalDateTime expiry);
+    void cleanByExpiry(Instant expiry);
     void delete(ReferentialPayload<T> payload);
 }
 ```
@@ -73,7 +73,7 @@ Computes and checks TTL.
 
 ```java
 public interface ExpiryPolicy<T> {
-    LocalDateTime computeExpiry(Failover failover);
+    Instant computeExpiry(Failover failover);
     boolean isExpired(Failover failover, ReferentialPayload<T> payload);
 }
 ```

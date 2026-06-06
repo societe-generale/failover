@@ -19,7 +19,7 @@ package com.societegenerale.failover.core.expiry;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Strategy for computing and checking expiry of stored failover payloads.
@@ -30,12 +30,12 @@ import java.time.LocalDateTime;
 public interface ExpiryPolicy<T> {
 
     /**
-     * Computes the expiry timestamp for a payload stored under the given failover.
+     * Computes the expiry instant for a payload stored under the given failover.
      *
      * @param failover annotation metadata containing the configured expiry duration and unit
-     * @return the absolute datetime after which the stored payload should be considered expired
+     * @return the absolute instant after which the stored payload should be considered expired
      */
-    LocalDateTime computeExpiry(Failover failover);
+    Instant computeExpiry(Failover failover);
 
     /**
      * Returns {@code true} if the stored payload has expired.

@@ -22,9 +22,8 @@ import lombok.Data;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
-import static java.time.LocalDateTime.now;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -32,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class FailoverStoreInmemoryTest {
 
-    private static final LocalDateTime NOW = now();
+    private static final Instant NOW = Instant.now();
 
     private final FailoverStoreInmemory<ThirdParty> failoverStoreInmemory = new FailoverStoreInmemory<>();
 
@@ -82,21 +81,21 @@ class FailoverStoreInmemoryTest {
     @DisplayName("should clean all referential by expiry")
     void shouldCleanAllReferentialByExpiry() {
 
-        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "1", true, NOW, NOW.plusMinutes(1), new ThirdParty(1L, "TATA-1", 5)));
-        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "2", true, NOW, NOW.plusMinutes(2), new ThirdParty(2L, "TATA-2", 5)));
-        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "3", true, NOW, NOW.plusMinutes(3), new ThirdParty(3L, "TATA-3", 5)));
-        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "4", true, NOW, NOW.plusMinutes(4), new ThirdParty(4L, "TATA-4", 5)));
-        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusMinutes(5), new ThirdParty(5L, "TATA-5", 5)));
+        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "1", true, NOW, NOW.plusSeconds(60), new ThirdParty(1L, "TATA-1", 5)));
+        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "2", true, NOW, NOW.plusSeconds(120), new ThirdParty(2L, "TATA-2", 5)));
+        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "3", true, NOW, NOW.plusSeconds(180), new ThirdParty(3L, "TATA-3", 5)));
+        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "4", true, NOW, NOW.plusSeconds(240), new ThirdParty(4L, "TATA-4", 5)));
+        failoverStoreInmemory.store(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusSeconds(300), new ThirdParty(5L, "TATA-5", 5)));
 
-        failoverStoreInmemory.cleanByExpiry(NOW.plusMinutes(4));
+        failoverStoreInmemory.cleanByExpiry(NOW.plusSeconds(240));
 
         assertThat(failoverStoreInmemory.find("third-party-failover", "1")).isEmpty();
         assertThat(failoverStoreInmemory.find("third-party-failover", "2")).isNotPresent();
         assertThat(failoverStoreInmemory.find("third-party-failover", "3")).isNotPresent();
         var result = failoverStoreInmemory.find("third-party-failover", "4");
-        assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "4", true, NOW, NOW.plusMinutes(4), new ThirdParty(4L, "TATA-4", 5)));
+        assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "4", true, NOW, NOW.plusSeconds(240), new ThirdParty(4L, "TATA-4", 5)));
         result = failoverStoreInmemory.find("third-party-failover", "5");
-        assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusMinutes(5), new ThirdParty(5L, "TATA-5", 5)));
+        assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusSeconds(300), new ThirdParty(5L, "TATA-5", 5)));
     }
 
     @Data
