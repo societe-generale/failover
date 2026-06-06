@@ -1,6 +1,61 @@
 {% extends "base.html" %}
 {% from 'partials/macros.html' import feat_card, cta_card, int_badge, stat_item %}
 
+{# ── Head: display font + section heading overrides ──────────── #}
+{% block extrahead %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<style>
+/* ── shared heading typography ─────────────────────────────── */
+.fo-section h2,
+.fo-showcase-text h3 {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 800 !important;
+  letter-spacing: -.045em !important;
+  text-wrap: balance !important;
+  border: none !important; padding: 0 !important;
+}
+.fo-section h2 {
+  font-size: 2rem !important;
+  line-height: 1.15 !important;
+  margin: .15rem 0 .6rem !important;
+}
+.fo-section h2::after { display: none !important; }
+.fo-showcase-text h3 {
+  font-size: 1.2rem !important;
+  line-height: 1.25 !important;
+}
+
+/* ── dark mode ──────────────────────────────────────────────── */
+body[data-md-color-scheme="slate"] .fo-section h2,
+body[data-md-color-scheme="slate"] .fo-showcase-text h3 {
+  background: linear-gradient(130deg, #f1f5f9 5%, #818cf8 60%, #c084fc) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+/* ── light mode ─────────────────────────────────────────────── */
+body[data-md-color-scheme="default"] .fo-section h2,
+body[data-md-color-scheme="default"] .fo-showcase-text h3 {
+  background: linear-gradient(130deg, #1e1b4b 5%, #4f46e5 60%, #7c3aed) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+/* ── subtitle paragraph ─────────────────────────────────────── */
+.fo-section p {
+  font-size: .95rem !important;
+  line-height: 1.72 !important;
+  max-width: 60ch !important;
+}
+body[data-md-color-scheme="slate"]   .fo-section p { color: #94a3b8 !important; }
+body[data-md-color-scheme="default"] .fo-section p { color: #475569 !important; }
+</style>
+{% endblock %}
+
 {# ── Announcement bar ─────────────────────────────────────────── #}
 {% block announce %}
 <div class="md-announce__inner">
@@ -54,7 +109,7 @@
 
 <!-- PROBLEM / SOLUTION -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">THE PROBLEM → THE SOLUTION</p>
+  <div class="fo-eyebrow fo-ey-problem"><span class="fo-ey-icon">⚡</span>The Problem → The Solution</div>
   <h2>Replace fragile try/catch with one annotation</h2>
   <p>Every team reinvents the same resilience wheel. Failover removes it entirely.</p>
 </div>
@@ -90,7 +145,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- HOW IT WORKS — mermaid diagrams rendered from index.md markdown -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">INTERNALS</p>
+  <div class="fo-eyebrow fo-ey-internals"><span class="fo-ey-icon">⚙️</span>Internals</div>
   <h2>How it works</h2>
   <p>Spring AOP intercepts every annotated method. The rest is automatic.</p>
 </div>
@@ -111,12 +166,13 @@ Country findByCode(String code);</code></pre>
 
 <!-- CONTEXT -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">CONTEXT</p>
+  <div class="fo-eyebrow fo-ey-context"><span class="fo-ey-icon">🌐</span>Context</div>
   <h2>Why referential services need special care</h2>
   <p>In microservice platforms your application calls services it doesn't own. When those fail, the cascade reaches your users — and there's nothing you can do to fix the upstream.</p>
 </div>
 <div class="fo-showcase">
 <div class="fo-showcase-text">
+<div class="fo-eyebrow fo-ey-context"><span class="fo-ey-icon">🔗</span>Service Model</div>
 <h3>Three layers of dependency</h3>
 <p>Most platforms share the same pattern: internal services you control, transversal services owned by other teams, and external services owned by third parties.</p>
 <ul>
@@ -138,7 +194,7 @@ Country findByCode(String code);</code></pre>
 <img src="{{ 'web/assets/images/failover-challenges.png' | url }}" alt="Cascade failure: external service failure propagates to end user as a 500 error" loading="lazy" />
 </div>
 <div class="fo-showcase-text">
-<p class="fo-section-eyebrow">THE CHALLENGE</p>
+<div class="fo-eyebrow fo-ey-challenge"><span class="fo-ey-icon">🔥</span>The Challenge</div>
 <h3>One outage cascades to every user</h3>
 <p>When a transversal or external service fails, the error propagates through every dependent service — returning 500s to users who have no visibility into why.</p>
 <ul>
@@ -152,7 +208,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- THE SOLUTION -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">THE SOLUTION</p>
+  <div class="fo-eyebrow fo-ey-solution"><span class="fo-ey-icon">🛡️</span>The Solution</div>
   <h2>Failover intercepts — transparently</h2>
   <p>Failover sits between your service and the referential system. On success it stores the result with a configured TTL. On failure it serves the last known-good value — no 500, no user impact.</p>
 </div>
@@ -169,7 +225,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- USER IMPACT -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">USER IMPACT</p>
+  <div class="fo-eyebrow fo-ey-impact"><span class="fo-ey-icon">👥</span>User Impact</div>
   <h2>Users stay unblocked — even during outages</h2>
   <p>Without Failover a referential failure returns a 500 and blocks the user completely. With Failover the last stored result is served — marked with its cached timestamp, but fully functional.</p>
 </div>
@@ -179,7 +235,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- OBSERVABILITY -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">OBSERVABILITY</p>
+  <div class="fo-eyebrow fo-ey-observe"><span class="fo-ey-icon">📡</span>Observability</div>
   <h2>Built-in metrics — zero extra instrumentation</h2>
   <p>Every store and recover event emits Micrometer counters automatically. Connect to Elastic, Grafana, or any metrics backend. Three dedicated panels give complete visibility into failure behaviour.</p>
 </div>
@@ -207,7 +263,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- CAPABILITIES -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">CAPABILITIES</p>
+  <div class="fo-eyebrow fo-ey-caps"><span class="fo-ey-icon">✨</span>Capabilities</div>
   <h2>Everything you need, nothing you don't</h2>
   <p>Every extension point is a pluggable SPI — swap, extend, or replace any behaviour.</p>
 </div>
@@ -234,7 +290,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- INTEGRATIONS -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">INTEGRATIONS</p>
+  <div class="fo-eyebrow fo-ey-integr"><span class="fo-ey-icon">🔌</span>Integrations</div>
   <h2>Works with your existing stack</h2>
   <p>No new runtime dependencies forced on you — every integration is opt-in via the corresponding module.</p>
 </div>
@@ -261,7 +317,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- MODULE TREE -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">ARCHITECTURE</p>
+  <div class="fo-eyebrow fo-ey-arch"><span class="fo-ey-icon">🏗️</span>Architecture</div>
   <h2>Module overview</h2>
   <p>One starter pulls in everything. Pick individual modules when you need fine-grained control.</p>
 </div>
@@ -282,7 +338,7 @@ Country findByCode(String code);</code></pre>
 
 <!-- CTA -->
 <div class="fo-section">
-  <p class="fo-section-eyebrow">DOCS</p>
+  <div class="fo-eyebrow fo-ey-docs"><span class="fo-ey-icon">📚</span>Docs</div>
   <h2>Where to go next</h2>
 </div>
 <div class="fo-cta-grid">
