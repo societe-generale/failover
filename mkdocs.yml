@@ -1,8 +1,8 @@
 site_name: Failover
 site_description: Transparent failover for referential data — annotation-driven, Spring Boot native.
-site_url: https://societegenerale.github.io/failover
+site_url: https://societe-generale.github.io/failover
 repo_url: https://github.com/societe-generale/failover
-repo_name: societegenerale/failover
+repo_name: societe-generale/failover
 edit_uri: edit/main/docs/
 
 theme:
@@ -172,6 +172,6 @@ extra_javascript:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/societegenerale/failover
+      link: https://github.com/societe-generale/failover
   version:
     provider: mike
