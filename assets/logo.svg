@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Rounded square background -->
+  <rect width="100" height="100" rx="22" fill="#6366f1"/>
+
+  <!-- Letter "F" as a filled path -->
+  <path d="M26 20 h48 v16 H44 v12 h26 v14 H44 v18 H26 Z" fill="white"/>
+
+  <!-- Small accent dot — suggests a circuit / status indicator -->
+  <circle cx="76" cy="72" r="7" fill="#a5b4fc"/>
+</svg>
