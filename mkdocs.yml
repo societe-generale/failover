@@ -148,6 +148,7 @@ nav:
     - Changelog: changelog/changelog.md
   - Support:
     - support/index.md
+    - FAQ: support/faq.md
     - Support: support/support.md
     - About: support/about.md
     - Contributing: support/contributing.md
