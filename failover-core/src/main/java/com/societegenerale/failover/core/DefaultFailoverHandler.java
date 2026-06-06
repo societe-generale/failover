@@ -33,6 +33,10 @@ import java.util.List;
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 
 /**
+ * Default {@link FailoverHandler} that persists payloads to the failover store on success
+ * and retrieves them on failure, applying expiry checks and payload enrichment.
+ *
+ * @param <T> the type of the payload managed by this handler
  * @author Anand Manissery
  */
 @Slf4j

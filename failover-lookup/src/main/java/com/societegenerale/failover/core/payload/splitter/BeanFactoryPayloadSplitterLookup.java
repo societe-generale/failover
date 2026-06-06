@@ -35,11 +35,23 @@ public class BeanFactoryPayloadSplitterLookup<T,R> implements PayloadSplitterLoo
 
     private BeanFactory beanFactory;
 
+    /**
+     * Returns the {@link PayloadSplitter} bean registered under {@code name}.
+     *
+     * @param name qualifier or bean name as declared in {@code @Failover(payloadSplitter = "...")}
+     * @return matching {@link PayloadSplitter}
+     */
     @Override
     public PayloadSplitter<T, R> lookup(String name) {
         return cast(beanFactory.getBean(name, PayloadSplitter.class));
     }
 
+    /**
+     * Injects the Spring {@link BeanFactory} used for payload-splitter lookups.
+     *
+     * @param beanFactory the bean factory to use
+     * @throws BeansException if setting the bean factory fails
+     */
     @Override
     public void setBeanFactory(@NonNull BeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;

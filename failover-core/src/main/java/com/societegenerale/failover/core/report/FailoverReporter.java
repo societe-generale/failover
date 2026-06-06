@@ -17,8 +17,12 @@
 package com.societegenerale.failover.core.report;
 
 /**
+ * Publishes a startup summary of all detected {@code @Failover} configurations.
+ *
  * @author Anand Manissery
  */
 public interface FailoverReporter {
+
+    /** Publishes the failover startup report to all registered {@link ReportPublisher} instances. */
     void report();
 }

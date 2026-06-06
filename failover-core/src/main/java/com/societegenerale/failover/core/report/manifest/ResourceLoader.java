@@ -20,7 +20,19 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.Enumeration;
 
-/// @author Anand Manissery
+/**
+ * Abstraction for locating classpath resources by name.
+ *
+ * @author Anand Manissery
+ */
 public interface ResourceLoader {
+
+    /**
+     * Returns all resource URLs registered under the given name on the classpath.
+     *
+     * @param name the resource path (e.g. {@code "META-INF/MANIFEST.MF"})
+     * @return enumeration of matching URLs; never {@code null}
+     * @throws IOException if the underlying class loader lookup fails
+     */
     Enumeration<URL> getResourcesUrls(String name) throws IOException;
 }

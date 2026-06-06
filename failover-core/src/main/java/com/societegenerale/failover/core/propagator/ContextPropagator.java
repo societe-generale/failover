@@ -81,6 +81,8 @@ public interface ContextPropagator {
     /**
      * No-op propagator — passes tasks through unchanged.
      * Suitable when no thread-bound context needs to be propagated.
+     *
+     * @return a propagator that returns the task unchanged
      */
     static @NonNull ContextPropagator noOp() {
         return task -> task;

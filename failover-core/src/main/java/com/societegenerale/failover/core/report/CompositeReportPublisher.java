@@ -19,12 +19,19 @@ package com.societegenerale.failover.core.report;
 import java.util.List;
 
 /**
+ * {@link ReportPublisher} that fans metrics out to a list of delegate publishers.
+ *
  * @author Anand Manissery
  */
 public class CompositeReportPublisher implements ReportPublisher {
 
     private final List<ReportPublisher> delegates;
 
+    /**
+     * Creates a composite publisher that forwards to each delegate in order.
+     *
+     * @param delegates the list of publishers to fan out to
+     */
     public CompositeReportPublisher(List<ReportPublisher> delegates) {
         this.delegates = delegates;
     }

@@ -31,14 +31,19 @@ import java.sql.SQLException;
 public interface PayloadColumnResolver {
 
     /**
-     * @return the JDBC type constant for the payload column (see {@link java.sql.Types})
+     * Returns the JDBC type constant for the payload column.
+     *
+     * @return the JDBC type constant (see {@link java.sql.Types})
      */
     int payloadType();
 
     /**
+     * Extracts the payload value from the current row of the given result set.
+     *
      * @param resultSet     result set positioned on the current row
      * @param payloadColumn name of the payload column
      * @return the payload value as a {@code String}, or {@code null} if the column is SQL NULL
+     * @throws SQLException if a database access error occurs
      */
     String extractPayload(ResultSet resultSet, String payloadColumn) throws SQLException;
 }

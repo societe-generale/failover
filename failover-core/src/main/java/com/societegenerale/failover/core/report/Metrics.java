@@ -23,6 +23,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
+ * Mutable key-value bag for failover metrics, keyed with a {@code "failover-"} prefix.
+ * Use {@link #of(String)} to create an instance and {@link #collect(String, String)} to add entries.
+ *
  * @author Anand Manissery
  */
 @Data
@@ -42,15 +45,33 @@ public class Metrics {
         this.info = new LinkedHashMap<>();
     }
 
+    /**
+     * Creates a new {@link Metrics} instance pre-populated with a {@code name} entry.
+     *
+     * @param name the metric name
+     * @return new metrics instance
+     */
     public static Metrics of(String name) {
         return new Metrics(name).collect("name", name);
     }
 
+    /**
+     * Adds a key-value pair to this metrics bag, prefixing the key with {@code "failover-"}.
+     *
+     * @param key   the metric key (will be stored as {@code "failover-" + key})
+     * @param value the metric value
+     * @return this instance for chaining
+     */
     public Metrics collect(String key, String value) {
         info.put( "%s-%s".formatted(keyPrefix, key), value);
         return this;
     }
 
+    /**
+     * Returns an unmodifiable view of all collected metric entries.
+     *
+     * @return unmodifiable map of prefixed key-value pairs
+     */
     public Map<String, String> getInfo() {
         return Collections.unmodifiableMap(info);
     }

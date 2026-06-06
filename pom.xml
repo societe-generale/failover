@@ -335,6 +335,17 @@
                             <goal>jar</goal>
                         </goals>
                     </execution>
+                    <execution>
+                        <id>aggregate</id>
+                        <goals>
+                            <goal>aggregate</goal>
+                        </goals>
+                        <phase>site</phase>
+                        <configuration>
+                            <outputDirectory>${project.basedir}/docs/api/javadoc</outputDirectory>
+                            <reportOutputDirectory>${project.basedir}/docs/api/javadoc</reportOutputDirectory>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

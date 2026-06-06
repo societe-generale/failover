@@ -23,6 +23,8 @@ package com.societegenerale.failover.core.payload.splitter;
  * the {@link PayloadSplitter} named in
  * {@link com.societegenerale.failover.annotations.Failover#payloadSplitter()}.
  *
+ * @param <T> the composite payload type to split
+ * @param <R> the slice type produced by the splitter
  * @author Anand Manissery
  * @see PayloadSplitter
  */
