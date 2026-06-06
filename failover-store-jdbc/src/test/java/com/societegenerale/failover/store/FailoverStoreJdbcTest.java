@@ -80,7 +80,7 @@ class FailoverStoreJdbcTest {
     @BeforeEach
     void setup() {
         var client = new Client(1L, "TATA");
-        client.setAsOf(Instant.now());
+        client.setAsOf(NOW);
         client.setUpToDate(false);
         referentialPayload = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW, client);
         jdbcTemplate.update("DELETE FROM TEST_FAILOVER_STORE");
