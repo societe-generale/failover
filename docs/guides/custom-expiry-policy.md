@@ -19,15 +19,15 @@ Use a custom `ExpiryPolicy` when:
 public class BusinessDayExpiryPolicy implements ExpiryPolicy<Country> {
 
     @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        // expire at midnight of the next business day
-        LocalDate nextBusinessDay = nextBusinessDay(LocalDate.now());
-        return nextBusinessDay.atStartOfDay();
+    public Instant computeExpiry(Failover failover) {
+        // expire at midnight of the next business day (UTC)
+        LocalDate nextBusinessDay = nextBusinessDay(LocalDate.now(ZoneOffset.UTC));
+        return nextBusinessDay.atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 
     @Override
     public boolean isExpired(Failover failover, ReferentialPayload<Country> payload) {
-        return payload.getExpireOn().isBefore(LocalDateTime.now());
+        return payload.getExpireOn().isBefore(Instant.now());
     }
 
     private LocalDate nextBusinessDay(LocalDate date) {
@@ -66,13 +66,13 @@ Make the policy generic to reuse it across different payload types:
 public class MidnightExpiryPolicy<T> implements ExpiryPolicy<T> {
 
     @Override
-    public LocalDateTime computeExpiry(Failover failover) {
-        return LocalDate.now().plusDays(1).atStartOfDay();
+    public Instant computeExpiry(Failover failover) {
+        return LocalDate.now(ZoneOffset.UTC).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 
     @Override
     public boolean isExpired(Failover failover, ReferentialPayload<T> payload) {
-        return payload.getExpireOn().isBefore(LocalDateTime.now());
+        return payload.getExpireOn().isBefore(Instant.now());
     }
 }
 ```

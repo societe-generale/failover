@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.TaskExecutor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -116,7 +116,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
      * No {@code ThreadLocal} values are read inside the lambda.
      */
     @Override
-    public void cleanByExpiry(LocalDateTime expiry) {
+    public void cleanByExpiry(Instant expiry) {
         executor.execute(() -> {
             try {
                 log.info("Failover Store : Async call for clean the expired payload by the given expiry '{}'", expiry);

@@ -40,7 +40,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.TestPropertySource;
 
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -152,7 +152,7 @@ class FailoverAppTestIT {
      */
     void expireAll(String failoverName) {
         int updated = jdbc.update("UPDATE IT_FAILOVER_STORE SET EXPIRE_ON = ? WHERE FAILOVER_NAME = ?",
-                failoverClock.now().minusHours(1), failoverName);
+                Timestamp.from(failoverClock.now().minusSeconds(3600)), failoverName);
         assertThat(updated).as("expireAll(%s) — expected ≥1 row to be updated", failoverName).isPositive();
     }
 
@@ -357,8 +357,8 @@ class FailoverAppTestIT {
 
             assertThat(rowCount(NAME)).isEqualTo(1);
             // queryForList returns TIMESTAMP columns as java.sql.Timestamp — convert before comparing
-            LocalDateTime expireOn = ((Timestamp) rows(NAME).getFirst().get("EXPIRE_ON")).toLocalDateTime();
-            assertThat(expireOn).isBefore(LocalDateTime.now());
+            Instant expireOn = ((Timestamp) rows(NAME).getFirst().get("EXPIRE_ON")).toInstant();
+            assertThat(expireOn).isBefore(Instant.now());
         }
 
         @Test
@@ -508,7 +508,7 @@ class FailoverAppTestIT {
             service.fetchOne("2");                     // future expiry
             expireAll("it-tp-single");
             // re-store "1" with future expiry (overwrite) — only TP_2's row stays expired
-            jdbc.update("UPDATE IT_FAILOVER_STORE SET EXPIRE_ON = ? WHERE PAYLOAD LIKE ?", failoverClock.now().plusHours(1), "%ThirdParty-1%" );
+            jdbc.update("UPDATE IT_FAILOVER_STORE SET EXPIRE_ON = ? WHERE PAYLOAD LIKE ?", Timestamp.from(failoverClock.now().plusSeconds(3600)), "%ThirdParty-1%" );
 
             failoverHandler.clean();
 
@@ -633,7 +633,7 @@ class FailoverAppTestIT {
             rethrowService.fetchOne("1");
             rethrowJdbc.update(
                     "UPDATE IT_FAILOVER_STORE SET EXPIRE_ON = ? WHERE FAILOVER_NAME = ?",
-                    rethrowClock.now().minusHours(1), NAME);
+                    Timestamp.from(rethrowClock.now().minusSeconds(3600)), NAME);
 
             rethrowCtrl.simulatePrimaryFailure();
 
@@ -763,7 +763,7 @@ class FailoverAppTestIT {
             handlerService.fetchOne("1");
             handlerJdbc.update(
                     "UPDATE IT_FAILOVER_STORE SET EXPIRE_ON = ? WHERE FAILOVER_NAME = ?",
-                    handlerClock.now().minusHours(2), NAME);
+                    Timestamp.from(handlerClock.now().minusSeconds(7200)), NAME);
 
             handlerCtrl.simulatePrimaryFailure();
             ThirdParty result = handlerService.fetchOne("1");

@@ -35,7 +35,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -43,7 +43,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static java.time.LocalDateTime.now;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
@@ -55,7 +54,7 @@ class FailoverStoreJdbcTest {
 
     private static final String NAME = "Failover-Name";
     private static final String KEY  = "Failover-Key";
-    private static final LocalDateTime NOW = now();
+    private static final Instant NOW = Instant.now();
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -81,7 +80,7 @@ class FailoverStoreJdbcTest {
     @BeforeEach
     void setup() {
         var client = new Client(1L, "TATA");
-        client.setAsOf(now());
+        client.setAsOf(Instant.now());
         client.setUpToDate(false);
         referentialPayload = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW, client);
         jdbcTemplate.update("DELETE FROM TEST_FAILOVER_STORE");
@@ -142,8 +141,8 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should preserve asOf and expireOn timestamps exactly on round-trip")
         void shouldPreserveTimestampsExactlyOnRoundTrip() {
-            LocalDateTime asOf     = LocalDateTime.of(2024, 6, 15, 14, 30, 45);
-            LocalDateTime expireOn = LocalDateTime.of(2025, 12, 31, 23, 59, 59);
+            Instant asOf     = Instant.parse("2024-06-15T14:30:45Z");
+            Instant expireOn = Instant.parse("2025-12-31T23:59:59Z");
             failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, asOf, expireOn, new Client(1L, "ts-test")));
             var result = failoverStoreJdbc.find(NAME, KEY).orElseThrow();
             assertThat(result.getAsOf()).isEqualTo(asOf);
@@ -178,7 +177,7 @@ class FailoverStoreJdbcTest {
         @DisplayName("should update stored values when storing the same key again")
         void shouldUpdateStoredValuesWhenStoringTheSameKeyAgain() {
             failoverStoreJdbc.store(referentialPayload);
-            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
+            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(3600), new Client(99L, "updated"));
             failoverStoreJdbc.store(updated);
             assertThat(failoverStoreJdbc.find(NAME, KEY)).isPresent().contains(updated);
         }
@@ -187,9 +186,9 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should result in exactly one row when the same key is stored multiple times")
         void shouldResultInOneRowWhenSameKeyStoredMultipleTimes() {
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(1L, "first")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(2), new Client(2L, "second")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(3), new Client(3L, "third")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(3600), new Client(1L, "first")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(7200), new Client(2L, "second")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(10800), new Client(3L, "third")));
 
             var count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM TEST_FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?",
@@ -198,7 +197,7 @@ class FailoverStoreJdbcTest {
 
             var result = failoverStoreJdbc.find(NAME, KEY).orElseThrow();
             assertThat(result.getPayload()).isEqualTo(new Client(3L, "third"));
-            assertThat(result.getExpireOn()).isEqualTo(NOW.plusHours(3));
+            assertThat(result.getExpireOn()).isEqualTo(NOW.plusSeconds(10800));
         }
 
         @Test
@@ -314,10 +313,10 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should remove all records when all expire before the cutoff")
         void shouldRemoveAllRecordsWhenAllExpireBeforeCutoff() {
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusMinutes(1), new Client(1L, "A")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusMinutes(2), new Client(2L, "B")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusSeconds(60), new Client(1L, "A")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusSeconds(120), new Client(2L, "B")));
 
-            failoverStoreJdbc.cleanByExpiry(NOW.plusHours(1));
+            failoverStoreJdbc.cleanByExpiry(NOW.plusSeconds(3600));
 
             assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TEST_FAILOVER_STORE", Integer.class)).isZero();
         }
@@ -325,8 +324,8 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should remove nothing when all records expire after the cutoff")
         void shouldRemoveNothingWhenAllExpireAfterCutoff() {
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusHours(1), new Client(1L, "A")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusHours(2), new Client(2L, "B")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusSeconds(3600), new Client(1L, "A")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusSeconds(7200), new Client(2L, "B")));
 
             failoverStoreJdbc.cleanByExpiry(NOW.minusSeconds(1));
 
@@ -336,7 +335,7 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should keep record whose EXPIRE_ON equals the cutoff (boundary: WHERE EXPIRE_ON < ?)")
         void shouldKeepRecordWhoseExpireOnEqualsTheCutoff() {
-            LocalDateTime cutoff = NOW.plusMinutes(5);
+            Instant cutoff = NOW.plusSeconds(300);
             failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "at-boundary", false, NOW, cutoff, new Client(1L, "boundary")));
 
             failoverStoreJdbc.cleanByExpiry(cutoff);
@@ -345,10 +344,10 @@ class FailoverStoreJdbcTest {
         }
 
         @Test
-        @DisplayName("should remove record whose EXPIRE_ON is one nanosecond before the cutoff")
+        @DisplayName("should remove record whose EXPIRE_ON is one millisecond before the cutoff")
         void shouldRemoveRecordJustBeforeCutoff() {
-            LocalDateTime cutoff     = NOW.plusMinutes(5);
-            LocalDateTime justBefore = cutoff.minusNanos(1);
+            Instant cutoff     = NOW.plusSeconds(300);
+            Instant justBefore = cutoff.minusMillis(1);
             failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "just-before", false, NOW, justBefore, new Client(1L, "test")));
 
             failoverStoreJdbc.cleanByExpiry(cutoff);
@@ -359,23 +358,23 @@ class FailoverStoreJdbcTest {
         @Test
         @DisplayName("should clean only expired records and preserve non-expired ones")
         void shouldCleanAllReferentialByExpiry() {
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusMinutes(1), new Client(1L, "TATA-1")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusMinutes(2), new Client(2L, "TATA-2")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "3", false, NOW, NOW.plusMinutes(3), new Client(3L, "TATA-3")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "4", false, NOW, NOW.plusMinutes(4), new Client(4L, "TATA-4")));
-            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "5", false, NOW, NOW.plusMinutes(5), new Client(5L, "TATA-5")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "1", false, NOW, NOW.plusSeconds(60), new Client(1L, "TATA-1")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "2", false, NOW, NOW.plusSeconds(120), new Client(2L, "TATA-2")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "3", false, NOW, NOW.plusSeconds(180), new Client(3L, "TATA-3")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "4", false, NOW, NOW.plusSeconds(240), new Client(4L, "TATA-4")));
+            failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "5", false, NOW, NOW.plusSeconds(300), new Client(5L, "TATA-5")));
 
-            failoverStoreJdbc.cleanByExpiry(NOW.plusMinutes(4));
+            failoverStoreJdbc.cleanByExpiry(NOW.plusSeconds(240));
 
             assertThat(failoverStoreJdbc.find(NAME, "1")).isNotPresent();
             assertThat(failoverStoreJdbc.find(NAME, "2")).isNotPresent();
             assertThat(failoverStoreJdbc.find(NAME, "3")).isNotPresent();
             assertThat(failoverStoreJdbc.find(NAME, "4"))
                     .isPresent()
-                    .contains(new ReferentialPayload<>(NAME, "4", false, NOW, NOW.plusMinutes(4), new Client(4L, "TATA-4")));
+                    .contains(new ReferentialPayload<>(NAME, "4", false, NOW, NOW.plusSeconds(240), new Client(4L, "TATA-4")));
             assertThat(failoverStoreJdbc.find(NAME, "5"))
                     .isPresent()
-                    .contains(new ReferentialPayload<>(NAME, "5", false, NOW, NOW.plusMinutes(5), new Client(5L, "TATA-5")));
+                    .contains(new ReferentialPayload<>(NAME, "5", false, NOW, NOW.plusSeconds(300), new Client(5L, "TATA-5")));
         }
     }
 
@@ -401,7 +400,7 @@ class FailoverStoreJdbcTest {
                         try {
                             startLatch.await();
                             failoverStoreJdbc.store(new ReferentialPayload<>(NAME, KEY, false,
-                                    NOW.plusSeconds(index), NOW.plusHours(1), new Client((long) index, "CLIENT-" + index)));
+                                    NOW.plusSeconds(index), NOW.plusSeconds(3600), new Client((long) index, "CLIENT-" + index)));
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
@@ -434,7 +433,7 @@ class FailoverStoreJdbcTest {
                         try {
                             startLatch.await();
                             failoverStoreJdbc.store(new ReferentialPayload<>(NAME, "key-" + index, false,
-                                    NOW, NOW.plusHours(1), new Client((long) index, "CLIENT-" + index)));
+                                    NOW, NOW.plusSeconds(3600), new Client((long) index, "CLIENT-" + index)));
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
@@ -497,8 +496,8 @@ class FailoverStoreJdbcTest {
         @DisplayName("second store() on the same key succeeds via UPDATE path after INSERT raises DuplicateKeyException")
         void secondStoreSucceedsViaUpdateAfterDuplicateKeyException() {
             var store   = buildFallbackStore();
-            var first   = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(1L, "first"));
-            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(2), new Client(2L, "updated"));
+            var first   = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(3600), new Client(1L, "first"));
+            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(7200), new Client(2L, "updated"));
 
             store.store(first);
             store.store(updated);   // INSERT fails → UPDATE triggered
@@ -511,7 +510,7 @@ class FailoverStoreJdbcTest {
         void multipleStoresOnSameKeyResultInOneRow() {
             var store = buildFallbackStore();
             for (int i = 1; i <= 5; i++) {
-                store.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(i), new Client((long) i, "client-" + i)));
+                store.store(new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds((long) i * 3600), new Client((long) i, "client-" + i)));
             }
             var count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM TEST_FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?",
@@ -539,10 +538,10 @@ class FailoverStoreJdbcTest {
         @DisplayName("cleanByExpiry() removes expired entries in fallback mode")
         void cleanByExpiryRemovesExpiredEntriesInFallbackMode() {
             var store = buildFallbackStore();
-            store.store(new ReferentialPayload<>(NAME, "exp-1", false, NOW, NOW.plusMinutes(1), new Client(1L, "A")));
-            store.store(new ReferentialPayload<>(NAME, "exp-2", false, NOW, NOW.plusHours(2),  new Client(2L, "B")));
+            store.store(new ReferentialPayload<>(NAME, "exp-1", false, NOW, NOW.plusSeconds(60),   new Client(1L, "A")));
+            store.store(new ReferentialPayload<>(NAME, "exp-2", false, NOW, NOW.plusSeconds(7200), new Client(2L, "B")));
 
-            store.cleanByExpiry(NOW.plusMinutes(30));
+            store.cleanByExpiry(NOW.plusSeconds(1800));
 
             assertThat(store.find(NAME, "exp-1")).isNotPresent();
             assertThat(store.find(NAME, "exp-2")).isPresent();
@@ -583,7 +582,7 @@ class FailoverStoreJdbcTest {
         void storeWithH2MergeProducesOneRow() {
             var store = freshStore();
             store.store(referentialPayload);
-            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(99L, "updated"));
+            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(3600), new Client(99L, "updated"));
             store.store(updated);
 
             assertThat(store.find(NAME, KEY)).isPresent().contains(updated);
@@ -628,8 +627,8 @@ class FailoverStoreJdbcTest {
         @DisplayName("store() on same key after BadSqlGrammarException succeeds — first INSERT, second UPDATE path")
         void storeOnSameKeyAfterBadSqlGrammarSucceeds() {
             var store   = storeWithBadMergeSql();
-            var first   = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(1), new Client(1L, "first"));
-            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusHours(2), new Client(99L, "updated"));
+            var first   = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(3600), new Client(1L, "first"));
+            var updated = new ReferentialPayload<>(NAME, KEY, false, NOW, NOW.plusSeconds(7200), new Client(99L, "updated"));
 
             store.store(first);    // merge → BadSqlGrammarException → INSERT → mergeEnabled=false
             store.store(updated);  // mergeEnabled=false → INSERT → DuplicateKeyException → UPDATE

@@ -26,7 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -110,7 +110,7 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> null, twoTenantFactory(), identity, "acme");
             store.prewarm(Set.of("acme", "globex"));
 
-            LocalDateTime expiry = LocalDateTime.now();
+            Instant expiry = Instant.now();
             store.cleanByExpiry(expiry);
 
             verify(acmeStore).cleanByExpiry(expiry);
@@ -123,7 +123,7 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> "acme", twoTenantFactory(), identity, null);
             store.store(payload); // only acme accessed
 
-            LocalDateTime expiry = LocalDateTime.now();
+            Instant expiry = Instant.now();
             store.cleanByExpiry(expiry);
 
             verify(acmeStore).cleanByExpiry(expiry);
@@ -141,7 +141,7 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> null, twoTenantFactory(), identity, "acme");
             store.prewarm(Set.of("acme", "globex"));
 
-            LocalDateTime expiry = LocalDateTime.now();
+            Instant expiry = Instant.now();
             store.cleanByExpiry(expiry);
 
             verify(acmeStore).cleanByExpiry(expiry);
@@ -153,7 +153,7 @@ class MultiTenantFailoverStoreTest {
         void prewarmEmptySetDoesNothing() {
             var store = new MultiTenantFailoverStore<>(() -> "acme", _ -> acmeStore, identity, null);
             store.prewarm(Set.of());
-            store.cleanByExpiry(LocalDateTime.now());
+            store.cleanByExpiry(Instant.now());
             verifyNoInteractions(acmeStore);
         }
     }

@@ -214,7 +214,7 @@ Expired entries are treated the same as missing entries — the framework return
 
 ### Can expiry be computed at runtime from the payload content?
 
-Yes. Implement `ExpiryPolicy` and return a `LocalDateTime` based on the actual payload (e.g. use an embedded `validUntil` field from an API response). See [Expiry Policy](../guides/custom-expiry-policy.md).
+Yes. Implement `ExpiryPolicy` and return an `Instant` based on the actual payload (e.g. use an embedded `validUntil` field from an API response). See [Expiry Policy](../guides/custom-expiry-policy.md).
 
 ---
 

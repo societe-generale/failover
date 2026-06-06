@@ -24,7 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,7 +43,7 @@ class MultiTenantInmemoryIntegrationTest {
 
     private static final String NAME = "product-service";
     private static final String KEY  = "product-001";
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     /**
      * Factory that creates a fresh {@link FailoverStoreInmemory} per tenant,
@@ -70,10 +70,10 @@ class MultiTenantInmemoryIntegrationTest {
     }
 
     private ReferentialPayload<String> payload(String key, String value) {
-        return new ReferentialPayload<>(NAME, key, true, NOW, NOW.plusHours(1), value);
+        return new ReferentialPayload<>(NAME, key, true, NOW, NOW.plusSeconds(3600), value);
     }
 
-    private ReferentialPayload<String> expiringPayload(String key, LocalDateTime expireOn) {
+    private ReferentialPayload<String> expiringPayload(String key, Instant expireOn) {
         return new ReferentialPayload<>(NAME, key, true, NOW, expireOn, "value-" + key);
     }
 
@@ -150,15 +150,15 @@ class MultiTenantInmemoryIntegrationTest {
         @Test
         @DisplayName("evicts expired entries from all tenant stores")
         void evictsExpiredEntriesFromAllTenants() {
-            LocalDateTime expiresSoon = NOW.plusMinutes(1);
-            LocalDateTime expiresFar  = NOW.plusHours(2);
+            Instant expiresSoon = NOW.plusSeconds(60);
+            Instant expiresFar  = NOW.plusSeconds(7200);
 
             withTenant("acme",   () -> store.store(expiringPayload("exp-key",  expiresSoon)));
             withTenant("acme",   () -> store.store(expiringPayload("live-key", expiresFar)));
             withTenant("globex", () -> store.store(expiringPayload("exp-key",  expiresSoon)));
             withTenant("globex", () -> store.store(expiringPayload("live-key", expiresFar)));
 
-            store.cleanByExpiry(NOW.plusMinutes(2));
+            store.cleanByExpiry(NOW.plusSeconds(120));
 
             withTenant("acme",   () -> assertThat(store.find(NAME, "exp-key")).isEmpty());
             withTenant("acme",   () -> assertThat(store.find(NAME, "live-key")).isPresent());
@@ -169,13 +169,13 @@ class MultiTenantInmemoryIntegrationTest {
         @Test
         @DisplayName("expiry in one tenant does not affect the other tenant's live entries")
         void expiryInOneTenantDoesNotAffectOther() {
-            LocalDateTime expiresSoon = NOW.plusMinutes(1);
-            LocalDateTime expiresFar  = NOW.plusHours(2);
+            Instant expiresSoon = NOW.plusSeconds(60);
+            Instant expiresFar  = NOW.plusSeconds(7200);
 
             withTenant("acme",   () -> store.store(expiringPayload(KEY, expiresSoon)));
             withTenant("globex", () -> store.store(expiringPayload(KEY, expiresFar)));
 
-            store.cleanByExpiry(NOW.plusMinutes(90));
+            store.cleanByExpiry(NOW.plusSeconds(5400));
 
             withTenant("acme",   () -> assertThat(store.find(NAME, KEY)).isEmpty());
             withTenant("globex", () -> assertThat(store.find(NAME, KEY)).isPresent());

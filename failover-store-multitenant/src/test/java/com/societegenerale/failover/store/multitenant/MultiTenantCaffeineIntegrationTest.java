@@ -24,7 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,7 +52,7 @@ class MultiTenantCaffeineIntegrationTest {
 
     private static final String NAME = "product-service";
     private static final String KEY  = "product-001";
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     /**
      * Factory that creates a fresh {@link FailoverStoreCaffeine} per tenant.
@@ -79,7 +79,7 @@ class MultiTenantCaffeineIntegrationTest {
     }
 
     private ReferentialPayload<String> payload(String key, String value) {
-        return new ReferentialPayload<>(NAME, key, true, NOW, NOW.plusHours(1), value);
+        return new ReferentialPayload<>(NAME, key, true, NOW, NOW.plusSeconds(3600), value);
     }
 
     // ── separate cache per tenant ─────────────────────────────────────────────────
@@ -159,7 +159,7 @@ class MultiTenantCaffeineIntegrationTest {
             withTenant("globex", () -> store.store(payload(KEY, "globex-val")));
 
             assertThatNoException().isThrownBy(() ->
-                    store.cleanByExpiry(NOW.plusHours(1)));
+                    store.cleanByExpiry(NOW.plusSeconds(3600)));
         }
 
         @Test
@@ -168,7 +168,7 @@ class MultiTenantCaffeineIntegrationTest {
             withTenant("acme",   () -> store.store(payload(KEY, "acme-val")));
             withTenant("globex", () -> store.store(payload(KEY, "globex-val")));
 
-            store.cleanByExpiry(NOW.plusHours(1));
+            store.cleanByExpiry(NOW.plusSeconds(3600));
 
             withTenant("acme",   () -> assertThat(store.find(NAME, KEY)).isPresent());
             withTenant("globex", () -> assertThat(store.find(NAME, KEY)).isPresent());
@@ -178,7 +178,7 @@ class MultiTenantCaffeineIntegrationTest {
         @DisplayName("cleanByExpiry on empty store does not throw")
         void cleanByExpiryOnEmptyStoreDoesNotThrow() {
             assertThatNoException().isThrownBy(() ->
-                    store.cleanByExpiry(NOW.plusHours(1)));
+                    store.cleanByExpiry(NOW.plusSeconds(3600)));
         }
     }
 }

@@ -105,6 +105,6 @@ Mark with `@Primary` to replace the default composite, or let the auto-configura
 | `type` | `EventType` | `STORE` or `RECOVER` |
 | `name` | `String` | The `@Failover` name |
 | `key` | `String` | The derived store key |
-| `timestamp` | `LocalDateTime` | When the event occurred |
+| `timestamp` | `Instant` | When the event occurred |
 | `payload` | `Object` | The stored or recovered payload |
 | `throwable` | `Throwable` | The exception (recover events only) |

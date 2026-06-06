@@ -31,7 +31,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -50,7 +50,7 @@ class DefaultFailoverReporterTest {
 
     private static final Map<String,String> METADATA_INFO = Map.of("lib-metadata-title", "failover-core", "lib-metadata-version", "1.0.0");
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
+    private static final Instant NOW = Instant.now();
 
     private InMemoryReportPublisher reportPublisher;
 

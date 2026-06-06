@@ -27,7 +27,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
@@ -86,7 +86,7 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
 
     @Override
     public void clean() {
-        LocalDateTime cleanExpiry = clock.now();
+        Instant cleanExpiry = clock.now();
         log.info("Failover : Executing the clean up on expired referential on {} ...", cleanExpiry);
         failoverStore.cleanByExpiry(cleanExpiry);
     }

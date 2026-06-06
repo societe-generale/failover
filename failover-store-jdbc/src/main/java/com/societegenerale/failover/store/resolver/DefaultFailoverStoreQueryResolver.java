@@ -146,8 +146,8 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
         return new Object[]{
                 p.getName(),
                 p.getKey(),
-                Timestamp.valueOf(p.getAsOf()),
-                Timestamp.valueOf(p.getExpireOn()),
+                Timestamp.from(p.getAsOf()),
+                Timestamp.from(p.getExpireOn()),
                 serializer.serialize(p.getPayload()),
                 serializer.toClassName(p.getPayload())
         };
@@ -161,8 +161,8 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     @Override
     public <T> Object[] buildUpdateParams(ReferentialPayload<T> p) {
         return new Object[]{
-                Timestamp.valueOf(p.getAsOf()),
-                Timestamp.valueOf(p.getExpireOn()),
+                Timestamp.from(p.getAsOf()),
+                Timestamp.from(p.getExpireOn()),
                 serializer.serialize(p.getPayload()),
                 serializer.toClassName(p.getPayload()),
                 p.getName(),

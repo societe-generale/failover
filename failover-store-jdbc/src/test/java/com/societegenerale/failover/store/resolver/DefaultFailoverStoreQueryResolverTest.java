@@ -34,7 +34,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,8 +52,8 @@ class DefaultFailoverStoreQueryResolverTest {
     private static final String TABLE_PREFIX = "TEST_";
     private static final String NAME         = "my-referential";
     private static final String KEY          = "my-key";
-    private static final LocalDateTime NOW    = LocalDateTime.of(2024, 1, 15, 10, 30, 0);
-    private static final LocalDateTime EXPIRE = NOW.plusHours(24);
+    private static final Instant NOW    = Instant.parse("2024-01-15T10:30:00Z");
+    private static final Instant EXPIRE = NOW.plusSeconds(86400);
 
     private static final ObjectMapper OBJECT_MAPPER  = new ObjectMapper();
     private static final Serializer SERIALIZER  = new JsonSerializer(OBJECT_MAPPER);
@@ -353,7 +353,7 @@ class DefaultFailoverStoreQueryResolverTest {
         void element2IsAsOfTimestamp() {
             var obj = defaultResolver().buildInsertMergeParams(payload(new TestPayload("v")));
             assertThat(obj[2]).isInstanceOf(Timestamp.class);
-            assertThat(((Timestamp) obj[2]).toLocalDateTime()).isEqualTo(NOW);
+            assertThat(((Timestamp) obj[2]).toInstant()).isEqualTo(NOW);
         }
 
         @Test
@@ -361,7 +361,7 @@ class DefaultFailoverStoreQueryResolverTest {
         void element3IsExpireOnTimestamp() {
             var obj = defaultResolver().buildInsertMergeParams(payload(new TestPayload("v")));
             assertThat(obj[3]).isInstanceOf(Timestamp.class);
-            assertThat(((Timestamp) obj[3]).toLocalDateTime()).isEqualTo(EXPIRE);
+            assertThat(((Timestamp) obj[3]).toInstant()).isEqualTo(EXPIRE);
         }
 
         @Test
@@ -436,7 +436,7 @@ class DefaultFailoverStoreQueryResolverTest {
         void element0IsAsOfTimestamp() {
             var obj = defaultResolver().buildUpdateParams(payload(new TestPayload("v")));
             assertThat(obj[0]).isInstanceOf(Timestamp.class);
-            assertThat(((Timestamp) obj[0]).toLocalDateTime()).isEqualTo(NOW);
+            assertThat(((Timestamp) obj[0]).toInstant()).isEqualTo(NOW);
         }
 
         @Test
@@ -444,7 +444,7 @@ class DefaultFailoverStoreQueryResolverTest {
         void element1IsExpireOnTimestamp() {
             var obj = defaultResolver().buildUpdateParams(payload(new TestPayload("v")));
             assertThat(obj[1]).isInstanceOf(Timestamp.class);
-            assertThat(((Timestamp) obj[1]).toLocalDateTime()).isEqualTo(EXPIRE);
+            assertThat(((Timestamp) obj[1]).toInstant()).isEqualTo(EXPIRE);
         }
 
         @Test

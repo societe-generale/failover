@@ -76,7 +76,7 @@ The store abstraction (`FailoverStore<T>`) has three operations:
 |---|---|
 | `store(ReferentialPayload<T>)` | Persist a payload entry |
 | `find(name, key)` | Look up an entry by failover name and key |
-| `cleanByExpiry(LocalDateTime)` | Delete all entries expired before the given instant |
+| `cleanByExpiry(Instant)` | Delete all entries expired before the given instant |
 | `delete(ReferentialPayload<T>)` | Delete a specific entry |
 
 Implementations: [InMemory](../modules/core.md), [Caffeine](../modules/store-caffeine.md), [JDBC](../modules/store-jdbc.md), or custom.
@@ -92,8 +92,8 @@ Implementations: [InMemory](../modules/core.md), [Caffeine](../modules/store-caf
 | `name` | `String` | The `@Failover` name |
 | `key` | `String` | Derived from method arguments |
 | `upToDate` | `Boolean` | `true` when stored; `false` after recovery |
-| `asOf` | `LocalDateTime` | Timestamp of original successful call |
-| `expireOn` | `LocalDateTime` | When this entry expires |
+| `asOf` | `Instant` | Timestamp of original successful call |
+| `expireOn` | `Instant` | When this entry expires |
 | `payload` | `T` | The actual method return value |
 
 ---

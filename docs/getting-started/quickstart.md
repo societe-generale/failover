@@ -111,11 +111,11 @@ If you want failover metadata (`upToDate`, `asOf`) embedded in your response obj
     
         // failover metadata — populated automatically on recovery
         private Boolean upToDate;
-        private LocalDateTime asOf;
+        private Instant asOf;
         private Metadata metadata = new Metadata();
     
         @Override public void setUpToDate(Boolean upToDate) { this.upToDate = upToDate; }
-        @Override public void setAsOf(LocalDateTime asOf)   { this.asOf = asOf; }
+        @Override public void setAsOf(Instant asOf)         { this.asOf = asOf; }
         @Override public void setMetadata(Metadata metadata){ this.metadata = metadata; }
     }
     ```

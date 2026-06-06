@@ -66,7 +66,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -144,7 +144,7 @@ class FailoverAutoConfigurationTest {
         }
 
         @Override
-        public void cleanByExpiry(LocalDateTime expiry) { delegate.cleanByExpiry(expiry); }
+        public void cleanByExpiry(Instant expiry) { delegate.cleanByExpiry(expiry); }
     }
 
     // ── Default configuration ─────────────────────────────────────────────────
@@ -256,7 +256,7 @@ class FailoverAutoConfigurationTest {
 
             try {
                 failoverStore.store(new ReferentialPayload<>("async-test", "key1", true,
-                        LocalDateTime.now(), LocalDateTime.now().plusHours(1), "payload"));
+                        Instant.now(), Instant.now().plusSeconds(3600), "payload"));
 
                 assertThat(latch.await(5, TimeUnit.SECONDS)).as("store() did not execute within 5 seconds").isTrue();
                 assertThat(storingThread.get()).as("store() must run on a different thread").isNotEqualTo(callingThread);
