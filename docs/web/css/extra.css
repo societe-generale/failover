@@ -5,6 +5,9 @@
    Components → Hero → Responsive
    ═══════════════════════════════════════════════════════════════════ */
 
+/* ── Display font — section headings ───────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');
+
 /* ─── 1. DESIGN TOKENS ─────────────────────────────────────────── */
 
 /* Dark (slate — first palette = default) */
@@ -750,19 +753,64 @@ body,
 }
 
 /* ── Section heading ───────────────────────────────────────── */
-.fo-section { margin: 3rem 0 1.25rem; }
+.fo-section {
+  margin: 3.5rem 0 1.4rem;
+  position: relative;
+  padding-top: .35rem;
+}
+.fo-section::before {
+  content: '';
+  position: absolute; top: 0; left: 0;
+  width: 2.5rem; height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, var(--fo-br) 0%, transparent 100%);
+}
+
+/* legacy eyebrow (used inside fo-md-content rendered from markdown) */
 .fo-section-eyebrow {
   font-size: .64rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .12em;
   color: var(--fo-br); margin-bottom: .25rem;
 }
-.fo-section h2 {
-  font-size: 1.35rem; font-weight: 800;
-  letter-spacing: -.025em; margin: 0 0 .35rem;
-  border: none; padding: 0;
+
+/* ── Eyebrow chips ──────────────────────────────────────────── */
+.fo-eyebrow {
+  display: inline-flex; align-items: center; gap: .45em;
+  width: fit-content; align-self: flex-start;
+  padding: .28em .85em .28em .6em;
+  border-radius: 99px;
+  font-size: .62rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  margin-bottom: .6rem; border: 1px solid; line-height: 1;
 }
-.fo-section h2::after { display: none; }
-.fo-section p { color: var(--fo-tx2); font-size: .82rem; margin: 0; }
+.fo-ey-icon { font-size: .88rem; line-height: 1; display: flex; }
+
+/* per-section hue tokens */
+.fo-ey-problem   { --ey-h: 22;  }
+.fo-ey-internals { --ey-h: 213; }
+.fo-ey-context   { --ey-h: 168; }
+.fo-ey-challenge { --ey-h: 4;   }
+.fo-ey-solution  { --ey-h: 142; }
+.fo-ey-impact    { --ey-h: 35;  }
+.fo-ey-observe   { --ey-h: 258; }
+.fo-ey-caps      { --ey-h: 198; }
+.fo-ey-integr    { --ey-h: 192; }
+.fo-ey-arch      { --ey-h: 280; }
+.fo-ey-docs      { --ey-h: 154; }
+
+[data-md-color-scheme="slate"] .fo-eyebrow {
+  background:   hsla(var(--ey-h), 70%, 58%, .13);
+  color:        hsl( var(--ey-h), 88%, 78%);
+  border-color: hsla(var(--ey-h), 70%, 62%, .30);
+}
+[data-md-color-scheme="default"] .fo-eyebrow {
+  background:   hsla(var(--ey-h), 70%, 50%, .09);
+  color:        hsl( var(--ey-h), 58%, 36%);
+  border-color: hsla(var(--ey-h), 65%, 50%, .22);
+}
+
+/* h2/h3 gradient handled in home.html extrahead <style> block */
+.fo-section h2::after { display: none !important; }
+.fo-section p { font-size: .93rem; line-height: 1.72; margin: 0; max-width: 60ch; }
 
 /* ── fo-md-content: page-content h2 + eyebrow (no fo-section wrapper) ── */
 .fo-md-content h2 {
@@ -1065,9 +1113,9 @@ html[data-fo-font="lg"] { font-size: 19px; }
 .fo-showcase-rev { grid-template-columns: 1.5fr 1fr; }
 
 .fo-showcase-text { display: flex; flex-direction: column; gap: .6rem; }
+/* showcase h3 gradient handled in home.html extrahead <style> block */
 .fo-showcase-text h3 {
-  font-size: .95rem; font-weight: 800; color: var(--fo-tx);
-  margin: 0; letter-spacing: -.015em;
+  margin: 0; letter-spacing: -.03em; line-height: 1.25; text-wrap: balance;
 }
 .fo-showcase-text p  { margin: 0; font-size: .82rem; color: var(--fo-tx2); line-height: 1.6; }
 .fo-showcase-text ul { margin: .35rem 0 0; padding-left: 1.15rem; }
