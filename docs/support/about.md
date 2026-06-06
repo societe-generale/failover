@@ -14,7 +14,7 @@ The library was born from a recurring resilience problem across Société Géné
 
 A single referential outage cascades into a full-platform incident. Rather than solve this problem N times with bespoke try/catch logic, the team built a reusable, annotation-driven solution.
 
-See [ADR 1](adr/index.md) for the founding decision.
+See [ADR 1](../adr/index.md) for the founding decision.
 
 ---
 
