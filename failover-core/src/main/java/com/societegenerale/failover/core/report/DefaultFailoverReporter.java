@@ -26,6 +26,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
+ * Default {@link FailoverReporter} that scans for all {@code @Failover}-annotated methods
+ * and publishes a startup summary metric for each one.
+ *
  * @author Anand Manissery
  */
 public class DefaultFailoverReporter implements FailoverReporter {
@@ -44,6 +47,16 @@ public class DefaultFailoverReporter implements FailoverReporter {
 
     private final LocalDateTime serviceStartTime;
 
+    /**
+     * Creates a reporter with all required collaborators.
+     *
+     * @param reportPublisher         publisher that receives each failover metric
+     * @param failoverScanner         scans for all {@code @Failover}-annotated methods
+     * @param clock                   clock used to record the service start time and report timestamp
+     * @param manifestInfoExtractor   extracts build metadata from MANIFEST.MF
+     * @param failoverExpiryExtractor reads expiry configuration from {@code @Failover} annotations
+     * @param additionalInfo          extra properties (from {@code FailoverProperties}) included in every metric
+     */
     public DefaultFailoverReporter(ReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor, Map<String, String> additionalInfo) {
         this.reportPublisher = reportPublisher;
         this.failoverScanner = failoverScanner;

@@ -1,0 +1,54 @@
+name: Publish Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for git-revision-date-localized plugin
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Generate aggregate Javadoc
+        run: mvn javadoc:aggregate -q
+
+      - name: Copy Javadoc into docs tree
+        run: |
+          mkdir -p docs/api/javadoc
+          cp -r target/reports/apidocs/. docs/api/javadoc/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs dependencies
+        run: |
+          pip install \
+            mkdocs-material \
+            mkdocs-minify-plugin \
+            mkdocs-git-revision-date-localized-plugin
+
+      - name: Build docs (PR check)
+        if: github.event_name == 'pull_request'
+        run: mkdocs build --strict
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: mkdocs gh-deploy --force

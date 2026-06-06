@@ -24,6 +24,10 @@ import lombok.AllArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
+ * Default {@link ExpiryPolicy} that computes expiry by adding the annotation-configured duration
+ * to the current clock time, and checks expiry against the current clock.
+ *
+ * @param <T> the payload type whose expiry this policy governs
  * @author Anand Manissery
  */
 @AllArgsConstructor

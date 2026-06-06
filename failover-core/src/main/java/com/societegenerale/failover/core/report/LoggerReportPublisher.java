@@ -20,11 +20,18 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import lombok.extern.slf4j.Slf4j;
 
 /**
+ * {@link AbstractReportPublisher} that writes failover metrics to the SLF4J logger at INFO level.
+ *
  * @author Anand Manissery
  */
 @Slf4j
 public class LoggerReportPublisher extends AbstractReportPublisher {
 
+    /**
+     * Creates a logger publisher backed by the given clock.
+     *
+     * @param clock clock used to stamp each published metric with a timestamp
+     */
     public LoggerReportPublisher(FailoverClock clock) {
         super(clock);
     }

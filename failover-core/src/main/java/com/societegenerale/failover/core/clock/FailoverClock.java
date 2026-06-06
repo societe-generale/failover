@@ -19,8 +19,17 @@ package com.societegenerale.failover.core.clock;
 import java.time.LocalDateTime;
 
 /**
+ * Abstraction over the system clock used by the failover framework for computing
+ * and comparing expiry timestamps.
+ *
  * @author Anand Manissery
  */
 public interface FailoverClock {
+
+    /**
+     * Returns the current date-time, typically in UTC.
+     *
+     * @return current date-time; never {@code null}
+     */
     LocalDateTime now();
 }

@@ -24,6 +24,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * {@link ManifestInfoExtractor} decorator that caches extraction results by artifact title
+ * to avoid repeated classpath scans.
+ *
  * @author Anand Manissery
  */
 @AllArgsConstructor

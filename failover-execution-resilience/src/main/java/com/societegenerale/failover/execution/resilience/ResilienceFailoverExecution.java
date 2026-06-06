@@ -26,11 +26,24 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.util.List;
 import java.util.function.Supplier;
 
-/// @author Anand Manissery
+/**
+ * {@link BasicFailoverExecution} extension that wraps each supplier with a Resilience4j
+ * {@link CircuitBreaker} named after the failover point.
+ *
+ * @param <T> the return type of the protected method
+ * @author Anand Manissery
+ */
 public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
 
+    /**
+     * Creates a resilience-backed failover execution.
+     *
+     * @param failoverHandler          handler for store and recover operations
+     * @param methodExceptionHandler   policy for handling exceptions after recovery
+     * @param circuitBreakerRegistry   Resilience4j registry used to look up circuit breakers by name
+     */
     public ResilienceFailoverExecution(FailoverHandler<T> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
         super(failoverHandler,  methodExceptionHandler);
         this.circuitBreakerRegistry = circuitBreakerRegistry;

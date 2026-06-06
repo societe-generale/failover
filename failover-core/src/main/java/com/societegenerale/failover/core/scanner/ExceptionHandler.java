@@ -17,8 +17,15 @@
 package com.societegenerale.failover.core.scanner;
 
 /**
+ * Strategy for executing a scanner operation with exception translation.
+ *
  * @author Anand Manissery
  */
 public interface ExceptionHandler {
+    /**
+     * Executes the given operation, translating any unexpected runtime exceptions.
+     *
+     * @param exceptionHandlerExecutor the scanner operation to execute
+     */
     void execute(ExceptionHandlerExecutor exceptionHandlerExecutor);
 }

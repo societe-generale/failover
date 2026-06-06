@@ -82,16 +82,36 @@ public class MultiTenantFailoverStore<T> implements FailoverStore<T> {
 
     private final ConcurrentHashMap<String, FailoverStore<T>> stores = new ConcurrentHashMap<>();
 
+    /**
+     * Stores the payload in the current tenant's failover store.
+     *
+     * @param payload the payload to persist
+     * @throws FailoverStoreException if the delegate store operation fails
+     */
     @Override
     public void store(ReferentialPayload<T> payload) {
         tenantStore().store(payload);
     }
 
+    /**
+     * Deletes the payload from the current tenant's failover store.
+     *
+     * @param payload the payload to remove
+     * @throws FailoverStoreException if the delegate delete operation fails
+     */
     @Override
     public void delete(ReferentialPayload<T> payload) {
         tenantStore().delete(payload);
     }
 
+    /**
+     * Looks up a payload by name and key in the current tenant's failover store.
+     *
+     * @param name the referential name
+     * @param key  the unique key within that referential
+     * @return an {@link Optional} containing the payload if found, or empty
+     * @throws FailoverStoreException if the delegate lookup operation fails
+     */
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         return tenantStore().find(name, key);
