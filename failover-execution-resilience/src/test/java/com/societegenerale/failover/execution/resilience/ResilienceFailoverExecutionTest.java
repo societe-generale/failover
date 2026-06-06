@@ -106,7 +106,7 @@ class ResilienceFailoverExecutionTest {
     @DisplayName("should not recover the client info is expired")
     void shouldNotRecoverTheClientInfoIsExpired() {
         //Given
-        given(clock.now()).willReturn(NOW, NOW, NOW, NOW.plusHours(2));
+        given(clock.now()).willReturn(NOW, NOW, NOW.plusHours(2));
         given(clientReferentialExecutor.findClientById(1L)).willReturn(client);
         Client result = clientService.findClientById(1L);
         assertThat(result).isEqualTo(client);

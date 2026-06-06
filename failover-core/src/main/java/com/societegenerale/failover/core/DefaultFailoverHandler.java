@@ -73,7 +73,6 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
         var optionalReferential = failoverStore.find(failover.name(), keyGenerator.key(failover, args));
         if(optionalReferential.isPresent()) {
             ReferentialPayload<T> referentialPayload =  optionalReferential.get();
-            referentialPayload.setUpToDate(false);
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {
                 log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
                 return payloadEnricher.enrichOnRecover(failover, clazz, referentialPayload, cause).getPayload();
