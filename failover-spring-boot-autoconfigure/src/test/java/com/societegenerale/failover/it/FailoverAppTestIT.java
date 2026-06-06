@@ -40,6 +40,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.TestPropertySource;
 
 import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -356,8 +357,8 @@ class FailoverAppTestIT {
             service.fetchOneImmediatelyExpired("1");
 
             assertThat(rowCount(NAME)).isEqualTo(1);
-            // queryForList returns TIMESTAMP columns as java.sql.Timestamp — convert before comparing
-            Instant expireOn = ((Timestamp) rows(NAME).getFirst().get("EXPIRE_ON")).toInstant();
+            // queryForList returns TIMESTAMP WITH TIME ZONE columns as OffsetDateTime in H2 2.x
+            Instant expireOn = ((OffsetDateTime) rows(NAME).getFirst().get("EXPIRE_ON")).toInstant();
             assertThat(expireOn).isBefore(Instant.now());
         }
 
