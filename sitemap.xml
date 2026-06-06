@@ -1,191 +1,191 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://societegenerale.github.io/failover/</loc>
+         <loc>https://societe-generale.github.io/failover/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/adr/</loc>
+         <loc>https://societe-generale.github.io/failover/adr/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/adr/adr/</loc>
+         <loc>https://societe-generale.github.io/failover/adr/adr/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/api/</loc>
+         <loc>https://societe-generale.github.io/failover/api/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/api/javadocs/</loc>
+         <loc>https://societe-generale.github.io/failover/api/javadocs/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/api/javadoc/legal/dejavufonts/</loc>
+         <loc>https://societe-generale.github.io/failover/api/javadoc/legal/dejavufonts/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/api/javadoc/legal/jquery/</loc>
+         <loc>https://societe-generale.github.io/failover/api/javadoc/legal/jquery/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/api/javadoc/legal/jqueryUI/</loc>
+         <loc>https://societe-generale.github.io/failover/api/javadoc/legal/jqueryUI/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/changelog/</loc>
+         <loc>https://societe-generale.github.io/failover/changelog/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/changelog/changelog/</loc>
+         <loc>https://societe-generale.github.io/failover/changelog/changelog/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/concepts/</loc>
+         <loc>https://societe-generale.github.io/failover/concepts/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/concepts/expiry/</loc>
+         <loc>https://societe-generale.github.io/failover/concepts/expiry/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/concepts/how-it-works/</loc>
+         <loc>https://societe-generale.github.io/failover/concepts/how-it-works/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/concepts/key-generation/</loc>
+         <loc>https://societe-generale.github.io/failover/concepts/key-generation/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/concepts/scatter-gather/</loc>
+         <loc>https://societe-generale.github.io/failover/concepts/scatter-gather/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/configuration/</loc>
+         <loc>https://societe-generale.github.io/failover/configuration/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/configuration/multi-tenant/</loc>
+         <loc>https://societe-generale.github.io/failover/configuration/multi-tenant/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/configuration/properties-reference/</loc>
+         <loc>https://societe-generale.github.io/failover/configuration/properties-reference/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/configuration/store-types/</loc>
+         <loc>https://societe-generale.github.io/failover/configuration/store-types/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/getting-started/</loc>
+         <loc>https://societe-generale.github.io/failover/getting-started/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/getting-started/installation/</loc>
+         <loc>https://societe-generale.github.io/failover/getting-started/installation/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/getting-started/quickstart/</loc>
+         <loc>https://societe-generale.github.io/failover/getting-started/quickstart/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/context-propagation/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/context-propagation/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/custom-expiry-policy/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/custom-expiry-policy/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/custom-key-generator/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/custom-key-generator/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/custom-payload-enricher/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/custom-payload-enricher/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/database-resolver/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/database-resolver/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/exception-policy/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/exception-policy/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/failover-store-query-resolver/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/failover-store-query-resolver/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/payload-column-resolver/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/payload-column-resolver/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/payload-splitter/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/payload-splitter/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/recovered-payload-handler/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/recovered-payload-handler/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/guides/reporting/</loc>
+         <loc>https://societe-generale.github.io/failover/guides/reporting/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/core/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/core/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/execution-resilience/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/execution-resilience/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/scheduler/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/scheduler/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/store-async/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/store-async/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/store-caffeine/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/store-caffeine/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/store-jdbc/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/store-jdbc/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/modules/store-multitenant/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/store-multitenant/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/support/</loc>
+         <loc>https://societe-generale.github.io/failover/support/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/support/about/</loc>
+         <loc>https://societe-generale.github.io/failover/support/about/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/support/contributing/</loc>
+         <loc>https://societe-generale.github.io/failover/support/contributing/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/support/faq/</loc>
+         <loc>https://societe-generale.github.io/failover/support/faq/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
     <url>
-         <loc>https://societegenerale.github.io/failover/support/support/</loc>
+         <loc>https://societe-generale.github.io/failover/support/support/</loc>
          <lastmod>2026-06-06</lastmod>
     </url>
 </urlset>
