@@ -6,7 +6,7 @@ icon: material/lifebuoy
 
 ## Bug Reports
 
-Use [GitHub Issues](https://github.com/societegenerale/failover/issues) with the **bug** label. Include:
+Use [GitHub Issues](https://github.com/societe-generale/failover/issues) with the **bug** label. Include:
 
 - Spring Boot version
 - Java version
@@ -18,13 +18,13 @@ Use [GitHub Issues](https://github.com/societegenerale/failover/issues) with the
 
 ## Feature Requests
 
-Use [GitHub Issues](https://github.com/societegenerale/failover/issues) with the **enhancement** label. Describe the use case, not just the solution — this helps evaluate fit with the library's scope.
+Use [GitHub Issues](https://github.com/societe-generale/failover/issues) with the **enhancement** label. Describe the use case, not just the solution — this helps evaluate fit with the library's scope.
 
 ---
 
 ## Questions & Discussions
 
-Use [GitHub Discussions](https://github.com/societegenerale/failover/discussions) for:
+Use [GitHub Discussions](https://github.com/societe-generale/failover/discussions) for:
 
 - "How do I…" questions
 - Architectural advice
@@ -36,7 +36,7 @@ Do **not** use Issues for questions — they will be converted to Discussions.
 
 ## Security Vulnerabilities
 
-Do **not** open a public issue. Use GitHub's [private vulnerability reporting](https://github.com/societegenerale/failover/security/advisories/new) or email the maintainers directly (see `SECURITY.md` in the repository root).
+Do **not** open a public issue. Use GitHub's [private vulnerability reporting](https://github.com/societe-generale/failover/security/advisories/new) or email the maintainers directly (see `SECURITY.md` in the repository root).
 
 ---
 

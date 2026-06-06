@@ -57,7 +57,7 @@ mvn verify -P integration   # integration tests (H2 in-memory)
 
 ## Reporting a Bug
 
-Open a [GitHub Issue](https://github.com/societegenerale/failover/issues/new?template=bug_report.md) with:
+Open a [GitHub Issue](https://github.com/societe-generale/failover/issues/new?template=bug_report.md) with:
 
 - Spring Boot version
 - Java version
@@ -69,7 +69,7 @@ Open a [GitHub Issue](https://github.com/societegenerale/failover/issues/new?tem
 
 ## Proposing a Feature
 
-Open a [GitHub Issue](https://github.com/societegenerale/failover/issues/new?template=feature_request.md) describing the use case. Large changes should start as a discussion or ADR before any code is written.
+Open a [GitHub Issue](https://github.com/societe-generale/failover/issues/new?template=feature_request.md) describing the use case. Large changes should start as a discussion or ADR before any code is written.
 
 ---
 

@@ -141,6 +141,16 @@ body,
 
 .md-header__title { font-weight: 700; letter-spacing: -.02em; font-size: .82rem; }
 
+/* Lock header title to site name — never slide in the page title */
+[data-md-component="header-topic"] {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+.md-header__title--active .md-header__topic:first-child {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+
 /* Search */
 .md-search__input {
   border-radius: 8px;
