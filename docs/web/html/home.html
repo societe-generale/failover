@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% from 'partials/macros.html' import feat_card, cta_card, int_badge, stat_item %}
+
+{# ── Announcement bar ─────────────────────────────────────────── #}
+{% block announce %}
+<div class="md-announce__inner">
+  <span class="fo-ann-badge">NEW</span>
+  Failover 3.0 · Spring Boot 4 · Java 21 · Scatter/Gather · Multi-tenant
+  &nbsp;·&nbsp;
+  <a href="{{ 'getting-started/quickstart/' | url }}">Get started →</a>
+</div>
+{% endblock %}
+
+{# ── Home page content ────────────────────────────────────────── #}
+{% block content %}
+<div class="md-content" data-md-component="content">
+<div class="md-content__inner md-typeset">
+
+<!-- HERO -->
+<div class="fo-hero">
+<div class="fo-hero-inner">
+<img src="{{ 'web/assets/logo.svg' | url }}" class="fo-hero-icon" alt="Failover" />
+<div class="fo-hero-brand">Failover</div>
+<span class="fo-hero-eyebrow">☕ Spring Boot 4 · Java 21 · Apache 2.0</span>
+<h1>Stop cascading outages.<br>One annotation.</h1>
+<p class="fo-hero-sub">
+  Failover stores every successful response from your referential services and
+  replays the last known-good result when upstream calls fail —
+  transparently, with zero boilerplate.
+</p>
+<div class="fo-badges">
+  <img src="https://img.shields.io/badge/Spring%20Boot-4.x-6DB33F?style=flat-square&logo=springboot&logoColor=white" alt="Spring Boot 4.x">
+  <img src="https://img.shields.io/badge/Java-21%2B-ED8B00?style=flat-square&logo=openjdk&logoColor=white" alt="Java 21+">
+  <img src="https://img.shields.io/maven-central/v/com.societegenerale.failover/failover-spring-boot-starter?style=flat-square&label=Maven%20Central&color=6366f1" alt="Maven Central">
+  <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="Apache 2.0">
+  <img src="https://img.shields.io/github/stars/societegenerale/failover?style=flat-square&logo=github&color=64748b" alt="GitHub Stars">
+</div>
+<div class="fo-hero-btns">
+  <a href="{{ 'getting-started/quickstart/' | url }}" class="fo-btn fo-btn-primary">🚀 Quickstart</a>
+  <a href="{{ 'concepts/how-it-works/' | url }}" class="fo-btn fo-btn-accent">📐 How it works</a>
+  <a href="https://github.com/societegenerale/failover" class="fo-btn fo-btn-ghost">⭐ GitHub</a>
+</div>
+</div>
+</div>
+
+<!-- STATS -->
+<div class="fo-stats">
+  {{ stat_item("11", "Modules") }}
+  {{ stat_item("25", "ADRs") }}
+  {{ stat_item("1",  "Annotation") }}
+  {{ stat_item("4",  "Store types") }}
+  {{ stat_item("0",  "Boilerplate") }}
+</div>
+
+<!-- PROBLEM / SOLUTION -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">THE PROBLEM → THE SOLUTION</p>
+  <h2>Replace fragile try/catch with one annotation</h2>
+  <p>Every team reinvents the same resilience wheel. Failover removes it entirely.</p>
+</div>
+<div class="fo-compare">
+<div class="fo-compare-panel before">
+<div class="fo-compare-header">❌ Without Failover — bespoke, brittle, repeated everywhere</div>
+
+```java
+public Country findByCode(String code) {
+    try {
+        Country c = upstream.findByCode(code);
+        localRepo.save(c, computeExpiry());
+        return c;
+    } catch (Exception e) {
+        log.warn("upstream failed, trying local cache");
+        Country cached = localRepo.findByCode(code);
+        if (cached == null || isExpired(cached)) {
+            throw e;
+        }
+        cached.setUpToDate(false);
+        return cached;
+    }
+}
+```
+
+</div>
+<div class="fo-compare-panel after">
+<div class="fo-compare-header">✅ With Failover — declarative, consistent, zero boilerplate</div>
+
+```java
+@Failover(
+    name = "country-by-code",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+Country findByCode(String code);
+```
+
+</div>
+</div>
+
+<!-- HOW IT WORKS — mermaid diagrams rendered from index.md markdown -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">INTERNALS</p>
+  <h2>How it works</h2>
+  <p>Spring AOP intercepts every annotated method. The rest is automatic.</p>
+</div>
+<div class="fo-flow-wrap">
+  <p class="fo-diagram-label">Call flow · Entry lifecycle · Sequence</p>
+  <div class="fo-md-content">{{ page.content }}</div>
+  <div class="fo-flow-caption">
+    <div class="fo-flow-item">
+      <div class="fo-flow-dot success"></div>
+      <p><strong>On success</strong> — result persisted under the derived key with the configured TTL. <code>upToDate=true</code> set on the returned object.</p>
+    </div>
+    <div class="fo-flow-item">
+      <div class="fo-flow-dot failure"></div>
+      <p><strong>On failure</strong> — last stored result returned. If none or expired: re-throw (default) or return <code>null</code> via <code>exception-policy: never_throw</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- CONTEXT -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">CONTEXT</p>
+  <h2>Why referential services need special care</h2>
+  <p>In microservice platforms your application calls services it doesn't own. When those fail, the cascade reaches your users — and there's nothing you can do to fix the upstream.</p>
+</div>
+<div class="fo-showcase">
+<div class="fo-showcase-text">
+<h3>Three layers of dependency</h3>
+<p>Most platforms share the same pattern: internal services you control, transversal services owned by other teams, and external services owned by third parties.</p>
+<ul>
+  <li><strong>Internal services</strong> — full ownership, fast resolution</li>
+  <li><strong>Transversal services (R)</strong> — managed by other teams, slow escalation path</li>
+  <li><strong>External services (E)</strong> — third-party SLA, no direct control</li>
+  <li>Failures on referential systems cascade through every dependent service</li>
+</ul>
+</div>
+<div class="fo-img-card">
+<p class="fo-diagram-label">Service dependency model</p>
+<img src="{{ 'web/assets/images/failover-service-calls.png' | url }}" alt="Service dependency diagram showing application, referential and external services" loading="lazy" />
+</div>
+</div>
+
+<div class="fo-showcase fo-showcase-rev">
+<div class="fo-img-card">
+<p class="fo-diagram-label">Cascade failure in practice</p>
+<img src="{{ 'web/assets/images/failover-challenges.png' | url }}" alt="Cascade failure: external service failure propagates to end user as a 500 error" loading="lazy" />
+</div>
+<div class="fo-showcase-text">
+<p class="fo-section-eyebrow">THE CHALLENGE</p>
+<h3>One outage cascades to every user</h3>
+<p>When a transversal or external service fails, the error propagates through every dependent service — returning 500s to users who have no visibility into why.</p>
+<ul>
+  <li>Application team has no control over the upstream failure</li>
+  <li>Escalation and resolution take hours or days</li>
+  <li>Every team reinvents the same fragile try/catch workaround</li>
+  <li>End users are fully blocked until the referential system recovers</li>
+</ul>
+</div>
+</div>
+
+<!-- THE SOLUTION -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">THE SOLUTION</p>
+  <h2>Failover intercepts — transparently</h2>
+  <p>Failover sits between your service and the referential system. On success it stores the result with a configured TTL. On failure it serves the last known-good value — no 500, no user impact.</p>
+</div>
+<div class="fo-two-img-grid">
+<div class="fo-img-card">
+<p class="fo-diagram-label">Failover in the platform</p>
+<img src="{{ 'web/assets/images/failover-solution.png' | url }}" alt="Failover library inserted between service and referential system with a local FailoverStore" loading="lazy" />
+</div>
+<div class="fo-img-card">
+<p class="fo-diagram-label">Store · intercept · replay</p>
+<img src="{{ 'web/assets/images/failover.png' | url }}" alt="Failover stores responses on success and replays last-known-good on failure with per-referential expiry" loading="lazy" />
+</div>
+</div>
+
+<!-- USER IMPACT -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">USER IMPACT</p>
+  <h2>Users stay unblocked — even during outages</h2>
+  <p>Without Failover a referential failure returns a 500 and blocks the user completely. With Failover the last stored result is served — marked with its cached timestamp, but fully functional.</p>
+</div>
+<div class="fo-img-card fo-img-card-wide">
+<img src="{{ 'web/assets/images/failover-user-experience.png' | url }}" alt="Three states: all services available, external service down without failover (error page), external service down with failover (stale data served, user unblocked)" loading="lazy" />
+</div>
+
+<!-- OBSERVABILITY -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">OBSERVABILITY</p>
+  <h2>Built-in metrics — zero extra instrumentation</h2>
+  <p>Every store and recover event emits Micrometer counters automatically. Connect to Elastic, Grafana, or any metrics backend. Three dedicated panels give complete visibility into failure behaviour.</p>
+</div>
+<div class="fo-img-card fo-img-card-mb">
+<p class="fo-diagram-label">Failover configuration dashboard</p>
+<img src="{{ 'web/assets/images/failover-monitoring-dashboard.png' | url }}" alt="Kibana dashboard showing all active failover configurations: name, expiry duration, expiry unit, type" loading="lazy" />
+</div>
+<div class="fo-monitor-grid">
+<div class="fo-img-card">
+<p class="fo-diagram-label">Failover rate</p>
+<img src="{{ 'web/assets/images/failover-monitoring-failover-rate.png' | url }}" alt="Time-series chart: failover failure rate per referential" loading="lazy" />
+<p class="fo-img-caption">Total upstream failures intercepted per referential over time.</p>
+</div>
+<div class="fo-img-card">
+<p class="fo-diagram-label">Recovery rate</p>
+<img src="{{ 'web/assets/images/failover-monitoring-failover-recovery-rate.png' | url }}" alt="Time-series chart: failover recovered rate per referential" loading="lazy" />
+<p class="fo-img-caption">Failures resolved with a stored result — users unblocked.</p>
+</div>
+<div class="fo-img-card">
+<p class="fo-diagram-label">Non-recovery rate</p>
+<img src="{{ 'web/assets/images/failover-monitoring-failover-non-recovery-rate.png' | url }}" alt="Time-series chart: failover non-recovered rate per referential" loading="lazy" />
+<p class="fo-img-caption">Failures with no stored result — actual user impact needing attention.</p>
+</div>
+</div>
+
+<!-- CAPABILITIES -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">CAPABILITIES</p>
+  <h2>Everything you need, nothing you don't</h2>
+  <p>Every extension point is a pluggable SPI — swap, extend, or replace any behaviour.</p>
+</div>
+<div class="fo-feat-grid">
+  {{ feat_card("purple", "💾", "Automatic store on success",
+     "Every successful response is persisted under a derived key. No explicit save calls. No repository wiring.") }}
+  {{ feat_card("blue",   "🔄", "Transparent recovery on failure",
+     "When upstream throws, the last stored result for that key is returned. Callers never see the exception.") }}
+  {{ feat_card("green",  "⏱️", "Business-configured TTL",
+     "Fixed duration, SpEL expressions, or a custom <code>ExpiryPolicy</code>. Expired entries are never served.") }}
+  {{ feat_card("orange", "🗄️", "Pluggable backing stores",
+     "InMemory · Caffeine · JDBC (H2, PostgreSQL, MySQL, Oracle…) · or any custom <code>FailoverStore</code> bean.") }}
+  {{ feat_card("pink",   "🧩", "Scatter / Gather",
+     "Collection-returning methods split into per-entity store entries. Partial recovery handled gracefully.") }}
+  {{ feat_card("teal",   "🏢", "Multi-tenant isolation",
+     "<code>TABLE_PREFIX</code> or <code>SCHEMA</code> strategy routes each request to the correct tenant store automatically.") }}
+  {{ feat_card("amber",  "⚡", "Async non-blocking writes",
+     "Store operations offloaded to a virtual-thread executor. Read path stays synchronous. Zero added latency.") }}
+  {{ feat_card("red",    "📊", "Observable out of the box",
+     "Every store/recover event emits structured SLF4J logs and Micrometer counters. No extra instrumentation.") }}
+  {{ feat_card("purple", "🔌", "Resilience4j integration",
+     "Circuit-breaker wraps upstream calls when <code>type: resilience</code>. Trips fast on repeated failures.") }}
+</div>
+
+<!-- INTEGRATIONS -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">INTEGRATIONS</p>
+  <h2>Works with your existing stack</h2>
+  <p>No new runtime dependencies forced on you — every integration is opt-in via the corresponding module.</p>
+</div>
+<div class="fo-integrations">
+  {{ int_badge("Spring Boot 4.x") }}
+  {{ int_badge("Spring AOP") }}
+  {{ int_badge("Spring Cloud OpenFeign") }}
+  {{ int_badge("Resilience4j") }}
+  {{ int_badge("Micrometer") }}
+  {{ int_badge("Caffeine Cache") }}
+  {{ int_badge("JDBC / H2 / PostgreSQL / MySQL / Oracle") }}
+  {{ int_badge("SLF4J / Logback") }}
+  {{ int_badge("Virtual Threads (Java 21)") }}
+</div>
+
+<!-- ORIGIN -->
+<div class="fo-origin">
+<p>Dozens of services at Société Générale depend on the same small set of referential systems —
+  currency tables, country lists, client profiles — that change slowly but are queried constantly.
+  A single referential outage cascades into a full-platform incident. Failover was built to break
+  that coupling once, reusably, across every service.</p>
+<cite>— Origins of Failover · See <a href="{{ 'adr/' | url }}">ADR 1</a> for the founding decision</cite>
+</div>
+
+<!-- MODULE TREE -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">ARCHITECTURE</p>
+  <h2>Module overview</h2>
+  <p>One starter pulls in everything. Pick individual modules when you need fine-grained control.</p>
+</div>
+<div class="fo-module-tree">
+<span class="starter">failover-spring-boot-starter</span>   <span class="tag">← the only dependency you need</span><br>
+├── failover-domain               <span class="tag">@Failover annotation · Referential · ReferentialAware · Metadata</span><br>
+├── failover-core                 <span class="tag">FailoverHandler · KeyGenerator · ExpiryPolicy · PayloadEnricher · ContextPropagator</span><br>
+├── failover-aspect               <span class="tag">Spring AOP @Around interceptor</span><br>
+├── failover-store-inmemory       <span class="tag">ConcurrentHashMap store — dev / test only, not persistent</span><br>
+├── failover-store-caffeine       <span class="tag">Caffeine-backed in-process store</span><br>
+├── failover-store-jdbc           <span class="tag">JDBC store — H2 · PostgreSQL · MySQL · MariaDB · Oracle · SQL Server</span><br>
+├── failover-store-async          <span class="tag">non-blocking write decorator (virtual-thread executor)</span><br>
+├── failover-store-multitenant    <span class="tag">TABLE_PREFIX / SCHEMA per-tenant routing</span><br>
+├── failover-execution-resilience <span class="tag">Resilience4j circuit-breaker integration</span><br>
+├── failover-scheduler            <span class="tag">expiry-cleanup scheduler · report-publisher scheduler</span><br>
+└── failover-spring-boot-autoconfigure  <span class="tag">zero-config Spring Boot auto-configuration assembler</span>
+</div>
+
+<!-- CTA -->
+<div class="fo-section">
+  <p class="fo-section-eyebrow">DOCS</p>
+  <h2>Where to go next</h2>
+</div>
+<div class="fo-cta-grid">
+  {{ cta_card("🚀", "Quickstart",
+     "Working end-to-end example in 5 minutes — one dependency, one annotation, one config block.",
+     'getting-started/quickstart/' | url, "Get started →") }}
+  {{ cta_card("📦", "Installation",
+     "Maven and Gradle coordinates for the starter and every individual module.",
+     'getting-started/installation/' | url, "View dependencies →") }}
+  {{ cta_card("🧠", "Concepts",
+     "Store/recover lifecycle, key derivation, expiry policies, scatter/gather internals.",
+     'concepts/how-it-works/' | url, "Learn how it works →") }}
+  {{ cta_card("⚙️", "Configuration",
+     "Every <code>failover.*</code> property with types, defaults, and full examples.",
+     'configuration/properties-reference/' | url, "Browse properties →") }}
+  {{ cta_card("🏗️", "ADR Index",
+     "25 architecture decisions — the why behind every design choice in the framework.",
+     'adr/' | url, "Browse decisions →") }}
+  {{ cta_card("🤝", "Contributing",
+     "Bug reports, feature proposals, pull requests — all welcome.",
+     'support/contributing/' | url, "How to contribute →") }}
+</div>
+
+</div>{# /.md-content__inner #}
+</div>{# /.md-content #}
+{% endblock %}
