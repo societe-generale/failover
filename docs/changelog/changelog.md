@@ -30,7 +30,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ## [2.x]
 
-See [GitHub Releases](https://github.com/societegenerale/failover/releases) for 2.x history.
+See [GitHub Releases](https://github.com/societe-generale/failover/releases) for 2.x history.
 
 ---
 
