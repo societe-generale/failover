@@ -88,8 +88,8 @@ public class MySpringBootTestApplication {
     }
 
     @Bean
-    public ReportPublisher loggerReportPublisher(FailoverClock clock) {
-        return new LoggerReportPublisher(clock);
+    public ReportPublisher loggerReportPublisher() {
+        return new LoggerReportPublisher();
     }
 
     @Bean

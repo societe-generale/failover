@@ -17,7 +17,6 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import com.societegenerale.failover.core.report.AbstractReportPublisher;
@@ -30,7 +29,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static java.time.temporal.ChronoUnit.MINUTES;
@@ -51,13 +49,8 @@ class AdvancedFailoverHandlerTest {
 
     private static final String PAYLOAD = "PAYLOAD";
 
-    private static final LocalDateTime NOW = LocalDateTime.now();
-
     @Mock
     private Failover failover;
-
-    @Mock
-    private FailoverClock clock;
 
     @Mock
     private FailoverHandler<String> failoverHandler;
@@ -74,13 +67,12 @@ class AdvancedFailoverHandlerTest {
     @BeforeEach
     void setUp() {
         cause = new RuntimeException("Dummy-Exception", new IllegalArgumentException("Root-Cause"));
-        reportPublisher = new InMemoryReportPublisher(clock);
+        reportPublisher = new InMemoryReportPublisher();
         advancedFailoverHandler = new AdvancedFailoverHandler<>(failoverHandler, recoveredPayloadHandler, reportPublisher, new BasicFailoverExpiryExtractor());
 
         lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
         lenient().when(failover.expiryDuration()).thenReturn(1L);
         lenient().when(failover.expiryUnit()).thenReturn(MINUTES);
-        lenient().when(clock.now()).thenReturn(NOW);
     }
 
     @Test
@@ -89,8 +81,7 @@ class AdvancedFailoverHandlerTest {
         advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
         verify(failoverHandler).store(failover, ARGS, PAYLOAD);
         assertThat(reportPublisher.getMetrics().getInfo()).containsEntry("failover-action", "store")
-                .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
-                .containsEntry("failover-report-publish-on", NOW.toString());
+                .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES");
     }
 
     @Test
@@ -101,7 +92,7 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
+                .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
                 .containsEntry("failover-exception-cause-type", "java.lang.IllegalArgumentException")
@@ -119,7 +110,7 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
+                .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
                 .containsEntry("failover-exception-cause-type", "java.lang.IllegalArgumentException")
@@ -137,7 +128,7 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
+                .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
                 .containsEntry("failover-exception-message", "Dummy-Exception")
@@ -155,7 +146,7 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(reportPublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recover").containsEntry("failover-report-publish-on", NOW.toString())
+                .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
                 .containsEntry("failover-exception-message", "Dummy-Exception")
@@ -198,13 +189,9 @@ class AdvancedFailoverHandlerTest {
         @Getter
         private Metrics metrics;
 
-        public InMemoryReportPublisher(FailoverClock clock) {
-            super(clock);
-        }
-
         @Override
         public void doPublish(Metrics metrics) {
-                this.metrics=metrics;
+            this.metrics = metrics;
         }
     }
 }
