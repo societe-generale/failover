@@ -126,9 +126,10 @@ nav:
     - Scheduler: modules/scheduler.md
   - Guides:
     - guides/index.md
-    - Custom Key Generator: guides/custom-key-generator.md
-    - Custom Expiry Policy: guides/custom-expiry-policy.md
-    - Custom Payload Enricher: guides/custom-payload-enricher.md
+    - Key Generator: guides/custom-key-generator.md
+    - Expiry Policy: guides/custom-expiry-policy.md
+    - Payload Enricher: guides/custom-payload-enricher.md
+    - Payload Splitter: guides/payload-splitter.md
     - Context Propagation: guides/context-propagation.md
     - Reporting: guides/reporting.md
   - Architecture Decisions:
