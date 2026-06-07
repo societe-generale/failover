@@ -26,7 +26,7 @@
         <spring-cloud.version>2025.1.1</spring-cloud.version>
 
         <!-- Plugin -->
-        <plugin-failsafe.version>3.5.5</plugin-failsafe.version>
+        <plugin-failsafe.version>3.5.6</plugin-failsafe.version>
         <plugin-scm.version>2.2.1</plugin-scm.version>
         <plugin-release.version>3.3.1</plugin-release.version>
         <plugin-source.version>3.4.0</plugin-source.version>
