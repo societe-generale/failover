@@ -16,7 +16,7 @@ For a full component reference, see [Observable Modules](../modules/observabilit
 
 Logs every operation at INFO level using SLF4J. Before logging, all metric keys are written to the SLF4J MDC so structured log appenders (Logstash, ECS, etc.) capture them as fields:
 
-```
+```text
 INFO  Failover metrics : country-by-code
 ```
 
@@ -24,14 +24,14 @@ MDC keys set for the duration of that log line (then restored):
 
 **On store events:**
 
-| MDC key | Value |
-|---|---|
-| `failover-name` | `@Failover.name()` |
-| `failover-action` | `store` |
-| `failover-is-stored` | `true` or `false` |
-| `failover-expiry-duration` | Configured expiry duration |
-| `failover-expiry-unit` | Configured expiry unit (e.g. `HOURS`) |
-| `failover-duration-ns` | Wall time of the store call in nanoseconds |
+| MDC key                    | Value                                      |
+|----------------------------|--------------------------------------------|
+| `failover-name`            | `@Failover.name()`                         |
+| `failover-action`          | `store`                                    |
+| `failover-is-stored`       | `true` or `false`                          |
+| `failover-expiry-duration` | Configured expiry duration                 |
+| `failover-expiry-unit`     | Configured expiry unit (e.g. `HOURS`)      |
+| `failover-duration-ns`     | Wall time of the store call in nanoseconds |
 
 **On recover events:**
 
@@ -82,6 +82,7 @@ Emits real Micrometer meters on every store/recover event. Requires `failover-ob
 | `failover.operation.duration` | Timer | `name`, `action` | Wall time of store or recover path |
 
 **Tag notes:**
+
 - `name` — bounded cardinality (one value per `@Failover` annotation)
 - `stored`, `recovered`, `recovery_failed` — boolean; cardinality 2
 - `exception_type`, `cause_type` — class canonical name; keep low-cardinality by not subclassing exceptions per message
@@ -98,7 +99,7 @@ management:
 
 Query examples:
 
-```
+```text
 GET /actuator/metrics/failover.store.total?tag=name:country-by-code
 GET /actuator/metrics/failover.recover.total?tag=name:country-by-code&tag=recovered:false
 ```
