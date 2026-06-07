@@ -259,7 +259,6 @@ public class FailoverAutoConfiguration {
     /**
      * Registers a Spring-native scanner that locates all {@code @Failover}-annotated methods
      * by walking the already-built {@link org.springframework.context.ApplicationContext}.
-     * Replaces the Reflections-library-based {@code DefaultFailoverScanner}.
      *
      * @return {@link SpringContextFailoverScanner}
      */
@@ -392,7 +391,7 @@ public class FailoverAutoConfiguration {
      * Registers a caching manifest extractor for reading build metadata from {@code MANIFEST.MF}.
      *
      * @param resourceLoader resource loader for reading MANIFEST.MF
-     * @return caching wrapper around {@link com.societegenerale.failover.core.report.manifest.DefaultManifestInfoExtractor}
+     * @return caching wrapper around {@link com.societegenerale.failover.core.observable.manifest.DefaultManifestInfoExtractor}
      */
     @ConditionalOnMissingBean
     @Bean

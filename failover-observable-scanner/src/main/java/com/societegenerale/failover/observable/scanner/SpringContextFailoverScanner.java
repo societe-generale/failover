@@ -34,8 +34,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * {@link FailoverScanner} backed by the Spring {@link ApplicationContext} instead of
- * the Reflections library.
+ * {@link FailoverScanner} backed by the Spring {@link ApplicationContext}.
  *
  * <p>Implements {@link SmartInitializingSingleton} so it runs after <em>all</em>
  * singleton beans have been instantiated — the correct lifecycle point to see every
@@ -45,8 +44,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link AnnotationUtils#findAnnotation} so that {@code @Failover} placed on an
  * interface method is found even when the concrete class does not repeat it.
  *
- * <p>This replaces {@code DefaultFailoverScanner} (Reflections-based), which required
- * {@code --add-opens} JVM flags and pulled in Guava transitively.
+ * <p>Works with <strong>Spring-managed beans only</strong> — methods on plain Java objects
+ * not registered in the Spring context are not visible to this scanner.
  *
  * @author Anand Manissery
  */
