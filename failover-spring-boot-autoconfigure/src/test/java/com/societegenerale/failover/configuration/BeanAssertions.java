@@ -26,10 +26,10 @@ import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.key.KeyGenerator;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
-import com.societegenerale.failover.core.report.CompositeReportPublisher;
-import com.societegenerale.failover.core.report.FailoverReporter;
-import com.societegenerale.failover.core.report.ReportPublisher;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
+import com.societegenerale.failover.core.observable.FailoverObserver;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
+import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import org.springframework.context.ApplicationContext;
 
@@ -61,8 +61,8 @@ public class BeanAssertions {
             MethodExceptionPolicy.class,
             FailoverExpiryExtractor.class,
             FailoverScanner.class,
-            CompositeReportPublisher.class,
-            FailoverReporter.class
+            CompositeObservablePublisher.class,
+            FailoverObserver.class
     };
 
     /**
@@ -70,7 +70,7 @@ public class BeanAssertions {
      * Checked via {@code getBeansOfType} (not empty).
      */
     private static final Class<?>[] MANDATORY_BASIC_BEANS_COLLECTION = {
-            ReportPublisher.class,
+            ObservablePublisher.class,
             KeyGenerator.class,
             ExpiryPolicy.class
     };

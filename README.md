@@ -107,8 +107,8 @@ Configure a store:
 
 ```yaml
 failover:
-  store: jdbc                     # inmemory | caffeine | jdbc
-  package-to-scan: com.example    # package where @Failover interfaces live
+  store:
+    type: jdbc                    # inmemory | caffeine | jdbc
 ```
 
 Annotate your interface:
@@ -165,7 +165,7 @@ Failover emits Micrometer counters for every store and recover event. Connect to
   <img src="docs/web/assets/images/failover-monitoring-dashboard.png" width="680" alt="Kibana dashboard showing all active failover configurations: name, expiry duration, expiry unit, type" />
 </p>
 
-Enable the configuration dashboard by setting `failover.package-to-scan` — it shows all active `@Failover` configurations at a glance.
+The configuration dashboard shows all active `@Failover` configurations at a glance — discovered automatically from the Spring context.
 
 | Chart | Description |
 |---|---|

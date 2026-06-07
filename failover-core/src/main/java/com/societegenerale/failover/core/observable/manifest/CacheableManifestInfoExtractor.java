@@ -1,0 +1,49 @@
+/*
+ * Copyright 2022-2023, Société Générale All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.societegenerale.failover.core.observable.manifest;
+
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * {@link ManifestInfoExtractor} decorator that caches extraction results by artifact title
+ * to avoid repeated classpath scans.
+ *
+ * @author Anand Manissery
+ */
+@AllArgsConstructor
+@Slf4j
+public class CacheableManifestInfoExtractor implements ManifestInfoExtractor {
+
+    private final Map<String, Map<String, String>> cache = new ConcurrentHashMap<>();
+
+    private final ManifestInfoExtractor manifestInfoExtractor;
+
+    @Override
+    public @Nullable Map<String, String> extract(String title) {
+        if(cache.containsKey(title)) {
+            return cache.get(title);
+        }
+        var result = manifestInfoExtractor.extract(title);
+        cache.put(title, result);
+        return result;
+    }
+}

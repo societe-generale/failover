@@ -17,10 +17,8 @@
 package com.societegenerale.failover.properties;
 
 import lombok.Data;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
-import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.LinkedHashMap;
@@ -37,19 +35,12 @@ import static com.societegenerale.failover.properties.FailoverType.BASIC;
 @Data
 @Validated
 @ConfigurationProperties(prefix = "failover")
-public class FailoverProperties implements InitializingBean {
+public class FailoverProperties {
     /**
      * Whether to enable or disable the failover feature.
      * Default value is 'true'.
      */
     private boolean enabled = true;
-
-    /**
-     * Please provide your base package, where you have the business domain.
-     * This is to scan for {@com.societegenerale.failover.annotations.Failover} to identify the Failover configurations.
-     * This is a mandatory field
-     */
-    private String packageToScan;
 
     /**
      * Type of Failover to be specified. Default to 'BASIC'
@@ -89,21 +80,4 @@ public class FailoverProperties implements InitializingBean {
         return info;
     }
 
-    @Override
-    public void afterPropertiesSet() {
-        validate();
-    }
-
-    /**
-     * Validates that mandatory properties are set when failover is enabled.
-     *
-     * @throws IllegalStateException if {@code failover.package-to-scan} is blank when failover is enabled
-     */
-    public void validate() {
-        if (enabled && !StringUtils.hasText(packageToScan)) {
-            throw new IllegalStateException(
-                    "failover.package-to-scan must not be blank when failover is enabled. " +
-                    "Set it to the base package of your application (e.g. failover.package-to-scan=com.example.app).");
-        }
-    }
 }

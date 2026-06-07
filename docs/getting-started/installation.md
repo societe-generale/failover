@@ -30,24 +30,13 @@ Add a single dependency. The Spring Boot starter pulls in all required modules a
     implementation 'com.societegenerale.failover:failover-spring-boot-starter:3.0.0'
     ```
 
----
-
-## Minimal Configuration
-
-```yaml title="application.yml"
-failover:
-  package-to-scan: com.example.myapp   # (1)
-```
-
-1. The base package where your `@Failover` annotations live. The framework scans this package to discover failover configurations.
-
-`failover.package-to-scan` is the only mandatory property. Everything else has production-safe defaults.
+No mandatory properties — the framework starts with production-safe defaults. All you need is to annotate your Spring-managed methods with `@Failover`.
 
 ---
 
 ## Module Dependencies
 
-If you need finer control, you can declare individual modules instead of the starter.
+If you need finer control, declare individual modules instead of the starter.
 
 ### Core (always required)
 
@@ -70,6 +59,30 @@ If you need finer control, you can declare individual modules instead of the sta
 ```
 
 This module provides the `@Failover` annotation and the `Referential` / `ReferentialAware` contracts. Add it to any module that declares `@Failover` on methods or defines referential domain types.
+
+### Observable — Scanner
+
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-observable-scanner</artifactId>
+    <version>3.0.0</version>
+</dependency>
+```
+
+Discovers all `@Failover` annotations from the Spring `ApplicationContext` at startup. No Micrometer dependency. Use this when you want Spring-context-based scanning without Micrometer metrics.
+
+### Observable — Micrometer (optional extension)
+
+```xml
+<dependency>
+    <groupId>com.societegenerale.failover</groupId>
+    <artifactId>failover-observable-micrometer</artifactId>
+    <version>3.0.0</version>
+</dependency>
+```
+
+Adds Micrometer meters and a Spring Boot Actuator health indicator. Brings in `failover-observable-scanner` transitively. See [Observable Modules](../modules/observable.md).
 
 ### JDBC Store
 

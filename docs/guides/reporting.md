@@ -2,26 +2,27 @@
 icon: material/chart-line
 ---
 
-# Reporting
+# Observability
 
-The failover framework emits events on every store and recover operation. Two report publishers are auto-configured; you can add your own or extend the existing ones.
+The failover framework emits events on every store and recover operation via `ObservablePublisher`, and periodically observes all registered `@Failover` configurations via `FailoverObserver`. Publishers are auto-configured; you can add your own or extend the existing ones.
 
 ---
 
 ## Auto-Configured Publishers
 
-### LoggerReportPublisher
+### MdcLoggerObservablePublisher
 
-Logs every store/recover event at INFO level using SLF4J:
+Logs every observation at INFO level using SLF4J, with MDC enriched for the duration of the call:
 
 ```
-INFO  Failover : Storing information on 'country-by-code' for failover. ReferentialPayload : {name=country-by-code, key=FR, ...}
-INFO  Failover Recovery : Successfully recovered the information on 'country-by-code' from failover store.
+INFO  Failover metrics : country-by-code
 ```
 
-### MetricsReportPublisher
+MDC is fully restored after each publish — safe in multi-threaded environments.
 
-Emits Micrometer counters:
+### MicrometerObservablePublisher
+
+Emits Micrometer counters (requires `failover-observable-micrometer`):
 
 | Metric | Tags | Description |
 |---|---|---|
@@ -46,9 +47,9 @@ http://localhost:8080/actuator/metrics/failover.recover.count
 
 ---
 
-## ReportScheduler
+## ObservableScheduler
 
-A scheduled summary report runs daily at midnight (configurable). It collects counts per failover name and publishes them via `FailoverReporter`. Configure:
+A scheduled summary runs on a cron schedule (default: daily at midnight). It calls `FailoverObserver.observe()`, which collects counts per failover name and publishes them via all registered `ObservablePublisher` beans. Configure:
 
 ```yaml
 failover:
@@ -58,53 +59,34 @@ failover:
 
 ---
 
-## Custom Report Publisher
+## Custom ObservablePublisher
 
-Implement `ReportPublisher` and declare it as a Spring bean:
+Implement `ObservablePublisher` (or extend `AbstractObservablePublisher`) and declare it as a Spring bean:
 
 ```java
 @Component
-public class SlackReportPublisher implements ReportPublisher {
+public class SlackObservablePublisher extends AbstractObservablePublisher {
 
     private final SlackClient slack;
 
     @Override
-    public void publish(Event event) {
-        if (event.getType() == EventType.RECOVER) {
-            slack.sendAlert("Failover recover: " + event.getName() + " — " + event.getKey());
-        }
+    public void doPublish(Metrics metrics) {
+        slack.sendAlert("Failover observe: " + metrics.getName());
     }
 }
 ```
 
-### CompositeReportPublisher
-
-Combine multiple publishers:
-
-```java
-@Bean
-@Primary
-public ReportPublisher compositePublisher(
-        LoggerReportPublisher logger,
-        MetricsReportPublisher metrics,
-        SlackReportPublisher slack) {
-    return new CompositeReportPublisher(List.of(logger, metrics, slack));
-}
-```
-
-Mark with `@Primary` to replace the default composite, or let the auto-configuration pick up all `ReportPublisher` beans automatically.
+The auto-configuration collects all `ObservablePublisher` beans into a `CompositeObservablePublisher` automatically.
 
 ---
 
 ## Event Model
 
-`Event` carries:
+`Metrics` carries:
 
 | Field | Type | Description |
 |---|---|---|
-| `type` | `EventType` | `STORE` or `RECOVER` |
 | `name` | `String` | The `@Failover` name |
-| `key` | `String` | The derived store key |
-| `timestamp` | `Instant` | When the event occurred |
-| `payload` | `Object` | The stored or recovered payload |
-| `throwable` | `Throwable` | The exception (recover events only) |
+| `info` | `Map<String, String>` | Additional info from `FailoverProperties.additionalInfo()` |
+
+Events on individual store/recover operations are delivered through `FailoverObserver` → `ObservablePublisher` on each observation cycle.

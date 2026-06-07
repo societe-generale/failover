@@ -9,11 +9,13 @@ Failover is split into focused modules. The starter includes all of them. Use in
 | Module | Description |
 |---|---|
 | [Core](core.md) | `FailoverHandler`, `KeyGenerator`, `ExpiryPolicy`, `PayloadEnricher`, `ContextPropagator` abstractions |
+| [Observable — Scanner](observable.md#failover-observable-scanner) | Discovers all `@Failover` annotations in the Spring context at startup |
+| [Observable — Micrometer](observable.md#failover-observable-micrometer) | Micrometer meters and Spring Boot Actuator health indicator |
 | [JDBC Store](store-jdbc.md) | Persistent store backed by H2, PostgreSQL, MySQL, MariaDB, Oracle, or SQL Server |
 | [Caffeine Store](store-caffeine.md) | In-process cache store backed by Caffeine |
 | [Async Store](store-async.md) | Non-blocking write decorator using a virtual-thread executor |
 | [Multi-Tenant Store](store-multitenant.md) | Per-tenant routing via `TABLE_PREFIX` or `SCHEMA` isolation strategy |
 | [Resilience](execution-resilience.md) | Resilience4j circuit-breaker integration for upstream calls |
-| [Scheduler](scheduler.md) | Expiry-cleanup and report-publishing schedulers |
+| [Scheduler](scheduler.md) | Expiry-cleanup and observable schedulers |
 
 Start with [Core](core.md) to understand the central abstractions, then add store and execution modules as needed.

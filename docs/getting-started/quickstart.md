@@ -33,9 +33,8 @@ Build a complete failover-enabled service in 5 minutes.
 === "In-memory Store"
 
     ```yaml title="application.yml"
-    failover:
-      package-to-scan: com.example.myapp
-    
+    failover: {}
+
     # Non Prod ( default ) configuration with in-memory store. Not recommended for production use.
     
     ```
@@ -44,7 +43,6 @@ Build a complete failover-enabled service in 5 minutes.
 
     ```yaml title="application.yml"
     failover:
-      package-to-scan: com.example.myapp
       store:
         type: caffeine
 
@@ -56,7 +54,6 @@ Build a complete failover-enabled service in 5 minutes.
 
     ```yaml title="application.yml"
     failover:
-      package-to-scan: com.example.myapp
       store:
         type: jdbc
         jdbc:
@@ -233,7 +230,6 @@ Write an integration test using the real store:
 ```java
 @SpringBootTest
 @TestPropertySource(properties = {
-    "failover.package-to-scan=com.example.myapp",
     "failover.store.type=jdbc",
     "failover.store.async=false",        // synchronous writes for deterministic assertions
     "failover.exception-policy=never_throw"

@@ -26,6 +26,9 @@ import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExce
 import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
 import com.societegenerale.failover.core.expiry.*;
 import com.societegenerale.failover.core.key.*;
+import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
+import com.societegenerale.failover.core.observable.publisher.MdcLoggerObservablePublisher;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
@@ -37,20 +40,22 @@ import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.core.propagator.MdcContextPropagator;
 import com.societegenerale.failover.propagator.MicrometerContextPropagator;
 import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
-import com.societegenerale.failover.core.report.*;
-import com.societegenerale.failover.core.report.manifest.*;
-import com.societegenerale.failover.core.scanner.DefaultFailoverScanner;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.observable.*;
+import com.societegenerale.failover.core.observable.manifest.*;
+import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
+import com.societegenerale.failover.observable.scanner.SpringContextFailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
-import com.societegenerale.failover.scheduler.ReportScheduler;
+import com.societegenerale.failover.scheduler.ObservableScheduler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -252,15 +257,16 @@ public class FailoverAutoConfiguration {
     }
 
     /**
-     * Registers a scanner that locates all {@code @Failover}-annotated methods in the configured package.
+     * Registers a Spring-native scanner that locates all {@code @Failover}-annotated methods
+     * by walking the already-built {@link org.springframework.context.ApplicationContext}.
+     * Replaces the Reflections-library-based {@code DefaultFailoverScanner}.
      *
-     * @param failoverProperties properties providing the base package to scan
-     * @return {@link DefaultFailoverScanner} that scans for {@code @Failover}-annotated methods
+     * @return {@link SpringContextFailoverScanner}
      */
     @ConditionalOnMissingBean
     @Bean
-    public FailoverScanner failoverScanner(FailoverProperties failoverProperties) {
-        return new DefaultFailoverScanner(failoverProperties.getPackageToScan());
+    public FailoverScanner failoverScanner() {
+        return new SpringContextFailoverScanner();
     }
 
     /** Registers the default no-op {@link RecoveredPayloadHandler} that returns the payload unchanged.
@@ -272,38 +278,28 @@ public class FailoverAutoConfiguration {
     }
 
     /**
-     * Registers a {@link ReportPublisher} that writes failover reports to SLF4J.
+     * Registers a {@link ObservablePublisher} that writes failover reports to SLF4J.
      *
-     * @return {@link LoggerReportPublisher}
+     * @return {@link MdcLoggerObservablePublisher}
      */
     @Bean
-    public ReportPublisher loggerReportPublisher() {
-        return new LoggerReportPublisher();
-    }
-
-    /**
-     * Registers a {@link ReportPublisher} that records failover metrics (counters/gauges).
-     *
-     * @return {@link MetricsReportPublisher}
-     */
-    @Bean
-    public ReportPublisher metricsReportPublisher() {
-        return new MetricsReportPublisher();
+    public ObservablePublisher loggerObservablePublisher() {
+        return new MdcLoggerObservablePublisher();
     }
 
     /**
      * Registers a composite publisher that stamps the publish timestamp once and broadcasts
-     * to every {@link ReportPublisher} in the context. Stamping once here ensures all delegates
+     * to every {@link ObservablePublisher} in the context. Stamping once here ensures all delegates
      * receive the same timestamp regardless of how many publishers are registered.
      *
-     * @param reportPublishers all {@link ReportPublisher} beans in the context
+     * @param observablePublishers all {@link ObservablePublisher} beans in the context
      * @param clock            clock used to stamp the single publish timestamp
      * @return composite publisher
      */
     @ConditionalOnMissingBean
     @Bean
-    public CompositeReportPublisher compositeReportPublisher(List<ReportPublisher> reportPublishers, FailoverClock clock) {
-        return new CompositeReportPublisher(reportPublishers, clock);
+    public CompositeObservablePublisher compositeObservablePublisher(List<ObservablePublisher> observablePublishers, FailoverClock clock) {
+        return new CompositeObservablePublisher(observablePublishers, clock);
     }
 
     /**
@@ -316,7 +312,7 @@ public class FailoverAutoConfiguration {
      * @param failoverStore              the assembled store (async/sync, single/multi-tenant)
      * @param payloadEnricher            enriches payloads on store
      * @param recoveredPayloadHandler    handles recovered (or null) payloads
-     * @param reportPublisher            composite report publisher
+     * @param observablePublisher            composite report publisher
      * @param failoverExpiryExtractor    reads expiry from {@code @Failover}
      * @param payloadSplitterLookup      looks up named splitter beans
      * @param contextPropagator          propagates thread context to scatter executor threads
@@ -332,7 +328,7 @@ public class FailoverAutoConfiguration {
             FailoverStore<Object> failoverStore,
             PayloadEnricher<Object> payloadEnricher,
             RecoveredPayloadHandler recoveredPayloadHandler,
-            CompositeReportPublisher reportPublisher,
+            CompositeObservablePublisher observablePublisher,
             FailoverExpiryExtractor failoverExpiryExtractor,
             PayloadSplitterLookup<Object,Object> payloadSplitterLookup,
             @Qualifier("contextPropagator") ContextPropagator contextPropagator,
@@ -340,7 +336,7 @@ public class FailoverAutoConfiguration {
         var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
         var scatterHandler = new ScatterGatherFailoverHandler<>(defaultHandler, defaultHandler, payloadSplitterLookup,
                 scatterGatherExecutorProvider.getIfAvailable(), contextPropagator);
-        return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
+        return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, observablePublisher, failoverExpiryExtractor);
     }
 
     /**
@@ -407,7 +403,7 @@ public class FailoverAutoConfiguration {
     /**
      * Creates the failover reporter bean that publishes a startup summary.
      *
-     * @param reportPublisher        composite publisher that receives the startup report
+     * @param observablePublisher        composite publisher that receives the startup report
      * @param failoverScanner        scans for all {@code @Failover}-annotated methods
      * @param clock                  clock for the report timestamp
      * @param manifestInfoExtractor  extracts build info from MANIFEST.MF
@@ -416,9 +412,25 @@ public class FailoverAutoConfiguration {
      * @return reporter that publishes a full failover summary on application startup
      */
     @ConditionalOnMissingBean
-    @Bean(initMethod = "report")
-    public FailoverReporter failoverReporter(CompositeReportPublisher reportPublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor, FailoverProperties failoverProperties) {
-        return new DefaultFailoverReporter(reportPublisher, failoverScanner, clock, manifestInfoExtractor, failoverExpiryExtractor, failoverProperties.additionalInfo());
+    @Bean(initMethod = "observe")
+    public FailoverObserver failoverObserver(CompositeObservablePublisher observablePublisher, FailoverScanner failoverScanner, FailoverClock clock, ManifestInfoExtractor manifestInfoExtractor, FailoverExpiryExtractor failoverExpiryExtractor, FailoverProperties failoverProperties) {
+        return new DefaultFailoverObserver(observablePublisher, failoverScanner, clock, manifestInfoExtractor, failoverExpiryExtractor, failoverProperties.additionalInfo());
+    }
+
+    @Configuration
+    @ConditionalOnExpression("${failover.enabled:true} eq true")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
+    static class FailoverHealthConfiguration {
+
+        /**
+         * Actuator health indicator for the failover framework. Reports {@code DOWN} when
+         * the scanner discovers zero {@code @Failover} annotations (misconfiguration).
+         */
+        @ConditionalOnMissingBean(FailoverHealthIndicator.class)
+        @Bean
+        public FailoverHealthIndicator failoverHealthIndicator(FailoverScanner failoverScanner) {
+            return new FailoverHealthIndicator(failoverScanner);
+        }
     }
 
     @Configuration
@@ -429,8 +441,8 @@ public class FailoverAutoConfiguration {
     static class FailoverSchedulingConfiguration {
         @ConditionalOnMissingBean
         @Bean
-        public ReportScheduler reportScheduler(FailoverReporter failoverReporter) {
-            return new ReportScheduler(failoverReporter);
+        public ObservableScheduler observableScheduler(FailoverObserver failoverObserver) {
+            return new ObservableScheduler(failoverObserver);
         }
 
         @ConditionalOnMissingBean

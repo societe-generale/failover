@@ -19,8 +19,6 @@
         <maven.compiler.target>${java.version}</maven.compiler.target>
 
         <jspecify.version>1.0.0</jspecify.version>
-        <reflections.version>0.10.2</reflections.version>
-
         <!-- SPRING BOOT VERSION -->
         <spring-boot.version>4.0.6</spring-boot.version>
         <spring-cloud.version>2025.1.1</spring-cloud.version>
@@ -87,6 +85,8 @@
     <modules>
         <module>failover-domain</module>
         <module>failover-core</module>
+        <module>failover-observable-scanner</module>
+        <module>failover-observable-micrometer</module>
         <module>failover-store-inmemory</module>
         <module>failover-store-caffeine</module>
         <module>failover-store-jdbc</module>
@@ -116,11 +116,6 @@
                 <version>${spring-cloud.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.reflections</groupId>
-                <artifactId>reflections</artifactId>
-                <version>${reflections.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.jspecify</groupId>
