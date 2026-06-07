@@ -126,4 +126,27 @@ public @interface Failover {
      * @return payload splitter bean name
      */
     String payloadSplitter() default "";
+
+    /**
+     * Optional logical domain for store partitioning.
+     *
+     * <p>When set, this value is used as the store namespace instead of {@link #name()},
+     * and as the prefix for key generation. Two {@code @Failover} annotations with the
+     * same {@code domain} share the same store entries — a successful call on either
+     * populates data the other can recover from.
+     *
+     * <p>Typical use: a single-entity endpoint and a scatter/gather list endpoint covering
+     * the same business entity type (e.g. {@code domain = "country"}).
+     *
+     * <p><strong>Expiry consistency:</strong> failovers sharing a domain must use the same
+     * expiry configuration. When expiry differs, the last writer overwrites the stored expiry
+     * timestamp for that entry. The scanner warns at startup when mismatched expiry is detected
+     * within a domain.
+     *
+     * <p>When empty (default), {@link #name()} is used — existing behaviour is preserved.
+     *
+     * @return domain name, or empty string to default to {@link #name()}
+     * @see #name()
+     */
+    String domain() default "";
 }

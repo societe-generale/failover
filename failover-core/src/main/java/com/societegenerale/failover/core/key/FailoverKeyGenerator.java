@@ -22,6 +22,7 @@ import lombok.AllArgsConstructor;
 import java.util.List;
 import java.util.UUID;
 
+import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
@@ -37,8 +38,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * </ol>
  *
  * <p>The final key is a deterministic type-3 UUID derived from
- * {@code failover.name() + ":" + rawKey} encoded as UTF-8 bytes. Hashing normalises key length
- * and prevents store-column overflow regardless of argument size.
+ * {@code FailoverNameResolver.effectiveName(failover) + ":" + rawKey} encoded as UTF-8 bytes.
+ * {@code effectiveName} is {@link com.societegenerale.failover.annotations.Failover#domain()} when
+ * non-blank, otherwise {@link com.societegenerale.failover.annotations.Failover#name()}.
+ * Hashing normalises key length and prevents store-column overflow regardless of argument size.
  *
  * @author Anand Manissery
  * @see DefaultKeyGenerator
@@ -78,7 +81,7 @@ public class FailoverKeyGenerator implements KeyGenerator {
     }
 
     private String generateFinalKey(Failover failover, String tempKey) {
-        var key = failover.name() + ":" + tempKey;
+        var key = effectiveName(failover) + ":" + tempKey;
         return UUID.nameUUIDFromBytes(key.getBytes(UTF_8)).toString();
     }
 }

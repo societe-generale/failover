@@ -20,11 +20,14 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.expiry.ExpiryPolicy;
 import com.societegenerale.failover.core.key.DefaultKeyGenerator;
+import com.societegenerale.failover.core.key.FailoverKeyGenerator;
 import com.societegenerale.failover.core.key.KeyGenerator;
+import com.societegenerale.failover.core.key.KeyGeneratorLookup;
 import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import com.societegenerale.failover.domain.Referential;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -38,11 +41,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static java.util.Optional.of;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -80,6 +86,7 @@ class DefaultFailoverHandlerTest {
     @BeforeEach
     void setUp() {
         lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
+        lenient().when(failover.domain()).thenReturn("");
         defaultFailoverHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
     }
 
@@ -178,6 +185,59 @@ class DefaultFailoverHandlerTest {
         given(clock.now()).willReturn(now);
         defaultFailoverHandler.clean();
         verify(failoverStore).cleanByExpiry(now);
+    }
+
+    @Test
+    @DisplayName("shared domain: recover via failover-B finds payload stored by failover-A")
+    void shouldRecoverFromSharedDomainStoreWhenStoredByDifferentFailoverWithSameDomain() {
+        String domain = "tp-shared";
+        Failover failoverA = mock(Failover.class);
+        Failover failoverB = mock(Failover.class);
+        given(failoverA.name()).willReturn("tp-by-id");
+        given(failoverA.domain()).willReturn(domain);
+        given(failoverA.keyGenerator()).willReturn("");
+        given(failoverB.name()).willReturn("tp-list");
+        given(failoverB.domain()).willReturn(domain);
+        given(failoverB.keyGenerator()).willReturn("");
+
+        ExpiryPolicy<ThirdParty> policy = mock(ExpiryPolicy.class);
+        given(clock.now()).willReturn(now);
+        given(policy.computeExpiry(failoverA)).willReturn(now.plusSeconds(3600));
+        given(policy.isExpired(eq(failoverB), any())).willReturn(false);
+
+        var realKeyGen = new FailoverKeyGenerator(new DefaultKeyGenerator(), mock(KeyGeneratorLookup.class));
+        var testStore = new TestFailoverStore<ThirdParty>();
+        var handler = new DefaultFailoverHandler<>(realKeyGen, clock, testStore, policy, new DefaultPayloadEnricher<>());
+
+        handler.store(failoverA, List.of("1"), new ThirdParty(1L, "Tata", 1));
+
+        ThirdParty recovered = handler.recover(failoverB, List.of("1"), ThirdParty.class, cause);
+
+        assertThat(recovered).isNotNull();
+        assertThat(recovered.getId()).isEqualTo(1L);
+        assertThat(recovered.getName()).isEqualTo("Tata");
+    }
+
+    static class TestFailoverStore<T> implements FailoverStore<T> {
+        private final Map<String, ReferentialPayload<T>> store = new ConcurrentHashMap<>();
+
+        @Override
+        public void store(ReferentialPayload<T> p) throws FailoverStoreException {
+            store.put(p.getName() + "##" + p.getKey(), p.copy());
+        }
+
+        @Override
+        public Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException {
+            return Optional.ofNullable(store.get(name + "##" + key)).map(ReferentialPayload::copy);
+        }
+
+        @Override
+        public void delete(ReferentialPayload<T> p) throws FailoverStoreException {
+            store.remove(p.getName() + "##" + p.getKey());
+        }
+
+        @Override
+        public void cleanByExpiry(Instant expiry) throws FailoverStoreException {}
     }
 
     @Data

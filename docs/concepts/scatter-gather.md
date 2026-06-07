@@ -134,6 +134,71 @@ The `merge` method receives all slice contexts, including those whose `payload` 
 
 ---
 
+## Domain Sharing
+
+Scatter/gather stores individual entity slices under the `FAILOVER_NAME` of the scatter endpoint (`findByIds`). A separate single-entity endpoint (`findByCode`) stores its results under its own `FAILOVER_NAME`. Even when both store the same entity with the same key, the composite `(FAILOVER_NAME, FAILOVER_KEY)` store address differs — they never share data.
+
+The `domain` attribute solves this. When two `@Failover` annotations declare the same `domain`, they share the same `FAILOVER_NAME` and the same UUID prefix in `FailoverKeyGenerator`. An entity stored by either endpoint is recoverable by both.
+
+### When to use domain sharing
+
+The primary use case is **pre-population via a bulk endpoint that feeds single-entity recovery**:
+
+- `findByIds("1,2,3")` with scatter/gather populates three store entries, one per ID.
+- `findByCode("1")` fails later and recovers entry stored by `findByIds`.
+
+Without `domain`, `findByCode` misses — the scatter stores under `"country-all"`, single-entity looks up under `"country-by-code"`.
+
+With `domain = "country"`:
+
+```java
+@Failover(
+    name = "country-by-code",
+    domain = "country",   //same domain name
+    expiryDuration = 1, expiryUnit = ChronoUnit.HOURS
+)
+Country findByCode(String code);
+
+@Failover(
+    name = "country-all",
+    domain = "country",   //same domain name
+    expiryDuration = 1, expiryUnit = ChronoUnit.HOURS,
+    payloadSplitter = "countrySplitter"
+)
+List<Country> findAll(String csvIds);
+```
+
+Both `name` values remain unique (required by the scanner). The `domain` value is what the store and key generator use as the shared namespace. The `PayloadSplitter` on `findAll` must produce single-element args that match the args `findByCode` uses — typically a single ID string — so the UUID keys are identical.
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant H as ScatterGatherHandler
+    participant S as FailoverStore
+
+    note over C,S: findAll stores individual slices
+    C->>H: findAll("1,2,3") → [A, B, C]
+    H->>S: store(name="country", key=UUID("country:1"), A)
+    H->>S: store(name="country", key=UUID("country:2"), B)
+    H->>S: store(name="country", key=UUID("country:3"), C)
+
+    note over C,S: findByCode recovers from same slot
+    C->>H: findByCode("1") → exception
+    H->>S: find(name="country", key=UUID("country:1")) → A
+    H-->>C: A
+```
+
+### Expiry alignment
+
+All `@Failover` annotations sharing a domain must configure the same expiry. The store uses the expiry written by whichever endpoint stores last — mismatched expiry causes the last writer to silently override the intended expiry for all readers. `SpringContextFailoverScanner` logs a warning at startup if domain members have different expiry values.
+
+```
+WARN — Failover domain 'country' contains 2 failovers with different expiry configurations.
+       Last writer wins per store entry — align expiry to avoid inconsistency.
+```
+
+---
+
 ## Configuration Reference
 
 | Property | Default | Description |

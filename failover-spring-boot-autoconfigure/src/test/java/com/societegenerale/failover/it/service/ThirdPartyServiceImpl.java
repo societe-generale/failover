@@ -79,4 +79,18 @@ public class ThirdPartyServiceImpl implements ThirdPartyService {
     public ThirdPartiesResult fetchAll(String status, String csvIds, String region) {
         return remoteService.fetchAllIn(csvIds);
     }
+
+    @Override
+    @Failover(name = "it-tp-domain-single", domain = "it-tp-domain",
+              expiryDuration = 1, expiryUnit = ChronoUnit.HOURS)
+    public ThirdParty fetchByIdInDomain(String id) {
+        return remoteService.fetchOne(id);
+    }
+
+    @Override
+    @Failover(name = "it-tp-domain-alias", domain = "it-tp-domain",
+              expiryDuration = 1, expiryUnit = ChronoUnit.HOURS)
+    public ThirdParty fetchByIdViaDomainAlias(String id) {
+        return remoteService.fetchOne(id);
+    }
 }

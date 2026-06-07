@@ -36,9 +36,68 @@ Multiple arguments are joined with `:`.
 
 ---
 
+## Three-Layer Key Generation Architecture
+
+Key generation has three distinct layers. Understanding each layer is important when configuring custom key generators or reasoning about cross-failover store sharing.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Layer 1 — User-visible key generators                          │
+│  DefaultKeyGenerator  OR  custom KeyGenerator bean              │
+│  Input: method args   Output: raw string key                    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ raw key
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Layer 2 — FailoverKeyGenerator  (internal, always active)      │
+│  Combines: effectiveName + ":" + rawKey                         │
+│  Applies:  UUID.nameUUIDFromBytes(combined, UTF-8)              │
+│  Output:   fixed-length 36-character UUID string                │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ final UUID key
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Layer 3 — FailoverStore  (store / find / delete)               │
+│  Keyed on: (FAILOVER_NAME, FAILOVER_KEY)                        │
+│  FAILOVER_NAME = effectiveName  |  FAILOVER_KEY = UUID above    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Layer 1** is what users control — either the default argument-based derivation or a custom `KeyGenerator` bean.
+
+**Layer 2 (`FailoverKeyGenerator`)** is always injected by auto-configuration and is invisible to application code. It wraps the raw key from Layer 1 in a deterministic UUID hash, preventing column overflow and obscuring business data in the store.
+
+**Layer 3** stores each entry under a two-part composite key: the `FAILOVER_NAME` and the `FAILOVER_KEY`. Both must match on store and recover for a hit to occur. This is why `domain` (see below) must affect both dimensions.
+
+---
+
+## Effective Name — `failover.name()` vs `effectiveName`
+
+Every store operation uses an **effective name** rather than the raw annotation name directly:
+
+```
+effectiveName = domain.isBlank() ? name : domain
+```
+
+`FailoverNameResolver.effectiveName(failover)` computes this. Both `FailoverKeyGenerator` (Layer 2) and `DefaultFailoverHandler` (Layer 3) call it, keeping the namespace consistent.
+
+| `@Failover` attribute | `effectiveName` used for UUID prefix | `FAILOVER_NAME` stored |
+|---|---|---|
+| `name="tp-by-id"`, no domain | `"tp-by-id"` | `"tp-by-id"` |
+| `name="tp-list"`, no domain | `"tp-list"` | `"tp-list"` |
+| `name="tp-by-id"`, `domain="tp"` | `"tp"` | `"tp"` |
+| `name="tp-list"`, `domain="tp"` | `"tp"` | `"tp"` |
+
+When two `@Failover` annotations share the same `domain`, they hash raw keys with the same namespace prefix and store under the same `FAILOVER_NAME`. Given the same raw key from Layer 1, they produce identical store addresses — enabling cross-failover data sharing. See [Domain Sharing](scatter-gather.md#domain-sharing) for the scatter/gather use case.
+
+!!! note "Logging uses `name`, not `effectiveName`"
+    Log messages and scanner registration always use `failover.name()` — the unique annotation name — not `effectiveName`. This keeps logs human-readable and distinguishes individual `@Failover` definitions even when they share a domain.
+
+---
+
 ## Key Length and Stability
 
-Starting from version 2.x, the key generator produces fixed-length UUID-based (MD5-hashed) keys for arguments that exceed a threshold. This prevents `VARCHAR(256)` overflow on JDBC stores while maintaining uniqueness.
+`FailoverKeyGenerator` always produces fixed-length UUID-based (MD5-hashed) keys. This prevents `VARCHAR(256)` overflow on JDBC stores while maintaining uniqueness.
 
 ---
 

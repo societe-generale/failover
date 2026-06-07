@@ -93,6 +93,7 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
                 Gauge.builder("failover.config.expiry.seconds", () -> seconds)
                     .description("Configured expiry duration in seconds for this failover")
                     .tag("name", failover.name())
+                    .tag("domain", failover.domain().isBlank() ? failover.name() : failover.domain())
                     .tag("unit", expiryExtractor.expiryUnit(failover).name())
                     .register(registry);
             }

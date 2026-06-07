@@ -68,6 +68,7 @@ class FailoverKeyGeneratorTest {
     @BeforeEach
     void setUp() {
         lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
+        lenient().when(failover.domain()).thenReturn("");
         failoverKeyGenerator = new FailoverKeyGenerator(defaultKeyGenerator, keyGeneratorLookup);
     }
 
@@ -132,5 +133,59 @@ class FailoverKeyGeneratorTest {
     void finalKeyShouldBeSameAsCopy() {
         var newFinalKey = UUID.nameUUIDFromBytes((FAILOVER_NAME + ":" + KEY).getBytes(UTF_8)).toString();
         assertThat(newFinalKey).isEqualTo(FINAL_KEY).isEqualTo(FINAL_KEY_COPY);
+    }
+
+    @Test
+    @DisplayName("no domain → uses failover name as UUID prefix (backward compat)")
+    void noDomainUsesFailoverNameAsUUIDPrefix() {
+        given(failover.domain()).willReturn("");
+        given(failover.keyGenerator()).willReturn("");
+        given(defaultKeyGenerator.key(failover, ARGS)).willReturn(KEY);
+
+        var key = failoverKeyGenerator.key(failover, ARGS);
+
+        assertThat(key).isEqualTo(FINAL_KEY);
+    }
+
+    @Test
+    @DisplayName("same domain + same args → same UUID key across different failover names")
+    void sameDomainAndSameArgsShouldProduceSameUUID() {
+        String domain = "shared-domain";
+        Failover failoverA = mock(Failover.class);
+        Failover failoverB = mock(Failover.class);
+        lenient().when(failoverA.name()).thenReturn("tp-by-id"); // not called when domain is set
+        given(failoverA.domain()).willReturn(domain);
+        given(failoverA.keyGenerator()).willReturn("");
+        lenient().when(failoverB.name()).thenReturn("tp-list"); // not called when domain is set
+        given(failoverB.domain()).willReturn(domain);
+        given(failoverB.keyGenerator()).willReturn("");
+        given(defaultKeyGenerator.key(failoverA, ARGS)).willReturn(KEY);
+        given(defaultKeyGenerator.key(failoverB, ARGS)).willReturn(KEY);
+
+        String keyA = failoverKeyGenerator.key(failoverA, ARGS);
+        String keyB = failoverKeyGenerator.key(failoverB, ARGS);
+
+        assertThat(keyA).isEqualTo(keyB);
+        assertThat(keyA).isEqualTo(UUID.nameUUIDFromBytes((domain + ":" + KEY).getBytes(UTF_8)).toString());
+    }
+
+    @Test
+    @DisplayName("different domains + same args → different UUID keys (domain isolation)")
+    void differentDomainsAndSameArgsShouldProduceDifferentUUIDs() {
+        Failover failoverA = mock(Failover.class);
+        Failover failoverB = mock(Failover.class);
+        lenient().when(failoverA.name()).thenReturn("tp-by-id"); // not called when domain is set
+        given(failoverA.domain()).willReturn("domain-A");
+        given(failoverA.keyGenerator()).willReturn("");
+        lenient().when(failoverB.name()).thenReturn("tp-list"); // not called when domain is set
+        given(failoverB.domain()).willReturn("domain-B");
+        given(failoverB.keyGenerator()).willReturn("");
+        given(defaultKeyGenerator.key(failoverA, ARGS)).willReturn(KEY);
+        given(defaultKeyGenerator.key(failoverB, ARGS)).willReturn(KEY);
+
+        String keyA = failoverKeyGenerator.key(failoverA, ARGS);
+        String keyB = failoverKeyGenerator.key(failoverB, ARGS);
+
+        assertThat(keyA).isNotEqualTo(keyB);
     }
 }
