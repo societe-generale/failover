@@ -237,7 +237,9 @@ class DefaultFailoverHandlerTest {
         }
 
         @Override
-        public void cleanByExpiry(Instant expiry) throws FailoverStoreException {}
+        public void cleanByExpiry(Instant expiry) throws FailoverStoreException {
+            store.values().removeIf(p -> p.getExpireOn().isBefore(expiry));
+        }
     }
 
     @Data
