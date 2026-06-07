@@ -20,6 +20,7 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
 import com.societegenerale.failover.core.observable.scanner.FailoverScannerException;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.ApplicationContext;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * {@link FailoverScanner} backed by the Spring {@link ApplicationContext}.
@@ -58,7 +60,7 @@ public class SpringContextFailoverScanner
     private volatile Map<String, Failover> failoverMap = new ConcurrentHashMap<>();
 
     @Override
-    public void setApplicationContext(ApplicationContext applicationContext) {
+    public void setApplicationContext(@Nullable ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
     }
 
@@ -88,6 +90,7 @@ public class SpringContextFailoverScanner
         }
         this.failoverMap = discovered;
         log.info("SpringContextFailoverScanner discovered {} @Failover annotation(s).", failoverMap.size());
+        warnOnDomainExpirtyMismatch(discovered);
     }
 
     @Override
@@ -98,6 +101,21 @@ public class SpringContextFailoverScanner
     @Override
     public List<Failover> findAllFailover() {
         return new ArrayList<>(failoverMap.values());
+    }
+
+    private void warnOnDomainExpirtyMismatch(Map<String, Failover> discovered) {
+        discovered.values().stream()
+            .filter(f -> !f.domain().isBlank())
+            .collect(Collectors.groupingBy(Failover::domain))
+            .forEach((domain, list) -> {
+                long distinct = list.stream()
+                    .map(f -> f.expiryDuration() + "|" + f.expiryUnit().name())
+                    .distinct().count();
+                if (distinct > 1) {
+                    log.warn("Failover domain '{}' contains {} failovers with different expiry configurations. " +
+                             "Last writer wins per store entry — align expiry to avoid inconsistency.", domain, list.size());
+                }
+            });
     }
 
     @Nullable

@@ -137,4 +137,4 @@ Default publisher auto-configured: `MdcLoggerObservablePublisher` — writes met
 
 Micrometer meters and Actuator health are provided by the `failover-observable-micrometer` extension module.
 
-See the [Observable Modules](observable.md) page for full details, custom publisher examples, and scheduler configuration.
+See the [Observability](observability.md) page for full details, custom publisher examples, and scheduler configuration.

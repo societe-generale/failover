@@ -772,4 +772,64 @@ class FailoverAppTestIT {
                     .containsKey("exception-type");
         }
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Domain sharing — cross-endpoint recovery via shared domain
+    // ═════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Domain sharing — cross-endpoint recovery via shared domain")
+    class DomainSharing {
+
+        static final String DOMAIN       = "it-tp-domain";
+        static final String NAME_SINGLE  = "it-tp-domain-single";
+        static final String NAME_ALIAS   = "it-tp-domain-alias";
+
+        @Test
+        @DisplayName("both failovers store under shared domain — one row per key in H2")
+        void bothFailoversStoreUnderSharedDomain() {
+            service.fetchByIdInDomain("1");
+            service.fetchByIdViaDomainAlias("2");
+
+            assertThat(rowCount(DOMAIN)).isEqualTo(2);
+            assertThat(rowCount(NAME_SINGLE)).isZero();
+            assertThat(rowCount(NAME_ALIAS)).isZero();
+        }
+
+        @Test
+        @DisplayName("recover via alias endpoint finds payload stored by primary endpoint")
+        void shouldRecoverFromSharedDomainStoreWhenStoredByPrimaryEndpoint() {
+            ThirdParty stored = service.fetchByIdInDomain("1");
+            assertThat(stored).isNotNull();
+
+            ctrl.simulatePrimaryFailure();
+
+            ThirdParty recovered = service.fetchByIdViaDomainAlias("1");
+
+            assertThat(recovered).isNotNull();
+            assertTp(recovered).isEqualTo(TP_1);
+        }
+
+        @Test
+        @DisplayName("recover via primary endpoint finds payload stored by alias endpoint")
+        void shouldRecoverFromSharedDomainStoreWhenStoredByAliasEndpoint() {
+            service.fetchByIdViaDomainAlias("1");
+
+            ctrl.simulatePrimaryFailure();
+
+            ThirdParty recovered = service.fetchByIdInDomain("1");
+
+            assertThat(recovered).isNotNull();
+            assertTp(recovered).isEqualTo(TP_1);
+        }
+
+        @Test
+        @DisplayName("no domain → name used as FAILOVER_NAME (backward compat unaffected)")
+        void noDomainFailoverStillUsesNameAsPartition() {
+            service.fetchOne("1");
+
+            assertThat(rowCount("it-tp-single")).isEqualTo(1);
+            assertThat(rowCount(DOMAIN)).isZero();
+        }
+    }
 }

@@ -422,7 +422,7 @@ No. With multiple instances and async writes, concurrent store calls for the sam
 
 ### How do I monitor failover events in production?
 
-Implement `ObservablePublisher` to receive failover metrics and forward them to your backend (Micrometer, Prometheus, Datadog, etc.). See [Observability](../guides/reporting.md).
+Implement `ObservablePublisher` to receive failover metrics and forward them to your backend (Micrometer, Prometheus, Datadog, etc.). See [Observability](../guides/observability.md).
 
 Alternatively, implement `RecoveredPayloadHandler` to increment a counter on every recovery:
 

@@ -124,6 +124,7 @@ nav:
     - Multi-Tenant Store: modules/store-multitenant.md
     - Resilience: modules/execution-resilience.md
     - Scheduler: modules/scheduler.md
+    - Observability: modules/observability.md
   - Guides:
     - guides/index.md
     - Key Generator: guides/custom-key-generator.md
@@ -136,7 +137,7 @@ nav:
     - Payload Column Resolver: guides/payload-column-resolver.md
     - Database Resolver: guides/database-resolver.md
     - Failover Store Query Resolver: guides/failover-store-query-resolver.md
-    - Reporting: guides/reporting.md
+    - Observability: guides/observability.md
   - Architecture Decisions:
     - Decision Index: adr/index.md
     - All Decisions: adr/adr.md

@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
+import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
 
 /**
  * Default {@link FailoverHandler} that persists payloads to the failover store on success
@@ -60,7 +61,7 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
             return null;
         }
         Class<T> clazz = cast(payload.getClass());
-        var referentialPayload = payloadEnricher.enrichOnStore(failover, clazz, new ReferentialPayload<>(failover.name(), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
+        var referentialPayload = payloadEnricher.enrichOnStore(failover, clazz, new ReferentialPayload<>(effectiveName(failover), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);
         log.info("Failover : Storing information on '{}' for failover. ReferentialPayload : {{}}", failover.name(), referentialPayload);
         return referentialPayload.getPayload();
@@ -70,7 +71,7 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
     public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         log.info("Failover Recovery : Recovering information on '{}' from failover store due to exception {}", failover.name(), cause.getMessage());
         log.debug("Failover Recovery : Recovering information on '{}' from failover store", failover.name(), cause);
-        var optionalReferential = failoverStore.find(failover.name(), keyGenerator.key(failover, args));
+        var optionalReferential = failoverStore.find(effectiveName(failover), keyGenerator.key(failover, args));
         if(optionalReferential.isPresent()) {
             ReferentialPayload<T> referentialPayload =  optionalReferential.get();
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {

@@ -64,4 +64,16 @@ public interface ThirdPartyService {
      * Exercises: store scatters N rows; recover gathers N slices and merges; partial recovery.
      */
     ThirdPartiesResult fetchAll(String status, String csvIds, String region);
+
+    /**
+     * Single-entity failover using domain {@code "it-tp-domain"}.
+     * Exercises: store-on-success under shared domain namespace.
+     */
+    ThirdParty fetchByIdInDomain(String id);
+
+    /**
+     * Alias endpoint sharing domain {@code "it-tp-domain"} with a different failover name.
+     * Exercises: recover-on-failure finds payload stored by {@link #fetchByIdInDomain}.
+     */
+    ThirdParty fetchByIdViaDomainAlias(String id);
 }

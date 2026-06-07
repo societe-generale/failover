@@ -169,6 +169,7 @@ class FailoverMeterBinderTest {
     private static Failover failover(String name, long duration, ChronoUnit unit) {
         Failover fo = mock(Failover.class);
         when(fo.name()).thenReturn(name);
+        when(fo.domain()).thenReturn("");
         when(fo.expiryDuration()).thenReturn(duration);
         when(fo.expiryUnit()).thenReturn(unit);
         when(fo.expiryDurationExpression()).thenReturn("");

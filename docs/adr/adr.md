@@ -1191,3 +1191,262 @@ The `java.sql.Types` import is removed from `FailoverStoreJdbc` as it is no long
 * `int[]` SQL type arrays removed — less boilerplate; driver-inferred types are sufficient for `VARCHAR` and `TIMESTAMP` parameters.
 * Behaviour is identical: Spring's varargs overload internally delegates to the same `PreparedStatementSetter` path as the deprecated forms.
 ___
+
+## ADR 28 — `domain` Attribute — Shared Store Partitioning Across `@Failover` Annotations
+
+**Date : 07-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+
+`FailoverStore.find(String name, String key)` is a composite lookup — both the `FAILOVER_NAME` and `FAILOVER_KEY` must match. `FailoverKeyGenerator` includes `failover.name()` as a UUID namespace prefix so that two failovers with different names and the same arguments produce different keys. This isolation is correct for independent failovers.
+
+It becomes a problem for the scatter/gather + single-entity pattern:
+
+- `findAll("1,2,3")` with a `PayloadSplitter` stores three slices individually. The `FAILOVER_NAME` for all three is `"country-all"`.
+- `findByCode("1")` stores under `FAILOVER_NAME = "country-by-code"`.
+
+Even if `findAll` has already stored entity with ID `1`, when `findByCode("1")` fails and attempts recovery it looks up `find("country-by-code", UUID("country-by-code:1"))`. The scatter path stored `find("country-all", UUID("country-all:1"))`. Different composite address — cache miss.
+
+The only way to make the two endpoints share store entries is to make them use the same `FAILOVER_NAME` and the same UUID prefix in `FailoverKeyGenerator`. This requires a shared, logical namespace that is distinct from the annotation `name` (which must remain unique for the scanner).
+
+**Options evaluated:**
+
+| Option | Approach | Rejected because |
+|---|---|---|
+| Remove name uniqueness constraint | Allow two `@Failover` with same name | Scanner can no longer distinguish annotations for metrics/logging; breaks observable tooling |
+| `domain` column in store | Add a third lookup key | Store schema change; backward incompatible; over-engineered for the sharing use case |
+| `domain` attribute as namespace alias | `effectiveName = domain ?: name`; both store key and name use effectiveName | No schema change; backward compatible; scanner keeps unique names |
+
+### Decision
+
+Add an optional `domain` attribute to `@Failover`:
+
+```java
+String domain() default "";
+```
+
+Introduce `FailoverNameResolver` as a static utility:
+
+```java
+public static String effectiveName(Failover failover) {
+    return failover.domain().isBlank() ? failover.name() : failover.domain();
+}
+```
+
+Apply `effectiveName` in two places:
+
+1. **`FailoverKeyGenerator.generateFinalKey`** — use `effectiveName` as the UUID namespace prefix instead of `failover.name()`. Two failovers with the same `domain` and the same raw key from Layer 1 now produce the same UUID.
+
+2. **`DefaultFailoverHandler`** — pass `effectiveName` as `FAILOVER_NAME` to `FailoverStore.store()` and `FailoverStore.find()`. Both store and recover use the shared partition name.
+
+Logging in `DefaultFailoverHandler` retains `failover.name()` — for debugging, the unique annotation name is more informative than the shared domain name.
+
+`@Failover.name()` uniqueness is enforced by `SpringContextFailoverScanner` as before — `domain` does not relax this constraint. Annotations sharing a `domain` must still carry distinct `name` values.
+
+`SpringContextFailoverScanner` logs a `WARN` at startup if two annotations share a `domain` but have different expiry configurations (last writer wins per store entry — mismatched expiry causes non-deterministic expiry).
+
+### Consequences
+
+**Easier:**
+* Scatter/gather bulk endpoints and single-entity endpoints can share store entries with a one-line annotation change — no store schema change, no migration.
+* Backward compatible: `domain` defaults to `""`, so all existing annotations behave identically.
+* `FailoverNameResolver` centralises the logic — no risk of `FailoverKeyGenerator` and `DefaultFailoverHandler` using different namespaces.
+* Expiry mismatch warning fires at startup, before any runtime data is stored — operations can catch misconfiguration early.
+
+**More complex:**
+* Developers must align expiry across all `@Failover` annotations in the same domain. No compile-time enforcement.
+* Cross-domain store entry collision is theoretically possible if two unrelated failovers choose the same `domain` string. Convention (e.g. reverse-DNS prefix) prevents this.
+* Keys stored under a domain are no longer tied to a single `@Failover` name — debugging requires knowing which domain is in use.
+___
+
+## ADR 29 — Observability Layer — Observer, Publisher SPI and MDC Logger Refactor
+
+**Date : 07-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+
+The original observability model exposed a `FailoverReporter` with a `report()` method backed by a `ReportPublisher` SPI. The default `LoggerReportPublisher` (later `MetricsReportPublisher`) emitted a plain log line per failover on the scheduled report tick.
+
+Several weaknesses accumulated:
+
+1. **Name ambiguity.** `FailoverReporter` and `ReportPublisher` implied reporting in the analytics/metrics sense, but the implementation was MDC-structured logging — not metrics at all.
+2. **MDC not atomically scoped.** The old logger wrote key-value pairs to MDC without restoring prior MDC state — any thread-bound MDC keys from the caller were permanently overwritten for the duration of the log call.
+3. **Extension friction.** Adding a new output sink (Micrometer, event bus) required implementing `ReportPublisher` with a name that implied report generation, not event publication.
+4. **No separation between scan (discovery) and publication.** `FailoverReporter` mixed the concerns of iterating all failovers and dispatching to publishers.
+
+### Decision
+
+Rename and refactor the observability stack:
+
+| Before | After | Reason |
+|---|---|---|
+| `FailoverReporter` | `FailoverObserver` | `observe()` is the correct verb — it reads discovered configuration and publishes; it does not generate a report |
+| `report()` | `observe()` | Matches renamed interface |
+| `ReportPublisher` | `ObservablePublisher` | Publisher that receives `Metrics` — "observable" describes the data model, not the output format |
+| `LoggerReportPublisher` / `MetricsReportPublisher` | `MdcLoggerObservablePublisher` | Name encodes the mechanism: MDC-scoped, log output |
+
+**`MdcLoggerObservablePublisher` pattern:**
+
+```java
+public void doPublish(Metrics metrics) {
+    final Map<String, String> copyOfMdc = MDC.getCopyOfContextMap();
+    metrics.getInfo().forEach(MDC::put);
+    try {
+        log.info("Failover metrics : {}", metrics.getName());
+    } finally {
+        if (copyOfMdc != null) {
+            MDC.setContextMap(copyOfMdc);
+        } else {
+            MDC.clear();
+        }
+    }
+}
+```
+
+The `finally` block unconditionally restores the prior MDC state — metric keys do not leak into subsequent log lines from the same thread.
+
+`AbstractObservablePublisher` provides the `finally`-restore skeleton. Subclasses implement `doPublish(Metrics)` only — they do not manage MDC state.
+
+`CompositeObservablePublisher` chains multiple `ObservablePublisher` instances so that both `MdcLoggerObservablePublisher` and `MicrometerObservablePublisher` (ADR 31) can be active simultaneously without either knowing about the other.
+
+`DefaultFailoverObserver` retains the scan + dispatch loop: it calls `failoverScanner.findAllFailover()` and for each discovered failover builds a `Metrics` object and calls `observablePublisher.publish(metrics)`.
+
+### Consequences
+
+* MDC state is always restored after a publish call — no cross-contamination between failover metric keys and application log context.
+* `ObservablePublisher` is a stable SPI — third-party publishers (Datadog, OpenTelemetry, custom event bus) implement it without coupling to the renamed internals.
+* `CompositeObservablePublisher` means the log publisher and Micrometer publisher coexist at no additional wiring cost.
+* The rename is source-incompatible for applications that implement `ReportPublisher` directly. Applications that only use Spring Boot auto-configuration are unaffected — the beans are replaced transparently.
+___
+
+## ADR 30 — SpringContextFailoverScanner — Replacing Reflections-Based Classpath Scanning
+
+**Date : 07-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+
+`DefaultFailoverScanner` (original implementation) used the `org.reflections:reflections` library to scan the classpath under a configured `failover.package-to-scan` property. This introduced several problems:
+
+1. **Heavyweight transitive dependency.** Reflections pulled in Guava and required `--add-opens java.base/java.lang.reflect=ALL-UNNAMED` and related JVM flags on JDK 17+.
+2. **Slow startup.** Classpath scanning reads all `.class` files under the configured package. For large applications this added hundreds of milliseconds to startup.
+3. **Requires explicit configuration.** Users had to set `failover.package-to-scan` to the package containing their `@Failover`-annotated interfaces. Omitting or misspelling this property silently produced an empty scanner result — no failovers discovered, no warning.
+4. **Proxy blindness.** CGLIB-proxied beans expose the proxy class, not the user class. Reflections saw only the proxy and missed `@Failover` annotations placed on the proxied interface or concrete class.
+5. **Annotation inheritance gap.** `@Failover` placed on an interface method was not found if the concrete class did not repeat the annotation — Reflections did not walk the full inheritance hierarchy.
+
+### Decision
+
+Replace `DefaultFailoverScanner` with `SpringContextFailoverScanner` in `failover-observable-scanner`:
+
+```java
+public class SpringContextFailoverScanner
+        implements FailoverScanner, ApplicationContextAware, SmartInitializingSingleton {
+
+    @Override
+    public void afterSingletonsInstantiated() {
+        for (String beanName : applicationContext.getBeanDefinitionNames()) {
+            Class<?> userClass = ClassUtils.getUserClass(applicationContext.getType(beanName));
+            ReflectionUtils.doWithMethods(userClass, method -> {
+                Failover annotation = AnnotationUtils.findAnnotation(method, Failover.class);
+                if (annotation != null) discovered.putIfAbsent(annotation.name(), annotation);
+            }, method -> !method.isBridge() && !method.isSynthetic());
+        }
+    }
+}
+```
+
+**Key mechanism choices:**
+
+| Concern | Solution |
+|---|---|
+| Scan timing | `SmartInitializingSingleton.afterSingletonsInstantiated()` — fires once, after all singleton beans are instantiated; every Spring-managed bean is visible |
+| Proxy unwrapping | `ClassUtils.getUserClass(type)` — unwraps CGLIB proxies to the real user class |
+| Annotation inheritance | `AnnotationUtils.findAnnotation(method, Failover.class)` — walks interface hierarchy; `@Failover` on an interface method is found without repeating it on the concrete class |
+| Synthetic method filter | `!method.isBridge() && !method.isSynthetic()` — skips compiler-generated bridge methods |
+| No package config | `applicationContext.getBeanDefinitionNames()` enumerates all beans — no `failover.package-to-scan` required |
+
+`DefaultFailoverScanner` and its supporting classes (`ReflectionsExceptionHandler`, `ExceptionHandler`, `ExceptionHandlerExecutor`) are removed from `failover-core`. The `org.reflections:reflections` dependency is removed from `failover-core/pom.xml`. The `failover.package-to-scan` property is removed.
+
+`SpringContextFailoverScanner` is extracted to `failover-observable-scanner`, not `failover-core`. `failover-core` has no Spring dependency and must remain framework-agnostic. The scanner interface (`FailoverScanner`) stays in `failover-core`.
+
+### Consequences
+
+**Easier:**
+* Zero configuration required — no `failover.package-to-scan`, no JVM flags, no Guava transitive.
+* Startup scan cost is O(registered beans) instead of O(classpath files). Typical saving: 50–300ms.
+* `@Failover` on interface methods is found correctly without any annotation repetition on concrete classes.
+* CGLIB-proxied beans are handled transparently.
+
+**More complex:**
+* `SpringContextFailoverScanner` sees only Spring-managed beans. `@Failover` on a class not registered in the Spring context is invisible. This is intentional — the AOP proxy (which is the actual interception mechanism) only covers Spring beans, so unscanned non-Spring classes would never be intercepted anyway.
+* Applications that extend `DefaultFailoverScanner` directly must migrate to `FailoverScanner` SPI — the concrete class is removed.
+* `failover.package-to-scan` configuration is a no-op after migration — it should be removed from application YAML to avoid confusion.
+___
+
+## ADR 31 — failover-observable-micrometer — Micrometer Extension as an Optional Module
+
+**Date : 07-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+
+After the observability refactor (ADR 29), the `MdcLoggerObservablePublisher` provides structured MDC logging. Operators running Prometheus/Grafana need real Micrometer counters and gauges — log-parse pipelines are fragile and add latency.
+
+Adding Micrometer support directly into `failover-core` or `failover-spring-boot-autoconfigure` would:
+
+1. Make Micrometer a mandatory runtime dependency for all failover users — including those using only InMemory stores in tests or minimal deployments without a metrics stack.
+2. Pull `micrometer-core` (and transitively `io.micrometer:micrometer-commons`) into the core module, violating the rule that `failover-core` has zero framework dependencies.
+3. Pull Spring Boot Actuator into the autoconfigure module for the `HealthIndicator` — actuator is optional even in Spring Boot applications.
+
+### Decision
+
+Extract all Micrometer functionality into `failover-observable-micrometer`, a new optional Maven module:
+
+```
+failover-observable-micrometer
+  ├── FailoverMeterBinder          — MeterBinder + SmartInitializingSingleton
+  ├── MicrometerObservablePublisher — ObservablePublisher backed by MeterRegistry
+  └── health/
+      └── FailoverHealthIndicator  — HealthIndicator (conditional on Actuator)
+```
+
+The module depends on `failover-core`, `failover-observable-scanner` (for `FailoverScanner`), `micrometer-core`, and optionally `spring-boot-starter-actuator`.
+
+Auto-configuration in `failover-spring-boot-autoconfigure` wires the Micrometer beans using `@ConditionalOnClass` by fully-qualified class name string, not `.class` reference — so the autoconfigure module itself does not require a compile-time Micrometer dependency:
+
+```java
+@ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
+```
+
+**`FailoverMeterBinder`** implements both `MeterBinder` and `SmartInitializingSingleton`:
+
+- `bindTo(MeterRegistry)` — registers the lazy `failover.registered.total` gauge immediately. Safe to call before the scanner has finished.
+- `afterSingletonsInstantiated()` — registers per-failover `failover.config.expiry.seconds` gauges. Fires after `SpringContextFailoverScanner.afterSingletonsInstantiated()`, so the scanner result is complete.
+
+Tags on `failover.config.expiry.seconds`: `name` (annotation name), `domain` (effective domain, or name if no domain), `unit` (ChronoUnit name).
+
+**`FailoverHealthIndicator`** is activated only when `spring-boot-starter-actuator` is on the classpath. It reports `UP` with a count of discovered failovers, and `DOWN` if the scanner returns zero (misconfiguration).
+
+### Consequences
+
+**Easier:**
+* Applications without Micrometer pay zero cost — `failover-observable-micrometer` is not on their classpath and none of its beans are activated.
+* The `failover.config.expiry.seconds` gauge with `domain` tag allows dashboards to group related failovers by domain, providing a higher-level view than per-name metrics.
+* `FailoverMeterBinder` as a `SmartInitializingSingleton` guarantees gauge registration happens after the scanner completes — no race between binder and scanner initialization order.
+* `FailoverHealthIndicator` requires no additional dependency when Actuator is already present — common in Spring Boot applications.
+
+**More complex:**
+* Applications that want Micrometer metrics must add the `failover-observable-micrometer` Maven dependency explicitly. This is intentional opt-in.
+* Lifecycle ordering relies on both `FailoverMeterBinder` and `SpringContextFailoverScanner` implementing `SmartInitializingSingleton` — invocation order within the `afterSingletonsInstantiated` phase is determined by bean registration order in the application context, which is normally correct but should be verified in custom bootstrap scenarios.
+* `MicrometerObservablePublisher` handles store/recover runtime events published through the `ObservablePublisher` SPI. It is a separate class from `FailoverMeterBinder` which handles static configuration gauges. Both must be active for full metric coverage.
+___

@@ -82,7 +82,7 @@ Discovers all `@Failover` annotations from the Spring `ApplicationContext` at st
 </dependency>
 ```
 
-Adds Micrometer meters and a Spring Boot Actuator health indicator. Brings in `failover-observable-scanner` transitively. See [Observable Modules](../modules/observable.md).
+Adds Micrometer meters and a Spring Boot Actuator health indicator. Brings in `failover-observable-scanner` transitively. See [Observability](../modules/observability.md).
 
 ### JDBC Store
 
