@@ -117,6 +117,10 @@
          <lastmod>2026-06-07</lastmod>
     </url>
     <url>
+         <loc>https://societe-generale.github.io/failover/guides/observability/</loc>
+         <lastmod>2026-06-07</lastmod>
+    </url>
+    <url>
          <loc>https://societe-generale.github.io/failover/guides/payload-column-resolver/</loc>
          <lastmod>2026-06-07</lastmod>
     </url>
@@ -126,10 +130,6 @@
     </url>
     <url>
          <loc>https://societe-generale.github.io/failover/guides/recovered-payload-handler/</loc>
-         <lastmod>2026-06-07</lastmod>
-    </url>
-    <url>
-         <loc>https://societe-generale.github.io/failover/guides/reporting/</loc>
          <lastmod>2026-06-07</lastmod>
     </url>
     <url>
@@ -145,7 +145,7 @@
          <lastmod>2026-06-07</lastmod>
     </url>
     <url>
-         <loc>https://societe-generale.github.io/failover/modules/observable/</loc>
+         <loc>https://societe-generale.github.io/failover/modules/observability/</loc>
          <lastmod>2026-06-07</lastmod>
     </url>
     <url>
