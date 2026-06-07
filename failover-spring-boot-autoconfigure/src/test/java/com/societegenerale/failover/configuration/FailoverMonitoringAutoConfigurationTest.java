@@ -55,6 +55,16 @@ import static org.mockito.Mockito.mock;
  */
 class FailoverMonitoringAutoConfigurationTest {
 
+    /**
+     * Thin runner targeting only {@link MicrometerTracingAutoConfiguration} with the minimal
+     * user beans that {@link FailoverMeterBinder} requires. The runner ensures user beans are
+     * registered before autoconfiguration conditions, making {@code @ConditionalOnBean} work.
+     */
+    private final ApplicationContextRunner micrometerRunner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
+            .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
+            .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
+
     // ── Scanner ───────────────────────────────────────────────────────────────
 
     @Nested
@@ -80,16 +90,6 @@ class FailoverMonitoringAutoConfigurationTest {
     }
 
     // ── Micrometer publishers (ApplicationContextRunner) ─────────────────────
-
-    /**
-     * Thin runner targeting only {@link MicrometerTracingAutoConfiguration} with the minimal
-     * user beans that {@link FailoverMeterBinder} requires. The runner ensures user beans are
-     * registered before autoconfiguration conditions, making {@code @ConditionalOnBean} work.
-     */
-    private final ApplicationContextRunner micrometerRunner = new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
-        .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
-        .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
 
     @Nested
     @DisplayName("Micrometer — MicrometerObservablePublisher and FailoverMeterBinder present when MeterRegistry available")
