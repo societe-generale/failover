@@ -16,7 +16,7 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/logo.svg" width="80" alt="Failover logo" />
+  <img src="docs/web/assets/logo.svg" width="80" alt="Failover logo" />
 </p>
 
 <h1 align="center">Failover</h1>
@@ -34,13 +34,13 @@
 In microservice platforms your application calls services it doesn't own — currency tables, country lists, client profiles. When those fail the cascade reaches your users, and there is nothing you can do to fix the upstream.
 
 <p align="center">
-  <img src="docs/images/failover-service-calls.png" width="680" alt="Service dependency model: internal, transversal, and external services" />
+  <img src="docs/web/assets/images/failover-service-calls.png" width="680" alt="Service dependency model: internal, transversal, and external services" />
 </p>
 
 One outage in a transversal or external service cascades through every dependent service, returning 500s to users who have no visibility into why.
 
 <p align="center">
-  <img src="docs/images/failover-challenges.png" width="680" alt="Cascade failure: external service failure propagates to end users as 500 errors" />
+  <img src="docs/web/assets/images/failover-challenges.png" width="680" alt="Cascade failure: external service failure propagates to end users as 500 errors" />
 </p>
 
 ---
@@ -50,11 +50,11 @@ One outage in a transversal or external service cascades through every dependent
 Failover sits between your service and the referential system. On success it stores the result with a configured TTL. On failure it serves the last known-good value — transparently, with zero boilerplate.
 
 <p align="center">
-  <img src="docs/images/failover-solution.png" width="680" alt="Failover library inserted between service and referential system with a local FailoverStore" />
+  <img src="docs/web/assets/images/failover-solution.png" width="680" alt="Failover library inserted between service and referential system with a local FailoverStore" />
 </p>
 
 <p align="center">
-  <img src="docs/images/failover.png" width="680" alt="Failover stores responses on success and replays last-known-good on failure with per-referential expiry" />
+  <img src="docs/web/assets/images/failover.png" width="680" alt="Failover stores responses on success and replays last-known-good on failure with per-referential expiry" />
 </p>
 
 ```java
@@ -84,7 +84,7 @@ Country findByCode(String code);
 Without Failover a referential failure returns a 500 and blocks the user completely. With Failover the last stored result is served — marked with its cached timestamp, but fully functional.
 
 <p align="center">
-  <img src="docs/images/failover-user-experience.png" width="680" alt="Three states: all services available, external service down without failover (error page), external service down with failover (stale data served)" />
+  <img src="docs/web/assets/images/failover-user-experience.png" width="680" alt="Three states: all services available, external service down without failover (error page), external service down with failover (stale data served)" />
 </p>
 
 ---
@@ -116,7 +116,7 @@ Annotate your interface:
 Country findByCode(String code);
 ```
 
-> Full walkthrough → [**Quickstart guide**](https://societegenerale.github.io/failover/getting-started/quickstart/)
+> Full walkthrough → [**Quickstart guide**](https://societe-generale.github.io/failover/getting-started/quickstart/)
 
 ---
 
@@ -160,16 +160,16 @@ failover-spring-boot-starter          ← the only dependency you need
 Failover emits Micrometer counters for every store and recover event. Connect to Elastic, Grafana, or any compatible backend.
 
 <p align="center">
-  <img src="docs/images/failover-monitoring-dashboard.png" width="680" alt="Kibana dashboard showing all active failover configurations: name, expiry duration, expiry unit, type" />
+  <img src="docs/web/assets/images/failover-monitoring-dashboard.png" width="680" alt="Kibana dashboard showing all active failover configurations: name, expiry duration, expiry unit, type" />
 </p>
 
 Enable the configuration dashboard by setting `failover.package-to-scan` — it shows all active `@Failover` configurations at a glance.
 
 | Chart | Description |
 |---|---|
-| ![Failover rate](docs/images/failover-monitoring-failover-rate.png) | **Failover rate** — total upstream failures intercepted per referential |
-| ![Recovery rate](docs/images/failover-monitoring-failover-recovery-rate.png) | **Recovery rate** — failures resolved with a stored result (users unblocked) |
-| ![Non-recovery rate](docs/images/failover-monitoring-failover-non-recovery-rate.png) | **Non-recovery rate** — failures with no stored result (actual user impact) |
+| ![Failover rate](docs/web/assets/images/failover-monitoring-failover-rate.png) | **Failover rate** — total upstream failures intercepted per referential |
+| ![Recovery rate](docs/web/assets/images/failover-monitoring-failover-recovery-rate.png) | **Recovery rate** — failures resolved with a stored result (users unblocked) |
+| ![Non-recovery rate](docs/web/assets/images/failover-monitoring-failover-non-recovery-rate.png) | **Non-recovery rate** — failures with no stored result (actual user impact) |
 
 ---
 
@@ -177,11 +177,11 @@ Enable the configuration dashboard by setting `failover.package-to-scan` — it 
 
 | Page | Description |
 |---|---|
-| [Quickstart](https://societegenerale.github.io/failover/getting-started/quickstart/) | Working end-to-end example in 5 minutes |
-| [Installation](https://societegenerale.github.io/failover/getting-started/installation/) | Maven and Gradle coordinates for every module |
-| [Concepts](https://societegenerale.github.io/failover/concepts/how-it-works/) | Store/recover lifecycle, key derivation, expiry policies |
-| [Configuration reference](https://societegenerale.github.io/failover/configuration/properties-reference/) | Every `failover.*` property with types and defaults |
-| [ADR index](https://societegenerale.github.io/failover/adr/) | 25 architecture decisions — the why behind every design choice |
+| [Quickstart](https://societe-generale.github.io/failover/getting-started/quickstart/) | Working end-to-end example in 5 minutes |
+| [Installation](https://societe-generale.github.io/failover/getting-started/installation/) | Maven and Gradle coordinates for every module |
+| [Concepts](https://societe-generale.github.io/failover/concepts/how-it-works/) | Store/recover lifecycle, key derivation, expiry policies |
+| [Configuration reference](https://societe-generale.github.io/failover/configuration/properties-reference/) | Every `failover.*` property with types and defaults |
+| [ADR index](https://societe-generale.github.io/failover/adr/) | 25 architecture decisions — the why behind every design choice |
 
 ---
 
