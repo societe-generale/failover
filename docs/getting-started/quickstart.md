@@ -33,7 +33,8 @@ Build a complete failover-enabled service in 5 minutes.
 === "In-memory Store"
 
     ```yaml title="application.yml"
-    failover: {}
+    failover:
+      enabled: true       # By default failover is enabled, set to false to disable
 
     # Non Prod ( default ) configuration with in-memory store. Not recommended for production use.
     
