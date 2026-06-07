@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.observable.micrometer.report;
+package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
@@ -40,14 +40,13 @@ class FailoverMeterBinderTest {
 
     private SimpleMeterRegistry registry;
     private FailoverScanner scanner;
-    private FailoverExpiryExtractor expiryExtractor;
     private FailoverMeterBinder binder;
 
     @BeforeEach
     void setUp() {
         registry = new SimpleMeterRegistry();
         scanner = mock(FailoverScanner.class);
-        expiryExtractor = new BasicFailoverExpiryExtractor();
+        FailoverExpiryExtractor expiryExtractor = new BasicFailoverExpiryExtractor();
         binder = new FailoverMeterBinder(scanner, expiryExtractor);
     }
 

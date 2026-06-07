@@ -23,9 +23,11 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /**
- * Spring scheduler that periodically publishes the failover startup report via
- * {@link FailoverObserver}. Runs on the cron schedule configured by
- * {@code failover.scheduler.report-cron} (default: daily at midnight).
+ * Spring scheduler that periodically calls {@link FailoverObserver#observe()} to collect
+ * metrics from all registered {@code @Failover} configurations and publish them to all
+ * registered {@link com.societegenerale.failover.core.observable.publisher.ObservablePublisher} beans.
+ * Runs on the cron schedule configured by {@code failover.scheduler.report-cron}
+ * (default: daily at midnight).
  *
  * @author Anand Manissery
  */
@@ -35,11 +37,11 @@ public class ObservableScheduler {
 
     private final FailoverObserver failoverObserver;
 
-    /** Publishes the failover report asynchronously on the configured cron schedule. */
+    /** Triggers {@link FailoverObserver#observe()} asynchronously on the configured cron schedule. */
     @Async
     @Scheduled(cron = "${failover.scheduler.report-cron:0 0 0 * * *}")
-    public void report() {
-        log.info("Publishing report...");
+    public void observe() {
+        log.info("Observing failover metrics...");
         failoverObserver.observe();
     }
 }

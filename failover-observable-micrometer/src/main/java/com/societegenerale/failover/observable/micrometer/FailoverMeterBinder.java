@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.observable.micrometer.report;
+package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
@@ -23,6 +23,7 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
 import java.time.temporal.ChronoUnit;
@@ -71,7 +72,7 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
      * Called by Spring Boot's {@code MeterRegistryPostProcessor} for each available registry.
      */
     @Override
-    public void bindTo(MeterRegistry registry) {
+    public void bindTo(@NonNull MeterRegistry registry) {
         registries.add(registry);
         Gauge.builder("failover.registered.total", scanner, s -> s.findAllFailover().size())
             .description("Number of @Failover-annotated methods registered")

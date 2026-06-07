@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.observable.micrometer.report;
+package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.core.observable.Metrics;
 import io.micrometer.core.instrument.Counter;
@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
 
-import static com.societegenerale.failover.observable.micrometer.report.MicrometerObservablePublisher.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**

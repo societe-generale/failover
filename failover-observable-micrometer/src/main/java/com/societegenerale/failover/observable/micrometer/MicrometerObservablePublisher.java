@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.observable.micrometer.report;
+package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.core.observable.Metrics;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * {@link ObservablePublisher} that emits real Micrometer meters on every store/recover event.
  *
- * <p>Replaces the MDC-log-based {@code MetricsObservablePublisher} with actual
- * {@link Counter} and {@link Timer} registrations visible to Prometheus / Grafana.
+ * <p>Complements {@link com.societegenerale.failover.core.observable.publisher.MdcLoggerObservablePublisher}
+ * by publishing actual {@link Counter} and {@link Timer} registrations visible to Prometheus / Grafana.
  *
  * <h2>Meters emitted</h2>
  * <ul>

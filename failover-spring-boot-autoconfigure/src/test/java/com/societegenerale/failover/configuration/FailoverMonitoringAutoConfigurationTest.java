@@ -20,8 +20,8 @@ import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
-import com.societegenerale.failover.observable.micrometer.report.FailoverMeterBinder;
-import com.societegenerale.failover.observable.micrometer.report.MicrometerObservablePublisher;
+import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
+import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import com.societegenerale.failover.observable.scanner.SpringContextFailoverScanner;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -166,6 +166,7 @@ class FailoverMonitoringAutoConfigurationTest {
         void healthIndicatorResponds() {
             FailoverHealthIndicator indicator = applicationContext.getBean(FailoverHealthIndicator.class);
             Health health = indicator.health();
+            assertThat(health).isNotNull();
             assertThat(health.getStatus()).isIn(Status.UP, Status.DOWN);
         }
     }

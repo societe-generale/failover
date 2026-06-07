@@ -35,8 +35,8 @@ import com.societegenerale.failover.core.payload.DefaultPayloadEnricher;
 import com.societegenerale.failover.core.payload.PassThroughRecoveredPayloadHandler;
 import com.societegenerale.failover.core.payload.PayloadEnricher;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
-import com.societegenerale.failover.core.report.LoggerReportPublisher;
-import com.societegenerale.failover.core.report.ReportPublisher;
+import com.societegenerale.failover.core.observable.publisher.MdcLoggerObservablePublisher;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
@@ -88,13 +88,13 @@ public class MySpringBootTestApplication {
     }
 
     @Bean
-    public ReportPublisher loggerReportPublisher() {
-        return new LoggerReportPublisher();
+    public ObservablePublisher loggerObservablePublisher() {
+        return new MdcLoggerObservablePublisher();
     }
 
     @Bean
-    public FailoverHandler<Object> failoverHandler(KeyGenerator keyGenerator, FailoverClock clock, FailoverStore<Object> failoverStore, ExpiryPolicy<Object> expiryPolicy, PayloadEnricher<Object> payloadEnricher, RecoveredPayloadHandler recoveredPayloadHandler, ReportPublisher reportPublisher, FailoverExpiryExtractor failoverExpiryExtractor) {
-        return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, reportPublisher, failoverExpiryExtractor);
+    public FailoverHandler<Object> failoverHandler(KeyGenerator keyGenerator, FailoverClock clock, FailoverStore<Object> failoverStore, ExpiryPolicy<Object> expiryPolicy, PayloadEnricher<Object> payloadEnricher, RecoveredPayloadHandler recoveredPayloadHandler, ObservablePublisher observablePublisher, FailoverExpiryExtractor failoverExpiryExtractor) {
+        return new AdvancedFailoverHandler<>(new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher), recoveredPayloadHandler, observablePublisher, failoverExpiryExtractor);
     }
 
     @Bean
