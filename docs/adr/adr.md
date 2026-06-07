@@ -1262,7 +1262,7 @@ Logging in `DefaultFailoverHandler` retains `failover.name()` — for debugging,
 * Keys stored under a domain are no longer tied to a single `@Failover` name — debugging requires knowing which domain is in use.
 ___
 
-## ADR 29 — Observability Layer — FailoverObserver / ObservablePublisher SPI and MdcLoggerObservablePublisher
+## ADR 29 — Observability Layer — FailoverObserver, ObservablePublisher SPI and MdcLoggerObservablePublisher
 
 **Date : 07-JUN-2026**
 

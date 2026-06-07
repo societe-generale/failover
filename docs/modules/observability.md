@@ -17,22 +17,22 @@ The failover framework includes a layered observability stack. Each layer is ind
                               │ AOP interception
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  AdvancedFailoverHandler                                          │
+│  AdvancedFailoverHandler                                         │
 │  Wraps store/recover; publishes Metrics on every call            │
 └────────────┬─────────────────────────────────────────────────────┘
              │ ObservablePublisher.publish(Metrics)
              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  CompositeObservablePublisher                                     │
+│  CompositeObservablePublisher                                    │
 │  Fan-out to all registered ObservablePublisher beans             │
 ├─────────────────────────┬────────────────────────────────────────┤
-│  MdcLoggerObservable    │  MicrometerObservablePublisher          │
-│  Publisher              │  (failover-observable-micrometer)       │
-│  (failover-core)        │                                         │
+│  MdcLoggerObservable    │  MicrometerObservablePublisher         │
+│  Publisher              │  (failover-observable-micrometer)      │
+│  (failover-core)        │                                        │
 └─────────────────────────┴────────────────────────────────────────┘
 
   ┌──────────────────────────────────────────────────────────────┐
-  │  SpringContextFailoverScanner  (failover-observable-scanner)  │
+  │  SpringContextFailoverScanner  (failover-observable-scanner) │
   │  Scans all Spring beans at startup; feeds FailoverObserver   │
   │  and FailoverMeterBinder                                     │
   └──────────────────────────────────────────────────────────────┘
@@ -47,11 +47,11 @@ The failover framework includes a layered observability stack. Each layer is ind
 
 ## Modules
 
-| Module | Artifact ID | What it adds |
-|---|---|---|
-| Core | `failover-core` | `ObservablePublisher` SPI, `MdcLoggerObservablePublisher`, `FailoverObserver`, `Metrics` |
-| Scanner | `failover-observable-scanner` | `SpringContextFailoverScanner` — discovers `@Failover` beans at startup |
-| Micrometer | `failover-observable-micrometer` | `MicrometerObservablePublisher`, `FailoverMeterBinder`, `FailoverHealthIndicator` |
+| Module     | Artifact ID                      | What it adds                                                                             |
+|------------|----------------------------------|------------------------------------------------------------------------------------------|
+| Core       | `failover-core`                  | `ObservablePublisher` SPI, `MdcLoggerObservablePublisher`, `FailoverObserver`, `Metrics` |
+| Scanner    | `failover-observable-scanner`    | `SpringContextFailoverScanner` — discovers `@Failover` beans at startup                  |
+| Micrometer | `failover-observable-micrometer` | `MicrometerObservablePublisher`, `FailoverMeterBinder`, `FailoverHealthIndicator`        |
 
 All three are included automatically via `failover-spring-boot-starter`. Use individual artifacts for fine-grained dependency control.
 
@@ -72,14 +72,14 @@ All three are included automatically via `failover-spring-boot-starter`. Use ind
 
 **Key behaviours:**
 
-| Behaviour | Mechanism |
-|---|---|
-| Scan all beans | `applicationContext.getBeanDefinitionNames()` |
-| CGLIB proxy unwrapping | `ClassUtils.getUserClass(type)` |
-| Annotation on interface method | `AnnotationUtils.findAnnotation(method, Failover.class)` walks hierarchy |
-| Skip bridge/synthetic methods | Method filter `!method.isBridge() && !method.isSynthetic()` |
-| Duplicate name detection | `discovered.putIfAbsent(name, annotation)` → throws `FailoverScannerException` |
-| Domain expiry mismatch | Logs `WARN` if same-domain failovers have different expiry configurations |
+| Behaviour                      | Mechanism                                                                      |
+|--------------------------------|--------------------------------------------------------------------------------|
+| Scan all beans                 | `applicationContext.getBeanDefinitionNames()`                                  |
+| CGLIB proxy unwrapping         | `ClassUtils.getUserClass(type)`                                                |
+| Annotation on interface method | `AnnotationUtils.findAnnotation(method, Failover.class)` walks hierarchy       |
+| Skip bridge/synthetic methods  | Method filter `!method.isBridge() && !method.isSynthetic()`                    |
+| Duplicate name detection       | `discovered.putIfAbsent(name, annotation)` → throws `FailoverScannerException` |
+| Domain expiry mismatch         | Logs `WARN` if same-domain failovers have different expiry configurations      |
 
 No base-package configuration is needed — scans **all** registered beans automatically. Unlike the previous Reflections-based scanner, no `failover.package-to-scan` property is needed or supported.
 
@@ -120,15 +120,15 @@ public interface FailoverObserver {
 
 `DefaultFailoverObserver` implements it: on each `observe()` call it iterates all failovers returned by `FailoverScanner.findAllFailover()` and publishes one `Metrics` event per failover to the `ObservablePublisher`. Each event carries:
 
-| `Metrics` key (prefixed `failover-`) | Value |
-|---|---|
-| `name` | `@Failover.name()` |
-| `expiry-duration` | Configured expiry duration |
-| `expiry-unit` | Configured expiry unit |
-| `metrics-as-on` | Current time (ISO-8601) |
-| `service-start-time` | Service startup time (ISO-8601) |
-| Manifest info keys | Build version, artifact, etc. from `MANIFEST.MF` |
-| Additional info keys | Any entries from `failover.additional-info` |
+| `Metrics` key (prefixed `failover-`) | Value                                            |
+|--------------------------------------|--------------------------------------------------|
+| `name`                               | `@Failover.name()`                               |
+| `expiry-duration`                    | Configured expiry duration                       |
+| `expiry-unit`                        | Configured expiry unit                           |
+| `metrics-as-on`                      | Current time (ISO-8601)                          |
+| `service-start-time`                 | Service startup time (ISO-8601)                  |
+| Manifest info keys                   | Build version, artifact, etc. from `MANIFEST.MF` |
+| Additional info keys                 | Any entries from `failover.additional-info`      |
 
 `observe()` is called at service startup (via `@PostConstruct`) and on the configured cron schedule via `ObservableScheduler` (default: daily at midnight).
 
@@ -148,9 +148,9 @@ All `ObservablePublisher` beans registered in the Spring context are automatical
 
 **Two event types** flow through `publish(Metrics)`:
 
-| Source | Distinguishing key | Description |
-|---|---|---|
-| `AdvancedFailoverHandler` | `failover-action` = `"store"` or `"recover"` | Per-operation runtime events |
+| Source                    | Distinguishing key                                      | Description                     |
+|---------------------------|---------------------------------------------------------|---------------------------------|
+| `AdvancedFailoverHandler` | `failover-action` = `"store"` or `"recover"`            | Per-operation runtime events    |
 | `DefaultFailoverObserver` | No `failover-action` key (has `failover-metrics-as-on`) | Scheduled configuration summary |
 
 Publishers that handle only one type should check the discriminating key:
@@ -180,41 +180,41 @@ public void doPublish(Metrics metrics) {
 
 **On store operations** — MDC keys set for the log line:
 
-| MDC key | Value |
-|---|---|
-| `failover-name` | `@Failover.name()` |
-| `failover-action` | `store` |
-| `failover-is-stored` | `true` / `false` |
-| `failover-expiry-duration` | Configured duration |
-| `failover-expiry-unit` | ChronoUnit name |
-| `failover-duration-ns` | Store wall time in nanoseconds |
+| MDC key                    | Value                          |
+|----------------------------|--------------------------------|
+| `failover-name`            | `@Failover.name()`             |
+| `failover-action`          | `store`                        |
+| `failover-is-stored`       | `true` / `false`               |
+| `failover-expiry-duration` | Configured duration            |
+| `failover-expiry-unit`     | ChronoUnit name                |
+| `failover-duration-ns`     | Store wall time in nanoseconds |
 
 **On recover operations:**
 
-| MDC key | Value |
-|---|---|
-| `failover-name` | `@Failover.name()` |
-| `failover-action` | `recover` |
-| `failover-is-recovered` | `true` / `false` |
-| `failover-is-recovery-failed` | `true` if recovery itself threw |
-| `failover-exception-type` | Triggering exception class |
-| `failover-exception-cause-type` | Cause class, or empty |
-| `failover-exception-message` | Exception message |
-| `failover-exception-cause-message` | Cause message, or empty |
-| `failover-expiry-duration` | Configured duration |
-| `failover-expiry-unit` | ChronoUnit name |
-| `failover-duration-ns` | Recover wall time in nanoseconds |
+| MDC key                            | Value                            |
+|------------------------------------|----------------------------------|
+| `failover-name`                    | `@Failover.name()`               |
+| `failover-action`                  | `recover`                        |
+| `failover-is-recovered`            | `true` / `false`                 |
+| `failover-is-recovery-failed`      | `true` if recovery itself threw  |
+| `failover-exception-type`          | Triggering exception class       |
+| `failover-exception-cause-type`    | Cause class, or empty            |
+| `failover-exception-message`       | Exception message                |
+| `failover-exception-cause-message` | Cause message, or empty          |
+| `failover-expiry-duration`         | Configured duration              |
+| `failover-expiry-unit`             | ChronoUnit name                  |
+| `failover-duration-ns`             | Recover wall time in nanoseconds |
 
 **On scheduled observe events:**
 
-| MDC key | Value |
-|---|---|
-| `failover-name` | `@Failover.name()` |
-| `failover-expiry-duration` | Configured duration |
-| `failover-expiry-unit` | ChronoUnit name |
-| `failover-metrics-as-on` | Observe timestamp (ISO-8601) |
-| `failover-service-start-time` | Service startup time (ISO-8601) |
-| Any `failover.additional-info` key | Corresponding configured value |
+| MDC key                            | Value                           |
+|------------------------------------|---------------------------------|
+| `failover-name`                    | `@Failover.name()`              |
+| `failover-expiry-duration`         | Configured duration             |
+| `failover-expiry-unit`             | ChronoUnit name                 |
+| `failover-metrics-as-on`           | Observe timestamp (ISO-8601)    |
+| `failover-service-start-time`      | Service startup time (ISO-8601) |
+| Any `failover.additional-info` key | Corresponding configured value  |
 
 The `finally` restore is safe under virtual threads and platform-thread pools — no MDC leakage across calls.
 
@@ -226,12 +226,12 @@ Part of `failover-observable-micrometer`. Translates per-operation `Metrics` eve
 
 **Meters emitted:**
 
-| Meter | Type | Tags | Description |
-|---|---|---|---|
-| `failover.store.total` | Counter | `name`, `stored` | Every store attempt; `stored=true` when payload was persisted |
-| `failover.recover.total` | Counter | `name`, `recovered`, `recovery_failed` | Every recover attempt |
-| `failover.exception.total` | Counter | `name`, `exception_type`, `cause_type` | Exception class that triggered recovery |
-| `failover.operation.duration` | Timer | `name`, `action` | Wall time of store or recover path |
+| Meter                         | Type    | Tags                                   | Description                                                   |
+|-------------------------------|---------|----------------------------------------|---------------------------------------------------------------|
+| `failover.store.total`        | Counter | `name`, `stored`                       | Every store attempt; `stored=true` when payload was persisted |
+| `failover.recover.total`      | Counter | `name`, `recovered`, `recovery_failed` | Every recover attempt                                         |
+| `failover.exception.total`    | Counter | `name`, `exception_type`, `cause_type` | Exception class that triggered recovery                       |
+| `failover.operation.duration` | Timer   | `name`, `action`                       | Wall time of store or recover path                            |
 
 `failover.operation.duration` is recorded only when the `Metrics` bag contains a `failover-duration-ns` key — always present when `AdvancedFailoverHandler` is in the chain (the auto-configured default).
 
@@ -264,14 +264,14 @@ Part of `failover-observable-micrometer`. Implements both `MeterBinder` and `Sma
 
 **`bindTo(MeterRegistry)`** — called immediately when the registry is available. Registers a lazy total-count gauge that samples the scanner live on each scrape:
 
-| Meter | Type | Tags | Description |
-|---|---|---|---|
-| `failover.registered.total` | Gauge | — | Total `@Failover` annotations found |
+| Meter                       | Type  | Tags | Description                         |
+|-----------------------------|-------|------|-------------------------------------|
+| `failover.registered.total` | Gauge | —    | Total `@Failover` annotations found |
 
 **`afterSingletonsInstantiated()`** — called after the scanner has completed its scan. Registers per-failover expiry gauges:
 
-| Meter | Type | Tags | Description |
-|---|---|---|---|
+| Meter                            | Type  | Tags                     | Description                  |
+|----------------------------------|-------|--------------------------|------------------------------|
 | `failover.config.expiry.seconds` | Gauge | `name`, `domain`, `unit` | Configured expiry in seconds |
 
 The `domain` tag equals `@Failover.domain()` when set, otherwise `@Failover.name()`. Use it to group domain-sharing failovers on dashboards without duplicating per-name rows.
@@ -282,9 +282,9 @@ The `domain` tag equals `@Failover.domain()` when set, otherwise `@Failover.name
 
 Part of `failover-observable-micrometer`. Active when `spring-boot-starter-actuator` is on the classpath. Registered automatically at `/actuator/health/failover`.
 
-| Status | Condition |
-|---|---|
-| `UP` | Scanner found ≥ 1 `@Failover` annotation |
+| Status | Condition                                                               |
+|--------|-------------------------------------------------------------------------|
+| `UP`   | Scanner found ≥ 1 `@Failover` annotation                                |
 | `DOWN` | Scanner found 0 annotations — AOP not wired or beans not Spring-managed |
 
 `DOWN` is a strong signal of misconfiguration: the `@Failover` beans are either not Spring-managed, or `@EnableAspectJAutoProxy` is missing.
@@ -414,10 +414,10 @@ Use `AbstractObservablePublisher` when delegating to MDC-sensitive code — the 
 
 ## Observability Schedule Configuration
 
-| Property | Default | Description |
-|---|---|---|
-| `failover.scheduler.enabled` | `true` | Enable/disable both schedulers |
-| `failover.scheduler.report-cron` | `0 0 0 * * *` | Cron for `FailoverObserver.observe()` |
+| Property                          | Default       | Description                                          |
+|-----------------------------------|---------------|------------------------------------------------------|
+| `failover.scheduler.enabled`      | `true`        | Enable/disable both schedulers                       |
+| `failover.scheduler.report-cron`  | `0 0 0 * * *` | Cron for `FailoverObserver.observe()`                |
 | `failover.scheduler.cleanup-cron` | `0 0 * * * *` | Cron for expiry cleanup (unrelated to observability) |
 
 ```yaml
