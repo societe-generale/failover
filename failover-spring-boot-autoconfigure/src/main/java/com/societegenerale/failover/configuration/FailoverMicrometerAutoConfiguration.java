@@ -50,9 +50,6 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnBean(MeterRegistry.class)
 public class FailoverMicrometerAutoConfiguration {
 
-    /** No-arg constructor for Spring autoconfiguration instantiation. */
-    public FailoverMicrometerAutoConfiguration() {}
-
     /**
      * Emits {@code failover.store.total}, {@code failover.recover.total},
      * {@code failover.exception.total}, and {@code failover.operation.duration} meters.

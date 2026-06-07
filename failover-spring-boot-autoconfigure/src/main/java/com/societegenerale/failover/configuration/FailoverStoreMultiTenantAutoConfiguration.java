@@ -59,9 +59,6 @@ import org.springframework.jdbc.core.RowMapper;
 @Slf4j
 public class FailoverStoreMultiTenantAutoConfiguration {
 
-    /** No-arg constructor for Spring autoconfiguration instantiation. */
-    public FailoverStoreMultiTenantAutoConfiguration() {}
-
     /**
      * Registers {@link TenantContextPropagator} so that scatter/gather slice tasks dispatched to
      * executor threads carry the correct tenant ID. Picked up by {@link FailoverAutoConfiguration}

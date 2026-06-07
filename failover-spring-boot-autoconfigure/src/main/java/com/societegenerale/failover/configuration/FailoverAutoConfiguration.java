@@ -92,9 +92,6 @@ import java.util.List;
 @EnableAspectJAutoProxy
 public class FailoverAutoConfiguration {
 
-    /** No-arg constructor for Spring autoconfiguration instantiation. */
-    public FailoverAutoConfiguration() {}
-
     /**
      * Creates the default failover clock bean.
      *

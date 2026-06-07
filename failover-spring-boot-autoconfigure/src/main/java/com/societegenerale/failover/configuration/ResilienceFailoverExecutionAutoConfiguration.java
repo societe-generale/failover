@@ -48,9 +48,6 @@ import org.springframework.context.annotation.Bean;
 @Slf4j
 public class ResilienceFailoverExecutionAutoConfiguration {
 
-    /** No-arg constructor for Spring autoconfiguration instantiation. */
-    public ResilienceFailoverExecutionAutoConfiguration() {}
-
     /**
      * Registers {@link com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution}
      * backed by the application's {@code CircuitBreakerRegistry}.
