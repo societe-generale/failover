@@ -23,9 +23,8 @@ import com.societegenerale.failover.core.observable.manifest.ManifestInfoExtract
 import com.societegenerale.failover.core.observable.publisher.AbstractObservablePublisher;
 import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
 import lombok.Getter;
-import org.assertj.core.api.Assertions;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -38,9 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
  * @author Anand Manissery
@@ -94,7 +91,7 @@ class DefaultFailoverObserverTest {
     @DisplayName("should publish report")
     void shouldPublishReport() {
         defaultFailoverObserver.observe();
-        Assertions.assertThat(observablePublisher.getMetricsMap().get("failover-report-find-by-id").getInfo())
+        assertThat(observablePublisher.getMetricsMap().get("failover-report-find-by-id").getInfo())
                 .containsEntry("failover-metrics-as-on", NOW.toString())
                 .containsEntry("failover-service-start-time", NOW.toString())
                 .containsEntry("failover-lib-metadata-title", "failover-core")
@@ -103,7 +100,7 @@ class DefaultFailoverObserverTest {
                 .containsEntry("failover-name", "find-by-id")
                 .containsEntry("failover-expiry-duration", "1")
                 .containsEntry("failover-expiry-unit", "HOURS");
-        Assertions.assertThat(observablePublisher.getMetricsMap().get("failover-report-find-by-code").getInfo())
+        assertThat(observablePublisher.getMetricsMap().get("failover-report-find-by-code").getInfo())
                 .containsEntry("failover-metrics-as-on", NOW.toString())
                 .containsEntry("failover-service-start-time", NOW.toString())
                 .containsEntry("failover-lib-metadata-title", "failover-core")

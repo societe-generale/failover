@@ -41,7 +41,7 @@ Key behaviours:
 - Follows the method hierarchy: an `@Failover` on an interface method is found even when the implementing class does not repeat it.
 - Detects duplicate `@Failover` names at startup and throws `FailoverScannerException` to prevent silent data collisions.
 
-### Dependency (if not using the starter)
+### Dependency for scanner (if not using the starter)
 
 ```xml
 <dependency>
@@ -95,7 +95,7 @@ An extension module that adds:
 1. **`MicrometerObservablePublisher`** — publishes per-`@Failover` Micrometer gauges so counts appear in Prometheus / Actuator metrics.
 2. **`FailoverHealthIndicator`** — reports `DOWN` to Spring Boot Actuator health if the scanner found zero `@Failover` annotations (likely a misconfiguration or AOP not wired).
 
-### Dependency (if not using the starter)
+### Dependency for micrometer (if not using the starter)
 
 ```xml
 <dependency>
