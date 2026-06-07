@@ -27,6 +27,12 @@
 
         <dependency>
             <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-observable-micrometer</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
             <artifactId>failover-store-inmemory</artifactId>
             <version>${project.parent.version}</version>
         </dependency>

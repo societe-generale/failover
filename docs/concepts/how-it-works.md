@@ -134,6 +134,6 @@ What happens when recovery fails (no entry found or entry expired) is controlled
 Two background jobs run on configurable cron schedules:
 
 - **Expiry cleanup** (`ExpiryCleanupScheduler`) — calls `FailoverHandler.clean()` hourly by default.
-- **Report publisher** (`ReportScheduler`) — emits store health metrics daily by default.
+- **Observable scheduler** (`ObservableScheduler`) — calls `FailoverObserver.observe()` daily by default, publishing metrics to all registered `ObservablePublisher` beans.
 
 Both are controlled by `failover.scheduler.*` properties and can be disabled independently.

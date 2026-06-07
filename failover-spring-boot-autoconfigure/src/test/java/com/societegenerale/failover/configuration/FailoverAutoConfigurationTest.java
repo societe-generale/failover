@@ -36,14 +36,14 @@ import com.societegenerale.failover.core.payload.splitter.PayloadSplitterLookup;
 import com.societegenerale.failover.core.propagator.CompositeContextPropagator;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.core.propagator.MdcContextPropagator;
-import com.societegenerale.failover.core.report.CompositeReportPublisher;
-import com.societegenerale.failover.core.report.FailoverReporter;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
+import com.societegenerale.failover.core.observable.FailoverObserver;
+import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
-import com.societegenerale.failover.core.report.ReportPublisher;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.propagator.MicrometerContextPropagator;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
-import com.societegenerale.failover.scheduler.ReportScheduler;
+import com.societegenerale.failover.scheduler.ObservableScheduler;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreAsync;
@@ -209,9 +209,9 @@ class FailoverAutoConfigurationTest {
         }
 
         @Test
-        @DisplayName("should load ReportScheduler bean by default")
-        void shouldLoadReportSchedulerByDefault() {
-            assertThat(applicationContext.getBean(ReportScheduler.class)).isNotNull();
+        @DisplayName("should load ObservableScheduler bean by default")
+        void shouldLoadObservableSchedulerByDefault() {
+            assertThat(applicationContext.getBean(ObservableScheduler.class)).isNotNull();
         }
 
         @Test
@@ -286,8 +286,8 @@ class FailoverAutoConfigurationTest {
                     FailoverHandler.class, FailoverExecution.class,
                     MethodExceptionHandler.class, MethodExceptionPolicy.class,
                     FailoverExpiryExtractor.class, FailoverScanner.class,
-                    CompositeReportPublisher.class, FailoverReporter.class,
-                    ReportPublisher.class, KeyGenerator.class, ExpiryPolicy.class
+                    CompositeObservablePublisher.class, FailoverObserver.class,
+                    ObservablePublisher.class, KeyGenerator.class, ExpiryPolicy.class
             );
         }
     }
@@ -372,9 +372,9 @@ class FailoverAutoConfigurationTest {
         }
 
         @Test
-        @DisplayName("ReportScheduler should NOT be registered")
-        void reportSchedulerNotRegistered() {
-            assertBeansAreEmpty(applicationContext, ReportScheduler.class);
+        @DisplayName("ObservableScheduler should NOT be registered")
+        void observableSchedulerNotRegistered() {
+            assertBeansAreEmpty(applicationContext, ObservableScheduler.class);
         }
 
         @Test

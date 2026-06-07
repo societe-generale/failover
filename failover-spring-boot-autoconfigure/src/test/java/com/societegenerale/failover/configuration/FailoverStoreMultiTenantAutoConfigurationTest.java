@@ -270,7 +270,6 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             store.setJdbc(jdbc);
             store.setMultitenant(mt);
             var props = new FailoverProperties();
-            props.setPackageToScan("com.example");
             props.setStore(store);
             return props;
         }

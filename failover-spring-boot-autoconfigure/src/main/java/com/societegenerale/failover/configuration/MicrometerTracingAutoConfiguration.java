@@ -16,7 +16,6 @@
 
 package com.societegenerale.failover.configuration;
 
-import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.propagator.MicrometerContextPropagator;
 import io.micrometer.tracing.Tracer;
 import lombok.extern.slf4j.Slf4j;
@@ -27,16 +26,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 
 /**
- * Auto-configuration that registers {@link MicrometerContextPropagator} when
+ * Autoconfiguration that registers {@link MicrometerContextPropagator} when
  * {@code io.micrometer.tracing.Tracer} is on the classpath and a {@link Tracer} bean exists.
  *
- * <p>Separated from {@link FailoverAutoConfiguration} so this class — which references
- * Micrometer types in its method signatures — is only loaded by the JVM when
- * {@code @ConditionalOnClass} is satisfied. Loading it when Micrometer is absent would
- * cause {@link NoClassDefFoundError}.
+ * <p>The class-level {@code @ConditionalOnClass(name = ...)} uses the string form so that
+ * Spring Boot's ASM-based class metadata reader can evaluate the condition WITHOUT loading
+ * this class into the JVM. This prevents {@link NoClassDefFoundError} when
+ * {@code micrometer-tracing} is absent from the consumer's classpath.
  *
  * <p>The registered bean is picked up by {@link FailoverAutoConfiguration#contextPropagator}
- * via {@code ObjectProvider} and composed into the active {@link ContextPropagator}.
+ * via {@code ObjectProvider} and composed into the active
+ * {@link com.societegenerale.failover.core.propagator.ContextPropagator}.
  *
  * @author Anand Manissery
  * @see MicrometerContextPropagator
@@ -47,11 +47,9 @@ import org.springframework.context.annotation.Bean;
 @Slf4j
 public class MicrometerTracingAutoConfiguration {
 
-    /** No-arg constructor for Spring autoconfiguration instantiation. */
-    public MicrometerTracingAutoConfiguration() {}
-
     /**
-     * Registers a {@link MicrometerContextPropagator} that carries the active span across scatter executor threads.
+     * Registers a {@link MicrometerContextPropagator} that carries the active span across
+     * scatter executor threads.
      *
      * @param tracer active Micrometer {@link Tracer} bean
      * @return {@link MicrometerContextPropagator}

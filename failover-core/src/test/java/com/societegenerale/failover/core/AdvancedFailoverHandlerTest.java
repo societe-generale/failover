@@ -19,8 +19,8 @@ package com.societegenerale.failover.core;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
-import com.societegenerale.failover.core.report.AbstractReportPublisher;
-import com.societegenerale.failover.core.report.Metrics;
+import com.societegenerale.failover.core.observable.publisher.AbstractObservablePublisher;
+import com.societegenerale.failover.core.observable.Metrics;
 import lombok.Getter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +59,7 @@ class AdvancedFailoverHandlerTest {
     @Mock
     private RecoveredPayloadHandler recoveredPayloadHandler;
 
-    private InMemoryReportPublisher reportPublisher;
+    private InMemoryObservablePublisher observablePublisher;
 
     private AdvancedFailoverHandler<String> advancedFailoverHandler;
 
@@ -68,8 +68,8 @@ class AdvancedFailoverHandlerTest {
     @BeforeEach
     void setUp() {
         cause = new RuntimeException("Dummy-Exception", new IllegalArgumentException("Root-Cause"));
-        reportPublisher = new InMemoryReportPublisher();
-        advancedFailoverHandler = new AdvancedFailoverHandler<>(failoverHandler, recoveredPayloadHandler, reportPublisher, new BasicFailoverExpiryExtractor());
+        observablePublisher = new InMemoryObservablePublisher();
+        advancedFailoverHandler = new AdvancedFailoverHandler<>(failoverHandler, recoveredPayloadHandler, observablePublisher, new BasicFailoverExpiryExtractor());
 
         lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
         lenient().when(failover.expiryDuration()).thenReturn(1L);
@@ -82,7 +82,7 @@ class AdvancedFailoverHandlerTest {
         given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
         advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
         verify(failoverHandler).store(failover, ARGS, PAYLOAD);
-        assertThat(reportPublisher.getMetrics().getInfo()).containsEntry("failover-action", "store")
+        assertThat(observablePublisher.getMetrics().getInfo()).containsEntry("failover-action", "store")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-is-stored", "true");
     }
@@ -94,7 +94,7 @@ class AdvancedFailoverHandlerTest {
         assertThatThrownBy(() -> advancedFailoverHandler.store(failover, ARGS, PAYLOAD))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Store failure");
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "store")
                 .containsEntry("failover-is-stored", "false");
     }
@@ -106,7 +106,7 @@ class AdvancedFailoverHandlerTest {
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
@@ -124,7 +124,7 @@ class AdvancedFailoverHandlerTest {
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
@@ -142,7 +142,7 @@ class AdvancedFailoverHandlerTest {
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
@@ -160,7 +160,7 @@ class AdvancedFailoverHandlerTest {
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(failoverHandler).recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-exception-type", "java.lang.RuntimeException")
@@ -179,7 +179,7 @@ class AdvancedFailoverHandlerTest {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Recovery failed - store unavailable"));
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-is-recovered", "false")
                 .containsEntry("failover-is-recovery-failed", "true")
                 .containsEntry("failover-recovery-failure-message", "Recovery failed - store unavailable");
@@ -203,9 +203,31 @@ class AdvancedFailoverHandlerTest {
 
         advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
 
-        assertThat(reportPublisher.getMetrics().getInfo())
+        assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-exception-message", "")
                 .containsEntry("failover-exception-cause-message", "");
+    }
+
+    @Test
+    @DisplayName("should include duration-ns in store metrics")
+    void shouldIncludeDurationNsInStoreMetrics() {
+        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+        advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+
+        String durationNs = observablePublisher.getMetrics().getInfo().get("failover-duration-ns");
+        assertThat(durationNs).isNotNull();
+        assertThat(Long.parseLong(durationNs)).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("should include duration-ns in recover metrics")
+    void shouldIncludeDurationNsInRecoverMetrics() {
+        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+
+        String durationNs = observablePublisher.getMetrics().getInfo().get("failover-duration-ns");
+        assertThat(durationNs).isNotNull();
+        assertThat(Long.parseLong(durationNs)).isGreaterThanOrEqualTo(0);
     }
 
     @Test
@@ -215,7 +237,7 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).clean();
     }
 
-    static class InMemoryReportPublisher extends AbstractReportPublisher {
+    static class InMemoryObservablePublisher extends AbstractObservablePublisher {
         @Getter
         private Metrics metrics;
 

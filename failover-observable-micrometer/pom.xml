@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>failover-observable-micrometer</artifactId>
+    <packaging>jar</packaging>
+
+    <parent>
+        <artifactId>failover</artifactId>
+        <groupId>com.societegenerale.failover</groupId>
+        <version>3.0.0-SNAPSHOT</version>
+    </parent>
+
+    <dependencies>
+        <!-- Core interfaces: FailoverScanner, ReportPublisher, FailoverReporter, Metrics -->
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-core</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-observable-scanner</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
+        <!-- Real Micrometer meters: Counter, Gauge, Timer, MeterBinder -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!--
+            HealthIndicator — optional. spring-boot-health is the Spring Boot 4 module
+            that contains HealthIndicator / Health / Status (previously in spring-boot-actuate).
+            Optional so it is not forced on consumers who don't use Actuator.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-health</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

@@ -123,22 +123,18 @@ Built-in: `MdcContextPropagator` (copies MDC entries), `TenantContextPropagator`
 
 ---
 
-## Reporting
+## Observability
 
-`FailoverReporter` emits events on every store/recover operation:
+`FailoverObserver` collects metrics from all scanned `@Failover` configurations and publishes them via `ObservablePublisher`:
 
 ```java
-public interface FailoverReporter {
-    void onStore(Event event);
-    void onRecover(Event event);
+public interface FailoverObserver {
+    void observe();
 }
 ```
 
-Two publishers auto-configured:
+Default publisher auto-configured: `MdcLoggerObservablePublisher` — writes metrics to MDC and logs at INFO.
 
-| Publisher | Output |
-|---|---|
-| `LoggerReportPublisher` | Structured log at INFO level |
-| `MetricsReportPublisher` | Micrometer counters (`failover.store.count`, `failover.recover.count`) |
+Micrometer meters and Actuator health are provided by the `failover-observable-micrometer` extension module.
 
-Compose additional publishers via `CompositeReportPublisher`. See [Reporting Guide](../guides/reporting.md).
+See the [Observable Modules](observable.md) page for full details, custom publisher examples, and scheduler configuration.

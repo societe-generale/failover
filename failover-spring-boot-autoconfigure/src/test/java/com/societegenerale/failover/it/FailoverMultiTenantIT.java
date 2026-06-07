@@ -101,7 +101,6 @@ class FailoverMultiTenantIT {
             "failover.store.multitenant.strategy=TABLE_PREFIX",
             "failover.store.multitenant.tenants.acme.table-prefix=ACME_",
             "failover.store.multitenant.tenants.globex.table-prefix=GLOBEX_",
-            "failover.package-to-scan=com.societegenerale.failover.it",
             "spring.datasource.url=jdbc:h2:mem:failover_mt_tprefix_it;DB_CLOSE_DELAY=-1",
             "spring.datasource.driver-class-name=org.h2.Driver",
             "spring.datasource.username=sa",
@@ -286,7 +285,6 @@ class FailoverMultiTenantIT {
             "failover.store.async=false",
             "failover.store.multitenant.enabled=true",
             "failover.store.multitenant.strategy=SCHEMA",
-            "failover.package-to-scan=com.societegenerale.failover.it",
             "spring.sql.init.mode=never"  // each H2 DB is initialised in @TestConfiguration
     })
     @DisplayName("11 · Multi-Tenant Store — SCHEMA strategy (separate H2 database per tenant)")

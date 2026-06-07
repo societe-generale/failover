@@ -42,9 +42,9 @@ DELETE FROM FAILOVER_STORE WHERE EXPIRE_ON < ?
 
 ---
 
-## ReportScheduler
+## ObservableScheduler
 
-Publishes a store health snapshot via `FailoverReporter` on a cron schedule.
+Calls `FailoverObserver.observe()` on a cron schedule — collects metrics from all registered `@Failover` configurations and publishes them to all registered `ObservablePublisher` beans.
 
 ```yaml
 failover:
@@ -53,7 +53,7 @@ failover:
     report-cron: "0 0 0 * * *"   # daily at midnight (default)
 ```
 
-The report includes counts per failover name and any store-level metrics. Output depends on the configured `ReportPublisher` — default is a structured log entry.
+Default output: structured log entry via `MdcLoggerObservablePublisher`. Add `failover-observable-micrometer` to also publish Micrometer gauges.
 
 ---
 
@@ -71,7 +71,7 @@ Disables both schedulers. Individual jobs cannot be disabled independently — d
 
 ## Manual Invocation
 
-Call either scheduler's method directly from application code:
+Trigger cleanup or observation directly from application code:
 
 ```java
 @Autowired FailoverHandler<Object> handler;
@@ -81,8 +81,8 @@ handler.clean();
 ```
 
 ```java
-@Autowired FailoverReporter reporter;
+@Autowired FailoverObserver failoverObserver;
 
-// manual report
-reporter.report();
+// manual observe
+failoverObserver.observe();
 ```

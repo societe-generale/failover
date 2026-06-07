@@ -28,22 +28,11 @@ Use **JDBC**. It persists across restarts, works with multiple application insta
 
 ---
 
-### What is `failover.package-to-scan` and is it mandatory?
-
-Yes, it is mandatory when `failover.enabled=true`. The framework scans this base package (and all sub-packages) for classes containing `@Failover`-annotated methods. Without it the aspect cannot register the interceptors.
-
-```yaml
-failover:
-  package-to-scan: com.example.myapp
-```
-
-Set it to the top-level package of your application to ensure all annotated beans are discovered.
-
----
-
 ### Does Failover work with Feign clients, `@Service`, `@RestTemplate` wrappers, and similar beans?
 
 Yes — anything managed by the Spring container and proxied by AOP. This includes Feign clients, `@Service`, `@Component`, `@Repository`, Spring Data repositories, and `@RestController`. The annotated method must be invoked through the Spring proxy (not via `this.method()` within the same class) for the aspect to intercept it.
+
+`@Failover` works with **Spring beans only**. Methods on plain Java objects not registered in the Spring context are invisible to both the aspect and the scanner.
 
 ---
 
@@ -365,7 +354,6 @@ Use the real JDBC store backed by H2 in-memory:
 ```java
 @SpringBootTest
 @TestPropertySource(properties = {
-    "failover.package-to-scan=com.example.myapp",
     "failover.store.type=jdbc",
     "failover.store.async=false",
     "failover.exception-policy=never_throw"
@@ -434,7 +422,7 @@ No. With multiple instances and async writes, concurrent store calls for the sam
 
 ### How do I monitor failover events in production?
 
-Implement `FailoverReporter` to receive store and recover events and forward them to your metrics backend (Micrometer, Prometheus, Datadog, etc.). See [Reporting](../guides/reporting.md).
+Implement `ObservablePublisher` to receive failover metrics and forward them to your backend (Micrometer, Prometheus, Datadog, etc.). See [Observability](../guides/reporting.md).
 
 Alternatively, implement `RecoveredPayloadHandler` to increment a counter on every recovery:
 
@@ -477,10 +465,9 @@ Not officially tested. The Jackson-based serialisation and Spring AOP proxy gene
 Check:
 
 1. `failover.enabled` is not set to `false`.
-2. `failover.package-to-scan` includes the package of the annotated class.
-3. The annotated method is invoked through the Spring proxy — not via a direct `this.method()` call within the same class.
-4. The class is a Spring-managed bean (`@Component`, `@Service`, etc.).
-5. The return type is not `void`.
+2. The annotated method is invoked through the Spring proxy — not via a direct `this.method()` call within the same class.
+3. The class is a Spring-managed bean (`@Component`, `@Service`, `@FeignClient`, etc.) — `@Failover` works with Spring beans only.
+4. The return type is not `void`.
 
 Enable DEBUG logging (`com.societegenerale.failover: DEBUG`) to confirm the aspect is intercepting calls.
 

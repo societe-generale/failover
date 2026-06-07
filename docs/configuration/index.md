@@ -4,33 +4,41 @@ icon: material/tune
 
 # Configuration
 
-All failover properties are bound to the `failover.*` prefix — YAML, properties files, or environment variables.
+All failover properties are bound to the `failover.*` prefix — YAML, properties files, or environment variables. There are **no mandatory properties**; the framework starts with safe defaults.
 
 ## Property hierarchy
 
 ```mermaid
 mindmap
   root((failover))
-    package-to-scan
-      Required
+    enabled
+    type
+      BASIC
+      RESILIENCE
+      CUSTOM
+    exception-policy
+      RETHROW
+      NEVER_THROW
+      CUSTOM
     store
       type
         jdbc
         caffeine
         inmemory
+      async
       jdbc
         table-prefix
-        datasource-url
-      caffeine
-        spec
-    exception-policy
-      throw
-      never_throw
-    multi-tenant
+      multitenant
+        enabled
+        strategy
+          TABLE_PREFIX
+          SCHEMA
+    scheduler
       enabled
-      isolation-strategy
-        TABLE_PREFIX
-        SCHEMA
+      report-cron
+      cleanup-cron
+    scatter
+      parallel
 ```
 
 ## Sections

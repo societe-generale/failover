@@ -96,9 +96,6 @@ import java.util.function.UnaryOperator;
 @Slf4j
 public class FailoverStoreAutoConfiguration {
 
-    /** No-arg constructor for Spring autoconfiguration instantiation. */
-    public FailoverStoreAutoConfiguration() {}
-
     /**
      * Default {@link TaskExecutor} for async store operations.
      *

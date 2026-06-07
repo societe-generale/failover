@@ -28,7 +28,8 @@ Public API surface for all Failover modules. Full Javadoc available in [Java Doc
 | `PayloadEnricher<T>` | Populates metadata on domain objects at store/recover time. |
 | `RecoveredPayloadHandler` | Post-recovery payload transformer. |
 | `ContextPropagator` | Captures and restores thread-local context for async dispatch. |
-| `FailoverReporter` | Emits store/recover events. |
+| `FailoverObserver` | Observes all registered `@Failover` configurations and publishes metrics. |
+| `ObservablePublisher` | SPI for publishing failover metrics to external sinks. |
 
 ### failover-store-multitenant
 
