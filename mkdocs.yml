@@ -75,6 +75,7 @@ plugins:
       exclude:
         - index.md
         - api/javadoc/**
+        - reference/javadoc/**
   - tags
   - glightbox
 
