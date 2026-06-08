@@ -43,13 +43,49 @@ classDiagram
 
 ---
 
-| Concept | Description |
-|---|---|
-| [How It Works](how-it-works.md) | End-to-end store/recover lifecycle with sequence diagrams |
-| [Expiry Policies](expiry.md) | TTL computation, SpEL expressions, custom ExpiryPolicy |
-| [Key Generation](key-generation.md) | Three-layer key architecture, UUID hashing, custom generators |
-| [Scatter / Gather](scatter-gather.md) | Per-entity storage for collection-returning methods |
-| [Domain Grouping](domain.md) | Cross-failover store sharing via the `domain` attribute |
+<div class="grid cards" markdown>
+
+-   :material-arrow-decision-outline:{ .lg .middle } **How It Works**
+
+    ---
+
+    End-to-end store/recover lifecycle with call-flow, state machine, and sequence diagrams.
+
+    [:octicons-arrow-right-24: Learn the lifecycle](how-it-works.md)
+
+-   :material-timer-outline:{ .lg .middle } **Expiry Policies**
+
+    ---
+
+    TTL computation, SpEL expressions, payload-driven expiry, and custom `ExpiryPolicy` beans.
+
+    [:octicons-arrow-right-24: Explore expiry](expiry.md)
+
+-   :material-key-variant:{ .lg .middle } **Key Generation**
+
+    ---
+
+    Three-layer key architecture — method name, annotation name, and hashed arguments.
+
+    [:octicons-arrow-right-24: Understand key derivation](key-generation.md)
+
+-   :material-scatter-plot:{ .lg .middle } **Scatter / Gather**
+
+    ---
+
+    Per-entity storage for collection-returning methods — store and recover individual slices.
+
+    [:octicons-arrow-right-24: Learn scatter/gather](scatter-gather.md)
+
+-   :material-domain:{ .lg .middle } **Domain Grouping**
+
+    ---
+
+    Share store entries across multiple `@Failover` annotations via the `domain` attribute.
+
+    [:octicons-arrow-right-24: Explore domains](domain.md)
+
+</div>
 
 ---
 

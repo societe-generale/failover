@@ -35,6 +35,20 @@ See [ADR 1](../adr/index.md) for the founding decision.
 
 ---
 
+## Acknowledgements
+
+Failover was built at Société Générale to eliminate referential-outage cascades once — reusably — so every service benefits without repeating the same resilience logic.
+
+| Name            | Contribution                |
+|-----------------|-----------------------------|
+| Anand Manissery | Creator and lead maintainer |
+| Vincent Fuchs   | Contributions and review    |
+| Patrice Fricard | Early contributor           |
+| Igor Lovich     | Early contributor           |
+| Abilash Titus   | Early contributor           |
+
+---
+
 ## License
 
 Apache License 2.0 — see [LICENSE](https://github.com/societe-generale/failover/blob/main/LICENSE).

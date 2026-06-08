@@ -104,12 +104,22 @@ Your return type must extend `Referential` or implement `ReferentialAware` to ca
         private String name;
         private boolean upToDate;
         private Instant asOf;
+        private Metadata metadata;
 
         @Override
-        public void setUpToDate(boolean upToDate) { this.upToDate = upToDate; }
+        public void setUpToDate(boolean upToDate) { 
+            this.upToDate = upToDate; 
+        }
 
         @Override
-        public void setAsOf(Instant asOf) { this.asOf = asOf; }
+        public void setAsOf(Instant asOf) { 
+            this.asOf = asOf; 
+        }
+
+        @Override
+        public void setMetadata(Metadata metadata) { 
+            this.metadata = metadata; 
+        }
     }
     ```
 

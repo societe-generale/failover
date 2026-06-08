@@ -98,9 +98,6 @@ flowchart LR
     B --> C[CaffeineFailoverStore]
     B --> J[JdbcFailoverStore]
 
-    style A fill:#1d1d2c,stroke:#818cf8
-    style M fill:#1d1d2c,stroke:#818cf8
-    style B fill:#262638,stroke:#818cf8
 ```
 
 `AsyncFailoverStore` offloads writes to a virtual-thread executor (active when `failover.store.async=true`). `MultiTenantFailoverStore` routes each operation to the correct tenant's base store (active when `failover.store.multitenant.enabled=true`). Both are transparent decorators.

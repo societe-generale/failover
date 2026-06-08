@@ -75,6 +75,7 @@ plugins:
       exclude:
         - index.md
         - api/javadoc/**
+        - reference/javadoc/**
   - tags
   - glightbox
 
@@ -174,7 +175,7 @@ nav:
     - About: support/about.md
 
 not_in_nav: |
-  api/javadoc/**
+  reference/javadoc/**
 
 validation:
   links:
