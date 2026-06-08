@@ -275,7 +275,7 @@ Country findByCode(String code);</code></pre>
     <span class="fo-fla-name">Caller</span>
   </div>
   <div class="fo-fla-hconn hc-req fo-fla-hc-req">
-    <div class="fo-fla-hdot fo-fla-hd-req"></div>
+    <div class="fo-fla-hdot fo-fla-hd-grn-rv2"></div>
     <span class="fo-fla-hl">request</span>
   </div>
   <div class="fo-fla-node fo-fla-svc fo-fla-cell-svc">
@@ -284,7 +284,7 @@ Country findByCode(String code);</code></pre>
     <span class="fo-fla-sub">@Failover</span>
   </div>
   <div class="fo-fla-hconn fo-fla-hc-ok">
-    <div class="fo-fla-hdot fo-fla-hd-ok"></div>
+    <div class="fo-fla-hdot fo-fla-hd-grn-rv"></div>
     <span class="fo-fla-hl">upstream call ✅</span>
   </div>
   <div class="fo-fla-node fo-fla-up-ok fo-fla-cell-up">
@@ -292,13 +292,13 @@ Country findByCode(String code);</code></pre>
     <span class="fo-fla-name">Upstream</span>
     <span class="fo-fla-state fo-fla-state-ok">UP</span>
   </div>
-  <div class="fo-fla-vconn fo-fla-vc-1 fo-fla-cell-vc1"><div class="fo-fla-vdot fo-fla-vd-1"></div></div>
+  <div class="fo-fla-vconn fo-fla-vc-1 fo-fla-cell-vc1"><div class="fo-fla-vdot fo-fla-vd-grn"></div></div>
   <div class="fo-fla-node fo-fla-interceptor fo-fla-cell-int">
     <span class="fo-fla-icon">🔌</span>
     <span class="fo-fla-name">Failover Interceptor</span>
     <span class="fo-fla-sub">FailoverAspect</span>
   </div>
-  <div class="fo-fla-vconn fo-fla-vc-2 fo-fla-cell-vc2"><div class="fo-fla-vdot fo-fla-vd-2"></div></div>
+  <div class="fo-fla-vconn fo-fla-vc-2 fo-fla-cell-vc2"><div class="fo-fla-vdot fo-fla-vd-grn2"></div></div>
   <div class="fo-fla-node fo-fla-store-node fo-fla-cell-store">
     <span class="fo-fla-icon">💾</span>
     <span class="fo-fla-name">Failover Store</span>
@@ -319,6 +319,7 @@ Country findByCode(String code);</code></pre>
   </div>
   <div class="fo-fla-hconn fo-fla-hc-req">
     <div class="fo-fla-hdot fo-fla-hd-req"></div>
+    <div class="fo-fla-hdot fo-fla-hd-org-rv"></div>
     <span class="fo-fla-hl">request</span>
   </div>
   <div class="fo-fla-node fo-fla-svc fo-fla-cell-svc">
@@ -335,13 +336,13 @@ Country findByCode(String code);</code></pre>
     <span class="fo-fla-name">Upstream</span>
     <span class="fo-fla-state fo-fla-state-dn">DOWN</span>
   </div>
-  <div class="fo-fla-vconn fo-fla-vc-1 fo-fla-cell-vc1"><div class="fo-fla-vdot fo-fla-vd-1"></div></div>
+  <div class="fo-fla-vconn fo-fla-vc-1 fo-fla-cell-vc1"><div class="fo-fla-vdot fo-fla-vd-org-rv2"></div></div>
   <div class="fo-fla-node fo-fla-interceptor fo-fla-cell-int">
     <span class="fo-fla-icon">🔌</span>
     <span class="fo-fla-name">Failover Interceptor</span>
     <span class="fo-fla-sub">catches exception</span>
   </div>
-  <div class="fo-fla-vconn fo-fla-vc-rcv fo-fla-cell-vc2"><div class="fo-fla-vdot fo-fla-vd-rcv"></div></div>
+  <div class="fo-fla-vconn fo-fla-vc-rcv fo-fla-cell-vc2"><div class="fo-fla-vdot fo-fla-vd-org-rv"></div></div>
   <div class="fo-fla-node fo-fla-store-find fo-fla-cell-store">
     <span class="fo-fla-icon">💾</span>
     <span class="fo-fla-name">Failover Store</span>

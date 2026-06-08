@@ -2030,6 +2030,29 @@ body,
 .fo-fla-vd-2   { background: #22c55e; animation: fo-fla-travel-v 1.8s ease-in-out .5s infinite; }
 .fo-fla-vd-rcv { background: #f59e0b; animation: fo-fla-travel-v 1.8s ease-in-out .5s infinite; }
 
+/* ── Reverse-direction keyframes (response / recover direction) ── */
+@keyframes fo-fla-travel-h-rv {
+  0%   { left: 88%; opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { left:  5%; opacity: 0; }
+}
+@keyframes fo-fla-travel-v-rv {
+  0%   { top: 85%; opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { top:  5%; opacity: 0; }
+}
+/* Store flow — all green, response (Upstream→Svc→Caller) + store (Svc→Int→Store) */
+.fo-fla-hd-grn-rv  { background: #22c55e; animation: fo-fla-travel-h-rv 2s   ease-in-out 0s   infinite; }
+.fo-fla-hd-grn-rv2 { background: #22c55e; animation: fo-fla-travel-h-rv 2s   ease-in-out .4s  infinite; }
+.fo-fla-vd-grn     { background: #22c55e; animation: fo-fla-travel-v    1.8s ease-in-out .1s  infinite; }
+.fo-fla-vd-grn2    { background: #22c55e; animation: fo-fla-travel-v    1.8s ease-in-out .55s infinite; }
+/* Recover flow — orange bottom→top (Store→Int→Svc) + orange right→left (Svc→Caller) */
+.fo-fla-vd-org-rv  { background: #f59e0b; animation: fo-fla-travel-v-rv 1.8s ease-in-out 0s   infinite; }
+.fo-fla-vd-org-rv2 { background: #f59e0b; animation: fo-fla-travel-v-rv 1.8s ease-in-out .45s infinite; }
+.fo-fla-hd-org-rv  { background: #f59e0b; animation: fo-fla-travel-h-rv 2s   ease-in-out .8s  infinite; }
+
 /* Return row */
 .fo-fla-return {
   display: flex; align-items: center; justify-content: center;
