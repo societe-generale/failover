@@ -13,22 +13,6 @@
          <lastmod>2026-06-08</lastmod>
     </url>
     <url>
-         <loc>https://societe-generale.github.io/failover/api/</loc>
-         <lastmod>2026-06-08</lastmod>
-    </url>
-    <url>
-         <loc>https://societe-generale.github.io/failover/api/javadocs/</loc>
-         <lastmod>2026-06-08</lastmod>
-    </url>
-    <url>
-         <loc>https://societe-generale.github.io/failover/api/javadoc/legal/jquery/</loc>
-         <lastmod>2026-06-08</lastmod>
-    </url>
-    <url>
-         <loc>https://societe-generale.github.io/failover/api/javadoc/legal/jqueryUI/</loc>
-         <lastmod>2026-06-08</lastmod>
-    </url>
-    <url>
          <loc>https://societe-generale.github.io/failover/changelog/</loc>
          <lastmod>2026-06-08</lastmod>
     </url>
@@ -186,6 +170,14 @@
     </url>
     <url>
          <loc>https://societe-generale.github.io/failover/reference/javadocs/</loc>
+         <lastmod>2026-06-08</lastmod>
+    </url>
+    <url>
+         <loc>https://societe-generale.github.io/failover/reference/javadoc/legal/jquery/</loc>
+         <lastmod>2026-06-08</lastmod>
+    </url>
+    <url>
+         <loc>https://societe-generale.github.io/failover/reference/javadoc/legal/jqueryUI/</loc>
          <lastmod>2026-06-08</lastmod>
     </url>
     <url>
