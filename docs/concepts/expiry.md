@@ -4,7 +4,7 @@ icon: material/timer-outline
 
 # Expiry Policies
 
-Every stored entry has an expiry timestamp. Expired entries are never served on recovery — they are deleted on first access or by the cleanup scheduler.
+Every stored entry carries an `expireOn` timestamp. Expired entries are never served on recovery — they are deleted on first access and by the hourly cleanup scheduler.
 
 ---
 
@@ -17,25 +17,24 @@ Every stored entry has an expiry timestamp. Expired entries are never served on 
 Country findByCode(String code);
 ```
 
-The default is `1 HOUR` when neither `expiryDuration` nor `expiryDurationExpression` is set.
+Default when no expiry is configured: `1 HOUR`.
 
 ### SpEL Expression
 
-Externalise expiry values so they can be changed without redeployment:
+Externalise TTL values so they can be changed without redeployment:
 
 ```yaml title="application.yml"
 myapp:
-  failover:
-    country:
-      duration: 48
-      unit: DAYS
+  country:
+    expiry-duration: 48
+    expiry-unit: HOURS
 ```
 
 ```java
 @Failover(
     name = "country-by-code",
-    expiryDurationExpression = "${myapp.failover.country.duration}",
-    expiryUnitExpression     = "${myapp.failover.country.unit}"
+    expiryDurationExpression = "${myapp.country.expiry-duration}",
+    expiryUnitExpression     = "${myapp.country.expiry-unit}"
 )
 Country findByCode(String code);
 ```
@@ -46,43 +45,56 @@ When an expression is set it takes precedence over the plain `expiryDuration` / 
 
 ## Supported ChronoUnits
 
-Any `java.time.temporal.ChronoUnit` value is valid:
+Any `java.time.temporal.ChronoUnit` is valid:
 
-`SECONDS`, `MINUTES`, `HOURS`, `DAYS`, `WEEKS`, `MONTHS`, `YEARS`
+`SECONDS` · `MINUTES` · `HOURS` · `DAYS` · `WEEKS` · `MONTHS` · `YEARS`
 
-Align the unit with the business's acceptable staleness window, not with your deployment cadence.
+!!! tip "Align TTL with business staleness tolerance"
+    Set TTL to the maximum time a stale value is acceptable to your business — not to your deployment cadence. Country codes tolerate days; real-time prices may only tolerate minutes.
 
 ---
 
 ## How Expiry is Computed
 
-`ExpiryPolicy` computes the expiry timestamp at store time:
+`DefaultExpiryPolicy` computes the expiry timestamp at store time:
 
 ```
 expireOn = now() + expiryDuration × expiryUnit
 ```
 
-At recover time, the handler checks `expireOn > now()`. If the check fails, the entry is deleted and the exception is re-thrown (or `null` returned, per `ExceptionPolicy`).
+At recover time, `isExpired` checks:
+
+```
+expireOn.isBefore(Instant.now())
+```
+
+If expired, the entry is deleted from the store and the exception is re-thrown (or `null` is returned, per `exception-policy`).
 
 ---
 
-## Per-Annotation Expiry Policy
+## Expiry Strategy Comparison
 
-Every `@Failover` can name a custom `ExpiryPolicy` bean:
+| Strategy | Use case | Code |
+|---|---|---|
+| Fixed annotation values | Simple, static TTL | `expiryDuration=24, expiryUnit=HOURS` |
+| SpEL expression | Configurable TTL per environment | `expiryDurationExpression="${app.ttl}"` |
+| Custom `ExpiryPolicy` bean | Business-calendar or payload-driven expiry | `expiryPolicy="myPolicy"` |
 
-```java
-@Failover(name = "pricing", expiryPolicy = "myPricingExpiryPolicy")
-List<Price> findPrices(String productId);
-```
+---
 
-```java
-@Component("myPricingExpiryPolicy")
-public class PricingExpiryPolicy implements ExpiryPolicy<List<Price>> {
+## Custom ExpiryPolicy
+
+```java title="NextDayExpiryPolicy.java"
+@Component("nextDayExpiryPolicy")
+public class NextDayExpiryPolicy implements ExpiryPolicy<List<Price>> {
 
     @Override
     public Instant computeExpiry(Failover failover) {
-        // expire at next business day midnight (UTC)
-        return LocalDate.now(ZoneOffset.UTC).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        // expires at midnight UTC of the next business day
+        return LocalDate.now(ZoneOffset.UTC)
+                .plusDays(1)
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant();
     }
 
     @Override
@@ -92,20 +104,33 @@ public class PricingExpiryPolicy implements ExpiryPolicy<List<Price>> {
 }
 ```
 
+```java
+@Failover(name = "prices", expiryPolicy = "nextDayExpiryPolicy")
+List<Price> findPrices(String productId);
+```
+
 ---
 
 ## Cleanup Scheduler
 
-Expired entries are removed by `ExpiryCleanupScheduler` on a cron schedule. Configure it in `application.yml`:
+Expired entries accumulate until cleared. `ExpiryCleanupScheduler` runs `FailoverHandler.clean()` on a cron schedule:
 
-```yaml
+```yaml title="application.yml"
 failover:
   scheduler:
     enabled: true
     cleanup-cron: "0 0 * * * *"   # every hour (default)
 ```
 
-The cleanup calls `FailoverHandler.clean()` which in turn calls `FailoverStore.cleanByExpiry(now)`.
+`clean()` calls `FailoverStore.cleanByExpiry(Instant.now())` which removes all entries whose `EXPIRE_ON` is before the current timestamp.
 
 !!! note "On-demand cleanup"
-    You can also call `FailoverHandler.clean()` directly from your code — for example, after a bulk data refresh.
+    Inject `FailoverHandler` and call `clean()` directly when you need an immediate purge — for example, after a bulk data refresh.
+
+---
+
+## Next Steps
+
+- [Key Generation](key-generation.md) — how store keys are derived from method arguments
+- [Properties Reference](../configuration/properties-reference.md) — `failover.scheduler.*` configuration
+- [Custom Expiry Policy](../how-to/custom-expiry-policy.md) — step-by-step implementation guide

@@ -1,10 +1,12 @@
 ---
-icon: material/database
+icon: material/database-outline
 ---
 
-# JDBC Store Module
+# JDBC Store
 
-`failover-store-jdbc` provides a relational database-backed `FailoverStore`. Data survives application restarts and is accessible from all application instances simultaneously.
+Durable, shared-state failover store backed by any JDBC-compatible database. Recommended for all production deployments.
+
+---
 
 ## Dependency
 
@@ -16,79 +18,68 @@ icon: material/database
 </dependency>
 ```
 
+Requires a `DataSource` bean in the Spring context. Spring Boot's auto-configured `DataSource` is used automatically.
+
+---
+
 ## Configuration
 
-```yaml
+```yaml title="application.yml"
 failover:
   store:
     type: jdbc
     jdbc:
-      table-prefix: MYAPP_
+      table-prefix: MYAPP_     # → table MYAPP_FAILOVER_STORE
 ```
+
+---
 
 ## Table DDL
 
-```sql
+```sql title="create_table.sql"
 CREATE TABLE MYAPP_FAILOVER_STORE (
-    FAILOVER_NAME  VARCHAR(50)   NOT NULL,
-    FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-    AS_OF          TIMESTAMP(9) WITH TIME ZONE     NOT NULL,
-    EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE     NOT NULL,
+    FAILOVER_NAME  VARCHAR(50)                      NOT NULL,
+    FAILOVER_KEY   VARCHAR(256)                     NOT NULL,
+    AS_OF          TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
     PAYLOAD        VARCHAR(4000),
     PAYLOAD_CLASS  VARCHAR(256),
     PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
 );
 ```
 
-Create this table before starting the application. No Flyway/Liquibase migrations are provided — DDL is intentionally left to the application team.
+Adjust `PAYLOAD` size to your largest serialised payload. Use `CLOB` / `TEXT` for payloads exceeding `VARCHAR` limits.
 
 ---
 
-## Payload Serialization
+## Supported Databases
 
-Payloads are JSON-serialised via Jackson. The `PAYLOAD_CLASS` column stores the fully-qualified class name for deserialization.
+| Database | Upsert strategy |
+|---|---|
+| H2 | `MERGE INTO ... KEY (...)` |
+| PostgreSQL | `INSERT ... ON CONFLICT DO UPDATE SET ...` |
+| MySQL / MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE ...` |
+| Oracle | `MERGE INTO ... USING DUAL ON ...` |
+| SQL Server | `MERGE INTO ... USING (VALUES ...) AS src ON ...` |
 
-Requirements:
-- Domain type must be JSON-serialisable (public getters or `@JsonProperty` annotations)
-- Deserialisation requires a no-arg constructor or `@JsonCreator`
-
-Custom serialization:
-
-```java
-@Bean
-public Serializer mySerializer(ObjectMapper objectMapper) {
-    return new JsonSerializer(objectMapper);
-}
-```
+Dialect is detected automatically at startup via `DatabaseResolver`. See [Database Resolver](../how-to/database-resolver.md) for overrides.
 
 ---
 
-## Database Compatibility
+## Serialisation
 
-Tested with: H2 (in-memory and file), PostgreSQL, MySQL, MariaDB, Oracle, SQL Server.
-
-The query resolver (`FailoverStoreQueryResolver`) generates ANSI SQL. For database-specific features (e.g. JSON columns, UPSERT), provide a custom `FailoverStoreQueryResolver` bean.
+Payloads are serialised to JSON using Jackson's `ObjectMapper`. The class name is stored in `PAYLOAD_CLASS` for deserialisation. Override with a custom `PayloadColumnResolver` bean — see [Payload Column Resolver](../how-to/payload-column-resolver.md).
 
 ---
 
-## Index Recommendation
+## Custom Queries
 
-For large deployments, add an index on `EXPIRE_ON` to speed up the cleanup query:
-
-```sql
-CREATE INDEX IDX_MYAPP_FAILOVER_STORE_EXPIRE_ON ON MYAPP_FAILOVER_STORE (EXPIRE_ON);
-```
+Override SQL statements with a `FailoverStoreQueryResolver` bean — useful for schema-qualified table names or custom hints. See [Failover Store Query Resolver](../how-to/failover-store-query-resolver.md).
 
 ---
 
-## Async Writes
+## Next Steps
 
-By default, writes (`store`, `delete`, `cleanByExpiry`) are offloaded to a background `TaskExecutor`. The `find` operation is always synchronous.
-
-Disable async writes for synchronous operation (required for SCHEMA multi-tenant strategy):
-
-```yaml
-failover:
-  store:
-    async: false
-```
+- [Async Store](store-async.md) — make JDBC writes non-blocking
+- [Multi-Tenant Store](store-multitenant.md) — per-tenant table/schema routing
+- [Store Types](../configuration/store-types.md) — choose the right store

@@ -4,13 +4,15 @@ icon: material/package-variant-closed
 
 # Installation
 
-## Starter Dependency
+Add a single starter dependency — it pulls in all required modules automatically with zero mandatory configuration.
 
-Add a single dependency. The Spring Boot starter pulls in all required modules automatically.
+---
+
+## Starter Dependency
 
 === "Maven"
 
-    ```xml
+    ```xml title="pom.xml"
     <dependency>
         <groupId>com.societegenerale.failover</groupId>
         <artifactId>failover-spring-boot-starter</artifactId>
@@ -20,23 +22,33 @@ Add a single dependency. The Spring Boot starter pulls in all required modules a
 
 === "Gradle (Kotlin)"
 
-    ```kotlin
+    ```kotlin title="build.gradle.kts"
     implementation("com.societegenerale.failover:failover-spring-boot-starter:3.0.0")
     ```
 
 === "Gradle (Groovy)"
 
-    ```groovy
+    ```groovy title="build.gradle"
     implementation 'com.societegenerale.failover:failover-spring-boot-starter:3.0.0'
     ```
 
-No mandatory properties — the framework starts with production-safe defaults. All you need is to annotate your Spring-managed methods with `@Failover`.
+No additional configuration is required. The auto-configuration starts with an in-memory store and `exception-policy: rethrow` by default.
 
 ---
 
-## Module Dependencies
+## Requirements
 
-If you need finer control, declare individual modules instead of the starter.
+| Requirement | Minimum version |
+|---|---|
+| Java | 21 |
+| Spring Boot | 4.x |
+| Spring Cloud | 2025.x (optional — only for Resilience4j) |
+
+---
+
+## Individual Module Dependencies
+
+For fine-grained control, declare individual modules instead of the starter.
 
 ### Core (always required)
 
@@ -48,7 +60,7 @@ If you need finer control, declare individual modules instead of the starter.
 </dependency>
 ```
 
-### Domain (add to modules that annotate methods)
+### Domain annotation
 
 ```xml
 <dependency>
@@ -58,9 +70,9 @@ If you need finer control, declare individual modules instead of the starter.
 </dependency>
 ```
 
-This module provides the `@Failover` annotation and the `Referential` / `ReferentialAware` contracts. Add it to any module that declares `@Failover` on methods or defines referential domain types.
+Add this to every module that annotates methods with `@Failover` or defines types extending `Referential`.
 
-### Observable — Scanner
+### Observability — Scanner only
 
 ```xml
 <dependency>
@@ -70,9 +82,9 @@ This module provides the `@Failover` annotation and the `Referential` / `Referen
 </dependency>
 ```
 
-Discovers all `@Failover` annotations from the Spring `ApplicationContext` at startup. No Micrometer dependency. Use this when you want Spring-context-based scanning without Micrometer metrics.
+Discovers all `@Failover` methods in the Spring context at startup. No Micrometer dependency.
 
-### Observable — Micrometer (optional extension)
+### Observability — Micrometer
 
 ```xml
 <dependency>
@@ -82,7 +94,7 @@ Discovers all `@Failover` annotations from the Spring `ApplicationContext` at st
 </dependency>
 ```
 
-Adds Micrometer meters and a Spring Boot Actuator health indicator. Brings in `failover-observable-scanner` transitively. See [Observability](../modules/observability.md).
+Adds Micrometer counters and a Spring Boot Actuator health indicator. Includes the scanner transitively.
 
 ### JDBC Store
 
@@ -116,7 +128,7 @@ Requires a `DataSource` bean and the `FAILOVER_STORE` table — see [Store Types
 </dependency>
 ```
 
-Enable with `failover.type: resilience`. Requires `spring-cloud-starter-circuitbreaker-resilience4j` on the classpath.
+Requires `spring-cloud-starter-circuitbreaker-resilience4j` on the classpath. Enable with `failover.type: resilience`.
 
 ### Multi-Tenant Store
 
@@ -130,35 +142,42 @@ Enable with `failover.type: resilience`. Requires `spring-cloud-starter-circuitb
 
 ---
 
-## Requirements
-
-| Requirement  | Minimum                             |
-|--------------|-------------------------------------|
-| Java         | 21                                  |
-| Spring Boot  | 4.x                                 |
-| Spring Cloud | 2025.x (optional, for Resilience4j) |
-
----
-
 ## Database Setup (JDBC only)
 
-Create the store table before starting your application. The table name is `{table-prefix}FAILOVER_STORE`.
+Create the store table before starting your application. The table name defaults to `FAILOVER_STORE`; the optional `table-prefix` property prepends a custom prefix.
 
-```sql
--- Example: failover.store.jdbc.table-prefix=MYAPP_
--- Table name: MYAPP_FAILOVER_STORE
+```sql title="failover_store.sql"
+-- Default table name: FAILOVER_STORE
+-- With table-prefix=MYAPP_  →  MYAPP_FAILOVER_STORE
 
-CREATE TABLE MYAPP_FAILOVER_STORE (
-    FAILOVER_NAME    VARCHAR(50)   NOT NULL,
-    FAILOVER_KEY     VARCHAR(256)  NOT NULL,
-    AS_OF            TIMESTAMP(9) WITH TIME ZONE     NOT NULL,
-    EXPIRE_ON        TIMESTAMP(9) WITH TIME ZONE     NOT NULL,
-    PAYLOAD          VARCHAR(4000),           -- size to fit your largest payload
+CREATE TABLE FAILOVER_STORE (
+    FAILOVER_NAME    VARCHAR(50)                      NOT NULL,
+    FAILOVER_KEY     VARCHAR(256)                     NOT NULL,
+    AS_OF            TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    EXPIRE_ON        TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    PAYLOAD          VARCHAR(4000),
     PAYLOAD_CLASS    VARCHAR(256),
     PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
 );
 ```
 
+| Column | Type | Description |
+|---|---|---|
+| `FAILOVER_NAME` | `VARCHAR(50)` | Failover name (or domain) from the annotation |
+| `FAILOVER_KEY` | `VARCHAR(256)` | UUID-hashed key derived from method arguments |
+| `AS_OF` | `TIMESTAMP WITH TIME ZONE` | When the payload was last stored |
+| `EXPIRE_ON` | `TIMESTAMP WITH TIME ZONE` | When the entry expires |
+| `PAYLOAD` | `VARCHAR(4000)` | JSON-serialised payload; size to your largest payload |
+| `PAYLOAD_CLASS` | `VARCHAR(256)` | Fully qualified class name for deserialization |
+
 !!! tip "Table prefix strategy"
-    Use a meaningful prefix that identifies your application (`MYAPP_`, `ORDER_`, etc.).
-    This makes multi-schema deployments and DBA queries easier to reason about.
+    Use a prefix that identifies your application (`MYAPP_`, `ORDER_`, etc.).
+    This simplifies DBA queries and avoids table name collisions in shared schemas.
+
+---
+
+## Next Steps
+
+- [Quickstart](quickstart.md) — working example in 5 minutes
+- [Store Types](../configuration/store-types.md) — InMemory / Caffeine / JDBC comparison
+- [Properties Reference](../configuration/properties-reference.md) — all configuration options

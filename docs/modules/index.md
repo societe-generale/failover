@@ -1,20 +1,59 @@
 ---
-icon: material/puzzle-outline
+icon: material/puzzle
 ---
 
 # Modules
 
-Failover is split into focused modules. The starter includes all of them. Use individual modules for fine-grained dependency control.
+Failover is composed of focused modules. The starter pulls everything in — declare individual modules only when you need fine-grained dependency control.
 
-| Module | Description |
+```mermaid
+flowchart TD
+    STARTER[failover-spring-boot-starter]
+    AC[failover-spring-boot-autoconfigure]
+    DOMAIN[failover-domain]
+    CORE[failover-core]
+    ASPECT[failover-aspect]
+    IMM[failover-store-inmemory]
+    CAF[failover-store-caffeine]
+    JDBC[failover-store-jdbc]
+    ASYNC[failover-store-async]
+    MT[failover-store-multitenant]
+    RES[failover-execution-resilience]
+    SCHED[failover-scheduler]
+    SCAN[failover-observable-scanner]
+    MIC[failover-observable-micrometer]
+
+    STARTER --> AC
+    AC --> DOMAIN
+    AC --> CORE
+    AC --> ASPECT
+    AC --> IMM
+    AC --> ASYNC
+    AC --> SCHED
+    AC --> SCAN
+    MIC --> SCAN
+```
+
+---
+
+| Module | Purpose |
 |---|---|
-| [Core](core.md) | `FailoverHandler`, `KeyGenerator`, `ExpiryPolicy`, `PayloadEnricher`, `ContextPropagator` abstractions |
-| [Observability](observability.md) | Scanner, observer, MDC logging, Micrometer meters, health indicator — full observability stack |
-| [JDBC Store](store-jdbc.md) | Persistent store backed by H2, PostgreSQL, MySQL, MariaDB, Oracle, or SQL Server |
-| [Caffeine Store](store-caffeine.md) | In-process cache store backed by Caffeine |
-| [Async Store](store-async.md) | Non-blocking write decorator using a virtual-thread executor |
-| [Multi-Tenant Store](store-multitenant.md) | Per-tenant routing via `TABLE_PREFIX` or `SCHEMA` isolation strategy |
-| [Resilience](execution-resilience.md) | Resilience4j circuit-breaker integration for upstream calls |
-| [Scheduler](scheduler.md) | Expiry-cleanup and observable schedulers |
+| [failover-domain](core.md) | `@Failover` annotation, `Referential`, `ReferentialAware`, `Metadata` |
+| [failover-core](core.md) | All interfaces + default implementations |
+| [failover-aspect](core.md) | Spring AOP `@Around` interceptor |
+| [failover-store-inmemory](core.md) | `ConcurrentHashMap` store — dev/test only |
+| [failover-store-caffeine](store-caffeine.md) | Caffeine-backed in-process store |
+| [failover-store-jdbc](store-jdbc.md) | JDBC store — H2, PostgreSQL, MySQL, Oracle, MariaDB |
+| [failover-store-async](store-async.md) | Non-blocking write decorator (virtual-thread executor) |
+| [failover-store-multitenant](store-multitenant.md) | TABLE_PREFIX / SCHEMA per-tenant routing |
+| [failover-execution-resilience](execution-resilience.md) | Resilience4j circuit-breaker integration |
+| [failover-scheduler](scheduler.md) | Expiry-cleanup + observable-report schedulers |
+| [failover-observable-scanner](observability.md) | Startup scanner for `@Failover` methods |
+| [failover-observable-micrometer](observability.md) | Micrometer counters + health indicator |
 
-Start with [Core](core.md) to understand the central abstractions, then add store and execution modules as needed.
+---
+
+## Next Steps
+
+- [Core](core.md) — key interfaces and the default handler chain
+- [Store Types](../configuration/store-types.md) — choosing a backing store

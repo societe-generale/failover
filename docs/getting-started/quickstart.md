@@ -4,7 +4,7 @@ icon: material/lightning-bolt
 
 # Quickstart
 
-Build a complete failover-enabled service in 5 minutes.
+Build a failover-enabled service in 5 minutes — one dependency, one annotation, and your service is protected.
 
 ---
 
@@ -12,7 +12,7 @@ Build a complete failover-enabled service in 5 minutes.
 
 === "Maven"
 
-    ```xml
+    ```xml title="pom.xml"
     <dependency>
         <groupId>com.societegenerale.failover</groupId>
         <artifactId>failover-spring-boot-starter</artifactId>
@@ -22,36 +22,32 @@ Build a complete failover-enabled service in 5 minutes.
 
 === "Gradle"
 
-    ```kotlin
+    ```kotlin title="build.gradle.kts"
     implementation("com.societegenerale.failover:failover-spring-boot-starter:3.0.0")
     ```
 
 ---
 
-## 2. Configure
+## 2. Configure the Store
 
-=== "In-memory Store"
+=== "In-Memory (dev/test)"
 
     ```yaml title="application.yml"
+    # No additional config needed — in-memory is the default.
+    # Not suitable for production: data is lost on restart.
     failover:
-      enabled: true       # By default failover is enabled, set to false to disable
-
-    # Non Prod ( default ) configuration with in-memory store. Not recommended for production use.
-    
+      enabled: true
     ```
 
-=== "Caffeine Store"
+=== "Caffeine (single-node)"
 
     ```yaml title="application.yml"
     failover:
       store:
         type: caffeine
-
-    # Non Prod configuration with caffeine store. Not recommended for production use.
-
     ```
 
-=== "Jdbc Store"
+=== "JDBC (production)"
 
     ```yaml title="application.yml"
     failover:
@@ -59,17 +55,14 @@ Build a complete failover-enabled service in 5 minutes.
         type: jdbc
         jdbc:
           table-prefix: DEMO_
-    
-    # Production-ready configuration with jdbc store. Make sure to have the failover store table created in your database.
-
     ```
-     
-    ```sql title="failover_store.sql"
+
+    ```sql title="create_table.sql"
     CREATE TABLE DEMO_FAILOVER_STORE (
-        FAILOVER_NAME  VARCHAR(50)  NOT NULL,
-        FAILOVER_KEY   VARCHAR(256) NOT NULL,
-        AS_OF          TIMESTAMP(9) WITH TIME ZONE    NOT NULL,
-        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE    NOT NULL,
+        FAILOVER_NAME  VARCHAR(50)                  NOT NULL,
+        FAILOVER_KEY   VARCHAR(256)                 NOT NULL,
+        AS_OF          TIMESTAMP(9) WITH TIME ZONE  NOT NULL,
+        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE  NOT NULL,
         PAYLOAD        VARCHAR(4000),
         PAYLOAD_CLASS  VARCHAR(256),
         PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
@@ -78,14 +71,13 @@ Build a complete failover-enabled service in 5 minutes.
 
 ---
 
-## 3. Define Your Domain Type (Optional)
+## 3. Define Your Domain Type
 
-If you want failover metadata (`upToDate`, `asOf`) embedded in your response object, extend `Referential` or implement `ReferentialAware`.
+Your return type must extend `Referential` or implement `ReferentialAware` to carry failover metadata (`upToDate`, `asOf`) back to callers.
 
-=== "Referential"
-    
-    ```java
-    // Option A: extend Referential (adds upToDate, asOf, metadata fields)
+=== "Extend Referential"
+
+    ```java title="Country.java"
     @Data
     @EqualsAndHashCode(callSuper = false)
     public class Country extends Referential {
@@ -93,175 +85,116 @@ If you want failover metadata (`upToDate`, `asOf`) embedded in your response obj
         private String name;
         private String currency;
     }
-
     ```
 
-=== "ReferentialAware"
+    `Referential` adds three fields:
 
+    | Field | Type | Description |
+    |---|---|---|
+    | `upToDate` | `boolean` | `true` when fetched live; `false` when recovered from store |
+    | `asOf` | `Instant` | When the payload was originally stored |
+    | `metadata` | `Metadata` | Optional carrier for additional context |
 
-    ```java
-    // Option B: implement ReferentialAware (any existing class, no inheritance)
+=== "Implement ReferentialAware"
+
+    ```java title="Country.java"
     @Data
     public class Country implements ReferentialAware {
         private String code;
         private String name;
-        private String currency;
-    
-        // failover metadata — populated automatically on recovery
-        private Boolean upToDate;
+        private boolean upToDate;
         private Instant asOf;
-        private Metadata metadata = new Metadata();
-    
-        @Override public void setUpToDate(Boolean upToDate) { this.upToDate = upToDate; }
-        @Override public void setAsOf(Instant asOf)         { this.asOf = asOf; }
-        @Override public void setMetadata(Metadata metadata){ this.metadata = metadata; }
+
+        @Override
+        public void setUpToDate(boolean upToDate) { this.upToDate = upToDate; }
+
+        @Override
+        public void setAsOf(Instant asOf) { this.asOf = asOf; }
     }
     ```
 
-Both options are optional. If your domain type implements neither, failover still works — you just won't get the `upToDate`/`asOf`/`metadata` fields populated on recovery.
+    Use `ReferentialAware` when you cannot extend `Referential` (e.g. the class already has a superclass).
 
 ---
 
-## 4. Annotate Your Client
+## 4. Annotate Your Method
 
-```java
+Place `@Failover` on a method of a Spring-managed bean. The annotation works on any bean type: `@Service`, `@Component`, `@FeignClient`, etc.
+
+```java title="CountryClient.java" hl_lines="1 2 3 4"
 @FeignClient(name = "country-service", url = "${country.service.url}")
 public interface CountryClient {
 
-    /**
-     * Look up a country by its ISO code.
-     * Failover: store for 24 hours, recover on any exception.
-     */
-    @Failover(name = "country-by-code", expiryDuration = 24, expiryUnit = ChronoUnit.HOURS) // (1)
-    @GetMapping("/api/v1/countries/{code}")
-    Country findByCode(@PathVariable String code);
+    @Failover(
+        name = "country-by-code",
+        expiryDuration = 24,
+        expiryUnit = ChronoUnit.HOURS
+    )
+    Country findByCode(@RequestParam String code);
 
-    /**
-     * List all active countries.
-     * Failover: store for 1 hour (default).
-     */
-    @Failover(name = "country-all") // (2)
-    @GetMapping("/api/v1/countries")
+    @Failover(
+        name = "all-countries",
+        expiryDuration = 1,
+        expiryUnit = ChronoUnit.DAYS
+    )
     List<Country> findAll();
 }
 ```
 
-1. `name` must be unique across your application. `expiryDuration` + `expiryUnit` define how long the stored data is considered valid.
-2. Default expiry is `1 HOUR`. Change it globally via properties or per-method via annotation.
-
-!!! warning "Unique names"
-    Every `@Failover` annotation must have a unique `name`. Duplicates will cause a startup failure.
+!!! warning "Annotate the implementation, not the interface"
+    Spring AOP uses CGLIB proxies on concrete classes. If your `@Failover` is on an interface method (like a Feign client), the framework still intercepts it — but if you use CGLIB proxies directly, the annotation must be on the concrete class method.
 
 ---
 
-## 5. Externalise Expiry (Optional)
+## 5. What You Get
 
-Hard-coded durations in annotations are inconvenient to change. Use SpEL expressions to read from application properties:
+On every successful upstream call, Failover stores the result with the configured TTL:
 
-```yaml title="application.yml"
-myapp:
-  failover:
-    country-by-code:
-      duration: 48
-      unit: HOURS
+```
+INFO  FailoverHandler: Storing information on 'country-by-code' for failover.
+      ReferentialPayload: {name=country-by-code, key=<UUID>, upToDate=true, asOf=..., expireOn=...}
 ```
 
+On upstream failure, the last stored result is served automatically:
+
+```
+INFO  FailoverHandler: Recovering information on 'country-by-code' from failover store
+      due to exception: Connection refused
+INFO  FailoverHandler: Successfully recovered the information on 'country-by-code'.
+      ReferentialPayload: {upToDate=false, asOf=2024-01-15T10:30:00Z}
+```
+
+The returned object has `upToDate=false` and `asOf` set to the original store timestamp:
+
 ```java
+Country country = countryClient.findByCode("FR");
+System.out.println(country.isUpToDate());  // false (recovered from store)
+System.out.println(country.getAsOf());     // 2024-01-15T10:30:00Z
+```
+
+---
+
+## 6. Scatter / Gather (Optional)
+
+For collection-returning methods, use a `PayloadSplitter` to store each entity individually — enabling partial recovery when only some entries are available.
+
+```java title="CountryClient.java" hl_lines="3"
 @Failover(
-    name = "country-by-code",
-    expiryDurationExpression = "${myapp.failover.country-by-code.duration}",
-    expiryUnitExpression     = "${myapp.failover.country-by-code.unit}"
+    name = "countries-by-codes",
+    domain = "country",                      // shares store with country-by-code
+    payloadSplitter = "countrySplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
 )
-@GetMapping("/api/v1/countries/{code}")
-Country findByCode(@PathVariable String code);
+List<Country> findByCodes(@RequestParam String codes);  // codes = "FR,DE,US"
 ```
 
----
-
-## 6. Start the Application
-
-```
-  Failover started
-  ─────────────────────────────────────────────
-  enabled          : true
-  type             : BASIC
-  store.type       : JDBC
-  store.table      : DEMO_FAILOVER_STORE
-  scheduler        : enabled
-  ─────────────────────────────────────────────
-```
-
-The startup banner confirms which store and scheduler are active.
-
----
-
-## What Happens at Runtime
-
-```mermaid
-sequenceDiagram
-    participant C as Caller
-    participant A as FailoverAspect
-    participant H as FailoverHandler
-    participant S as FailoverStore
-    participant U as Upstream API
-
-    C->>A: call annotated method
-    A->>U: upstream call
-    alt success
-        U-->>A: result
-        A->>S: store(result, key, expiry)
-        A-->>C: result (upToDate=true)
-    else failure
-        U-->>A: exception
-        A->>S: find(key)
-        S-->>A: stored result
-        A-->>C: result (upToDate=false, asOf=storedTime)
-    end
-```
-
-**On success:** the result is stored under the derived key with the configured expiry.  
-**On failure:** the last stored result for the same key is returned. If none exists (first call ever) or the stored value has expired, the exception is re-thrown (default) or `null` is returned (`failover.exception-policy: never_throw`).
-
----
-
-## Verify It Works
-
-Write an integration test using the real store:
-
-```java
-@SpringBootTest
-@TestPropertySource(properties = {
-    "failover.store.type=jdbc",
-    "failover.store.async=false",        // synchronous writes for deterministic assertions
-    "failover.exception-policy=never_throw"
-})
-class CountryClientFailoverIT {
-
-    @Autowired CountryClient client;
-    @MockitoBean CountryServiceStub stub;   // the upstream
-
-    @Test
-    void recovers_stored_country_on_failure() {
-        // prime the store with a successful call
-        given(stub.findByCode("FR")).willReturn(new Country("FR", "France", "EUR"));
-        Country live = client.findByCode("FR");
-        assertThat(live.isUpToDate()).isTrue();
-
-        // simulate upstream failure
-        given(stub.findByCode("FR")).willThrow(new RuntimeException("upstream down"));
-        Country recovered = client.findByCode("FR");
-
-        assertThat(recovered.getCode()).isEqualTo("FR");
-        assertThat(recovered.isUpToDate()).isFalse();
-    }
-}
-```
+See [Scatter / Gather](../concepts/scatter-gather.md) for the full implementation guide.
 
 ---
 
 ## Next Steps
 
-- [Properties Reference](../configuration/properties-reference.md) — tune every aspect of failover behaviour.
-- [Store Types](../configuration/store-types.md) — choose the right backing store for production.
-- [Scatter / Gather](../concepts/scatter-gather.md) — per-entity storage for collection-returning methods.
-- [Multi-Tenant](../configuration/multi-tenant.md) — isolate stores by tenant.
+- [How It Works](../concepts/how-it-works.md) — full lifecycle explanation
+- [Properties Reference](../configuration/properties-reference.md) — all configuration options
+- [Store Types](../configuration/store-types.md) — choose the right backing store

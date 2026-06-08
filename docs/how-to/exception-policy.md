@@ -1,0 +1,79 @@
+---
+icon: material/alert-octagon-outline
+---
+
+# Exception Policy
+
+Controls what happens when recovery finds no valid stored entry — re-throw the original exception, return `null`, or run your own logic.
+
+---
+
+## Three Strategies
+
+| Strategy | Behaviour | Config value |
+|---|---|---|
+| `RETHROW` | Re-throws the original upstream exception | `rethrow` (default) |
+| `NEVER_THROW` | Returns `null` (or `RecoveredPayloadHandler` result) | `never_throw` |
+| `CUSTOM` | Your own `MethodExceptionPolicy` bean | `custom` |
+
+---
+
+## RETHROW (Default)
+
+The upstream exception propagates to the caller when no stored entry is found or all entries are expired.
+
+```yaml title="application.yml"
+failover:
+  exception-policy: rethrow
+```
+
+Use RETHROW when callers must know that the upstream is unavailable and cannot gracefully handle a `null` response.
+
+---
+
+## NEVER_THROW
+
+Returns `null` (or the value from `RecoveredPayloadHandler`) instead of propagating the exception. The caller receives `null` on no recovery.
+
+```yaml title="application.yml"
+failover:
+  exception-policy: never_throw
+```
+
+!!! tip "Combine with RecoveredPayloadHandler"
+    Pair `never_throw` with a `RecoveredPayloadHandler` to return an empty list, a default object, or any safe fallback instead of `null`. See [Recovered Payload Handler](recovered-payload-handler.md).
+
+---
+
+## CUSTOM — Implement MethodExceptionPolicy
+
+```java title="LogAndNeverThrowPolicy.java"
+@Component
+public class LogAndNeverThrowPolicy implements MethodExceptionPolicy {
+
+    @Override
+    public void handle(MethodExceptionContext context) {
+        log.warn("Failover: no recovery for '{}', suppressing exception",
+                 context.getFailover().name(), context.getCause());
+        // returning without throwing means the caller gets null
+    }
+}
+```
+
+```yaml title="application.yml"
+failover:
+  exception-policy: custom
+```
+
+`MethodExceptionContext` carries:
+- `getFailover()` — the `@Failover` annotation metadata
+- `getArgs()` — the original method arguments
+- `getCause()` — the upstream exception
+- `getClazz()` — the return type class
+
+---
+
+## Next Steps
+
+- [Recovered Payload Handler](recovered-payload-handler.md) — return a safe default on null recovery
+- [Properties Reference](../configuration/properties-reference.md) — `failover.exception-policy`

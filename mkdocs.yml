@@ -65,16 +65,30 @@ theme:
     - toc.follow
 
 plugins:
-  - search
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|(?!\b)(?=[A-Z][a-z])'
   - minify:
       minify_html: true
   - git-revision-date-localized:
       enable_creation_date: true
+      enable_git_follow: false
+      type: timeago
       exclude:
-        - api/javadoc/*
+        - index.md
+        - api/javadoc/**
+  - tags
+  - glightbox
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
   - pymdownx.details
   - pymdownx.superfences:
       custom_fences:
@@ -88,15 +102,18 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      check_paths: true
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - attr_list
-  - md_in_html
-  - tables
-  - toc:
-      permalink: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
 
 nav:
   - Home: index.md
@@ -110,11 +127,25 @@ nav:
     - Expiry Policies: concepts/expiry.md
     - Key Generation: concepts/key-generation.md
     - Scatter / Gather: concepts/scatter-gather.md
+    - Domain Grouping: concepts/domain.md
   - Configuration:
     - configuration/index.md
     - Properties Reference: configuration/properties-reference.md
     - Store Types: configuration/store-types.md
     - Multi-Tenant: configuration/multi-tenant.md
+  - How-to Guides:
+    - how-to/index.md
+    - Custom Key Generator: how-to/custom-key-generator.md
+    - Custom Expiry Policy: how-to/custom-expiry-policy.md
+    - Exception Policy: how-to/exception-policy.md
+    - Recovered Payload Handler: how-to/recovered-payload-handler.md
+    - Custom Payload Enricher: how-to/custom-payload-enricher.md
+    - Payload Splitter: how-to/payload-splitter.md
+    - Context Propagation: how-to/context-propagation.md
+    - Payload Column Resolver: how-to/payload-column-resolver.md
+    - Database Resolver: how-to/database-resolver.md
+    - Failover Store Query Resolver: how-to/failover-store-query-resolver.md
+    - Observability: how-to/observability.md
   - Modules:
     - modules/index.md
     - Core: modules/core.md
@@ -125,25 +156,14 @@ nav:
     - Resilience: modules/execution-resilience.md
     - Scheduler: modules/scheduler.md
     - Observability: modules/observability.md
-  - Guides:
-    - guides/index.md
-    - Key Generator: guides/custom-key-generator.md
-    - Expiry Policy: guides/custom-expiry-policy.md
-    - Exception Policy: guides/exception-policy.md
-    - Recovered Payload Handler: guides/recovered-payload-handler.md
-    - Payload Enricher: guides/custom-payload-enricher.md
-    - Payload Splitter: guides/payload-splitter.md
-    - Context Propagation: guides/context-propagation.md
-    - Payload Column Resolver: guides/payload-column-resolver.md
-    - Database Resolver: guides/database-resolver.md
-    - Failover Store Query Resolver: guides/failover-store-query-resolver.md
-    - Observability: guides/observability.md
+  - Reference:
+    - reference/index.md
+    - '@Failover Annotation': reference/annotation.md
+    - Key Interfaces: reference/interfaces.md
+    - Java Docs: reference/javadocs.md
   - Architecture Decisions:
     - Decision Index: adr/index.md
     - All Decisions: adr/adr.md
-  - API Reference:
-    - api/index.md
-    - Java Docs: api/javadocs.md
   - Changelog:
     - changelog/index.md
     - Changelog: changelog/changelog.md
@@ -151,8 +171,8 @@ nav:
     - support/index.md
     - FAQ: support/faq.md
     - Support: support/support.md
-    - About: support/about.md
     - Contributing: support/contributing.md
+    - About: support/about.md
 
 not_in_nav: |
   api/javadoc/**
@@ -165,10 +185,10 @@ validation:
     not_found: warn
 
 extra_css:
-  - web/css/extra.css
+  - web/css/overrides.css
 
 extra_javascript:
-  - web/javascript/fontsize.js
+  - web/js/font-size.js
 
 extra:
   social:
@@ -176,3 +196,4 @@ extra:
       link: https://github.com/societe-generale/failover
   version:
     provider: mike
+  copyright: Copyright &copy; 2024 Société Générale

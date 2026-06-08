@@ -1,10 +1,12 @@
 ---
-icon: material/shield-check-outline
+icon: material/shield-outline
 ---
 
-# Execution Resilience Module
+# Execution Resilience
 
-`failover-execution-resilience` integrates the Failover framework with [Resilience4j](https://resilience4j.readme.io/) circuit breakers. Instead of a simple try/catch, the upstream call is wrapped in a circuit breaker that trips after repeated failures and rejects calls during the open state.
+`failover-execution-resilience` wraps upstream calls in a Resilience4j circuit-breaker, providing fast-fail behaviour when an upstream service is repeatedly failing.
+
+---
 
 ## Dependency
 
@@ -16,7 +18,7 @@ icon: material/shield-check-outline
 </dependency>
 ```
 
-Also requires Resilience4j via Spring Cloud Circuit Breaker:
+Also requires Spring Cloud Circuit Breaker on the classpath:
 
 ```xml
 <dependency>
@@ -25,54 +27,55 @@ Also requires Resilience4j via Spring Cloud Circuit Breaker:
 </dependency>
 ```
 
-## Configuration
+---
 
-```yaml
+## Enable
+
+```yaml title="application.yml"
 failover:
   type: resilience
 ```
 
-## How It Works
+With `type: resilience`, `FailoverAspect` uses `ResilienceFailoverExecution` instead of `BasicFailoverExecution`. The circuit-breaker wraps the upstream call before the try/catch handoff to `FailoverHandler`.
 
-`ResilienceFailoverExecution` wraps each `@Failover` method call in a Resilience4j circuit breaker identified by the `@Failover(name)`. When the circuit is open, calls are immediately rejected without reaching the upstream — Failover recovery is triggered at that point.
+---
+
+## Circuit Breaker Behaviour
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Closed
-    Closed --> Open : failure rate threshold exceeded
+    direction LR
+    Closed --> Open : failure threshold exceeded
     Open --> HalfOpen : wait duration elapsed
-    HalfOpen --> Closed : test call succeeds
-    HalfOpen --> Open : test call fails
-
-    Closed : calls pass through
-    Open : calls rejected → Failover recovers
-    HalfOpen : one call let through to test
+    HalfOpen --> Closed : probe call succeeds
+    HalfOpen --> Open : probe call fails
+    Open --> [*] : CallNotPermittedException → triggers recovery immediately
 ```
+
+When the circuit is **Open**, the upstream call is not attempted. `CallNotPermittedException` is thrown immediately and `FailoverHandler.recover` is called — serving the last stored result without hitting the upstream at all.
+
+---
 
 ## Resilience4j Configuration
 
-Configure the circuit breaker via standard Resilience4j properties, using the `@Failover(name)` as the circuit breaker instance name:
+Configure circuit-breaker properties via Spring Cloud's standard configuration:
 
-```yaml
+```yaml title="application.yml"
 resilience4j:
   circuitbreaker:
     instances:
-      country-by-code:                    # matches @Failover(name = "country-by-code")
-        registerHealthIndicator: true
+      failover:                               # instance name used by the module
         slidingWindowSize: 10
-        minimumNumberOfCalls: 5
-        permittedNumberOfCallsInHalfOpenState: 3
-        automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 10s
         failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
 ```
 
-## When to Use
+The default instance name is `failover`. Override by declaring a custom `CircuitBreakerRegistry` bean.
 
-Use `type: resilience` when:
+---
 
-- Upstream failures are bursty and you want to stop hammering the failing service during the open state.
-- You need circuit state exposed via Spring Boot Actuator health indicators.
-- You want integration with Resilience4j's metric and event listeners.
+## Next Steps
 
-Use `type: basic` (default) when the upstream's own retry/timeout mechanisms are sufficient, or when the added Resilience4j complexity is not justified.
+- [Quickstart](../getting-started/quickstart.md) — add the starter dependency
+- [Properties Reference](../configuration/properties-reference.md) — `failover.type` configuration

@@ -2,87 +2,62 @@
 icon: material/clock-outline
 ---
 
-# Scheduler Module
+# Scheduler
 
-`failover-scheduler` provides two background jobs that maintain the health of the failover store.
-
-## Dependency
-
-```xml
-<dependency>
-    <groupId>com.societegenerale.failover</groupId>
-    <artifactId>failover-scheduler</artifactId>
-    <version>3.0.0</version>
-</dependency>
-```
-
-Included transitively via `failover-spring-boot-starter`.
+`failover-scheduler` provides two scheduled tasks: an expiry-cleanup scheduler that purges expired store entries, and an observable report scheduler that publishes a daily summary of all active failover configurations.
 
 ---
 
-## ExpiryCleanupScheduler
+## Expiry Cleanup Scheduler
 
-Removes all expired entries from the store by calling `FailoverHandler.clean()`.
+`ExpiryCleanupScheduler` runs `FailoverHandler.clean()` on a cron schedule:
 
-```yaml
+```java
+failoverHandler.clean();
+// → failoverStore.cleanByExpiry(Instant.now())
+// → deletes all entries where EXPIRE_ON < now
+```
+
+Default schedule: **every hour**.
+
+```yaml title="application.yml"
 failover:
   scheduler:
     enabled: true
-    cleanup-cron: "0 0 * * * *"   # every hour (default)
+    cleanup-cron: "0 0 * * * *"    # every hour (Spring cron: s m h d M dow)
 ```
-
-The cleanup calls `FailoverStore.cleanByExpiry(now)`. For JDBC stores this executes:
-
-```sql
-DELETE FROM FAILOVER_STORE WHERE EXPIRE_ON < ?
-```
-
-!!! tip "Cleanup frequency"
-    Tune `cleanup-cron` based on your store size and expiry distribution. More frequent cleanup keeps the JDBC table smaller at the cost of more DELETE queries.
 
 ---
 
-## ObservableScheduler
+## Observable Report Scheduler
 
-Calls `FailoverObserver.observe()` on a cron schedule — collects metrics from all registered `@Failover` configurations and publishes them to all registered `ObservablePublisher` beans.
+`ObservableScheduler` publishes a daily summary of all discovered `@Failover` methods to the configured `ObservablePublisher`. The default publisher writes to SLF4J at INFO level.
 
-```yaml
+Default schedule: **daily at midnight**.
+
+```yaml title="application.yml"
 failover:
   scheduler:
-    enabled: true
-    report-cron: "0 0 0 * * *"   # daily at midnight (default)
+    report-cron: "0 0 0 * * *"    # daily midnight
 ```
 
-Default output: structured log entry via `MdcLoggerObservablePublisher`. Add `failover-observable-micrometer` to also publish Micrometer gauges.
+The report lists each failover by name, expiry configuration, and domain — useful for auditing active failover coverage.
 
 ---
 
-## Disabling the Scheduler
+## Disabling the Schedulers
 
-```yaml
+```yaml title="application.yml"
 failover:
   scheduler:
     enabled: false
 ```
 
-Disables both schedulers. Individual jobs cannot be disabled independently — disable the whole scheduler and implement your own if needed.
+Both schedulers are disabled together. There is no way to disable them individually via properties; declare a custom scheduler bean to replace the default behaviour.
 
 ---
 
-## Manual Invocation
+## Next Steps
 
-Trigger cleanup or observation directly from application code:
-
-```java
-@Autowired FailoverHandler<Object> handler;
-
-// manual cleanup
-handler.clean();
-```
-
-```java
-@Autowired FailoverObserver failoverObserver;
-
-// manual observe
-failoverObserver.observe();
-```
+- [Observability](observability.md) — publishing metrics and reports
+- [Properties Reference](../configuration/properties-reference.md) — `failover.scheduler.*`
