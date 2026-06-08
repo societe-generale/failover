@@ -1,58 +1,68 @@
 ---
-icon: material/lightning-bolt-outline
+icon: material/lightning-bolt
 ---
 
-# Async Store Module
+# Async Store
 
-`failover-store-async` is a decorator that wraps any `FailoverStore` and offloads write operations to a background `TaskExecutor`. Read operations (`find`) remain synchronous to guarantee consistent recovery.
+`AsyncFailoverStore` is a transparent decorator that offloads write operations to a virtual-thread executor, keeping the request thread free.
+
+---
 
 ## How It Works
 
-```
-Caller → AsyncFailoverStore → TaskExecutor (virtual threads)
-                           ↘ store / delete / cleanByExpiry (async)
-         ← result immediately
+```mermaid
+sequenceDiagram
+    participant R as Request Thread
+    participant AS as AsyncFailoverStore
+    participant E as VirtualThreadExecutor
+    participant B as Base Store
+
+    R->>AS: store(payload)
+    AS->>E: submit(() → baseStore.store(payload))
+    AS-->>R: return immediately
+    E->>B: store(payload)    [on virtual thread]
+
+    R->>AS: find(name, key)
+    AS->>B: find(name, key)  [synchronous — no async]
+    B-->>AS: Optional<ReferentialPayload>
+    AS-->>R: Optional<ReferentialPayload>
 ```
 
-`find` bypasses the executor and queries the delegate store directly on the calling thread.
+**Write operations** (`store`, `delete`, `cleanByExpiry`) run asynchronously on a virtual-thread executor.
+**Read operations** (`find`) are always synchronous — they execute on the calling thread.
+
+---
 
 ## Configuration
 
-Async writes are enabled by default via `failover.store.async=true`. No extra dependency is needed — the async decorator is part of `failover-spring-boot-autoconfigure`.
+Async mode is enabled by default:
 
-```yaml
+```yaml title="application.yml"
 failover:
   store:
-    async: true   # default
+    async: true    # default
 ```
 
-## Disabling Async
+Set `async: false` to make all operations synchronous. Required when:
 
-Set `async=false` when:
+- Using the `SCHEMA` multi-tenant strategy (thread-local context is lost on executor threads).
+- Integration tests that assert on stored state immediately after the annotated method returns.
 
-- Using the JDBC `SCHEMA` multi-tenant strategy (the cleanup scheduler runs on a thread without tenant context)
-- Writing deterministic integration tests that assert on database rows immediately after a store call
-- Debugging unexpected `null` recoveries that might be caused by write-before-read races
+---
 
-```yaml
-failover:
-  store:
-    async: false
-```
+## Virtual Thread Executor
 
-## Executor Configuration
+`AsyncFailoverStore` uses a Spring `TaskExecutor` configured with virtual threads (Java 21). The executor is injected by auto-configuration. Override by declaring your own `TaskExecutor` bean named `failoverTaskExecutor`.
 
-The background executor is auto-configured as a virtual-thread `TaskExecutor` (Java 21+). Override it by declaring a `TaskExecutor` bean named `failoverStoreExecutor`:
+---
 
-```java
-@Bean("failoverStoreExecutor")
-public TaskExecutor failoverStoreExecutor() {
-    ThreadPoolTaskExecutor exec = new ThreadPoolTaskExecutor();
-    exec.setCorePoolSize(4);
-    exec.setMaxPoolSize(16);
-    exec.setQueueCapacity(1000);
-    exec.setThreadNamePrefix("failover-store-");
-    exec.initialize();
-    return exec;
-}
-```
+## Dependency
+
+`failover-store-async` is included in the starter. It is activated automatically when `failover.store.async=true`.
+
+---
+
+## Next Steps
+
+- [Store Types](../configuration/store-types.md) — choose a backing store
+- [Multi-Tenant Store](store-multitenant.md) — async + multitenant interaction

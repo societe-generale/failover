@@ -4,12 +4,25 @@ icon: material/scatter-plot
 
 # Scatter / Gather
 
-Standard failover stores the entire method result under one key. For methods that return a collection of entities keyed by ID, this means:
+Standard failover stores the entire method result under one key. For collection-returning methods this means a single upstream failure wipes out all cached entries at once and partial recovery is impossible. Scatter/gather solves both problems.
 
-- A single upstream failure wipes out all IDs at once.
-- A partial upstream failure (e.g. some IDs available, some not) cannot be expressed.
+---
 
-**Scatter/gather** solves this by storing each entity individually under its own key. On recovery, each key is fetched independently and the results are merged — partial recovery is handled gracefully.
+## The Problem with Single-Key Collections
+
+Without scatter/gather:
+
+```
+store: findAll() → stores ALL countries under ONE key "NO-ARG"
+fail:  one country service error → ALL countries lost together
+```
+
+With scatter/gather:
+
+```
+store: findAll() → splits → stores FR, DE, US, ... each under its own key
+fail:  partial failure → FR and DE recovered; US missing → partial result returned
+```
 
 ---
 
@@ -21,186 +34,153 @@ sequenceDiagram
     participant H as ScatterGatherHandler
     participant S as FailoverStore
 
-    note over C,S: Store path (success)
-    C->>H: findByIds("1,2,3") → [TP1, TP2, TP3]
-    H->>H: split → [slice(1,TP1), slice(2,TP2), slice(3,TP3)]
-    H->>S: store(key=1, TP1)
-    H->>S: store(key=2, TP2)
-    H->>S: store(key=3, TP3)
-    H-->>C: [TP1, TP2, TP3]
+    note over C,S: Store path (upstream success)
+    C->>H: findByCodes("FR,DE,US") → [FR, DE, US]
+    H->>H: splitOnStore → [ctx(FR), ctx(DE), ctx(US)]
+    H->>S: store(key=FR, payload=FR)
+    H->>S: store(key=DE, payload=DE)
+    H->>S: store(key=US, payload=US)
+    H-->>C: [FR, DE, US]
 
-    note over C,S: Recover path (failure)
-    C->>H: findByIds("1,2,3") → exception
-    H->>H: split keys → [1, 2, 3]
-    H->>S: find(key=1) → TP1
-    H->>S: find(key=2) → TP2
-    H->>S: find(key=3) → null (expired or missing)
-    H->>H: merge([TP1, TP2, null]) → [TP1, TP2]
-    H-->>C: [TP1, TP2]
+    note over C,S: Recover path (upstream failure)
+    C->>H: findByCodes("FR,DE,US") → exception
+    H->>H: splitOnRecover → [ctx(FR), ctx(DE), ctx(US)]
+    H->>S: find(key=FR) → FR ✅
+    H->>S: find(key=DE) → DE ✅
+    H->>S: find(key=US) → null (expired)
+    H->>H: merge([FR, DE, null]) → [FR, DE]
+    H-->>C: [FR, DE]
 ```
 
 ---
 
-## Enabling Scatter / Gather
-
-### 1. Implement PayloadSplitter
+## PayloadSplitter Interface
 
 ```java
-@Component("thirdPartySplitter")
-public class ThirdPartySplitter implements PayloadSplitter<List<ThirdParty>, ThirdParty> {
+public interface PayloadSplitter<T, R> {
+
+    // splits composite result into per-entity store contexts
+    List<StoreContext<R>> splitOnStore(StoreContext<T> context);
+
+    // splits composite args into per-entity recover contexts
+    List<RecoverContext<R>> splitOnRecover(RecoverContext<T> context);
+
+    // merges per-entity recovered contexts back into composite result
+    RecoverContext<T> merge(List<RecoverContext<R>> contexts);
+}
+```
+
+| Type parameter | Meaning |
+|---|---|
+| `T` | The composite type — what the annotated method returns |
+| `R` | The slice type — what is stored per individual entity |
+
+### StoreContext Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `failover` | `Failover` | The annotation metadata |
+| `args` | `List<Object>` | Method arguments (full composite args on input; single-entity args per slice) |
+| `payload` | `T` | The composite payload (full list on input; single entity per slice) |
+
+### RecoverContext Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `failover` | `Failover` | The annotation metadata |
+| `args` | `List<Object>` | Method arguments |
+| `clazz` | `Class<T>` | The slice type |
+| `cause` | `Throwable` | The upstream exception that triggered recovery |
+
+---
+
+## Full Implementation Example
+
+```java title="CountrySplitter.java"
+@Component("countrySplitter")
+public class CountrySplitter implements PayloadSplitter<List<Country>, Country> {
 
     @Override
-    public List<StoreContext<ThirdParty>> splitOnStore(StoreContext<List<ThirdParty>> ctx) {
-        // args[0] is the CSV of IDs: "1,2,3"
-        String[] ids = ((String) ctx.getArgs().get(0)).split(",");
-        List<ThirdParty> entities = ctx.getPayload();
+    public List<StoreContext<Country>> splitOnStore(StoreContext<List<Country>> ctx) {
+        String[] codes = ((String) ctx.getArgs().get(0)).split(",");
+        List<Country> countries = ctx.getPayload();
 
-        return IntStream.range(0, entities.size())
-            .mapToObj(i -> StoreContext.<ThirdParty>builder()
+        return IntStream.range(0, countries.size())
+            .mapToObj(i -> StoreContext.<Country>builder()
                 .failover(ctx.getFailover())
-                .args(List.of(ids[i].trim()))   // (1) single-ID args for key derivation
-                .payload(entities.get(i))
+                .args(List.of(codes[i].trim()))   // single-code args for key derivation
+                .payload(countries.get(i))
                 .build())
             .toList();
     }
 
     @Override
-    public List<RecoverContext<ThirdParty>> splitOnRecover(RecoverContext<List<ThirdParty>> ctx) {
-        // same CSV → individual recover contexts per ID
+    public List<RecoverContext<Country>> splitOnRecover(RecoverContext<List<Country>> ctx) {
         String csv = (String) ctx.getArgs().get(0);
         return Arrays.stream(csv.split(","))
-            .map(id -> RecoverContext.<ThirdParty>builder()
+            .map(code -> RecoverContext.<Country>builder()
                 .failover(ctx.getFailover())
-                .args(List.of(id.trim()))
-                .clazz(ThirdParty.class)
+                .args(List.of(code.trim()))
+                .clazz(Country.class)
                 .cause(ctx.getCause())
                 .build())
             .toList();
     }
 
     @Override
-    public RecoverContext<List<ThirdParty>> merge(List<RecoverContext<ThirdParty>> slices) {
-        List<ThirdParty> result = slices.stream()
+    public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+        List<Country> result = contexts.stream()
             .map(RecoverContext::getPayload)
             .filter(Objects::nonNull)
             .toList();
-        return RecoverContext.<List<ThirdParty>>builder().payload(result).build();
+        return contexts.get(0).toBuilder()
+            .clazz((Class) List.class)
+            .payload(result)
+            .build();
     }
 }
 ```
 
-1. Each slice uses a single-element args list. `DefaultKeyGenerator` converts `"1"` → key `"1"`.
-
-### 2. Reference the Splitter on the Annotation
+### Wire to the Annotation
 
 ```java
 @Failover(
-    name = "third-parties-by-ids",
-    expiryDuration = 1,
-    expiryUnit = ChronoUnit.HOURS,
-    payloadSplitter = "thirdPartySplitter"   // bean name
+    name = "countries-by-codes",
+    domain = "country",                    // shares store with country-by-code
+    payloadSplitter = "countrySplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
 )
-List<ThirdParty> findByIds(String csvIds);
+List<Country> findByCodes(@RequestParam String codes);
 ```
 
 ---
 
-## Parallel Scatter
+## Parallel Dispatch
 
-By default, slices are stored and recovered sequentially. Enable parallel dispatch via virtual threads:
+By default, per-entity store and recover operations run in parallel via a virtual-thread executor:
 
-```yaml
+```yaml title="application.yml"
 failover:
   scatter:
-    parallel: true   # default
+    parallel: true   # default — CompletableFuture per slice on virtual threads
 ```
 
-Each slice is submitted to the `scatterGatherExecutor` (a virtual-thread executor auto-configured by the framework). `CompletableFuture.allOf` waits for all slices before returning.
-
-!!! warning "Context propagation"
-    When parallel scatter is enabled, thread-bound context (tenant ID, MDC, security principal) must be propagated to each slice thread. Provide a `ContextPropagator` bean — see [Context Propagation](../guides/context-propagation.md).
+Set `parallel: false` for sequential per-entity processing (useful for debugging or low-throughput scenarios).
 
 ---
 
-## Order Independence
+## Partial Recovery Behaviour
 
-If CSV argument order varies across callers (`"1,2,3"` vs `"3,2,1"`), normalise the IDs in `splitOnRecover` before deriving keys. The merge phase assembles results in whatever order the store returns them.
+When some slices are missing or expired, `merge()` receives a mix of populated and `null` payloads. Your `merge` implementation decides how to handle nulls — return a partial list, substitute defaults, or propagate null. The default behaviour (as shown above) filters out null entries and returns whatever is available.
 
----
-
-## Partial Recovery
-
-The `merge` method receives all slice contexts, including those whose `payload` is `null` (expired or missing). Filter out `null` entries and return whatever is available — callers should handle a shorter-than-requested list.
+!!! tip "Combined with `domain`"
+    When scatter/gather and domain are combined, a `findByCode("FR")` call can recover from an entry previously stored by `findByCodes("FR,DE,US")`. The domain ensures both failovers share the same `FAILOVER_NAME`, and scatter stores each code under its own key. See [Domain Grouping](domain.md).
 
 ---
 
-## Domain Sharing
+## Next Steps
 
-Scatter/gather stores individual entity slices under the `FAILOVER_NAME` of the scatter endpoint (`findByIds`). A separate single-entity endpoint (`findByCode`) stores its results under its own `FAILOVER_NAME`. Even when both store the same entity with the same key, the composite `(FAILOVER_NAME, FAILOVER_KEY)` store address differs — they never share data.
-
-The `domain` attribute solves this. When two `@Failover` annotations declare the same `domain`, they share the same `FAILOVER_NAME` and the same UUID prefix in `FailoverKeyGenerator`. An entity stored by either endpoint is recoverable by both.
-
-### When to use domain sharing
-
-The primary use case is **pre-population via a bulk endpoint that feeds single-entity recovery**:
-
-- `findByIds("1,2,3")` with scatter/gather populates three store entries, one per ID.
-- `findByCode("1")` fails later and recovers entry stored by `findByIds`.
-
-Without `domain`, `findByCode` misses — the scatter stores under `"country-all"`, single-entity looks up under `"country-by-code"`.
-
-With `domain = "country"`:
-
-```java
-@Failover(
-    name = "country-by-code",
-    domain = "country",   //same domain name
-    expiryDuration = 1, expiryUnit = ChronoUnit.HOURS
-)
-Country findByCode(String code);
-
-@Failover(
-    name = "country-all",
-    domain = "country",   //same domain name
-    expiryDuration = 1, expiryUnit = ChronoUnit.HOURS,
-    payloadSplitter = "countrySplitter"
-)
-List<Country> findAll(String csvIds);
-```
-
-Both `name` values remain unique (required by the scanner). The `domain` value is what the store and key generator use as the shared namespace. The `PayloadSplitter` on `findAll` must produce single-element args that match the args `findByCode` uses — typically a single ID string — so the UUID keys are identical.
-
-```mermaid
-sequenceDiagram
-    participant C as Caller
-    participant H as ScatterGatherHandler
-    participant S as FailoverStore
-
-    note over C,S: findAll stores individual slices
-    C->>H: findAll("1,2,3") → [A, B, C]
-    H->>S: store(name="country", key=UUID("country:1"), A)
-    H->>S: store(name="country", key=UUID("country:2"), B)
-    H->>S: store(name="country", key=UUID("country:3"), C)
-
-    note over C,S: findByCode recovers from same slot
-    C->>H: findByCode("1") → exception
-    H->>S: find(name="country", key=UUID("country:1")) → A
-    H-->>C: A
-```
-
-### Expiry alignment
-
-All `@Failover` annotations sharing a domain must configure the same expiry. The store uses the expiry written by whichever endpoint stores last — mismatched expiry causes the last writer to silently override the intended expiry for all readers. `SpringContextFailoverScanner` logs a warning at startup if domain members have different expiry values.
-
-```
-WARN — Failover domain 'country' contains 2 failovers with different expiry configurations.
-       Last writer wins per store entry — align expiry to avoid inconsistency.
-```
-
----
-
-## Configuration Reference
-
-| Property | Default | Description |
-|---|---|---|
-| `failover.scatter.parallel` | `true` | Dispatch slices concurrently on virtual threads |
+- [Domain Grouping](domain.md) — cross-failover store sharing
+- [Payload Splitter How-to](../how-to/payload-splitter.md) — step-by-step implementation
+- [Context Propagation](../how-to/context-propagation.md) — propagate thread-local context across parallel slices

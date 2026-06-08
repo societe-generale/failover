@@ -1,140 +1,97 @@
 ---
-icon: material/cube-outline
+icon: material/layers
 ---
 
-# Core Module
+# Core Modules
 
-`failover-core` contains the central abstractions: handler, key generation, expiry policy, payload enrichment, store interface, and reporting.
+Three modules form the non-negotiable foundation of every Failover installation: `failover-domain`, `failover-core`, and `failover-aspect`.
 
-## Dependency
+---
+
+## failover-domain
+
+Provides the `@Failover` annotation and the two contracts for marking your domain types:
+
+| Type | Kind | Purpose |
+|---|---|---|
+| `@Failover` | Annotation | Declares failover behaviour on a method |
+| `Referential` | Abstract class | Extend to add `upToDate`, `asOf`, `metadata` fields |
+| `ReferentialAware` | Interface | Implement when inheritance is not possible |
+| `Metadata` | Class | Key/value carrier for optional context in `Referential` |
+
+Add this to any module that annotates methods or defines referential domain types:
 
 ```xml
 <dependency>
     <groupId>com.societegenerale.failover</groupId>
-    <artifactId>failover-core</artifactId>
+    <artifactId>failover-domain</artifactId>
     <version>3.0.0</version>
 </dependency>
 ```
 
-Included transitively via `failover-spring-boot-starter`.
+---
+
+## failover-core
+
+Contains all SPI interfaces and their default implementations:
+
+| Interface | Default implementation | Purpose |
+|---|---|---|
+| `FailoverHandler<T>` | `DefaultFailoverHandler` | Store/recover/clean orchestration |
+| `FailoverStore<T>` | `DefaultFailoverStore` (delegates to impl) | Persistence contract |
+| `KeyGenerator` | `DefaultKeyGenerator` | Raw key from method args |
+| `ExpiryPolicy<T>` | `DefaultExpiryPolicy` | TTL computation and check |
+| `PayloadEnricher<T>` | `DefaultPayloadEnricher` | Enrich on store/recover |
+| `PayloadSplitter<T,R>` | *(none — must provide your own)* | Scatter/gather split/merge |
+| `RecoveredPayloadHandler` | *(none — null by default)* | Handle null recovery result |
+| `ContextPropagator` | `CompositeContextPropagator(noOp)` | Thread context across async slices |
+
+All beans use `@ConditionalOnMissingBean` in auto-configuration — declare your own `@Bean` to replace any default.
+
+### Handler Decorator Chain
+
+```mermaid
+flowchart TD
+    A[AdvancedFailoverHandler] --> S[ScatterGatherFailoverHandler]
+    S --> D[DefaultFailoverHandler]
+```
+
+- `AdvancedFailoverHandler` — adds metrics publishing and `RecoveredPayloadHandler` invocation.
+- `ScatterGatherFailoverHandler` — intercepts when `payloadSplitter` is set; delegates directly to `DefaultFailoverHandler` for plain failovers.
+- `DefaultFailoverHandler` — core key/expiry/store/recover logic.
 
 ---
 
-## Key Interfaces
+## failover-aspect
 
-### FailoverHandler
-
-Coordinates store/recover/clean operations.
+Contains `FailoverAspect`, a Spring AOP `@Around` advice:
 
 ```java
-public interface FailoverHandler<T> {
-    T store(Failover failover, List<Object> args, T payload);
-    T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable throwable);
-    void clean();
-}
+@Around("@annotation(failover)")
+public Object failoverAround(ProceedingJoinPoint pjp, Failover failover) throws Throwable
 ```
 
-Three implementations:
+The aspect:
+1. Resolves the annotated method's `@Failover` metadata.
+2. Attempts to proceed (call upstream).
+3. On success: calls `failoverExecution.store(failover, args, result)`.
+4. On exception: calls `failoverExecution.recover(failover, args, clazz, cause)`.
 
-| Class | Purpose |
-|---|---|
-| `DefaultFailoverHandler` | Standard single-key store/recover |
-| `AdvancedFailoverHandler` | Extends default with additional reporting hooks |
-| `ScatterGatherFailoverHandler` | Scatter/gather routing decorator |
-
-### FailoverStore
-
-Backing store abstraction.
-
-```java
-public interface FailoverStore<T> {
-    void store(ReferentialPayload<T> payload);
-    Optional<ReferentialPayload<T>> find(String name, String key);
-    void cleanByExpiry(Instant expiry);
-    void delete(ReferentialPayload<T> payload);
-}
-```
-
-### KeyGenerator
-
-Derives a store key from method arguments.
-
-```java
-public interface KeyGenerator {
-    String key(Failover failover, List<Object> args);
-}
-```
-
-Default: `DefaultKeyGenerator`. Override per-method with `@Failover(keyGenerator = "myBean")`.
-
-### ExpiryPolicy
-
-Computes and checks TTL.
-
-```java
-public interface ExpiryPolicy<T> {
-    Instant computeExpiry(Failover failover);
-    boolean isExpired(Failover failover, ReferentialPayload<T> payload);
-}
-```
-
-Override per-method with `@Failover(expiryPolicy = "myBean")`.
-
-### PayloadEnricher
-
-Populates `upToDate`/`asOf`/`metadata` on domain objects.
-
-```java
-public interface PayloadEnricher<T> {
-    ReferentialPayload<T> enrichOnStore(Failover failover, Class<T> clazz, ReferentialPayload<T> payload);
-    ReferentialPayload<T> enrichOnRecover(Failover failover, Class<T> clazz, ReferentialPayload<T> payload, Throwable cause);
-}
-```
-
-Default: `DefaultPayloadEnricher`. Checks if payload implements `Referential` or `ReferentialAware`, then sets fields.
-
-### RecoveredPayloadHandler
-
-Handles the result after recovery (including `null` when nothing was found).
-
-```java
-public interface RecoveredPayloadHandler {
-    <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload);
-}
-```
-
-Default: `PassThroughRecoveredPayloadHandler` — returns the payload unchanged. Provide a custom bean to return a default object instead of `null`.
+`FailoverExecution` is the thin wrapper that selects between `BASIC` (try/catch) and `RESILIENCE` (circuit-breaker) modes.
 
 ---
 
-## Context Propagation
+## failover-store-inmemory
 
-`ContextPropagator` wraps tasks submitted to executor threads to carry thread-bound context (MDC, tenant, security):
+`ConcurrentHashMap`-backed store. Zero dependencies. Used as the default store when no other store module is on the classpath.
 
-```java
-public interface ContextPropagator {
-    Runnable wrap(Runnable task);
-    <T> Supplier<T> wrapSupplier(Supplier<T> task);
-    static ContextPropagator noOp() { ... }
-}
-```
-
-Built-in: `MdcContextPropagator` (copies MDC entries), `TenantContextPropagator` (in `failover-store-multitenant`). Compose multiple propagators with `CompositeContextPropagator`.
+!!! warning "Not for production"
+    InMemory store is not persistent. All cached data is lost on restart.
 
 ---
 
-## Observability
+## Next Steps
 
-`FailoverObserver` collects metrics from all scanned `@Failover` configurations and publishes them via `ObservablePublisher`:
-
-```java
-public interface FailoverObserver {
-    void observe();
-}
-```
-
-Default publisher auto-configured: `MdcLoggerObservablePublisher` — writes metrics to MDC and logs at INFO.
-
-Micrometer meters and Actuator health are provided by the `failover-observable-micrometer` extension module.
-
-See the [Observability](observability.md) page for full details, custom publisher examples, and scheduler configuration.
+- [JDBC Store](store-jdbc.md) — production-ready persistent store
+- [Async Store](store-async.md) — non-blocking write decorator
+- [Reference — Interfaces](../reference/interfaces.md) — full SPI method signatures

@@ -1,177 +1,148 @@
 ---
-icon: material/domain
+icon: material/office-building
 ---
 
-# Multi-Tenant
+# Multi-Tenant Configuration
 
-Multi-tenant mode routes each request to the correct tenant store based on the current thread's tenant context.
+Multi-tenant mode routes each failover store operation to the correct tenant's table or schema. It is transparent to `@Failover` annotations — no annotation changes are required.
 
 ---
 
-## Overview
+## How It Works
 
 ```mermaid
-graph TD
-    A[Request] --> B[TenantResolver]
-    B -->|tenant=acme| C[ACME_MYAPP_FAILOVER_STORE]
-    B -->|tenant=globex| D[GLOBEX_MYAPP_FAILOVER_STORE]
-    B -->|tenant=null| E[default-tenant fallback]
+flowchart LR
+    REQ[Incoming Request\n tenant=acme]
+    TR[TenantResolver\nresolves tenant ID]
+    MT[MultiTenantFailoverStore\nroutes by tenant ID]
+    A[(ACME_FAILOVER_STORE)]
+    G[(GLOBEX_FAILOVER_STORE)]
+
+    REQ --> TR --> MT
+    MT -->|tenant=acme| A
+    MT -->|tenant=globex| G
 ```
+
+`MultiTenantFailoverStore` wraps the base store and calls `TenantResolver.resolve()` on every operation. The resolved tenant ID selects the appropriate table prefix or schema.
 
 ---
 
-## Enable Multi-Tenant
+## Strategy Comparison
 
-```yaml
+| Strategy | Isolation | Config |
+|---|---|---|
+| `TABLE_PREFIX` | Separate table per tenant in the same schema | Built-in — configure per-tenant `table-prefix` |
+| `SCHEMA` | Separate schema or database per tenant | Requires custom `TenantStoreFactory` bean |
+
+---
+
+## TABLE_PREFIX Strategy
+
+Each tenant gets its own `{prefix}FAILOVER_STORE` table in the same schema.
+
+### Configuration
+
+```yaml title="application.yml"
 failover:
   store:
     type: jdbc
-    jdbc:
-      table-prefix: MYAPP_
     multitenant:
       enabled: true
-      strategy: table_prefix        # (1)
-      default-tenant: default       # (2)
+      strategy: table_prefix
+      default-tenant: acme
       tenants:
         acme:
-          table-prefix: ACME_       # effective table: ACME_MYAPP_FAILOVER_STORE
+          table-prefix: ACME_DEMO_
         globex:
-          table-prefix: GLOBEX_     # effective table: GLOBEX_MYAPP_FAILOVER_STORE
+          table-prefix: GLOBEX_DEMO_
 ```
 
-1. `TABLE_PREFIX` creates a separate table per tenant. `SCHEMA` requires a custom `TenantStoreFactory`.
-2. `default-tenant` is used when `TenantResolver` returns `null`. Leave blank to throw instead.
+### Create Tables
 
----
+```sql title="multitenant_tables.sql"
+CREATE TABLE ACME_DEMO_FAILOVER_STORE (
+    FAILOVER_NAME  VARCHAR(50)                      NOT NULL,
+    FAILOVER_KEY   VARCHAR(256)                     NOT NULL,
+    AS_OF          TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    PAYLOAD        VARCHAR(2000),
+    PAYLOAD_CLASS  VARCHAR(256),
+    PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
+);
 
-## Implement TenantResolver
+CREATE TABLE GLOBEX_DEMO_FAILOVER_STORE (
+    FAILOVER_NAME  VARCHAR(50)                      NOT NULL,
+    FAILOVER_KEY   VARCHAR(256)                     NOT NULL,
+    AS_OF          TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE      NOT NULL,
+    PAYLOAD        VARCHAR(2000),
+    PAYLOAD_CLASS  VARCHAR(256),
+    PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
+);
+```
 
-You must provide a `TenantResolver` bean. The framework has no built-in resolver — tenant resolution is always an application concern.
+### Implement TenantResolver
 
-```java
+`TenantResolver` extracts the current tenant ID from the request context:
+
+```java title="RequestTenantResolver.java"
 @Component
-public class RequestScopedTenantResolver implements TenantResolver {
-
-    private final TenantContext tenantContext;
-
-    public RequestScopedTenantResolver(TenantContext tenantContext) {
-        this.tenantContext = tenantContext;
-    }
+public class RequestTenantResolver implements TenantResolver {
 
     @Override
     public String resolve() {
-        return tenantContext.getCurrentTenant();   // return null to fall back to default-tenant
+        // extract from HTTP header, SecurityContext, ThreadLocal, etc.
+        return TenantContext.current();   // your thread-local tenant context
     }
 }
 ```
 
+Register it as a `@Bean` — auto-configuration picks it up via `@ConditionalOnMissingBean`.
+
 ---
 
-## Strategies
+## SCHEMA Strategy
 
-### TABLE_PREFIX (default)
+Each tenant uses a separate schema or database. Requires a custom `TenantStoreFactory` that creates a `FailoverStore` per tenant.
 
-Each tenant gets its own table:
-
+```yaml title="application.yml"
+failover:
+  store:
+    type: jdbc
+    multitenant:
+      enabled: true
+      strategy: schema
+      default-tenant: acme
 ```
-{tenant.table-prefix} + {store.jdbc.table-prefix} + FAILOVER_STORE
-```
 
-For `acme` with `table-prefix: MYAPP_`:
-- Tenant prefix: `ACME_`
-- Effective table: `ACME_MYAPP_FAILOVER_STORE`
+```java title="DataSourceTenantStoreFactory.java"
+@Component
+public class DataSourceTenantStoreFactory implements TenantStoreFactory<Object> {
 
-Create one table per tenant before starting the application. Use the same DDL as the single-tenant schema — `TIMESTAMP(9) WITH TIME ZONE` ensures expiry timestamps are correct across nodes in different JVM timezones (see [Store Types — Timezone Support](store-types.md#timezone-support-by-database) for database-specific column types):
+    private final Map<String, DataSource> dataSources;   // tenant → DataSource
 
-=== "H2 / PostgreSQL / Oracle"
-
-    ```sql
-    CREATE TABLE ACME_MYAPP_FAILOVER_STORE (
-        FAILOVER_NAME  VARCHAR(50)   NOT NULL,
-        FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          TIMESTAMP(9) WITH TIME ZONE NOT NULL,
-        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE NOT NULL,
-        PAYLOAD        VARCHAR(4000),
-        PAYLOAD_CLASS  VARCHAR(256),
-        PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
-    );
-
-    CREATE TABLE GLOBEX_MYAPP_FAILOVER_STORE (
-        FAILOVER_NAME  VARCHAR(50)   NOT NULL,
-        FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          TIMESTAMP(9) WITH TIME ZONE NOT NULL,
-        EXPIRE_ON      TIMESTAMP(9) WITH TIME ZONE NOT NULL,
-        PAYLOAD        VARCHAR(4000),
-        PAYLOAD_CLASS  VARCHAR(256),
-        PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
-    );
-    ```
-
-=== "MySQL / MariaDB"
-
-    ```sql
-    -- Use DATETIME(6) + serverTimezone=UTC in the JDBC URL
-    CREATE TABLE ACME_MYAPP_FAILOVER_STORE (
-        FAILOVER_NAME  VARCHAR(50)   NOT NULL,
-        FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          DATETIME(6)   NOT NULL,
-        EXPIRE_ON      DATETIME(6)   NOT NULL,
-        PAYLOAD        VARCHAR(4000),
-        PAYLOAD_CLASS  VARCHAR(256),
-        PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
-    );
-
-    CREATE TABLE GLOBEX_MYAPP_FAILOVER_STORE (
-        FAILOVER_NAME  VARCHAR(50)   NOT NULL,
-        FAILOVER_KEY   VARCHAR(256)  NOT NULL,
-        AS_OF          DATETIME(6)   NOT NULL,
-        EXPIRE_ON      DATETIME(6)   NOT NULL,
-        PAYLOAD        VARCHAR(4000),
-        PAYLOAD_CLASS  VARCHAR(256),
-        PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
-    );
-    ```
-
-### SCHEMA
-
-Each tenant gets its own database schema (or separate database). The auto-configured `TenantStoreFactory` supports `TABLE_PREFIX` only. For `SCHEMA`, provide your own `TenantStoreFactory` bean:
-
-```java
-@Bean
-public TenantStoreFactory<Object> myTenantStoreFactory(Map<String, DataSource> tenantDataSources) {
-    return tenantId -> {
-        DataSource ds = tenantDataSources.get(tenantId);
-        return new FailoverStoreJdbc<>(new JdbcTemplate(ds), "FAILOVER_STORE");
-    };
+    @Override
+    public FailoverStore<Object> create(String tenantId) {
+        DataSource ds = dataSources.get(tenantId);
+        if (ds == null) throw new FailoverStoreException("Unknown tenant: " + tenantId);
+        return new JdbcFailoverStore<>(new JdbcTemplate(ds), "FAILOVER_STORE");
+    }
 }
 ```
 
-!!! warning "Why not AbstractRoutingDataSource for SCHEMA?"
-    The expiry-cleanup scheduler runs on its own thread where `TenantContext.get()` is `null`. A routing DataSource would resolve `null` to the default schema and clean only that tenant's rows. Per-tenant `DataSource` instances eliminate this problem — each store queries its own database directly.
-
-    Also set `failover.store.async=false` with SCHEMA strategy to avoid context loss across thread boundaries.
+!!! warning "Disable async with SCHEMA strategy"
+    Set `failover.store.async=false` when using the SCHEMA strategy. Async writes use a shared virtual-thread executor that may execute on a different thread — losing the thread-local tenant context used by `TenantResolver`.
 
 ---
 
-## Context Propagation
+## Default Tenant Fallback
 
-In async mode, the tenant context must be propagated to executor threads. Provide a `ContextPropagator` bean:
-
-```java
-@Bean
-public ContextPropagator tenantContextPropagator(TenantContext ctx) {
-    return new TenantContextPropagator(ctx);
-}
-```
-
-`TenantContextPropagator` is provided by `failover-store-multitenant` — it captures the current tenant on the calling thread and restores it on the executor thread.
+When `TenantResolver` returns `null`, the `default-tenant` value is used. If `default-tenant` is blank and the resolver returns `null`, a `FailoverStoreException` is thrown.
 
 ---
 
-## TenantConfig Reference
+## Next Steps
 
-Each entry under `failover.store.multitenant.tenants` is a `TenantConfig`:
-
-| Field | Type | Description |
-|---|---|---|
-| `table-prefix` | `String` | Tenant-specific table prefix. Combined with `failover.store.jdbc.table-prefix`. |
+- [Database Resolver](../how-to/database-resolver.md) — custom DataSource per tenant
+- [Properties Reference](properties-reference.md) — full `failover.store.multitenant.*` reference
+- [Multi-Tenant Store Module](../modules/store-multitenant.md) — module details

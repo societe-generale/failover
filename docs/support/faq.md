@@ -117,7 +117,7 @@ Payloads are serialised to JSON using **Jackson**. The `PAYLOAD_CLASS` column st
 Two options:
 
 1. **Change the DDL** — use `TEXT` (PostgreSQL, MySQL) or `CLOB` (Oracle) for the `PAYLOAD` column.
-2. **Add a `PayloadColumnResolver` bean** — implement `PayloadColumnResolver` to return `Types.CLOB` from `payloadType()` and read via `getClob()`. See [Payload Column Resolver](../guides/payload-column-resolver.md).
+2. **Add a `PayloadColumnResolver` bean** — implement `PayloadColumnResolver` to return `Types.CLOB` from `payloadType()` and read via `getClob()`. See [Payload Column Resolver](../how-to/payload-column-resolver.md).
 
 ---
 
@@ -167,7 +167,7 @@ Yes. The JDBC store uses a native upsert/merge (or INSERT + UPDATE fallback) key
 
 ### What databases does the JDBC store support?
 
-The built-in `DefaultFailoverStoreQueryResolver` provides native merge dialects for **H2**, **PostgreSQL**, **MySQL**, **MariaDB**, and **Oracle**. Any JDBC-compatible database is supported in fallback mode (separate INSERT + UPDATE). Implement a custom `DatabaseResolver` to force a specific dialect. See [Database Resolver](../guides/database-resolver.md).
+The built-in `DefaultFailoverStoreQueryResolver` provides native merge dialects for **H2**, **PostgreSQL**, **MySQL**, **MariaDB**, and **Oracle**. Any JDBC-compatible database is supported in fallback mode (separate INSERT + UPDATE). Implement a custom `DatabaseResolver` to force a specific dialect. See [Database Resolver](../how-to/database-resolver.md).
 
 ---
 
@@ -177,7 +177,7 @@ The built-in `DefaultFailoverStoreQueryResolver` provides native merge dialects 
 
 The default `KeyGenerator` serialises all method arguments as a string (using their `toString()` representation joined and hashed with MD5 into a fixed-length UUID-based key). The key plus the `@Failover` name form the compound store lookup: `(name, key)`.
 
-Override `KeyGenerator` when you need to control which arguments contribute to the key, normalise argument values, or use a different hashing strategy. See [Key Generator](../guides/custom-key-generator.md).
+Override `KeyGenerator` when you need to control which arguments contribute to the key, normalise argument values, or use a different hashing strategy. See [Key Generator](../how-to/custom-key-generator.md).
 
 ---
 
@@ -203,7 +203,7 @@ Expired entries are treated the same as missing entries — the framework return
 
 ### Can expiry be computed at runtime from the payload content?
 
-Yes. Implement `ExpiryPolicy` and return an `Instant` based on the actual payload (e.g. use an embedded `validUntil` field from an API response). See [Expiry Policy](../guides/custom-expiry-policy.md).
+Yes. Implement `ExpiryPolicy` and return an `Instant` based on the actual payload (e.g. use an embedded `validUntil` field from an API response). See [Expiry Policy](../how-to/custom-expiry-policy.md).
 
 ---
 
@@ -281,7 +281,7 @@ public class CountryHandler implements RecoveredPayloadHandler {
 }
 ```
 
-See [Recovered Payload Handler](../guides/recovered-payload-handler.md).
+See [Recovered Payload Handler](../how-to/recovered-payload-handler.md).
 
 ---
 
@@ -300,7 +300,7 @@ public class DomainPolicy implements MethodExceptionPolicy {
 }
 ```
 
-See [Exception Policy](../guides/exception-policy.md).
+See [Exception Policy](../how-to/exception-policy.md).
 
 ---
 
@@ -308,13 +308,13 @@ See [Exception Policy](../guides/exception-policy.md).
 
 ### When should I use `PayloadSplitter`?
 
-When the annotated method returns a **collection** but you want individual entries stored per element — so partial recovery is possible. If three of five items are in the store, those three are returned even if the upstream is fully down. See [Payload Splitter](../guides/payload-splitter.md).
+When the annotated method returns a **collection** but you want individual entries stored per element — so partial recovery is possible. If three of five items are in the store, those three are returned even if the upstream is fully down. See [Payload Splitter](../how-to/payload-splitter.md).
 
 ---
 
 ### Does scatter/gather work with async writes?
 
-Yes, but use it carefully with `ContextPropagator` if you rely on thread-local context (security, tenant, trace). Each scatter slot dispatches in a separate virtual thread. Implement `ContextPropagator` to copy the required context into the worker threads. See [Context Propagation](../guides/context-propagation.md).
+Yes, but use it carefully with `ContextPropagator` if you rely on thread-local context (security, tenant, trace). Each scatter slot dispatches in a separate virtual thread. Implement `ContextPropagator` to copy the required context into the worker threads. See [Context Propagation](../how-to/context-propagation.md).
 
 ---
 
@@ -422,7 +422,7 @@ No. With multiple instances and async writes, concurrent store calls for the sam
 
 ### How do I monitor failover events in production?
 
-Implement `ObservablePublisher` to receive failover metrics and forward them to your backend (Micrometer, Prometheus, Datadog, etc.). See [Observability](../guides/observability.md).
+Implement `ObservablePublisher` to receive failover metrics and forward them to your backend (Micrometer, Prometheus, Datadog, etc.). See [Observability](../how-to/observability.md).
 
 Alternatively, implement `RecoveredPayloadHandler` to increment a counter on every recovery:
 
@@ -515,7 +515,7 @@ public class ForcedPostgresResolver implements DatabaseResolver {
 }
 ```
 
-See [Database Resolver](../guides/database-resolver.md).
+See [Database Resolver](../how-to/database-resolver.md).
 
 ---
 

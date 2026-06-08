@@ -1,10 +1,12 @@
 ---
-icon: material/domain
+icon: material/office-building-outline
 ---
 
-# Multi-Tenant Store Module
+# Multi-Tenant Store
 
-`failover-store-multitenant` adds tenant routing on top of any backing store. Each request is routed to the correct tenant store based on the current thread's tenant ID.
+`MultiTenantFailoverStore` wraps the base store and routes each operation to the correct tenant's table or schema based on a `TenantResolver`.
+
+---
 
 ## Dependency
 
@@ -16,67 +18,65 @@ icon: material/domain
 </dependency>
 ```
 
-## Key Classes
+---
+
+## Store Assembly Position
+
+`MultiTenantFailoverStore` sits between `AsyncFailoverStore` and the base store:
+
+```
+AsyncFailoverStore
+  └── MultiTenantFailoverStore    ← routes by tenant
+        └── JdbcFailoverStore (one per tenant)
+```
+
+---
+
+## Available Extension Points
+
+| SPI | Purpose | How to override |
+|---|---|---|
+| `TenantResolver` | Returns the current tenant ID | Declare `@Bean` |
+| `TenantStoreFactory` | Creates a `FailoverStore` per tenant | Declare `@Bean` (required for SCHEMA strategy) |
 
 ### TenantResolver
 
-Implement this interface and declare it as a Spring bean. The framework calls it on every store/find/delete/clean operation to determine the active tenant.
-
 ```java
 @Component
-public class MyTenantResolver implements TenantResolver {
+public class HeaderTenantResolver implements TenantResolver {
+
+    private final HttpServletRequest request;
+
     @Override
     public String resolve() {
-        return TenantContext.get();   // return null to fall back to default-tenant
+        return request.getHeader("X-Tenant-ID");
     }
 }
 ```
 
-### TenantContext
-
-Thread-local holder for the current tenant ID. Provided for convenience — you are not required to use it.
+### TenantStoreFactory (SCHEMA strategy)
 
 ```java
-TenantContext.set("acme");
-try {
-    // all failover operations in this scope use tenant "acme"
-} finally {
-    TenantContext.clear();
+@Component
+public class MultiDataSourceStoreFactory<T> implements TenantStoreFactory<T> {
+
+    @Override
+    public FailoverStore<T> create(String tenantId) {
+        DataSource ds = resolveTenantDataSource(tenantId);
+        return new JdbcFailoverStore<>(new JdbcTemplate(ds), "FAILOVER_STORE");
+    }
 }
 ```
 
-### TenantContextPropagator
+---
 
-A `ContextPropagator` implementation that captures the tenant on the calling thread and restores it on executor threads. Declare it as a Spring bean to enable automatic propagation in async and scatter/gather contexts:
+## Configuration Reference
 
-```java
-@Bean
-public ContextPropagator tenantContextPropagator() {
-    return new TenantContextPropagator();
-}
-```
+See [Multi-Tenant Configuration](../configuration/multi-tenant.md) for full YAML examples and table DDL.
 
-### MultiTenantFailoverStore
+---
 
-Routes store operations to the appropriate per-tenant `FailoverStore` instance. Auto-configured when `failover.store.multitenant.enabled=true`.
+## Next Steps
 
-### TenantStoreFactory
-
-Factory that creates a `FailoverStore` per tenant. The auto-configured implementation supports `TABLE_PREFIX` strategy. For `SCHEMA` strategy, provide a custom `TenantStoreFactory` bean:
-
-```java
-@Bean
-public TenantStoreFactory<Object> tenantStoreFactory(
-        Map<String, DataSource> tenantDataSources,
-        FailoverProperties props) {
-    return tenantId -> {
-        DataSource ds = tenantDataSources.get(tenantId);
-        String table = props.getStore().getJdbc().getTablePrefix() + "FAILOVER_STORE";
-        return new FailoverStoreJdbc<>(new JdbcTemplate(ds), table);
-    };
-}
-```
-
-## Configuration Example
-
-See [Multi-Tenant Configuration](../configuration/multi-tenant.md) for a complete YAML example and strategy comparison.
+- [Multi-Tenant Configuration](../configuration/multi-tenant.md) — TABLE_PREFIX and SCHEMA setup
+- [Async Store](store-async.md) — interaction with async writes

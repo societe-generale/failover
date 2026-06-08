@@ -1,10 +1,12 @@
 ---
-icon: material/memory
+icon: material/lightning-bolt-circle
 ---
 
-# Caffeine Store Module
+# Caffeine Store
 
-`failover-store-caffeine` provides an in-process cache-backed `FailoverStore` using [Caffeine](https://github.com/ben-manes/caffeine). Entries survive method failures but are lost on application restart.
+In-process store backed by the Caffeine cache library. Suitable for single-node deployments where process-local caching is sufficient.
+
+---
 
 ## Dependency
 
@@ -16,44 +18,42 @@ icon: material/memory
 </dependency>
 ```
 
-Also requires Caffeine and Spring Cache on the classpath:
-
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-cache</artifactId>
-</dependency>
-<dependency>
-    <groupId>com.github.ben-manes.caffeine</groupId>
-    <artifactId>caffeine</artifactId>
-</dependency>
-```
+---
 
 ## Configuration
 
-```yaml
+```yaml title="application.yml"
 failover:
   store:
     type: caffeine
 ```
 
-Caffeine eviction settings are configured via Spring Boot's standard cache properties:
+No additional configuration is required. Caffeine uses the `expireOn` field from `ReferentialPayload` to set per-entry TTL at write time.
 
-```yaml
-spring:
-  cache:
-    caffeine:
-      spec: maximumSize=10000,expireAfterWrite=2h
-```
+---
 
-!!! note
-    Caffeine's own TTL and the Failover expiry policy are independent. Failover checks its own `EXPIRE_ON` field on every recovery. Set Caffeine's `expireAfterWrite` to be longer than your longest `@Failover` expiry to avoid premature eviction.
+## Behaviour
 
-## When to Use
+- **Eviction**: entries are evicted by Caffeine at their configured `expireOn` timestamp. The cleanup scheduler still runs but has nothing to remove in most cases.
+- **Memory**: all entries live in the JVM heap. Size is bounded by the number of distinct failover keys in your application.
+- **Persistence**: data is lost on JVM restart — the first post-restart calls are unprotected until upstream succeeds.
+- **Multi-node**: each node has its own cache. There is no cluster synchronisation.
 
-| Scenario | Recommendation |
-|---|---|
-| Single-instance application | Caffeine is a good fit |
-| Multi-instance application | Use JDBC — Caffeine does not share state across instances |
-| No database available | Caffeine is the best persistent-within-process option |
-| Test / dev environment | InMemory is simpler; Caffeine if you need realistic eviction behaviour |
+---
+
+## When to Use vs JDBC
+
+| Scenario | Caffeine | JDBC |
+|---|---|---|
+| Single-node deployment | ✅ | ✅ |
+| Multiple nodes / horizontal scale | ❌ | ✅ |
+| Survive restarts | ❌ | ✅ |
+| Zero external dependency | ✅ | Requires a DB |
+| Low-latency reads | ✅ (in-process) | Depends on DB latency |
+
+---
+
+## Next Steps
+
+- [JDBC Store](store-jdbc.md) — persistent, multi-node store
+- [Store Types](../configuration/store-types.md) — comparison of all store types

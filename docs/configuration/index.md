@@ -1,52 +1,54 @@
 ---
-icon: material/tune
+icon: material/cog
 ---
 
 # Configuration
 
-All failover properties are bound to the `failover.*` prefix — YAML, properties files, or environment variables. There are **no mandatory properties**; the framework starts with safe defaults.
-
-## Property hierarchy
+All Failover configuration is grouped under the `failover.*` prefix. There are no mandatory properties — the framework starts with production-safe defaults on first use.
 
 ```mermaid
-mindmap
-  root((failover))
-    enabled
-    type
-      BASIC
-      RESILIENCE
-      CUSTOM
-    exception-policy
-      RETHROW
-      NEVER_THROW
-      CUSTOM
-    store
-      type
-        jdbc
-        caffeine
-        inmemory
-      async
-      jdbc
-        table-prefix
-      multitenant
-        enabled
-        strategy
-          TABLE_PREFIX
-          SCHEMA
-    scheduler
-      enabled
-      report-cron
-      cleanup-cron
-    scatter
-      parallel
+flowchart TD
+    ROOT["failover.*\nenabled · type · exception-policy"]
+    STORE["failover.store.*\ntype · async"]
+    JDBC["failover.store.jdbc.*\ntable-prefix"]
+    MT["failover.store.multitenant.*\nenabled · strategy · tenants"]
+    SCHED["failover.scheduler.*\nenabled · report-cron · cleanup-cron"]
+    SCATTER["failover.scatter.*\nparallel"]
+
+    ROOT --> STORE
+    STORE --> JDBC
+    STORE --> MT
+    ROOT --> SCHED
+    ROOT --> SCATTER
 ```
 
-## Sections
+---
 
-| Section | Description |
-|---|---|
-| [Properties Reference](properties-reference.md) | Complete list of every `failover.*` property |
-| [Store Types](store-types.md) | Choosing and configuring the backing store |
-| [Multi-Tenant](multi-tenant.md) | Isolating stores by tenant (TABLE_PREFIX or SCHEMA) |
+| Section | Properties | Default |
+|---|---|---|
+| [Root](properties-reference.md#root-properties) | `enabled`, `type`, `exception-policy` | `true`, `BASIC`, `RETHROW` |
+| [Store](properties-reference.md#store-properties) | `store.type`, `store.async` | `INMEMORY`, `true` |
+| [JDBC](properties-reference.md#jdbc-properties) | `store.jdbc.table-prefix` | `""` |
+| [Multi-Tenant](multi-tenant.md) | `store.multitenant.*` | disabled |
+| [Scheduler](properties-reference.md#scheduler-properties) | `scheduler.enabled`, `scheduler.cleanup-cron` | `true`, hourly |
+| [Scatter](properties-reference.md#scatter-properties) | `scatter.parallel` | `true` |
 
-Start with [Properties Reference](properties-reference.md) for a quick overview, then drill into the specific section you need.
+---
+
+## Minimal Production Config
+
+```yaml title="application.yml"
+failover:
+  store:
+    type: jdbc
+    jdbc:
+      table-prefix: MYAPP_
+```
+
+---
+
+## Next Steps
+
+- [Properties Reference](properties-reference.md) — every property with types, defaults, and descriptions
+- [Store Types](store-types.md) — choose between InMemory, Caffeine, JDBC, or Custom
+- [Multi-Tenant](multi-tenant.md) — tenant-aware store routing

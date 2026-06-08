@@ -6,9 +6,7 @@ hide:
 template: home.html
 ---
 
-
 ```mermaid
-
 flowchart LR
     C([Your Code]) --> A{FailoverAspect}
     A -->|invoke| U([Upstream API])
@@ -16,8 +14,7 @@ flowchart LR
     ST --> R1([return upToDate=true])
     U -- "❌ failure" --> Q[Query store]
     Q -- "fresh entry" --> R2([return upToDate=false])
-    Q -- "expired / missing" --> R3([re-throw])
-    
+    Q -- "expired / missing" --> R3([re-throw or null])
 ```
 
 ---
@@ -30,7 +27,7 @@ stateDiagram-v2
     Live    --> Stale   : upstream fails, entry still fresh
     Stale   --> Live    : upstream recovers
     Stale   --> Expired : TTL exceeded
-    Expired --> [*]     : re-throw / null
+    Expired --> [*]     : re-throw / null per exception-policy
 ```
 
 ---
@@ -69,6 +66,3 @@ sequenceDiagram
         end
     end
 ```
-
----
-
