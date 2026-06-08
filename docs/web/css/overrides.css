@@ -1042,63 +1042,8 @@ body,
 }
 
 /* ─── 16. FONT SCALE ─────────────────────────────────────────────── */
-
-/* sm → md → lg; "md" is default (applied by JS on load).
-   All rem values scale with the root font-size. */
-html[data-fo-font="sm"] { font-size: 15.5px; }
-html[data-fo-font="md"] { font-size: 17px; }    /* default — noticeably above browser 16px */
-html[data-fo-font="lg"] { font-size: 19px; }
-
-/* Font size widget — inline in header, next to palette toggle */
-.fo-fontsize-ctrl {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin: 0 .3rem;
-  padding: 0 .25rem;
-  border-right: 1px solid rgba(255,255,255,.15);
-  user-select: none;
-}
-[data-md-color-scheme="default"] .fo-fontsize-ctrl {
-  border-right-color: rgba(0,0,0,.1);
-}
-.fo-fontsize-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 800;
-  font-size: .68rem;
-  line-height: 1;
-  font-family: inherit;
-  background: transparent;
-  color: var(--md-primary-bg-color);  /* white — matches header icon colour */
-  opacity: .7;
-  transition: background .15s, opacity .15s;
-  padding: 0;
-}
-.fo-fontsize-btn:hover {
-  background: rgba(255,255,255,.12);
-  opacity: 1;
-}
-.fo-fontsize-btn.fo-fontsize-active {
-  background: rgba(255,255,255,.2);
-  opacity: 1;
-}
-/* Light mode: dark text on white header */
-[data-md-color-scheme="default"] .fo-fontsize-btn {
-  color: var(--fo-tx) !important;
-}
-[data-md-color-scheme="default"] .fo-fontsize-btn:hover {
-  background: rgba(0,0,0,.06) !important;
-}
-[data-md-color-scheme="default"] .fo-fontsize-btn.fo-fontsize-active {
-  background: rgba(0,0,0,.1) !important;
-}
+/* font-size.js sets html { font-size } inline via JS — all rem units scale globally.
+   .fo-fontsize-ctrl / .fo-fontsize-btn removed (replaced by .font-size-toolbar). */
 
 /* ─── 17. SHOWCASE + IMAGE CARDS ────────────────────────────────── */
 
@@ -1311,24 +1256,58 @@ html[data-fo-font="lg"] { font-size: 19px; }
 }
 
 /* ─── FONT SIZE TOOLBAR ─────────────────────────────────────────── */
-:root { --font-size-override: 0.9rem; }
-.md-typeset { font-size: var(--font-size-override); line-height: 1.6; }
+/* font-size.js sets html { font-size } directly — all rem units scale site-wide.
+   No --font-size-override variable needed. */
 
 .font-size-toolbar {
-  display: flex; gap: 4px; align-items: center;
-  margin-left: 1rem; flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 .5rem 0 0;
+  border-right: 1px solid rgba(255,255,255,.15);
+  flex-shrink: 0;
 }
+[data-md-color-scheme="default"] .font-size-toolbar {
+  border-right-color: rgba(0,0,0,.1);
+}
+
 .font-size-btn {
   background: transparent;
-  border: 1px solid rgba(255,255,255,.5);
-  border-radius: 3px; color: inherit; cursor: pointer;
-  font-size: 11px; line-height: 1; padding: 3px 6px;
-  transition: background .15s, border-color .15s; white-space: nowrap;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 6px;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+  font-family: inherit;
+  /* Dark mode: match header icon colour */
+  color: rgba(255,255,255,.7);
 }
-.font-size-btn.active, .font-size-btn:hover {
-  background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.9);
+.font-size-btn:hover {
+  background: rgba(255,255,255,.12);
+  color: #fff;
 }
-[data-md-color-scheme="slate"] .font-size-btn { border-color: rgba(255,255,255,.35); }
+.font-size-btn.active {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+}
+
+/* Light mode */
+[data-md-color-scheme="default"] .font-size-btn {
+  color: var(--fo-tx) !important;
+  opacity: .65;
+}
+[data-md-color-scheme="default"] .font-size-btn:hover {
+  background: rgba(0,0,0,.06) !important;
+  opacity: 1;
+}
+[data-md-color-scheme="default"] .font-size-btn.active {
+  background: rgba(0,0,0,.10) !important;
+  opacity: 1;
+}
 
 /* ─── DOMAIN BADGE ──────────────────────────────────────────────── */
 .fo-domain-badge {
