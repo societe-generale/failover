@@ -4,7 +4,7 @@ icon: material/cog
 
 # Configuration
 
-All Failover configuration is grouped under the `failover.*` prefix. There are no mandatory properties — the framework starts with production-safe defaults on first use.
+All Failover configuration lives under the `failover.*` prefix. No mandatory properties — the framework starts with production-safe defaults.
 
 ```mermaid
 flowchart TD
@@ -22,18 +22,33 @@ flowchart TD
     ROOT --> SCATTER
 ```
 
----
+<div class="grid cards" markdown>
 
-| Section | Properties | Default |
-|---|---|---|
-| [Root](properties-reference.md#root-properties) | `enabled`, `type`, `exception-policy` | `true`, `BASIC`, `RETHROW` |
-| [Store](properties-reference.md#store-properties) | `store.type`, `store.async` | `INMEMORY`, `true` |
-| [JDBC](properties-reference.md#jdbc-properties) | `store.jdbc.table-prefix` | `""` |
-| [Multi-Tenant](multi-tenant.md) | `store.multitenant.*` | disabled |
-| [Scheduler](properties-reference.md#scheduler-properties) | `scheduler.enabled`, `scheduler.cleanup-cron` | `true`, hourly |
-| [Scatter](properties-reference.md#scatter-properties) | `scatter.parallel` | `true` |
+-   :material-tune:{ .lg .middle } **Properties Reference**
 
----
+    ---
+
+    Every `failover.*` property with type, default value, and description. The authoritative list.
+
+    [:octicons-arrow-right-24: Browse all properties](properties-reference.md)
+
+-   :material-database-outline:{ .lg .middle } **Store Types**
+
+    ---
+
+    Choose between InMemory, Caffeine, JDBC (H2 / PostgreSQL / MySQL / Oracle), or a custom bean.
+
+    [:octicons-arrow-right-24: Pick a store](store-types.md)
+
+-   :material-office-building-cog-outline:{ .lg .middle } **Multi-Tenant**
+
+    ---
+
+    `TABLE_PREFIX` or `SCHEMA` strategy routes each request to the correct tenant store.
+
+    [:octicons-arrow-right-24: Configure multi-tenancy](multi-tenant.md)
+
+</div>
 
 ## Minimal Production Config
 

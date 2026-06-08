@@ -182,16 +182,61 @@ Country findByCode(String code);</code></pre>
   <li>Failures on referential systems cascade through every dependent service</li>
 </ul>
 </div>
-<div class="fo-img-card">
+<div class="fo-img-card fo-reveal">
 <p class="fo-diagram-label">Service dependency model</p>
-<img src="{{ 'web/assets/images/failover-service-calls.png' | url }}" alt="Service dependency diagram showing application, referential and external services" loading="lazy" />
+<div class="fo-svc-diagram">
+  <div class="fo-svc-tier">
+    <div class="fo-svc-node fo-svc-node-app">
+      <span class="fo-svc-icon">🏢</span>
+      <span class="fo-svc-name">Your Application</span>
+    </div>
+  </div>
+  <div class="fo-svc-conn-v"></div>
+  <div class="fo-svc-conn-h"></div>
+  <div class="fo-svc-peers">
+    <div class="fo-svc-node fo-svc-node-ref">
+      <span class="fo-svc-icon">🔗</span>
+      <span class="fo-svc-name">Transversal</span>
+      <span class="fo-svc-sub">other teams · <strong>R</strong></span>
+    </div>
+    <div class="fo-svc-node fo-svc-node-ext">
+      <span class="fo-svc-icon">🌐</span>
+      <span class="fo-svc-name">External</span>
+      <span class="fo-svc-sub">third-party · <strong>E</strong></span>
+    </div>
+  </div>
+</div>
 </div>
 </div>
 
 <div class="fo-showcase fo-showcase-rev">
-<div class="fo-img-card">
+<div class="fo-img-card fo-reveal fo-delay-1">
 <p class="fo-diagram-label">Cascade failure in practice</p>
-<img src="{{ 'web/assets/images/failover-challenges.png' | url }}" alt="Cascade failure: external service failure propagates to end user as a 500 error" loading="lazy" />
+<div class="fo-cascade">
+  <div class="fo-casc-node">
+    <span class="fo-casc-icon">⚡</span>
+    <span class="fo-casc-name">External Svc</span>
+    <span class="fo-casc-state">DOWN</span>
+  </div>
+  <span class="fo-casc-arr">→</span>
+  <div class="fo-casc-node">
+    <span class="fo-casc-icon">🔥</span>
+    <span class="fo-casc-name">Transversal</span>
+    <span class="fo-casc-state">FAILING</span>
+  </div>
+  <span class="fo-casc-arr">→</span>
+  <div class="fo-casc-node">
+    <span class="fo-casc-icon">💥</span>
+    <span class="fo-casc-name">Your App</span>
+    <span class="fo-casc-state">500 ERROR</span>
+  </div>
+  <span class="fo-casc-arr">→</span>
+  <div class="fo-casc-node">
+    <span class="fo-casc-icon">😱</span>
+    <span class="fo-casc-name">End Users</span>
+    <span class="fo-casc-state">BLOCKED</span>
+  </div>
+</div>
 </div>
 <div class="fo-showcase-text">
 <div class="fo-eyebrow fo-ey-challenge"><span class="fo-ey-icon">🔥</span>The Challenge</div>
@@ -213,13 +258,51 @@ Country findByCode(String code);</code></pre>
   <p>Failover sits between your service and the referential system. On success it stores the result with a configured TTL. On failure it serves the last known-good value — no 500, no user impact.</p>
 </div>
 <div class="fo-two-img-grid">
-<div class="fo-img-card">
+<div class="fo-img-card fo-reveal">
 <p class="fo-diagram-label">Failover in the platform</p>
-<img src="{{ 'web/assets/images/failover-solution.png' | url }}" alt="Failover library inserted between service and referential system with a local FailoverStore" loading="lazy" />
+<div class="fo-intercept-diagram">
+  <div class="fo-int-row">
+    <div class="fo-int-node fo-int-node-app">🏢<br>Your Service<br><span class="fo-int-lbl">@Failover</span></div>
+    <div class="fo-int-conn fo-int-conn-ok">✅ →</div>
+    <div class="fo-int-node fo-int-node-store">💾<br>FailoverStore<br><span class="fo-int-lbl">persisted</span></div>
+  </div>
+  <div class="fo-int-row">
+    <div class="fo-int-conn fo-int-conn-fail" style="flex:1;text-align:center;">↕ intercept</div>
+    <div class="fo-int-conn fo-int-conn-ok" style="flex:1;text-align:center;">🔄 recover</div>
+    <div style="min-width:66px"></div>
+  </div>
+  <div class="fo-int-row">
+    <div class="fo-int-node fo-int-node-up">🌐<br>Upstream<br><span class="fo-int-lbl">referential</span></div>
+    <div class="fo-int-conn fo-int-conn-fail">❌ fails</div>
+    <div class="fo-int-node fo-int-node-app" style="opacity:.35">🏢<br>Your Service<br><span class="fo-int-lbl">unblocked</span></div>
+  </div>
 </div>
-<div class="fo-img-card">
+</div>
+<div class="fo-img-card fo-reveal fo-delay-1">
 <p class="fo-diagram-label">Store · intercept · replay</p>
-<img src="{{ 'web/assets/images/failover.png' | url }}" alt="Failover stores responses on success and replays last-known-good on failure with per-referential expiry" loading="lazy" />
+<div class="fo-intercept-diagram">
+  <div class="fo-int-row">
+    <div class="fo-int-node fo-int-node-app">Caller</div>
+    <div class="fo-int-conn">→</div>
+    <div class="fo-int-node" style="border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.07)">FailoverAspect</div>
+    <div class="fo-int-conn fo-int-conn-ok">→ store</div>
+    <div class="fo-int-node fo-int-node-store">Store</div>
+  </div>
+  <div class="fo-int-row" style="margin-top:.3rem">
+    <div style="min-width:66px"></div>
+    <div class="fo-int-conn" style="flex:1;text-align:center;color:#ef4444">↓ fail</div>
+    <div style="min-width:66px"></div>
+    <div class="fo-int-conn fo-int-conn-ok" style="flex:1;text-align:center">↙ recover</div>
+    <div style="min-width:66px"></div>
+  </div>
+  <div class="fo-int-row">
+    <div style="min-width:66px"></div>
+    <div class="fo-int-conn"></div>
+    <div class="fo-int-node fo-int-node-up">Upstream</div>
+    <div class="fo-int-conn fo-int-conn-fail">❌</div>
+    <div class="fo-int-node" style="background:rgba(99,102,241,.05);border-color:rgba(99,102,241,.3);font-size:.62rem">upToDate=false</div>
+  </div>
+</div>
 </div>
 </div>
 
@@ -229,8 +312,27 @@ Country findByCode(String code);</code></pre>
   <h2>Users stay unblocked — even during outages</h2>
   <p>Without Failover a referential failure returns a 500 and blocks the user completely. With Failover the last stored result is served — marked with its cached timestamp, but fully functional.</p>
 </div>
-<div class="fo-img-card fo-img-card-wide">
-<img src="{{ 'web/assets/images/failover-user-experience.png' | url }}" alt="Three states: all services available, external service down without failover (error page), external service down with failover (stale data served, user unblocked)" loading="lazy" />
+<div class="fo-img-card fo-img-card-wide fo-reveal">
+<div class="fo-ux-states">
+  <div class="fo-ux-card fo-ux-card-ok">
+    <div class="fo-ux-badge fo-ux-badge-ok">✅</div>
+    <div class="fo-ux-title">All services available</div>
+    <div class="fo-ux-desc">Upstream responds. Failover stores the result. <code>upToDate=true</code>.</div>
+    <div class="fo-ux-tag fo-ux-tag-ok">No impact</div>
+  </div>
+  <div class="fo-ux-card fo-ux-card-fail">
+    <div class="fo-ux-badge fo-ux-badge-fail">❌</div>
+    <div class="fo-ux-title">Upstream fails — no Failover</div>
+    <div class="fo-ux-desc">Exception propagates. User receives a <code>500 Internal Server Error</code>. Completely blocked.</div>
+    <div class="fo-ux-tag fo-ux-tag-fail">User blocked</div>
+  </div>
+  <div class="fo-ux-card fo-ux-card-save">
+    <div class="fo-ux-badge fo-ux-badge-save">🛡️</div>
+    <div class="fo-ux-title">Upstream fails — with Failover</div>
+    <div class="fo-ux-desc">Last stored result returned. <code>upToDate=false</code>, <code>asOf</code> set. User continues unblocked.</div>
+    <div class="fo-ux-tag fo-ux-tag-save">User unblocked</div>
+  </div>
+</div>
 </div>
 
 <!-- OBSERVABILITY -->
@@ -244,19 +346,49 @@ Country findByCode(String code);</code></pre>
 <img src="{{ 'web/assets/images/failover-monitoring-dashboard.png' | url }}" alt="Kibana dashboard showing all active failover configurations: name, expiry duration, expiry unit, type" loading="lazy" />
 </div>
 <div class="fo-monitor-grid">
-<div class="fo-img-card">
-<p class="fo-diagram-label">Failover rate</p>
-<img src="{{ 'web/assets/images/failover-monitoring-failover-rate.png' | url }}" alt="Time-series chart: failover failure rate per referential" loading="lazy" />
+<div class="fo-img-card fo-reveal">
+<div class="fo-spark-chart">
+  <div class="fo-spark-header">
+    <span class="fo-spark-dot fo-spark-dot-red"></span>
+    <span>Failover rate</span>
+  </div>
+  <svg class="fo-spark-svg" viewBox="0 0 200 54" preserveAspectRatio="none">
+    <path class="fo-spark-area fo-spark-area-red" pathLength="1"
+      d="M0,54 L0,42 L22,38 L40,30 L60,22 L80,18 L100,14 L120,20 L140,16 L160,24 L180,20 L200,26 L200,54 Z"/>
+    <path class="fo-spark-line fo-spark-line-red" pathLength="1"
+      d="M0,42 L22,38 L40,30 L60,22 L80,18 L100,14 L120,20 L140,16 L160,24 L180,20 L200,26"/>
+  </svg>
+</div>
 <p class="fo-img-caption">Total upstream failures intercepted per referential over time.</p>
 </div>
-<div class="fo-img-card">
-<p class="fo-diagram-label">Recovery rate</p>
-<img src="{{ 'web/assets/images/failover-monitoring-failover-recovery-rate.png' | url }}" alt="Time-series chart: failover recovered rate per referential" loading="lazy" />
+<div class="fo-img-card fo-reveal fo-delay-1">
+<div class="fo-spark-chart">
+  <div class="fo-spark-header">
+    <span class="fo-spark-dot fo-spark-dot-green"></span>
+    <span>Recovery rate</span>
+  </div>
+  <svg class="fo-spark-svg" viewBox="0 0 200 54" preserveAspectRatio="none">
+    <path class="fo-spark-area fo-spark-area-green" pathLength="1"
+      d="M0,54 L0,10 L22,12 L40,10 L60,8 L80,12 L100,10 L120,9 L140,11 L160,10 L180,12 L200,10 L200,54 Z"/>
+    <path class="fo-spark-line fo-spark-line-green" pathLength="1"
+      d="M0,10 L22,12 L40,10 L60,8 L80,12 L100,10 L120,9 L140,11 L160,10 L180,12 L200,10"/>
+  </svg>
+</div>
 <p class="fo-img-caption">Failures resolved with a stored result — users unblocked.</p>
 </div>
-<div class="fo-img-card">
-<p class="fo-diagram-label">Non-recovery rate</p>
-<img src="{{ 'web/assets/images/failover-monitoring-failover-non-recovery-rate.png' | url }}" alt="Time-series chart: failover non-recovered rate per referential" loading="lazy" />
+<div class="fo-img-card fo-reveal fo-delay-2">
+<div class="fo-spark-chart">
+  <div class="fo-spark-header">
+    <span class="fo-spark-dot fo-spark-dot-amber"></span>
+    <span>Non-recovery rate</span>
+  </div>
+  <svg class="fo-spark-svg" viewBox="0 0 200 54" preserveAspectRatio="none">
+    <path class="fo-spark-area fo-spark-area-amber" pathLength="1"
+      d="M0,54 L0,46 L22,48 L40,50 L60,47 L80,49 L100,46 L120,50 L140,48 L160,46 L180,49 L200,47 L200,54 Z"/>
+    <path class="fo-spark-line fo-spark-line-amber" pathLength="1"
+      d="M0,46 L22,48 L40,50 L60,47 L80,49 L100,46 L120,50 L140,48 L160,46 L180,49 L200,47"/>
+  </svg>
+</div>
 <p class="fo-img-caption">Failures with no stored result — actual user impact needing attention.</p>
 </div>
 </div>
@@ -267,7 +399,7 @@ Country findByCode(String code);</code></pre>
   <h2>Everything you need, nothing you don't</h2>
   <p>Every extension point is a pluggable SPI — swap, extend, or replace any behaviour.</p>
 </div>
-<div class="fo-feat-grid">
+<div class="fo-feat-grid fo-reveal">
   {{ feat_card("purple", "💾", "Automatic store on success",
      "Every successful response is persisted under a derived key. No explicit save calls. No repository wiring.") }}
   {{ feat_card("blue",   "🔄", "Transparent recovery on failure",
@@ -341,7 +473,7 @@ Country findByCode(String code);</code></pre>
   <div class="fo-eyebrow fo-ey-docs"><span class="fo-ey-icon">📚</span>Docs</div>
   <h2>Where to go next</h2>
 </div>
-<div class="fo-cta-grid">
+<div class="fo-cta-grid fo-reveal">
   {{ cta_card("🚀", "Quickstart",
      "Working end-to-end example in 5 minutes — one dependency, one annotation, one config block.",
      'getting-started/quickstart/' | url, "Get started →") }}
