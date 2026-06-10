@@ -98,6 +98,29 @@ class FailoverStoreInmemoryTest {
         assertThat(result).isPresent().contains(new ReferentialPayload<>("third-party-failover", "5", true, NOW, NOW.plusSeconds(300), new ThirdParty(5L, "TATA-5", 5)));
     }
 
+    @Test
+    @DisplayName("should find all referential for the given name")
+    void shouldFindAllReferentialForGivenName() {
+        var rp2 = new ReferentialPayload<>("third-party-failover", "2", true, NOW, NOW, new ThirdParty(2L, "TATA", 6));
+        var other = new ReferentialPayload<>("other-failover", "1", true, NOW, NOW, new ThirdParty(3L, "BATA", 7));
+        failoverStoreInmemory.store(referentialPayload);
+        failoverStoreInmemory.store(rp2);
+        failoverStoreInmemory.store(other);
+
+        var result = failoverStoreInmemory.findAll("third-party-failover");
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(ReferentialPayload::getKey).containsExactlyInAnyOrder("1", "2");
+    }
+
+    @Test
+    @DisplayName("should return empty list when no referential found for given name in findAll")
+    void shouldReturnEmptyListWhenNoReferentialFoundForGivenNameInFindAll() {
+        var result = failoverStoreInmemory.findAll("unknown-failover");
+
+        assertThat(result).isEmpty();
+    }
+
     @Data
     @AllArgsConstructor
     static class ThirdParty  {

@@ -44,8 +44,22 @@ public interface PayloadSplitter<T, R> {
      * Splits the composite {@link RecoverContext} into per-slice recover contexts.
      * Called once per failover recover operation when a splitter is configured.
      *
+     * <p><b>RecoverAll contract (findAll / no-ID-args scenario):</b> When the method has no ID
+     * args, or {@link com.societegenerale.failover.annotations.Failover#recoverAll()} is
+     * {@code true}, this method is called with the original (possibly empty) args.
+     * Each returned context is forwarded to {@code FailoverHandler.recoverAll} on the slice
+     * delegate — one store {@code findAll} call per context. Every context must set the correct
+     * slice type {@code R} via {@link RecoverContext#clazz}.
+     * Returning an empty list suppresses recovery and logs a warning.
+     *
+     * <p><b>Note:</b> When using the default {@code DefaultFailoverHandler} whose {@code recoverAll}
+     * ignores args and returns all entries by name, return exactly one placeholder context to avoid
+     * N-times duplication. Return multiple contexts only when the slice delegate's
+     * {@code recoverAll} partitions results by the supplied args.
+     *
      * @param context composite context carrying the aggregate args and cause
-     * @return ordered list of per-slice contexts to recover individually
+     * @return ordered list of per-slice contexts to recover individually; each context drives one
+     *         {@code recoverAll} call on the slice delegate
      */
     List<RecoverContext<R>> splitOnRecover(RecoverContext<T> context);
 
@@ -53,7 +67,21 @@ public interface PayloadSplitter<T, R> {
      * Merges individually recovered slice contexts back into a single composite result.
      * The returned context's {@code payload} field is the final recovered value.
      *
-     * @param contexts per-slice contexts after each slice's payload has been recovered
+     * <p><b>Deduplication:</b> When {@link #splitOnRecover} returns N contexts in recoverAll mode
+     * and the slice delegate's {@code recoverAll} does not partition by args (e.g. the default
+     * {@code DefaultFailoverHandler}), all N calls return the same full set of entries — resulting
+     * in N-times duplicates in {@code contexts}. This method is the right place to deduplicate,
+     * since the implementation has full domain knowledge of the slice type {@code R}:
+     * <pre>{@code
+     * List<R> deduped = contexts.stream()
+     *     .map(RecoverContext::getPayload)
+     *     .filter(Objects::nonNull)
+     *     .collect(Collectors.toMap(R::getId, r -> r, (a, b) -> a))
+     *     .values().stream().toList();
+     * }</pre>
+     *
+     * @param contexts per-slice contexts after each slice's payload has been recovered;
+     *                 may contain duplicates when multiple slices target the same store partition
      * @return composite context whose payload is the merged result
      */
     RecoverContext<T> merge(List<RecoverContext<R>> contexts);

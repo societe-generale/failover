@@ -41,6 +41,7 @@ import com.societegenerale.failover.core.observable.FailoverObserver;
 import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import com.societegenerale.failover.propagator.MicrometerContextPropagator;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ObservableScheduler;
@@ -141,6 +142,11 @@ class FailoverAutoConfigurationTest {
         @Override
         public Optional<ReferentialPayload<Object>> find(String name, String key) {
             return delegate.find(name, key);
+        }
+
+        @Override
+        public List<ReferentialPayload<Object>> findAll(String name) throws FailoverStoreException {
+            return delegate.findAll(name);
         }
 
         @Override

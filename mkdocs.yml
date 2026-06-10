@@ -135,6 +135,7 @@ nav:
     - Multi-Tenant: configuration/multi-tenant.md
   - How-to Guides:
     - how-to/index.md
+    - Configure @Failover: how-to/configure-failover-annotation.md
     - Custom Key Generator: how-to/custom-key-generator.md
     - Custom Expiry Policy: how-to/custom-expiry-policy.md
     - Exception Policy: how-to/exception-policy.md

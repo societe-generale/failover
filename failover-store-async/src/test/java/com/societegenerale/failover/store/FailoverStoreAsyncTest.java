@@ -28,6 +28,7 @@ import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.Optional;
@@ -214,5 +215,17 @@ class FailoverStoreAsyncTest {
                 .isNull();
         verify(failoverStore).store(referentialPayload);
         tenantContext.remove();
+    }
+
+    @Test
+    @DisplayName("findAll() delegates synchronously to the inner store — not via executor")
+    void findAllDelegatesSynchronouslyToInnerStore() {
+        List<ReferentialPayload<String>> payloads = List.of();
+        given(failoverStore.findAll("name")).willReturn(payloads);
+
+        List<ReferentialPayload<String>> result = failoverStoreAsync.findAll("name");
+
+        assertThat(result).isSameAs(payloads);
+        verify(failoverStore).findAll("name");
     }
 }

@@ -18,8 +18,10 @@ package com.societegenerale.failover.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -78,6 +80,13 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         return Optional.ofNullable(store.get(storeKey(name, key))).map(ReferentialPayload::copy);
+    }
+
+    @Override
+    public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+        return store.entrySet().stream().filter(e->
+                e.getKey().startsWith(name+"##")
+        ).map(e-> e.getValue().copy()).toList();
     }
 
     /**

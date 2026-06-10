@@ -25,6 +25,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -85,6 +87,8 @@ class ScatterGatherFailoverHandlerTest {
     @Mock private PayloadSplitterLookup<ThirdPartiesResult, ThirdParty> payloadSplitterLookup;
 
     private final PayloadSplitter<ThirdPartiesResult, ThirdParty> thirdPartyPayloadSplitter = new ThirdPartyPayloadSplitter();
+
+    private final PayloadSplitter<ThirdPartiesResult, ThirdParty> thirdPartyPayloadSplitterForRecoverAll = new ThirdPartyPayloadSplitterForRecoverAll();
 
     private ScatterGatherFailoverHandler<ThirdPartiesResult, ThirdParty> handler;
 
@@ -206,6 +210,20 @@ class ScatterGatherFailoverHandlerTest {
         }
 
         @Test
+        @DisplayName("should return null without calling merge when splitOnRecover returns empty (line 227-230 guard)")
+        void shouldReturnNullWithoutCallingMergeWhenSplitOnRecoverReturnsEmpty() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> emptySplitter = mock();
+            doReturn(emptySplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(emptySplitter.splitOnRecover(any())).willReturn(List.of());
+
+            ThirdPartiesResult recovered = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isNull();
+            verify(delegateR, never()).recover(any(), any(), any(), any());
+            verify(emptySplitter, never()).merge(any());
+        }
+
+        @Test
         @DisplayName("should throw PayloadSplitterNotFoundException when splitter not found during recover")
         void shouldThrowWhenSplitterNotFoundDuringRecover() {
             doReturn(null).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
@@ -283,6 +301,252 @@ class ScatterGatherFailoverHandlerTest {
             assertThat(recovered).isEqualTo(expected);
             verify(delegateT).recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
             verify(delegateR, never()).recover(any(), any(), any(), any());
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // ORDER-VARIANT RECOVERY — same slice store, different CSV orderings
+    // ════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Order-variant recovery from same slice store")
+    class OrderVariantTests {
+
+        // Reverse-order composite args — same IDs, reversed sequence
+        private static final List<Object> ARGS_3_2_1 = List.of("active", "3,2,1", "India");
+
+        @BeforeEach
+        void stubSlices() {
+            given(delegateR.recover(failover, ARGS_1, ThirdParty.class, cause)).willReturn(TP_1);
+            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willReturn(TP_2);
+            given(delegateR.recover(failover, ARGS_3, ThirdParty.class, cause)).willReturn(TP_3);
+        }
+
+        @Test
+        @DisplayName("ascending order 1,2,3 and descending 3,2,1 return the same set of ThirdParties — order follows request")
+        void differentArgOrderSameContentSingleStoreSource() {
+            ThirdPartiesResult recoveredAsc  = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+            ThirdPartiesResult recoveredDesc = handler.recover(failover, ARGS_3_2_1, ThirdPartiesResult.class, cause);
+
+            // Same three ThirdParties in both results — same slice store
+            assertThat(recoveredAsc).isNotNull();
+            assertThat(recoveredDesc).isNotNull();
+            assertThat(recoveredAsc.getThirdParties()).containsExactlyInAnyOrder(TP_1, TP_2, TP_3);
+            assertThat(recoveredDesc.getThirdParties()).containsExactlyInAnyOrder(TP_1, TP_2, TP_3);
+
+            // Result order follows request order
+            assertThat(recoveredAsc.getThirdParties()).containsExactly(TP_1, TP_2, TP_3);
+            assertThat(recoveredDesc.getThirdParties()).containsExactly(TP_3, TP_2, TP_1);
+        }
+
+        @Test
+        @DisplayName("ascending 1,2,3 and descending 3,2,1 with null payload for id=2 — null in request-order position, non-null content identical")
+        void differentArgOrderNullPayloadForId2SameNonNullContent() {
+            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willReturn(null); // id=2 is cache miss
+
+            ThirdPartiesResult recoveredAsc  = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+            ThirdPartiesResult recoveredDesc = handler.recover(failover, ARGS_3_2_1, ThirdPartiesResult.class, cause);
+
+            // null appears at the position matching id=2's place in the request order
+            assertThat(recoveredAsc).isNotNull();
+            assertThat(recoveredDesc).isNotNull();
+            assertThat(recoveredAsc.getThirdParties()).containsExactly(TP_1, null, TP_3);
+            assertThat(recoveredDesc.getThirdParties()).containsExactly(TP_3, null, TP_1);
+
+            // Non-null content is identical regardless of request order
+            assertThat(recoveredAsc.getThirdParties()).filteredOn(Objects::nonNull).containsExactlyInAnyOrder(TP_1, TP_3);
+            assertThat(recoveredDesc.getThirdParties()).filteredOn(Objects::nonNull).containsExactlyInAnyOrder(TP_1, TP_3);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // RECOVER ALL - No Executor - WHEN NO ARG GIVEN  ( OR NO ID ARGS GIVEN WITH SOME OTHER ARGS )
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Store All - RecoverAll (findAll()) - No Executor - payloadSplitter configured — delegates to delegateR to recover all")
+    class RecoverAllSplitterConfiguredTests {
+
+        @BeforeEach
+        void overrideToNoSplitter() {
+            given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @DisplayName("findAll() - store - payloadSplitter configured — store all - split one to many and store all when args is null or empty")
+        void shouldSplitOneToManyAndStoreAllWhenArgsIsNullOrEmpty(List<Object> nullOrEmptyArgs) {
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            ThirdPartiesResult compositePayload = result(TP_1, TP_2, TP_3);
+
+            ThirdPartiesResult stored = handler.store(failover, nullOrEmptyArgs, compositePayload);
+
+            assertThat(stored).isEqualTo(compositePayload);
+            verify(delegateT, never()).store(any(), any(), any());
+            verify(delegateR).store(failover, List.of(1L), TP_1);
+            verify(delegateR).store(failover, List.of(2L), TP_2);
+            verify(delegateR).store(failover, List.of(3L), TP_3);
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @DisplayName("findAll() - payloadSplitter configured — recover all and merge when args is null or empty")
+        void shouldCallSplitOnRecoverAndDelegateEachSliceToDelegateRForRecoverAllWhenArgsEmpty(List<Object> nullOrEmptyArgs) {
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recoverAll(failover, nullOrEmptyArgs, ThirdParty.class, cause)).willReturn(List.of(TP_1, TP_2, TP_3));
+
+            ThirdPartiesResult stored = handler.recover(failover, nullOrEmptyArgs, ThirdPartiesResult.class, cause);
+
+            assertThat(stored).isEqualTo(result(TP_1, TP_2, TP_3));
+            verify(delegateT, never()).store(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("findAll('non-id-args') - payloadSplitter configured — recover all and merge when args is not empty and failover configured with recoverAll true")
+        void shouldCallSplitOnRecoverAndDelegateEachSliceToDelegateRForRecoverAllWhenArgsNotEmptyAndFailoverRecoverAllIsTrue() {
+            var inputArgs = List.<Object>of("some non id args", "some other non id args");
+            given(failover.recoverAll()).willReturn(true);
+            given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recoverAll(failover, inputArgs, ThirdParty.class, cause)).willReturn(List.of(TP_1, TP_2, TP_3));
+
+            ThirdPartiesResult stored = handler.recover(failover, inputArgs, ThirdPartiesResult.class, cause);
+
+            assertThat(stored).isEqualTo(result(TP_1, TP_2, TP_3));
+            verify(delegateT, never()).store(any(), any(), any());
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @DisplayName("findAll() - splitOnRecover returns empty — doRecoverAll returns empty (line 253-256), recover returns null (line 227-230), merge never called")
+        void shouldReturnNullWithoutCallingMergeWhenSplitOnRecoverReturnsEmptyInRecoverAllPath(List<Object> nullOrEmptyArgs) {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> emptySplitter = mock();
+            doReturn(emptySplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(emptySplitter.splitOnRecover(any())).willReturn(List.of());
+
+            ThirdPartiesResult recovered = handler.recover(failover, nullOrEmptyArgs, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isNull();
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+            verify(emptySplitter, never()).merge(any());
+        }
+
+        @Test
+        @DisplayName("Recover - findAllById('1,2,3') - payloadSplitter configured — split and recover and merge when args is comma separated ids and failover configured with recoverAll false")
+        void shouldCallSplitOnRecoverAndDelegateSliceToDelegateRForRecoverAllWhenArgsIsNotEmptyAndFailoverRecoverAllIsFalse() {
+            given(failover.recoverAll()).willReturn(false);
+            given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
+            doReturn(thirdPartyPayloadSplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recover(failover, ARGS_1, ThirdParty.class, cause)).willReturn(TP_1);
+            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willReturn(TP_2);
+            given(delegateR.recover(failover, ARGS_3, ThirdParty.class, cause)).willReturn(TP_3);
+
+            ThirdPartiesResult recovered = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isEqualTo(result(TP_1, TP_2, TP_3));
+            verify(delegateR).recover(failover, ARGS_1, ThirdParty.class, cause);
+            verify(delegateR).recover(failover, ARGS_2, ThirdParty.class, cause);
+            verify(delegateR).recover(failover, ARGS_3, ThirdParty.class, cause);
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+            verify(delegateT, never()).recover(any(), any(), any(), any());
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // RECOVER ALL - With Executor - WHEN NO ARG GIVEN  ( OR NO ID ARGS GIVEN WITH SOME OTHER ARGS )
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("RecoverAll (findAll()) - With Executor - payloadSplitter configured — delegates to delegateR to recover all")
+    class RecoverAllSplitterConfiguredWithExecutorTests {
+
+        private ExecutorService executorService;
+        private AtomicInteger propagatorCallCount;
+        private ScatterGatherFailoverHandler<ThirdPartiesResult, ThirdParty> parallelHandler;
+
+        @BeforeEach
+        void setUp() {
+            executorService = Executors.newFixedThreadPool(4);
+            propagatorCallCount = new AtomicInteger();
+            ContextPropagator countingPropagator = task -> {
+                propagatorCallCount.incrementAndGet();
+                return task;
+            };
+            parallelHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, countingPropagator);
+            given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
+        }
+
+        @AfterEach
+        void tearDown() {
+            executorService.shutdownNow();
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @DisplayName("findAll() - payloadSplitter configured — split one to many and store all when args is null or empty")
+        void shouldSplitOneToManyAndStoreAllWhenArgsIsNullOrEmpty(List<Object> nullOrEmptyArgs) {
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            ThirdPartiesResult compositePayload = result(TP_1, TP_2, TP_3);
+
+            ThirdPartiesResult stored = parallelHandler.store(failover, nullOrEmptyArgs, compositePayload);
+
+            assertThat(stored).isEqualTo(compositePayload);
+            assertThat(propagatorCallCount.get()).isEqualTo(3);
+            verify(delegateT, never()).store(any(), any(), any());
+            verify(delegateR).store(failover, List.of(1L), TP_1);
+            verify(delegateR).store(failover, List.of(2L), TP_2);
+            verify(delegateR).store(failover, List.of(3L), TP_3);
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @DisplayName("findAll() - payloadSplitter configured — recover all and merge when args is null or empty")
+        void shouldCallSplitOnRecoverAndDelegateEachSliceToDelegateRForRecoverAllWhenArgsEmpty(List<Object> nullOrEmptyArgs) {
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recoverAll(failover, nullOrEmptyArgs, ThirdParty.class, cause)).willReturn(List.of(TP_1, TP_2, TP_3));
+
+            ThirdPartiesResult stored = parallelHandler.recover(failover, nullOrEmptyArgs, ThirdPartiesResult.class, cause);
+
+            assertThat(propagatorCallCount.get()).isEqualTo(1);
+            verify(delegateR).recoverAll(failover, nullOrEmptyArgs, ThirdParty.class, cause);
+            assertThat(stored).isEqualTo(result(TP_1, TP_2, TP_3));
+            verify(delegateT, never()).store(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("findAll() - payloadSplitter configured — recover all and merge when args is not empty and failover configured with recoverAll true")
+        void shouldCallSplitOnRecoverAndDelegateEachSliceToDelegateRForRecoverAllWhenArgsNotEmptyAndFailoverRecoverAllIsTrue() {
+            var inputArgs = List.<Object>of("some non id args", "some other non id args");
+            given(failover.recoverAll()).willReturn(true);
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recoverAll(failover, inputArgs, ThirdParty.class, cause)).willReturn(List.of(TP_1, TP_2, TP_3));
+
+            ThirdPartiesResult stored = parallelHandler.recover(failover, inputArgs, ThirdPartiesResult.class, cause);
+
+            assertThat(propagatorCallCount.get()).isEqualTo(1);
+            verify(delegateR).recoverAll(failover, inputArgs, ThirdParty.class, cause);
+            assertThat(stored).isEqualTo(result(TP_1, TP_2, TP_3));
+            verify(delegateT, never()).store(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Recover - findAllById('1,2,3') - payloadSplitter configured — split and recover and merge when args is comma separated ids and failover configured with recoverAll false")
+        void shouldCallSplitOnRecoverAndDelegateSliceToDelegateRForRecoverAllWhenArgsIsNotEmptyAndFailoverRecoverAllIsFalse() {
+            given(failover.recoverAll()).willReturn(false);
+            given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
+            doReturn(thirdPartyPayloadSplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recover(failover, ARGS_1, ThirdParty.class, cause)).willReturn(TP_1);
+            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willReturn(TP_2);
+            given(delegateR.recover(failover, ARGS_3, ThirdParty.class, cause)).willReturn(TP_3);
+
+            ThirdPartiesResult recovered = parallelHandler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isEqualTo(result(TP_1, TP_2, TP_3));
+            verify(delegateR).recover(failover, ARGS_1, ThirdParty.class, cause);
+            verify(delegateR).recover(failover, ARGS_2, ThirdParty.class, cause);
+            verify(delegateR).recover(failover, ARGS_3, ThirdParty.class, cause);
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+            verify(delegateT, never()).recover(any(), any(), any(), any());
         }
     }
 
@@ -376,62 +640,105 @@ class ScatterGatherFailoverHandlerTest {
         }
     }
 
+
     // ════════════════════════════════════════════════════════════════════════
-    // ORDER-VARIANT RECOVERY — same slice store, different CSV orderings
+    // RecoverAll - scatter case throws; pass-through case delegates to delegateT
     // ════════════════════════════════════════════════════════════════════════
 
     @Nested
-    @DisplayName("Order-variant recovery from same slice store")
-    class OrderVariantTests {
+    @DisplayName("RecoverAll — scatter throws, no-splitter delegates to delegateT")
+    class RecoverAllTests {
 
-        // Reverse-order composite args — same IDs, reversed sequence
-        private static final List<Object> ARGS_3_2_1 = List.of("active", "3,2,1", "India");
-
-        @BeforeEach
-        void stubSlices() {
-            given(delegateR.recover(failover, ARGS_1, ThirdParty.class, cause)).willReturn(TP_1);
-            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willReturn(TP_2);
-            given(delegateR.recover(failover, ARGS_3, ThirdParty.class, cause)).willReturn(TP_3);
+        @Test
+        @DisplayName("should throw UnsupportedOperationException with failover name when payloadSplitter configured")
+        void shouldThrowUnsupportedOperationExceptionForScatterCase() {
+            assertThatThrownBy(() -> handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+                    .isInstanceOf(UnsupportedOperationException.class)
+                    .hasMessageContaining(FAILOVER_NAME);
         }
 
         @Test
-        @DisplayName("ascending order 1,2,3 and descending 3,2,1 return the same set of ThirdParties — order follows request")
-        void differentArgOrderSameContentSingleStoreSource() {
-            ThirdPartiesResult recoveredAsc  = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
-            ThirdPartiesResult recoveredDesc = handler.recover(failover, ARGS_3_2_1, ThirdPartiesResult.class, cause);
+        @DisplayName("should delegate to delegateT when no payloadSplitter configured")
+        void shouldDelegateToDelegateTWhenNoSplitterConfigured() {
+            given(failover.payloadSplitter()).willReturn("");
+            ThirdPartiesResult all = result(TP_1, TP_2, TP_3);
+            given(delegateT.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause)).willReturn(List.of(all));
 
-            // Same three ThirdParties in both results — same slice store
-            assertThat(recoveredAsc).isNotNull();
-            assertThat(recoveredDesc).isNotNull();
-            assertThat(recoveredAsc.getThirdParties()).containsExactlyInAnyOrder(TP_1, TP_2, TP_3);
-            assertThat(recoveredDesc.getThirdParties()).containsExactlyInAnyOrder(TP_1, TP_2, TP_3);
+            List<ThirdPartiesResult> recovered = handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
 
-            // Result order follows request order
-            assertThat(recoveredAsc.getThirdParties()).containsExactly(TP_1, TP_2, TP_3);
-            assertThat(recoveredDesc.getThirdParties()).containsExactly(TP_3, TP_2, TP_1);
-        }
-
-        @Test
-        @DisplayName("ascending 1,2,3 and descending 3,2,1 with null payload for id=2 — null in request-order position, non-null content identical")
-        void differentArgOrderNullPayloadForId2SameNonNullContent() {
-            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willReturn(null); // id=2 is cache miss
-
-            ThirdPartiesResult recoveredAsc  = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
-            ThirdPartiesResult recoveredDesc = handler.recover(failover, ARGS_3_2_1, ThirdPartiesResult.class, cause);
-
-            // null appears at the position matching id=2's place in the request order
-            assertThat(recoveredAsc).isNotNull();
-            assertThat(recoveredDesc).isNotNull();
-            assertThat(recoveredAsc.getThirdParties()).containsExactly(TP_1, null, TP_3);
-            assertThat(recoveredDesc.getThirdParties()).containsExactly(TP_3, null, TP_1);
-
-            // Non-null content is identical regardless of request order
-            assertThat(recoveredAsc.getThirdParties()).filteredOn(Objects::nonNull).containsExactlyInAnyOrder(TP_1, TP_3);
-            assertThat(recoveredDesc.getThirdParties()).filteredOn(Objects::nonNull).containsExactlyInAnyOrder(TP_1, TP_3);
+            assertThat(recovered).containsExactly(all);
+            verify(delegateT).recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
         }
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // PayloadSplitterExecutionException — wraps user splitter exceptions
+    // ════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("PayloadSplitterExecutionException — user splitter exceptions wrapped with context")
+    class PayloadSplitterExecutionExceptionTests {
+
+        private static final String SPLITTER_BOOM = "boom";
+        private static final RuntimeException SPLITTER_CAUSE = new RuntimeException("simulated splitter failure");
+
+        @BeforeEach
+        void stubBoomSplitter() {
+            given(failover.payloadSplitter()).willReturn(SPLITTER_BOOM);
+        }
+
+        @Test
+        @DisplayName("splitOnStore exception wrapped as PayloadSplitterExecutionException with failover name and splitter name")
+        void splitOnStoreShouldWrapException() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> boomSplitter = mock();
+            doReturn(boomSplitter).when(payloadSplitterLookup).lookup(SPLITTER_BOOM);
+            given(boomSplitter.splitOnStore(any())).willThrow(SPLITTER_CAUSE);
+
+            assertThatThrownBy(() -> handler.store(failover, ARGS_1_2_3, result(TP_1)))
+                    .isInstanceOf(PayloadSplitterExecutionException.class)
+                    .hasMessageContaining(FAILOVER_NAME)
+                    .hasMessageContaining(SPLITTER_BOOM)
+                    .hasMessageContaining("splitOnStore")
+                    .hasCause(SPLITTER_CAUSE);
+        }
+
+        @Test
+        @DisplayName("splitOnRecover exception wrapped as PayloadSplitterExecutionException with failover name and splitter name")
+        void splitOnRecoverShouldWrapException() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> boomSplitter = mock();
+            doReturn(boomSplitter).when(payloadSplitterLookup).lookup(SPLITTER_BOOM);
+            given(boomSplitter.splitOnRecover(any())).willThrow(SPLITTER_CAUSE);
+
+            assertThatThrownBy(() -> handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+                    .isInstanceOf(PayloadSplitterExecutionException.class)
+                    .hasMessageContaining(FAILOVER_NAME)
+                    .hasMessageContaining(SPLITTER_BOOM)
+                    .hasMessageContaining("splitOnRecover")
+                    .hasCause(SPLITTER_CAUSE);
+        }
+
+        @Test
+        @DisplayName("merge exception wrapped as PayloadSplitterExecutionException with failover name and splitter name")
+        void mergeShouldWrapException() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> boomSplitter = mock();
+            doReturn(boomSplitter).when(payloadSplitterLookup).lookup(SPLITTER_BOOM);
+            given(boomSplitter.splitOnRecover(any())).willReturn(
+                    List.of(RecoverContext.<ThirdParty>builder()
+                            .failover(failover).args(ARGS_1).clazz(ThirdParty.class).cause(cause).build()));
+            given(delegateR.recover(any(), any(), any(), any())).willReturn(TP_1);
+            given(boomSplitter.merge(any())).willThrow(SPLITTER_CAUSE);
+
+            assertThatThrownBy(() -> handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+                    .isInstanceOf(PayloadSplitterExecutionException.class)
+                    .hasMessageContaining(FAILOVER_NAME)
+                    .hasMessageContaining(SPLITTER_BOOM)
+                    .hasMessageContaining("merge")
+                    .hasCause(SPLITTER_CAUSE);
+        }
+    }
+
+        // ════════════════════════════════════════════════════════════════════════
     // TEST DOMAIN TYPES
     // ════════════════════════════════════════════════════════════════════════
 
@@ -499,6 +806,54 @@ class ScatterGatherFailoverHandlerTest {
             return RecoverContext.<ThirdPartiesResult>builder()
                     .failover(contexts.getFirst().getFailover())
                     .args(List.of(prefix, compositeIds, suffix))
+                    .clazz(ThirdPartiesResult.class)
+                    .cause(contexts.getFirst().getCause())
+                    .payload(merged)
+                    .build();
+        }
+    }
+
+
+    /**
+     * Zero args: No arg or recoverAll  — findAll() scenario.
+     * Slice args: Single slice with empty args.
+     */
+    static class ThirdPartyPayloadSplitterForRecoverAll implements PayloadSplitter<ThirdPartiesResult, ThirdParty> {
+
+        @Override
+        public List<StoreContext<ThirdParty>> splitOnStore(StoreContext<ThirdPartiesResult> context) {
+            return context.getPayload().getThirdParties().stream()
+                    .map(tp -> StoreContext.<ThirdParty>builder()
+                            .failover(context.getFailover())
+                            .args(List.of(tp.getId()))
+                            .payload(tp)
+                            .build())
+                    .toList();
+        }
+
+        @Override
+        public List<RecoverContext<ThirdParty>> splitOnRecover(RecoverContext<ThirdPartiesResult> context) {
+            return List.of(RecoverContext.<ThirdParty>builder()
+                    .failover(context.getFailover())
+                    .args(context.getArgs())
+                    .clazz(ThirdParty.class)
+                    .cause(context.getCause())
+                    .build());
+        }
+
+        @Override
+        public RecoverContext<ThirdPartiesResult> merge(List<RecoverContext<ThirdParty>> contexts) {
+            List<ThirdParty> parties = contexts.stream()
+                    .map(RecoverContext::getPayload)
+                    .toList();
+            ThirdPartiesResult merged = new ThirdPartiesResult();
+            merged.setThirdParties(parties);
+            String compositeIds = parties.stream()
+                    .map(tp -> String.valueOf(tp.getId()))
+                    .collect(Collectors.joining(","));
+            return RecoverContext.<ThirdPartiesResult>builder()
+                    .failover(contexts.getFirst().getFailover())
+                    .args(List.of(compositeIds))
                     .clazz(ThirdPartiesResult.class)
                     .cause(contexts.getFirst().getCause())
                     .payload(merged)

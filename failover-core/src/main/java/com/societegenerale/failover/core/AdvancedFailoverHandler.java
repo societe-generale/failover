@@ -1,4 +1,4 @@
-/*
+   /*
  * Copyright 2022-2023, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,6 +88,33 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("duration-ns", Long.toString(System.nanoTime() - startNanos)));
         }
         return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);
+    }
+
+    @Override
+    public List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+        List<T> payloads = List.of();
+        String recoveryFailureMsg = null;
+        long startNanos = System.nanoTime();
+        try {
+            payloads = failoverHandler.recoverAll(failover, args, clazz, cause);
+        } catch( Exception exception) {
+            recoveryFailureMsg = exception.getMessage();
+            log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover. This will impact only the failover flow. However a 'null' payload will be handled by RecoveredPayloadHandler and returned.", exception);
+        } finally {
+            observablePublisher.publish(of(failover.name())
+                    .collect("action", "recoverAll")
+                    .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                    .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
+                    .collect("exception-type", cause.getClass().getCanonicalName())
+                    .collect("exception-cause-type", cause.getCause() !=null ? cause.getCause().getClass().getCanonicalName() : "")
+                    .collect("exception-message", cause.getMessage() != null ? cause.getMessage() : "")
+                    .collect("exception-cause-message", cause.getCause() != null && cause.getCause().getMessage() != null ? cause.getCause().getMessage() : "")
+                    .collect("is-recovered", Boolean.toString(!payloads.isEmpty()))
+                    .collect("is-recovery-failed", Boolean.toString(recoveryFailureMsg!=null))
+                    .collect("recovery-failure-message", recoveryFailureMsg)
+                    .collect("duration-ns", Long.toString(System.nanoTime() - startNanos)));
+        }
+        return payloads.stream().map(payload -> recoveredPayloadHandler.handle(failover, args, clazz, payload, cause)).toList();
     }
 
     @Override

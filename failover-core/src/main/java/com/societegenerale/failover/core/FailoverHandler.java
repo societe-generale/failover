@@ -50,6 +50,10 @@ public interface FailoverHandler<T> {
      */
     T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable throwable);
 
+    default List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable throwable){
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
     /** Removes all expired entries from the failover store. */
     void clean();
 }
