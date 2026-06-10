@@ -257,6 +257,7 @@ List<Country> findByCodes(String csvCodes);
 ```
 
 Resolution order:
+
 1. `expiryDurationExpression` (non-blank) → overrides `expiryDuration`
 2. `expiryUnitExpression` (non-blank) → overrides `expiryUnit`
 3. `expiryPolicy` (non-blank) → overrides default expiry policy (but `expiryDuration`/`expiryUnit` still supply defaults when the policy delegates to them)

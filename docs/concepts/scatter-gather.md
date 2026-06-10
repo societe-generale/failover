@@ -265,6 +265,7 @@ PayloadSplitter 'countrySplitter' failed during 'splitOnRecover'
 ```
 
 The exception includes:
+
 - **operation** — `splitOnStore` / `splitOnRecover` / `merge`
 - **splitter bean name** — from `@Failover(payloadSplitter = "...")`
 - **failover name** — `@Failover.name()`
