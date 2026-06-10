@@ -20,8 +20,10 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.payload.splitter.*;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -157,6 +159,27 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     }
 
     /**
+     * Delegates to {@code delegateT.recoverAll} when no {@link Failover#payloadSplitter()} is configured.
+     *
+     * <p>Scatter mode does not support {@code recoverAll} at the composite level — slices are stored
+     * individually and cannot be reassembled without knowing which slices belong to which composite.
+     * Use {@link #recover} with null/empty args or set {@link Failover#recoverAll()} to {@code true}
+     * on the annotation to trigger the scatter recover-all path via {@link #recover}.
+     *
+     * @throws UnsupportedOperationException when {@link Failover#payloadSplitter()} is non-empty
+     */
+    @Override
+    public List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+        if (!failover.payloadSplitter().isEmpty()) {
+            throw new UnsupportedOperationException(
+                    ("ScatterGatherFailoverHandler does not support recoverAll() at the composite level for failover '%s'. " +
+                     "Use recover() with null/empty args or set recoverAll=true on @Failover to trigger scatter recover-all.")
+                            .formatted(failover.name()));
+        }
+        return delegateT.recoverAll(failover, args, clazz, cause);
+    }
+
+    /**
      * Triggers expiry cleanup on both {@code delegateT} and {@code delegateR}.
      *
      * <p>When both delegates are the same instance (the common auto-configured case),
@@ -176,7 +199,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     private T scatterStore(Failover failover, List<Object> args, T payload) {
         PayloadSplitter<T, R> splitter = lookupSplitter(failover);
         StoreContext<T> compositeCtx = StoreContext.<T>builder().failover(failover).args(args).payload(payload).build();
-        List<StoreContext<R>> slices = splitter.splitOnStore(compositeCtx);
+        List<StoreContext<R>> slices = invokeSplitOnStore(splitter, failover, compositeCtx);
 
         if (executor != null) {
             List<CompletableFuture<Void>> futures = slices.stream()
@@ -195,23 +218,52 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     private @Nullable T scatterRecover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         PayloadSplitter<T, R> splitter = lookupSplitter(failover);
         RecoverContext<T> compositeCtx = RecoverContext.<T>builder().failover(failover).args(args).clazz(clazz).cause(cause).build();
-        List<RecoverContext<R>> slices = splitter.splitOnRecover(compositeCtx);
+        List<RecoverContext<R>> recovered;
+        if(args==null || args.isEmpty() || failover.recoverAll()) {
+            recovered = doRecoverAll(splitter, compositeCtx);
+        } else {
+            recovered = doRecover(splitter, compositeCtx);
+        }
+        if (recovered.isEmpty()) {
+            log.warn("Failover scatter-recover: '{}' — no slices recovered, returning null", failover.name());
+            return null;
+        }
+        var finalCtx = invokeMerge(splitter, failover, recovered);
+        log.info("Failover scatter-recover: gathered {} slices for '{}'", recovered.size(), failover.name());
+        return finalCtx.getPayload();
+    }
 
+    private @NonNull List<RecoverContext<R>> doRecover(PayloadSplitter<T, R> splitter, RecoverContext<T> compositeCtx) {
+        List<RecoverContext<R>> slices = invokeSplitOnRecover(splitter, compositeCtx.getFailover(), compositeCtx);
         List<RecoverContext<R>> recovered;
         if (executor != null) {
             List<CompletableFuture<RecoverContext<R>>> futures = slices.stream()
                     .map(
-                        ctx -> CompletableFuture.supplyAsync(contextPropagator.wrapSupplier(() -> recoverSlice(ctx)), executor)
+                            ctx -> CompletableFuture.supplyAsync(contextPropagator.wrapSupplier(() -> recoverSlice(ctx)), executor)
                     )
                     .toList();
             recovered = futures.stream().map(CompletableFuture::join).toList();
         } else {
             recovered = slices.stream().map(this::recoverSlice).toList();
         }
-
-        var finalCtx = splitter.merge(recovered);
-        log.info("Failover scatter-recover: gathered {} slices for '{}'", recovered.size(), failover.name());
-        return finalCtx.getPayload();
+        return recovered;
+    }
+    private @NonNull List<RecoverContext<R>> doRecoverAll(PayloadSplitter<T, R> splitter, RecoverContext<T> compositeCtx) {
+        List<RecoverContext<R>> slices = invokeSplitOnRecover(splitter, compositeCtx.getFailover(), compositeCtx);
+        if (slices.isEmpty()) {
+            log.warn("Failover scatter-recover-all: '{}' splitOnRecover returned empty — no template context to recover from", compositeCtx.getFailover().name());
+            return List.of();
+        }
+        if (executor != null) {
+            List<CompletableFuture<List<RecoverContext<R>>>> futures = slices.stream()
+                    .map(
+                            ctx -> CompletableFuture.supplyAsync(contextPropagator.wrapSupplier(() -> recoverSliceForAll(ctx)), executor)
+                    )
+                    .toList();
+            return futures.stream().map(CompletableFuture::join).flatMap(Collection::stream).toList();
+        } else {
+            return slices.stream().map(this::recoverSliceForAll).flatMap(Collection::stream).toList();
+        }
     }
 
     private void storeSlice(StoreContext<R> ctx) {
@@ -230,6 +282,45 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
                 .cause(ctx.getCause())
                 .payload(payload)
                 .build();
+    }
+
+    private List<RecoverContext<R>> recoverSliceForAll(RecoverContext<R> ctx) {
+        log.debug("Failover scatter-recover-all: recovering slice-for-all {} for '{}'", ctx, ctx.getFailover().name());
+        List<R> payloads = delegateR.recoverAll(ctx.getFailover(), ctx.getArgs(), ctx.getClazz(), ctx.getCause());
+        log.debug("Failover scatter-recover-all: recovered slice-for-all {} for '{}' with recoveredPayloads '{}'", ctx, ctx.getFailover().name(), payloads);
+        return payloads.stream().map(payload -> RecoverContext.<R>builder()
+                .failover(ctx.getFailover())
+                .args(ctx.getArgs())
+                .clazz(ctx.getClazz())
+                .cause(ctx.getCause())
+                .payload(payload)
+                .build()).toList();
+    }
+
+    // ── Splitter invocation wrappers (catch user exceptions and re-throw with context) ──────────
+
+    private List<StoreContext<R>> invokeSplitOnStore(PayloadSplitter<T, R> splitter, Failover failover, StoreContext<T> ctx) {
+        try {
+            return splitter.splitOnStore(ctx);
+        } catch (Exception e) {
+            throw new PayloadSplitterExecutionException("splitOnStore", failover.payloadSplitter(), failover, e);
+        }
+    }
+
+    private List<RecoverContext<R>> invokeSplitOnRecover(PayloadSplitter<T, R> splitter, Failover failover, RecoverContext<T> ctx) {
+        try {
+            return splitter.splitOnRecover(ctx);
+        } catch (Exception e) {
+            throw new PayloadSplitterExecutionException("splitOnRecover", failover.payloadSplitter(), failover, e);
+        }
+    }
+
+    private RecoverContext<T> invokeMerge(PayloadSplitter<T, R> splitter, Failover failover, List<RecoverContext<R>> contexts) {
+        try {
+            return splitter.merge(contexts);
+        } catch (Exception e) {
+            throw new PayloadSplitterExecutionException("merge", failover.payloadSplitter(), failover, e);
+        }
     }
 
     private PayloadSplitter<T, R> lookupSplitter(Failover failover) {

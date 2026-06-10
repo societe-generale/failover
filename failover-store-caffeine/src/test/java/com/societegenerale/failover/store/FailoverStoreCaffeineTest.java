@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 
 /**
  * @author Anand Manissery
@@ -53,7 +53,7 @@ class FailoverStoreCaffeineTest {
 
     @BeforeEach
     void setUp() {
-        given(clock.now()).willReturn(NOW);
+        lenient().when(clock.now()).thenReturn(NOW);
         failoverStoreCaffeine = new FailoverStoreCaffeine<>(clock);
     }
 
@@ -222,6 +222,29 @@ class FailoverStoreCaffeineTest {
                 .as("entry updated with expireOn=NOW+30s must still be present after the original 2s TTL elapses")
                 .isPresent()
                 .hasValueSatisfying(p -> assertThat(p.getPayload().getName()).isEqualTo("UPDATED"));
+    }
+
+    @Test
+    @DisplayName("should find all referential for the given name")
+    void shouldFindAllReferentialForGivenName() {
+        var rp2 = new ReferentialPayload<>(NAME, "2", true, NOW, NOW.plusSeconds(60L), new ThirdParty(2L, "TATA", 6));
+        var other = new ReferentialPayload<>("other-failover", "1", true, NOW, NOW.plusSeconds(60L), new ThirdParty(3L, "BATA", 7));
+        failoverStoreCaffeine.store(referentialPayload);
+        failoverStoreCaffeine.store(rp2);
+        failoverStoreCaffeine.store(other);
+
+        var result = failoverStoreCaffeine.findAll(NAME);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(ReferentialPayload::getKey).containsExactlyInAnyOrder("1", "2");
+    }
+
+    @Test
+    @DisplayName("should return empty list when no referential found for given name in findAll")
+    void shouldReturnEmptyListWhenNoReferentialFoundForGivenNameInFindAll() {
+        var result = failoverStoreCaffeine.findAll("unknown-failover");
+
+        assertThat(result).isEmpty();
     }
 
     @Data

@@ -143,10 +143,22 @@ public @interface Failover {
      * timestamp for that entry. The scanner warns at startup when mismatched expiry is detected
      * within a domain.
      *
-     * <p>When empty (default), {@link #name()} is used — existing behaviour is preserved.
+     * <p>When empty (default), {@link #name()} is used — existing behavior is preserved.
      *
      * @return domain name, or empty string to default to {@link #name()}
      * @see #name()
      */
     String domain() default "";
+
+
+    /**
+     *
+     * @return true when we want to enforce recover all even teh args are not null or empty ( non id args )
+     * false (by default) to perform recover all by normal mode with payload splitter.
+     * You must configure a proper payload splitter in both the case
+     * @see #payloadSplitter()
+     */
+    boolean recoverAll() default false;
+
+
 }

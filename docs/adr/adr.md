@@ -1450,3 +1450,171 @@ Tags on `failover.config.expiry.seconds`: `name` (annotation name), `domain` (ef
 * Lifecycle ordering relies on both `FailoverMeterBinder` and `SpringContextFailoverScanner` implementing `SmartInitializingSingleton` — invocation order within the `afterSingletonsInstantiated` phase is determined by bean registration order in the application context, which is normally correct but should be verified in custom bootstrap scenarios.
 * `MicrometerObservablePublisher` handles store/recover runtime events published through the `ObservablePublisher` SPI. It is a separate class from `FailoverMeterBinder` which handles static configuration gauges. Both must be active for full metric coverage.
 ___
+
+## ADR 32 — PayloadSplitterExecutionException — Wrapping User-Splitter Failures with Diagnostic Context
+
+**Date : 10-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`ScatterGatherFailoverHandler` calls user-provided `PayloadSplitter` methods at three points: `splitOnStore`, `splitOnRecover`, and `merge`. Any of these can throw a runtime exception — for example, an `IndexOutOfBoundsException` if the splitter reads `args.get(0)` on a `findAll()` call where args are empty.
+
+Without wrapping, the raw exception propagates with no context indicating which splitter raised it, which operation was executing, or which `@Failover` annotation was active. Diagnosing the failure requires a full stack trace and correlation with the calling code.
+
+### Decision
+Introduce `PayloadSplitterExecutionException` (in `failover-core`) as a `RuntimeException` that wraps all user-splitter failures.
+
+Three private helpers in `ScatterGatherFailoverHandler` — `invokeSplitOnStore`, `invokeSplitOnRecover`, and `invokeMerge` — call the corresponding splitter method inside a `try/catch(Exception)` and rethrow as `PayloadSplitterExecutionException`. Every splitter call site goes through one of these helpers; no splitter method is called directly.
+
+The exception message includes:
+- **operation** — `splitOnStore`, `splitOnRecover`, or `merge`
+- **splitter bean name** — from `failover.payloadSplitter()`
+- **failover name** — from `failover.name()`
+- **full annotation config** — `expiryDuration`, `expiryUnit`, `domain`
+- **original cause message** — the exception thrown by the splitter
+
+Example:
+```
+PayloadSplitter 'countrySplitter' failed during 'splitOnRecover'
+  for failover 'countries-by-codes'
+  [payloadSplitter='countrySplitter', expiryDuration=24, expiryUnit='HOURS', domain='country']:
+  Index 1 out of bounds for length 0
+```
+
+### Consequences
+* A single exception class distinguishes splitter errors from framework errors. Stack traces point at the splitter method, not deep inside `ScatterGatherFailoverHandler`.
+* Service-layer catch blocks can filter specifically on `PayloadSplitterExecutionException` without catching unrelated `RuntimeException`s.
+* The original cause is preserved as `getCause()` — full stack trace from inside the splitter is retained.
+* Callers that previously relied on raw `IndexOutOfBoundsException` or `NullPointerException` propagating from splitters will now receive `PayloadSplitterExecutionException` wrapping those exceptions — a source-compatible change (both are `RuntimeException`).
+___
+
+## ADR 33 — doRecoverAll All-Slices Iteration — User-Controlled Slice Count
+
+**Date : 10-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`doRecoverAll` calls `splitOnRecover` and then dispatches each returned context to `delegateR.recoverAll`. An earlier draft limited this to `slices.get(0)` (first slice only) to prevent N×duplication when using the default `DefaultFailoverHandler` — whose `recoverAll` ignores args and returns all store entries by name, so N contexts produce N×all-entries.
+
+Limiting to the first slice was rejected because:
+1. It silently discards valid user intent. A `PayloadSplitter` may return multiple contexts intentionally — for example, when the slice delegate's `recoverAll` partitions results by the context's args (e.g. by tenant ID, region, or a custom shard key). The framework has no way to distinguish "returning multiple contexts for a reason" from "returning multiple contexts by mistake".
+2. It violates the extension contract: the `PayloadSplitter` API surface implies that the framework honours all returned contexts, not just the first.
+
+### Decision
+`doRecoverAll` iterates **all** contexts returned by `splitOnRecover`. Each context drives one `delegateR.recoverAll` call. The results are flat-mapped into a single list passed to `merge`.
+
+An empty-list guard exits early with a `WARN` log and returns `List.of()` without calling `merge` (ADR 35 covers this separately).
+
+Deduplication is documented as the responsibility of `PayloadSplitter.merge()` when multiple slices produce overlapping results. The `PayloadSplitter.splitOnRecover` javadoc states:
+
+> When using the default `DefaultFailoverHandler` whose `recoverAll` ignores args and returns all entries by name, return exactly one placeholder context to avoid N-times duplication. Return multiple contexts only when the slice delegate's `recoverAll` partitions results by the supplied args.
+
+### Consequences
+* Splitters that intentionally return multiple contexts for partitioned `recoverAll` work correctly.
+* Splitters using the default handler must return one context or handle N×duplication in `merge`.
+* The framework imposes no deduplication overhead on splitters that return a single context (the common case).
+* `merge()` receives duplicates when N>1 contexts are used with a non-partitioning delegate — a documented trade-off that gives the splitter full control over merge semantics.
+___
+
+## ADR 34 — ScatterGatherFailoverHandler.recoverAll() Override — Clear Error for Scatter Case
+
+**Date : 10-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`ScatterGatherFailoverHandler` did not previously override `recoverAll()`. The inherited implementation from the delegate chain was called, which returns all composite entries by name. This is wrong in scatter mode: slices are stored per entity (type `R`), not per composite (type `T`). Returning slice data as composite data is a type mismatch that causes a `ClassCastException` at the call site with no clear message.
+
+Additionally, the correct pattern for recovering all slices in scatter mode is `recover()` (not `recoverAll()`) with empty args or `@Failover(recoverAll=true)`. The `BasicFailoverExecution` (used by the AOP aspect) always calls `recover()`, never `recoverAll()` directly. `recoverAll()` is only reachable via the handler API directly — and in scatter mode it is meaningless.
+
+### Decision
+Override `recoverAll()` in `ScatterGatherFailoverHandler` with two branches:
+
+1. **Splitter configured (`payloadSplitter` non-empty):** throw `UnsupportedOperationException` with a message directing the caller to use `recover()` with empty args or `@Failover(recoverAll=true)`.
+2. **No splitter:** delegate to `delegateT.recoverAll()` for correct pass-through behaviour (non-scatter case).
+
+The error message names the failover and explains the correct alternative, so developers hitting this path during testing receive actionable guidance.
+
+### Consequences
+* The silent type-mismatch `ClassCastException` is replaced by a clear `UnsupportedOperationException` naming the failover.
+* Scatter recover-all is supported via `recover()` + `@Failover(recoverAll=true)` — the existing, correct path.
+* No-splitter callers are unaffected: `delegateT.recoverAll()` is the same behaviour as before.
+* `recoverAll()` is now documented as unsupported in scatter mode and the reason is explicit in both the Javadoc and the exception message.
+___
+
+## ADR 35 — Empty splitOnRecover Guard — Null Return Instead of merge([])
+
+**Date : 10-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`PayloadSplitter.merge()` is always called with the list of recovered slice contexts. Most `merge()` implementations read `contexts.get(0)` to build the composite `RecoverContext` builder. When `splitOnRecover` returns an empty list (misconfigured splitter, wrong args type, or intentional suppression), `merge([])` throws `IndexOutOfBoundsException` — a confusing crash with no failover context in the message.
+
+Two distinct scenarios need guarding:
+
+1. **`scatterRecover`:** `doRecover` or `doRecoverAll` returns an empty list — either no slices were split or no slices were recovered. Calling `merge([])` here crashes.
+2. **`doRecoverAll`:** `splitOnRecover` itself returns an empty list — no template context to dispatch to `delegateR.recoverAll`. Proceeding produces no recovered data and calling `merge([])` would crash.
+
+### Decision
+**`doRecoverAll`:** guard before dispatching — if `invokeSplitOnRecover` returns empty, log `WARN` with the failover name and return `List.of()` immediately. This bubbles up to `scatterRecover` as an empty `recovered` list.
+
+**`scatterRecover`:** guard before calling `invokeMerge` — if `recovered.isEmpty()`, log `WARN` with the failover name and return `null`. The caller (the AOP aspect) treats `null` as a no-recovery result, consistent with single-key failover behaviour when no data is stored.
+
+Both guards use `WARN` level (not `ERROR`) because: returning `null` from a failover is a valid degraded state (no data stored yet, first call after startup). `ERROR` is reserved for exceptions.
+
+### Consequences
+* `merge()` is never called with an empty list — implementations that read `contexts.get(0)` are safe.
+* A misconfigured splitter that returns no contexts produces a `WARN` log entry, not a `ClassCastException` or `IndexOutOfBoundsException`.
+* Callers receive `null` on the empty-slices path, same as the no-entry-in-store path — consistent failover semantics.
+* The `WARN` log includes the failover name so operators can identify the misconfigured annotation.
+___
+
+## ADR 36 — splitOnRecover RecoverAll Contract — Single Placeholder for DefaultFailoverHandler
+
+**Date : 10-JUN-2026**
+
+### Status
+Accepted (documentation-only decision)
+
+### Context
+The `splitOnRecover` method serves two distinct roles depending on the recovery path:
+
+1. **Normal scatter recover (args contain entity IDs):** returns N per-entity contexts, each with single-entity args → `delegateR.recover()` called N times with individual keys.
+2. **Recover-all path (no ID args):** called with empty/filter args → each returned context drives one `delegateR.recoverAll()` call (fetching all store entries by name).
+
+When the slice delegate is the default `DefaultFailoverHandler`, its `recoverAll(args, clazz)` ignores `args` and returns all entries matching the failover name. Returning N contexts therefore produces N identical result sets — N×duplication in the final `merge` input.
+
+The framework cannot detect this case automatically: it does not know whether the user's delegate implements partitioned `recoverAll` (where each context produces a disjoint result) or flat `recoverAll` (where each context produces the same full result). Applying automatic deduplication would silently break partitioned implementations.
+
+### Decision
+Document the contract in `PayloadSplitter.splitOnRecover` Javadoc rather than enforcing it in framework code:
+
+- When using `DefaultFailoverHandler` as the slice delegate, `splitOnRecover` must return exactly **one** placeholder context for the recover-all path.
+- Multiple contexts are correct only when the slice delegate's `recoverAll` partitions results by the context's args.
+
+Document the deduplication pattern in `PayloadSplitter.merge` Javadoc: when N×duplication is expected (e.g. wrong splitter returns multiple placeholders), deduplicate by entity ID using `Collectors.toMap`:
+
+```java
+List<R> deduped = contexts.stream()
+    .map(RecoverContext::getPayload)
+    .filter(Objects::nonNull)
+    .collect(Collectors.toMap(R::getId, r -> r, (a, b) -> a))
+    .values().stream().toList();
+```
+
+The framework applies no deduplication itself — `merge()` has full domain knowledge of type `R` and can deduplicate by the correct business key.
+
+### Consequences
+* Default case (one placeholder) produces zero duplication — the most common splitter implementation is correct by default.
+* Partitioned delegates (custom `recoverAll` that partitions by args) work without any special handling — N contexts produce N disjoint result sets, merged correctly.
+* Implementors who accidentally return multiple placeholders with a flat delegate receive N×all-entries in `merge` — behaviour is consistent and documented. `merge` can deduplicate if needed.
+* No runtime overhead in the framework for the common single-placeholder case.
+* The contract is enforced by documentation and code review, not by a runtime check — this is intentional. A runtime check would require the framework to call `recoverAll` speculatively or inspect the delegate implementation, neither of which is feasible.
+___

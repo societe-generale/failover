@@ -44,6 +44,9 @@ public interface FailoverStoreQueryResolver {
     /** @return the SELECT SQL that retrieves a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY} */
     String getSelectQuery();
 
+    /** @return the SELECT SQL that retrieves all rows for a given {@code FAILOVER_NAME} */
+    String getSelectAllByNameQuery();
+
     /** @return the DELETE SQL that removes a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY} */
     String getDeleteQuery();
 

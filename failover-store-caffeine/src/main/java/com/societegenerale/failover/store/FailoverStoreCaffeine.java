@@ -22,11 +22,13 @@ import com.github.benmanes.caffeine.cache.Expiry;
 import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static java.util.Optional.ofNullable;
@@ -143,6 +145,13 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         return ofNullable(cache.getIfPresent(storeKey(name, key))).map(ReferentialPayload::copy);
+    }
+
+    @Override
+    public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+        return cache.asMap().entrySet().stream().filter(e->
+                e.getKey().startsWith(name+"##")
+        ).map(e-> e.getValue().copy()).toList();
     }
 
     /**

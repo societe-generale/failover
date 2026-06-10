@@ -218,6 +218,50 @@ class DefaultFailoverHandlerTest {
         assertThat(recovered.getName()).isEqualTo("Tata");
     }
 
+    @Test
+    @DisplayName("recoverAll: returns payload for all non-expired entries")
+    void shouldRecoverAllReturnPayloadsForAllNonExpiredEntries() {
+        var tp1 = new ThirdParty(1L, "Tata", 1);
+        var tp2 = new ThirdParty(2L, "Bata", 2);
+        var rp1 = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, tp1);
+        var rp2 = new ReferentialPayload<>(FAILOVER_NAME, "2", false, now, now, tp2);
+        given(failoverStore.findAll(FAILOVER_NAME)).willReturn(List.of(rp1, rp2));
+        given(expiryPolicy.isExpired(failover, rp1)).willReturn(false);
+        given(expiryPolicy.isExpired(failover, rp2)).willReturn(false);
+
+        List<ThirdParty> result = defaultFailoverHandler.recoverAll(failover, List.of(), ThirdParty.class, cause);
+
+        assertThat(result).containsExactly(tp1, tp2);
+    }
+
+    @Test
+    @DisplayName("recoverAll: deletes expired entry and returns null in its place")
+    void shouldRecoverAllDeleteExpiredEntryAndReturnNullForIt() {
+        var tp1 = new ThirdParty(1L, "Tata", 1);
+        var tp2 = new ThirdParty(2L, "Bata", 2);
+        var rp1 = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, tp1);
+        var rp2 = new ReferentialPayload<>(FAILOVER_NAME, "2", false, now, now, tp2);
+        given(failoverStore.findAll(FAILOVER_NAME)).willReturn(List.of(rp1, rp2));
+        given(expiryPolicy.isExpired(failover, rp1)).willReturn(false);
+        given(expiryPolicy.isExpired(failover, rp2)).willReturn(true);
+
+        List<ThirdParty> result = defaultFailoverHandler.recoverAll(failover, List.of(), ThirdParty.class, cause);
+
+        assertThat(result).hasSize(2).first().isEqualTo(tp1);
+        assertThat(result).element(1).isNull();
+        verify(failoverStore).delete(rp2);
+    }
+
+    @Test
+    @DisplayName("recoverAll: returns empty list when store has no entries")
+    void shouldReturnEmptyListWhenStoreHasNoEntriesForRecoverAll() {
+        given(failoverStore.findAll(FAILOVER_NAME)).willReturn(List.of());
+
+        List<ThirdParty> result = defaultFailoverHandler.recoverAll(failover, List.of(), ThirdParty.class, cause);
+
+        assertThat(result).isEmpty();
+    }
+
     static class TestFailoverStore<T> implements FailoverStore<T> {
         private final Map<String, ReferentialPayload<T>> store = new ConcurrentHashMap<>();
 
@@ -229,6 +273,13 @@ class DefaultFailoverHandlerTest {
         @Override
         public Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException {
             return Optional.ofNullable(store.get(name + "##" + key)).map(ReferentialPayload::copy);
+        }
+
+        @Override
+        public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+            return store.entrySet().stream().filter(e->
+                e.getKey().startsWith(name+"##")
+            ).map(e-> e.getValue().copy()).toList();
         }
 
         @Override

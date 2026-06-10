@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -115,6 +116,11 @@ public class MultiTenantFailoverStore<T> implements FailoverStore<T> {
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         return tenantStore().find(name, key);
+    }
+
+    @Override
+    public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+        return tenantStore().findAll(name);
     }
 
     /**

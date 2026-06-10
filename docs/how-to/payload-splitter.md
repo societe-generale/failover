@@ -105,8 +105,146 @@ If your operation uses thread-local state (tenant context, MDC), implement a `Co
 
 ---
 
+## findAll() Splitter — No-ID-Args Pattern
+
+When the annotated method has no arguments (a pure `findAll()`), standard scatter/gather cannot split args into per-entity keys. Use a **dedicated splitter** for this case whose `splitOnRecover` returns a single placeholder context pointing at the slice class.
+
+### Implementation
+
+```java title="CountryAllSplitter.java"
+@Component("countryAllSplitter")
+public class CountryAllSplitter implements PayloadSplitter<List<Country>, Country> {
+
+    // Store path: identical to CountrySplitter — split the result into per-entity slices
+    @Override
+    public List<StoreContext<Country>> splitOnStore(StoreContext<List<Country>> ctx) {
+        return ctx.getPayload().stream()
+            .map(country -> StoreContext.<Country>builder()
+                .failover(ctx.getFailover())
+                .args(List.of(country.getCode()))   // entity-identity key
+                .payload(country)
+                .build())
+            .toList();
+    }
+
+    // Recover path: return ONE placeholder — args are not entity IDs here
+    @Override
+    public List<RecoverContext<Country>> splitOnRecover(RecoverContext<List<Country>> ctx) {
+        return List.of(RecoverContext.<Country>builder()
+            .failover(ctx.getFailover())
+            .args(ctx.getArgs())           // pass-through (empty for findAll)
+            .clazz(Country.class)          // REQUIRED — tells delegateR what type to recover
+            .cause(ctx.getCause())
+            .build());
+    }
+
+    @Override
+    public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+        List<Country> recovered = contexts.stream()
+            .map(RecoverContext::getPayload)
+            .filter(Objects::nonNull)
+            .toList();
+        return contexts.get(0).toBuilder()
+            .clazz((Class) List.class)
+            .payload(recovered)
+            .build();
+    }
+}
+```
+
+### Wire to the Annotation
+
+```java
+@Failover(
+    name = "all-countries",
+    domain = "country",
+    payloadSplitter = "countryAllSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<Country> findAll();
+```
+
+No `recoverAll = true` needed — empty args trigger the recover-all path automatically.
+
+---
+
+## recoverAll = true — Filter-Args Pattern
+
+When the method has arguments that are **filters** (not entity IDs), add `recoverAll = true` to force the recover-all path even though args are non-empty.
+
+```java
+@Failover(
+    name = "countries-by-status",
+    domain = "country",
+    payloadSplitter = "countryAllSplitter",   // same as findAll — ignores args on recover
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS,
+    recoverAll = true
+)
+List<Country> findByStatus(String status, String region);
+```
+
+`CountryAllSplitter.splitOnRecover` receives `args = ["active", "EU"]`. It ignores them and returns the single placeholder. `DefaultFailoverHandler.recoverAll` fetches all slices by name under `domain = "country"`.
+
+!!! tip
+    Do NOT reuse the ID-based `countrySplitter` here — its `splitOnRecover` reads `args.get(0)` as a CSV of entity IDs. With filter args that splitter would produce wrong keys and recover nothing.
+
+---
+
+## Two-Splitter Pattern — Batch Fetch + findAll on the Same Domain
+
+Share store entries between a batch endpoint and a `findAll` endpoint by assigning both to the same `domain`:
+
+```java
+// Batch by IDs: splits CSV into per-entity keys
+@Failover(
+    name = "countries-by-ids",
+    domain = "country",
+    payloadSplitter = "countrySplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<Country> findByIds(String csvIds);
+
+// FindAll: no args, uses a splitter whose splitOnRecover returns one placeholder
+@Failover(
+    name = "all-countries",
+    domain = "country",
+    payloadSplitter = "countryAllSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<Country> findAll();
+```
+
+A successful `findByIds("FR,DE,US")` stores three slices. On failure, `findAll()` recovers all three from the same `"country"` store partition.
+
+---
+
+## Handling PayloadSplitterExecutionException
+
+Any exception thrown inside `splitOnStore`, `splitOnRecover`, or `merge` is wrapped in `PayloadSplitterExecutionException` with full context. Catch it at the service layer when you need to react to splitter bugs without crashing the caller:
+
+```java
+try {
+    return countryService.findAll();
+} catch (PayloadSplitterExecutionException ex) {
+    log.error("Splitter '{}' failed in '{}' for failover '{}': {}",
+        ex.getCause().getClass().getSimpleName(),
+        // parse from ex.getMessage() or subclass with structured fields
+        ex.getMessage(), ex);
+    return Collections.emptyList();
+}
+```
+
+The message includes: splitter name, operation (`splitOnStore` / `splitOnRecover` / `merge`), failover name, expiry config, domain, and the original cause message — sufficient to diagnose the failure without a debugger.
+
+---
+
 ## Next Steps
 
-- [Scatter / Gather Concepts](../concepts/scatter-gather.md) — how the split/merge lifecycle works
+- [Annotation Reference](../reference/annotation.md) — `recoverAll`, `domain`, full attribute table
+- [Scatter / Gather Concepts](../concepts/scatter-gather.md) — findAll path, dedup in merge, PayloadSplitterExecutionException
 - [Domain Grouping](../concepts/domain.md) — sharing store entries across failovers
 - [Context Propagation](context-propagation.md) — thread-local context across parallel slices
