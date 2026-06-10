@@ -19,6 +19,7 @@ package com.societegenerale.failover.core.store;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -65,6 +66,8 @@ public interface FailoverStore<T> {
      * @throws FailoverStoreException if the underlying lookup operation fails
      */
     Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException;
+
+    List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException;
 
     /**
      * Evicts all entries whose expiry instant is before the given cutoff.

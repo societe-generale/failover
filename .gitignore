@@ -37,4 +37,5 @@ build/
 ### MkDocs ###
 site/
 docs/api/javadoc/
+docs/reference/javadoc/
 graphify-out/

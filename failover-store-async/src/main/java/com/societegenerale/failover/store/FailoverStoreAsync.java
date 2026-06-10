@@ -18,12 +18,14 @@ package com.societegenerale.failover.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.TaskExecutor;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -109,6 +111,11 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) {
         return failoverStore.find(name, key);
+    }
+
+    @Override
+    public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+        return failoverStore.findAll(name);
     }
 
     /**

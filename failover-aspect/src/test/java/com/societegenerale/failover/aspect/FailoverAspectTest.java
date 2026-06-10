@@ -24,29 +24,31 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.when;
 
 /**
  * @author Anand Manissery
  */
 @ExtendWith(MockitoExtension.class)
 class FailoverAspectTest {
+
+    @Mock
+    private Failover failover;
 
     private final Instant now = Instant.now();
 
@@ -145,19 +147,9 @@ class FailoverAspectTest {
                 .hasRootCauseMessage("Dummy Exception");
     }
 
-    private static Failover failoverWithName(String name) {
-        return new Failover() {
-            @Override public Class<? extends Annotation> annotationType() { return Failover.class; }
-            @Override public String name() { return name; }
-            @Override public long expiryDuration() { return 1; }
-            @Override public String expiryDurationExpression() { return ""; }
-            @Override public ChronoUnit expiryUnit() { return ChronoUnit.HOURS; }
-            @Override public String expiryUnitExpression() { return ""; }
-            @Override public String keyGenerator() { return ""; }
-            @Override public String expiryPolicy() { return ""; }
-            @Override public String payloadSplitter() { return ""; }
-            @Override public String domain() { return ""; }
-        };
+    private Failover failoverWithName(String name) {
+        when(failover.name()).thenReturn(name);
+        return failover;
     }
 
     class DummyFailoverExecution implements FailoverExecution<Client> {

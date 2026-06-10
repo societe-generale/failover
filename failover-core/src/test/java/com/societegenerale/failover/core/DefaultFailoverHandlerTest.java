@@ -232,6 +232,13 @@ class DefaultFailoverHandlerTest {
         }
 
         @Override
+        public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+            return store.entrySet().stream().filter(e->
+                e.getKey().startsWith(name+"##")
+            ).map(e-> e.getValue().copy()).toList();
+        }
+
+        @Override
         public void delete(ReferentialPayload<T> p) throws FailoverStoreException {
             store.remove(p.getName() + "##" + p.getKey());
         }

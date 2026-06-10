@@ -21,6 +21,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static java.lang.Boolean.FALSE;
@@ -77,6 +78,11 @@ public class DefaultFailoverStore<T> implements FailoverStore<T> {
     @Override
     public Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException {
         return failoverStore.find(name, key).map(r -> r.copy().withUpToDate(FALSE));
+    }
+
+    @Override
+    public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+        return failoverStore.findAll(name).stream().map(r -> r.copy().withUpToDate(FALSE)).toList();
     }
 
     /**

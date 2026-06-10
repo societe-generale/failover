@@ -18,6 +18,7 @@ package com.societegenerale.failover.store;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -154,6 +156,11 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
             log.debug("No referential found for name : '{}'", name, e);
             return Optional.empty();
         }
+    }
+
+    @Override
+    public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
+        return List.of();
     }
 
     /**

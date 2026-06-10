@@ -72,8 +72,11 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
         log.info("Failover Recovery : Recovering information on '{}' from failover store due to exception {}", failover.name(), cause.getMessage());
         log.debug("Failover Recovery : Recovering information on '{}' from failover store", failover.name(), cause);
         var optionalReferential = failoverStore.find(effectiveName(failover), keyGenerator.key(failover, args));
-        if(optionalReferential.isPresent()) {
-            ReferentialPayload<T> referentialPayload =  optionalReferential.get();
+        return doRecover(failover, clazz, cause, optionalReferential.orElse(null));
+    }
+
+    private T doRecover(Failover failover, Class<T> clazz, Throwable cause, ReferentialPayload<T> referentialPayload) {
+        if(referentialPayload!=null) {
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {
                 log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
                 return payloadEnricher.enrichOnRecover(failover, clazz, referentialPayload, cause).getPayload();
@@ -82,7 +85,13 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
             failoverStore.delete(referentialPayload);
         }
         log.warn("Failover Recovery : Could not recover information on '{}' from failover store, Either not found or expired for the given key!", failover.name());
-        return payloadEnricher.enrichOnRecover(failover, clazz,null, cause).getPayload();
+        return payloadEnricher.enrichOnRecover(failover, clazz, null, cause).getPayload();
+    }
+
+    @Override
+    public List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+        List<ReferentialPayload<T>> referentialPayloads = failoverStore.findAll(effectiveName(failover));
+        return referentialPayloads.stream().map(payload-> this.doRecover(failover, clazz, cause, payload)).toList();
     }
 
     @Override
