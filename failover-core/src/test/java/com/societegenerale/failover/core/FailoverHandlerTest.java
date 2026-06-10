@@ -44,6 +44,7 @@ class FailoverHandlerTest {
 
         @Override
         public void clean() {
+            // do nothing
         }
     };
 

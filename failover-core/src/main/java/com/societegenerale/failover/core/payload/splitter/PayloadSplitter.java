@@ -47,9 +47,9 @@ public interface PayloadSplitter<T, R> {
      * <p><b>RecoverAll contract (findAll / no-ID-args scenario):</b> When the method has no ID
      * args, or {@link com.societegenerale.failover.annotations.Failover#recoverAll()} is
      * {@code true}, this method is called with the original (possibly empty) args.
-     * Each returned context is forwarded to {@link FailoverHandler#recoverAll} on the slice
+     * Each returned context is forwarded to {@code FailoverHandler.recoverAll} on the slice
      * delegate — one store {@code findAll} call per context. Every context must set the correct
-     * slice type {@code R} via {@link RecoverContext.RecoverContextBuilder#clazz(Class)}.
+     * slice type {@code R} via {@link RecoverContext#clazz}.
      * Returning an empty list suppresses recovery and logs a warning.
      *
      * <p><b>Note:</b> When using the default {@code DefaultFailoverHandler} whose {@code recoverAll}
