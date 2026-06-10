@@ -33,6 +33,9 @@ import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import java.util.List;
+
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -82,6 +85,20 @@ class MultiTenantFailoverStoreTest {
             var store = new MultiTenantFailoverStore<>(() -> "acme", twoTenantFactory(), identity, null);
             store.find("name", "key");
             verify(acmeStore).find("name", "key");
+            verifyNoInteractions(globexStore);
+        }
+
+        @Test
+        @DisplayName("findAll() routes to current tenant")
+        void findAllRoutesToCurrentTenant() {
+            var store = new MultiTenantFailoverStore<>(() -> "acme", twoTenantFactory(), identity, null);
+            List<ReferentialPayload<String>> payloads = List.of();
+            given(acmeStore.findAll("country")).willReturn(payloads);
+
+            List<ReferentialPayload<String>> result = store.findAll("country");
+
+            assertThat(result).isSameAs(payloads);
+            verify(acmeStore).findAll("country");
             verifyNoInteractions(globexStore);
         }
 

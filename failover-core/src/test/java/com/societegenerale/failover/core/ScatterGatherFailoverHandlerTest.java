@@ -210,6 +210,20 @@ class ScatterGatherFailoverHandlerTest {
         }
 
         @Test
+        @DisplayName("should return null without calling merge when splitOnRecover returns empty (line 227-230 guard)")
+        void shouldReturnNullWithoutCallingMergeWhenSplitOnRecoverReturnsEmpty() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> emptySplitter = mock();
+            doReturn(emptySplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(emptySplitter.splitOnRecover(any())).willReturn(List.of());
+
+            ThirdPartiesResult recovered = handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isNull();
+            verify(delegateR, never()).recover(any(), any(), any(), any());
+            verify(emptySplitter, never()).merge(any());
+        }
+
+        @Test
         @DisplayName("should throw PayloadSplitterNotFoundException when splitter not found during recover")
         void shouldThrowWhenSplitterNotFoundDuringRecover() {
             doReturn(null).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
@@ -400,6 +414,21 @@ class ScatterGatherFailoverHandlerTest {
 
             assertThat(stored).isEqualTo(result(TP_1, TP_2, TP_3));
             verify(delegateT, never()).store(any(), any(), any());
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @DisplayName("findAll() - splitOnRecover returns empty — doRecoverAll returns empty (line 253-256), recover returns null (line 227-230), merge never called")
+        void shouldReturnNullWithoutCallingMergeWhenSplitOnRecoverReturnsEmptyInRecoverAllPath(List<Object> nullOrEmptyArgs) {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> emptySplitter = mock();
+            doReturn(emptySplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(emptySplitter.splitOnRecover(any())).willReturn(List.of());
+
+            ThirdPartiesResult recovered = handler.recover(failover, nullOrEmptyArgs, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isNull();
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+            verify(emptySplitter, never()).merge(any());
         }
 
         @Test
@@ -613,19 +642,99 @@ class ScatterGatherFailoverHandlerTest {
 
 
     // ════════════════════════════════════════════════════════════════════════
-    // RecoverAll - UnsupportedOperation
+    // RecoverAll - scatter case throws; pass-through case delegates to delegateT
     // ════════════════════════════════════════════════════════════════════════
 
     @Nested
-    @DisplayName("RecoverAll - UnsupportedOperation")
-    class RecoverAllUnsupportedOperation {
+    @DisplayName("RecoverAll — scatter throws, no-splitter delegates to delegateT")
+    class RecoverAllTests {
 
         @Test
-        @DisplayName("should throw unsupported operation exception")
-        void shouldThrowUnsupportedOperationException() {
-            assertThatThrownBy(()-> handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+        @DisplayName("should throw UnsupportedOperationException with failover name when payloadSplitter configured")
+        void shouldThrowUnsupportedOperationExceptionForScatterCase() {
+            assertThatThrownBy(() -> handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
                     .isInstanceOf(UnsupportedOperationException.class)
-                    .hasMessageContaining("Not supported yet.");
+                    .hasMessageContaining(FAILOVER_NAME);
+        }
+
+        @Test
+        @DisplayName("should delegate to delegateT when no payloadSplitter configured")
+        void shouldDelegateToDelegateTWhenNoSplitterConfigured() {
+            given(failover.payloadSplitter()).willReturn("");
+            ThirdPartiesResult all = result(TP_1, TP_2, TP_3);
+            given(delegateT.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause)).willReturn(List.of(all));
+
+            List<ThirdPartiesResult> recovered = handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).containsExactly(all);
+            verify(delegateT).recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PayloadSplitterExecutionException — wraps user splitter exceptions
+    // ════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("PayloadSplitterExecutionException — user splitter exceptions wrapped with context")
+    class PayloadSplitterExecutionExceptionTests {
+
+        private static final String SPLITTER_BOOM = "boom";
+        private static final RuntimeException SPLITTER_CAUSE = new RuntimeException("simulated splitter failure");
+
+        @BeforeEach
+        void stubBoomSplitter() {
+            given(failover.payloadSplitter()).willReturn(SPLITTER_BOOM);
+        }
+
+        @Test
+        @DisplayName("splitOnStore exception wrapped as PayloadSplitterExecutionException with failover name and splitter name")
+        void splitOnStoreShouldWrapException() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> boomSplitter = mock();
+            doReturn(boomSplitter).when(payloadSplitterLookup).lookup(SPLITTER_BOOM);
+            given(boomSplitter.splitOnStore(any())).willThrow(SPLITTER_CAUSE);
+
+            assertThatThrownBy(() -> handler.store(failover, ARGS_1_2_3, result(TP_1)))
+                    .isInstanceOf(PayloadSplitterExecutionException.class)
+                    .hasMessageContaining(FAILOVER_NAME)
+                    .hasMessageContaining(SPLITTER_BOOM)
+                    .hasMessageContaining("splitOnStore")
+                    .hasCause(SPLITTER_CAUSE);
+        }
+
+        @Test
+        @DisplayName("splitOnRecover exception wrapped as PayloadSplitterExecutionException with failover name and splitter name")
+        void splitOnRecoverShouldWrapException() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> boomSplitter = mock();
+            doReturn(boomSplitter).when(payloadSplitterLookup).lookup(SPLITTER_BOOM);
+            given(boomSplitter.splitOnRecover(any())).willThrow(SPLITTER_CAUSE);
+
+            assertThatThrownBy(() -> handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+                    .isInstanceOf(PayloadSplitterExecutionException.class)
+                    .hasMessageContaining(FAILOVER_NAME)
+                    .hasMessageContaining(SPLITTER_BOOM)
+                    .hasMessageContaining("splitOnRecover")
+                    .hasCause(SPLITTER_CAUSE);
+        }
+
+        @Test
+        @DisplayName("merge exception wrapped as PayloadSplitterExecutionException with failover name and splitter name")
+        void mergeShouldWrapException() {
+            PayloadSplitter<ThirdPartiesResult, ThirdParty> boomSplitter = mock();
+            doReturn(boomSplitter).when(payloadSplitterLookup).lookup(SPLITTER_BOOM);
+            given(boomSplitter.splitOnRecover(any())).willReturn(
+                    List.of(RecoverContext.<ThirdParty>builder()
+                            .failover(failover).args(ARGS_1).clazz(ThirdParty.class).cause(cause).build()));
+            given(delegateR.recover(any(), any(), any(), any())).willReturn(TP_1);
+            given(boomSplitter.merge(any())).willThrow(SPLITTER_CAUSE);
+
+            assertThatThrownBy(() -> handler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+                    .isInstanceOf(PayloadSplitterExecutionException.class)
+                    .hasMessageContaining(FAILOVER_NAME)
+                    .hasMessageContaining(SPLITTER_BOOM)
+                    .hasMessageContaining("merge")
+                    .hasCause(SPLITTER_CAUSE);
         }
     }
 

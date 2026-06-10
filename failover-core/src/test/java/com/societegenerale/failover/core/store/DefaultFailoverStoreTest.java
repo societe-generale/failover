@@ -10,11 +10,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -150,5 +152,33 @@ class DefaultFailoverStoreTest {
         doThrow(new FailoverStoreException("error", new RuntimeException())).when(delegate).cleanByExpiry(any());
 
         assertThatThrownBy(() -> store.cleanByExpiry(expiry)).isInstanceOf(FailoverStoreException.class);
+    }
+
+    @Test
+    @DisplayName("findAll delegates and returns defensive copies with upToDate=false")
+    void findAllDelegatesAndReturnsDefensiveCopiesWithUpToDateFalse() throws FailoverStoreException {
+        ReferentialPayload<String> r1 = new ReferentialPayload<>("name", "k1", true, AS_OF, EXPIRE_ON, "p1");
+        ReferentialPayload<String> r2 = new ReferentialPayload<>("name", "k2", true, AS_OF, EXPIRE_ON, "p2");
+        given(delegate.findAll("name")).willReturn(List.of(r1, r2));
+
+        List<ReferentialPayload<String>> result = store.findAll("name");
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).isUpToDate()).isFalse();
+        assertThat(result.get(0).getPayload()).isEqualTo("p1");
+        assertThat(result.get(1).isUpToDate()).isFalse();
+        assertThat(result.get(1).getPayload()).isEqualTo("p2");
+        verify(delegate).findAll("name");
+    }
+
+    @Test
+    @DisplayName("findAll returns empty list when delegate returns empty")
+    void findAllReturnsEmptyListWhenDelegateReturnsEmpty() throws FailoverStoreException {
+        given(delegate.findAll("name")).willReturn(List.of());
+
+        List<ReferentialPayload<String>> result = store.findAll("name");
+
+        assertThat(result).isEmpty();
+        verify(delegate).findAll("name");
     }
 }

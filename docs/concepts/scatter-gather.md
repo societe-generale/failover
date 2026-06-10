@@ -179,8 +179,104 @@ When some slices are missing or expired, `merge()` receives a mix of populated a
 
 ---
 
+## findAll() — Recover All Slices
+
+Standard scatter/gather splits method args (e.g. a CSV of IDs) into per-entity keys on both store and recover. This works well for `findByIds("1,2,3")` but breaks for two patterns:
+
+1. **No-arg `findAll()`** — there are no args to split into per-entity keys.
+2. **Filter-only args** — `findByStatus("active", "EU")` has args, but they are filters, not entity identifiers. Splitting them into entity keys produces wrong results.
+
+For both cases, the recover path must fetch **all stored slices by failover name** rather than looking up individual keys. This is the **recover-all path**.
+
+### Trigger conditions
+
+| Condition | Recovery path taken |
+|---|---|
+| `args` is `null` or empty | Recover-all (automatic) |
+| `@Failover(recoverAll = true)` | Recover-all (explicit) |
+| `args` non-empty, `recoverAll = false` | Normal scatter recover (split on args) |
+
+### How the recover-all path works
+
+```
+recover(args=[], clazz=List<Country>)
+  → doRecoverAll(splitter, compositeCtx)
+    → splitter.splitOnRecover(compositeCtx)     ← returns ONE placeholder context
+      → delegateR.recoverAll(failover, args, Country.class, cause)
+        → failoverStore.findAll("country")      ← fetches all slices by name
+    → [ctx(FR), ctx(DE), ctx(US)]
+  → splitter.merge([ctx(FR), ctx(DE), ctx(US)])
+  → List<Country>[FR, DE, US]
+```
+
+The `splitOnRecover` implementation for the recover-all path must return a **single placeholder context** carrying `clazz = Country.class` (so the store knows the slice type). The placeholder's args are forwarded verbatim to `failoverStore.findAll` — they are not used as a key.
+
+### Two-splitter pattern
+
+A method with ID args (batch by ID) and a separate `findAll()` should use **two different `PayloadSplitter` beans** — one for each method:
+
+```java
+// Batch fetch: splits CSV of IDs into per-entity keys
+@Failover(name="countries-by-ids", domain="country",
+          payloadSplitter="countrySplitter",
+          expiryDuration=24, expiryUnit=ChronoUnit.HOURS)
+List<Country> findByIds(String csvIds);
+
+// FindAll: no args — uses dedicated splitter for recover-all path
+@Failover(name="all-countries", domain="country",
+          payloadSplitter="countryAllSplitter",
+          expiryDuration=24, expiryUnit=ChronoUnit.HOURS)
+List<Country> findAll();
+```
+
+Both share `domain="country"` so `findAll()` store path populates entries that `findByIds` can also recover, and vice versa.
+
+### N-slice recover-all and deduplication
+
+`doRecoverAll` calls `recoverSliceForAll` for **each** context returned by `splitOnRecover`. With the default `DefaultFailoverHandler`, `recoverAll` ignores args and returns all entries by name — so N contexts produce N×all-entries (duplicates).
+
+**Rule:** when using the default handler, `splitOnRecover` must return exactly **one** placeholder. Return multiple contexts only when a custom `delegateR.recoverAll` implementation partitions results by the context's args (e.g. by tenant or region).
+
+If duplicates reach `merge()`, deduplication is the splitter's responsibility:
+
+```java
+@Override
+public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+    List<Country> deduped = contexts.stream()
+        .map(RecoverContext::getPayload)
+        .filter(Objects::nonNull)
+        .collect(Collectors.toMap(Country::getId, c -> c, (a, b) -> a))
+        .values().stream().toList();
+    // build and return composite RecoverContext...
+}
+```
+
+---
+
+## PayloadSplitterExecutionException
+
+Any exception thrown by a user-provided `PayloadSplitter` (`splitOnStore`, `splitOnRecover`, `merge`) is wrapped in `PayloadSplitterExecutionException` with full diagnostic context:
+
+```
+PayloadSplitter 'countrySplitter' failed during 'splitOnRecover'
+  for failover 'countries-by-codes'
+  [payloadSplitter='countrySplitter', expiryDuration=24, expiryUnit='HOURS', domain='country']:
+  Index 1 out of bounds for length 0
+```
+
+The exception includes:
+- **operation** — `splitOnStore` / `splitOnRecover` / `merge`
+- **splitter bean name** — from `@Failover(payloadSplitter = "...")`
+- **failover name** — `@Failover.name()`
+- **full annotation config** — `expiryDuration`, `expiryUnit`, `domain`
+- **original cause** — the exception thrown by the splitter
+
+This makes it straightforward to identify whether the error occurred in split or merge, which annotation triggered it, and what the splitter's configuration was.
+
+---
+
 ## Next Steps
 
 - [Domain Grouping](domain.md) — cross-failover store sharing
-- [Payload Splitter How-to](../how-to/payload-splitter.md) — step-by-step implementation
+- [Payload Splitter How-to](../how-to/payload-splitter.md) — `findAll()` and `recoverAll` step-by-step
 - [Context Propagation](../how-to/context-propagation.md) — propagate thread-local context across parallel slices

@@ -96,9 +96,9 @@ class DefaultFailoverStoreQueryResolverTest {
         void allQueriesSubstitutePrefixAndHaveNoPlaceholder() {
             var r = defaultResolver();
             var queries = Stream.of(r.getInsertQuery(), r.getUpdateQuery(), r.getSelectQuery(),
-                    r.getDeleteQuery(), r.getCleanUpQuery(), r.getMergeQuery()).toList();
+                    r.getSelectAllByNameQuery(), r.getDeleteQuery(), r.getCleanUpQuery(), r.getMergeQuery()).toList();
             assertThat(queries)
-                    .hasSize(6)
+                    .hasSize(7)
                     .doesNotContainNull()
                     .allSatisfy(q -> {
                         assertThat(q).doesNotContain("%PREFIX%");
@@ -154,6 +154,16 @@ class DefaultFailoverStoreQueryResolverTest {
         void selectQuerySelectsAllColumns() {
             assertThat(defaultResolver().getSelectQuery())
                     .contains("FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS");
+        }
+
+        @Test
+        @DisplayName("selectAllByNameQuery selects all six columns and filters only by FAILOVER_NAME")
+        void selectAllByNameQuerySelectsAllColumnsAndFiltersOnlyByName() {
+            String q = defaultResolver().getSelectAllByNameQuery();
+            assertThat(q)
+                    .contains("FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS")
+                    .contains("WHERE FAILOVER_NAME = ?")
+                    .doesNotContain("FAILOVER_KEY = ?");
         }
 
         @Test

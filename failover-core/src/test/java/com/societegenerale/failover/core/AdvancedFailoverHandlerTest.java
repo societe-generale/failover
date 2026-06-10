@@ -237,6 +237,80 @@ class AdvancedFailoverHandlerTest {
         verify(failoverHandler).clean();
     }
 
+    @Test
+    @DisplayName("recoverAll delegates to inner handler and publishes metrics with is-recovered=true")
+    void shouldRecoverAllAlongWithReporting() {
+        List<String> payloads = List.of("A", "B");
+        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(payloads);
+        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, "A", cause)).willReturn("A");
+        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, "B", cause)).willReturn("B");
+
+        List<String> result = advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
+
+        assertThat(result).containsExactly("A", "B");
+        verify(failoverHandler).recoverAll(failover, ARGS, String.class, cause);
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-action", "recoverAll")
+                .containsEntry("failover-is-recovered", "true")
+                .containsEntry("failover-is-recovery-failed", "false");
+    }
+
+    @Test
+    @DisplayName("recoverAll publishes failure metrics and returns empty list when inner handler throws")
+    void shouldCaptureRecoveryFailureInMetricsWhenRecoverAllDelegateThrowsException() {
+        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("recoverAll failure"));
+
+        List<String> result = advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
+
+        assertThat(result).isEmpty();
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-action", "recoverAll")
+                .containsEntry("failover-is-recovered", "false")
+                .containsEntry("failover-is-recovery-failed", "true")
+                .containsEntry("failover-recovery-failure-message", "recoverAll failure");
+    }
+
+    @Test
+    @DisplayName("recoverAll uses empty string in metrics when cause message is null")
+    void shouldUseEmptyStringInRecoverAllMetricsWhenCauseMessageIsNull() {
+        cause = new RuntimeException();   // getMessage() == null
+        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
+
+        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
+
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-exception-message", "")
+                .containsEntry("failover-exception-cause-message", "");
+    }
+
+    @Test
+    @DisplayName("recoverAll uses empty string for cause-type and cause-message when cause has no root cause")
+    void shouldUseEmptyStringsInRecoverAllMetricsWhenCauseHasNoRootCause() {
+        cause = new RuntimeException("No-Root-Cause");   // getCause() == null
+        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
+
+        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
+
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-action", "recoverAll")
+                .containsEntry("failover-exception-type", "java.lang.RuntimeException")
+                .containsEntry("failover-exception-message", "No-Root-Cause")
+                .containsEntry("failover-exception-cause-type", "")
+                .containsEntry("failover-exception-cause-message", "");
+    }
+
+    @Test
+    @DisplayName("should include duration-ns in recoverAll metrics")
+    void shouldIncludeDurationNsInRecoverAllMetrics() {
+        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
+
+        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
+
+        String durationNs = observablePublisher.getMetrics().getInfo().get("failover-duration-ns");
+        assertThat(durationNs).isNotNull();
+        assertThat(Long.parseLong(durationNs)).isGreaterThanOrEqualTo(0);
+    }
+
     static class InMemoryObservablePublisher extends AbstractObservablePublisher {
         @Getter
         private Metrics metrics;

@@ -160,7 +160,7 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
-        return List.of();
+        return jdbcTemplate.query(queryResolver.getSelectAllByNameQuery(), rowMapper, name);
     }
 
     /**
