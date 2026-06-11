@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -159,27 +159,6 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
     }
 
     /**
-     * Delegates to {@code delegateT.recoverAll} when no {@link Failover#payloadSplitter()} is configured.
-     *
-     * <p>Scatter mode does not support {@code recoverAll} at the composite level — slices are stored
-     * individually and cannot be reassembled without knowing which slices belong to which composite.
-     * Use {@link #recover} with null/empty args or set {@link Failover#recoverAll()} to {@code true}
-     * on the annotation to trigger the scatter recover-all path via {@link #recover}.
-     *
-     * @throws UnsupportedOperationException when {@link Failover#payloadSplitter()} is non-empty
-     */
-    @Override
-    public List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
-        if (!failover.payloadSplitter().isEmpty()) {
-            throw new UnsupportedOperationException(
-                    ("ScatterGatherFailoverHandler does not support recoverAll() at the composite level for failover '%s'. " +
-                     "Use recover() with null/empty args or set recoverAll=true on @Failover to trigger scatter recover-all.")
-                            .formatted(failover.name()));
-        }
-        return delegateT.recoverAll(failover, args, clazz, cause);
-    }
-
-    /**
      * Triggers expiry cleanup on both {@code delegateT} and {@code delegateR}.
      *
      * <p>When both delegates are the same instance (the common auto-configured case),
@@ -215,15 +194,28 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
         return payload;
     }
 
+    /**
+     * Single decision point for recover-all vs per-key recover.
+     *
+     * <p>Recover-all applies when <em>either</em> there are no ID arguments
+     * ({@code args} is {@code null} or empty) <em>or</em> {@link Failover#recoverAll()} forces it.
+     * The explicit flag is therefore only needed for a method that <em>does</em> receive arguments
+     * but should still recover the whole referential; with no arguments, recover-all already applies.
+     *
+     * @param failover the failover annotation
+     * @param args     the method arguments
+     * @return {@code true} to recover the whole referential, {@code false} to recover by key
+     */
+    private boolean shouldRecoverAll(Failover failover, List<Object> args) {
+        return args == null || args.isEmpty() || failover.recoverAll();
+    }
+
     private @Nullable T scatterRecover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         PayloadSplitter<T, R> splitter = lookupSplitter(failover);
         RecoverContext<T> compositeCtx = RecoverContext.<T>builder().failover(failover).args(args).clazz(clazz).cause(cause).build();
-        List<RecoverContext<R>> recovered;
-        if(args==null || args.isEmpty() || failover.recoverAll()) {
-            recovered = doRecoverAll(splitter, compositeCtx);
-        } else {
-            recovered = doRecover(splitter, compositeCtx);
-        }
+        List<RecoverContext<R>> recovered = shouldRecoverAll(failover, args)
+                ? doRecoverAll(splitter, compositeCtx)
+                : doRecover(splitter, compositeCtx);
         if (recovered.isEmpty()) {
             log.warn("Failover scatter-recover: '{}' — no slices recovered, returning null", failover.name());
             return null;

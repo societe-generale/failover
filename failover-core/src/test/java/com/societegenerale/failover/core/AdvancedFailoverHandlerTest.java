@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -238,80 +238,6 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
-    @DisplayName("recoverAll delegates to inner handler and publishes metrics with is-recovered=true")
-    void shouldRecoverAllAlongWithReporting() {
-        List<String> payloads = List.of("A", "B");
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(payloads);
-        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, "A", cause)).willReturn("A");
-        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, "B", cause)).willReturn("B");
-
-        List<String> result = advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(result).containsExactly("A", "B");
-        verify(failoverHandler).recoverAll(failover, ARGS, String.class, cause);
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recoverAll")
-                .containsEntry("failover-is-recovered", "true")
-                .containsEntry("failover-is-recovery-failed", "false");
-    }
-
-    @Test
-    @DisplayName("recoverAll publishes failure metrics and returns empty list when inner handler throws")
-    void shouldCaptureRecoveryFailureInMetricsWhenRecoverAllDelegateThrowsException() {
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("recoverAll failure"));
-
-        List<String> result = advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(result).isEmpty();
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recoverAll")
-                .containsEntry("failover-is-recovered", "false")
-                .containsEntry("failover-is-recovery-failed", "true")
-                .containsEntry("failover-recovery-failure-message", "recoverAll failure");
-    }
-
-    @Test
-    @DisplayName("recoverAll uses empty string in metrics when cause message is null")
-    void shouldUseEmptyStringInRecoverAllMetricsWhenCauseMessageIsNull() {
-        cause = new RuntimeException();   // getMessage() == null
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-exception-message", "")
-                .containsEntry("failover-exception-cause-message", "");
-    }
-
-    @Test
-    @DisplayName("recoverAll uses empty string for cause-type and cause-message when cause has no root cause")
-    void shouldUseEmptyStringsInRecoverAllMetricsWhenCauseHasNoRootCause() {
-        cause = new RuntimeException("No-Root-Cause");   // getCause() == null
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-action", "recoverAll")
-                .containsEntry("failover-exception-type", "java.lang.RuntimeException")
-                .containsEntry("failover-exception-message", "No-Root-Cause")
-                .containsEntry("failover-exception-cause-type", "")
-                .containsEntry("failover-exception-cause-message", "");
-    }
-
-    @Test
-    @DisplayName("should include duration-ns in recoverAll metrics")
-    void shouldIncludeDurationNsInRecoverAllMetrics() {
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        String durationNs = observablePublisher.getMetrics().getInfo().get("failover-duration-ns");
-        assertThat(durationNs).isNotNull();
-        assertThat(Long.parseLong(durationNs)).isGreaterThanOrEqualTo(0);
-    }
-
-    @Test
     @DisplayName("should publish expression-based expiry-duration and expiry-unit in store metrics")
     void shouldPublishExpressionBasedExpiryInStoreMetrics() {
         given(failover.expiryDurationExpression()).willReturn("24");
@@ -337,20 +263,6 @@ class AdvancedFailoverHandlerTest {
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-expiry-duration", "48")
                 .containsEntry("failover-expiry-unit", "HOURS");
-    }
-
-    @Test
-    @DisplayName("should publish expression-based expiry-duration and expiry-unit in recoverAll metrics")
-    void shouldPublishExpressionBasedExpiryInRecoverAllMetrics() {
-        given(failover.expiryDurationExpression()).willReturn("72");
-        given(failover.expiryUnitExpression()).willReturn("DAYS");
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-expiry-duration", "72")
-                .containsEntry("failover-expiry-unit", "DAYS");
     }
 
     @Test
@@ -400,46 +312,6 @@ class AdvancedFailoverHandlerTest {
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-exception-cause-type", "java.lang.IllegalArgumentException")
                 .containsEntry("failover-exception-cause-message", "");
-    }
-
-    @Test
-    @DisplayName("recoverAll publishes exception-type and cause metrics correctly")
-    void shouldPublishExceptionMetricsInRecoverAllSuccessPath() {
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-exception-type", "java.lang.RuntimeException")
-                .containsEntry("failover-exception-message", "Dummy-Exception")
-                .containsEntry("failover-exception-cause-type", "java.lang.IllegalArgumentException")
-                .containsEntry("failover-exception-cause-message", "Root-Cause");
-    }
-
-    @Test
-    @DisplayName("recoverAll uses empty string for exception-cause-message when root cause has null message")
-    void shouldUseEmptyStringForCauseMessageInRecoverAllWhenRootCauseHasNullMessage() {
-        cause = new RuntimeException("Dummy-Exception", new IllegalArgumentException());  // getCause().getMessage() == null
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of());
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        assertThat(observablePublisher.getMetrics().getInfo())
-                .containsEntry("failover-exception-cause-type", "java.lang.IllegalArgumentException")
-                .containsEntry("failover-exception-cause-message", "");
-    }
-
-    @Test
-    @DisplayName("recoverAll invokes recoveredPayloadHandler.handle for each recovered payload")
-    void shouldInvokeRecoveredPayloadHandlerForEachPayloadInRecoverAll() {
-        given(failoverHandler.recoverAll(failover, ARGS, String.class, cause)).willReturn(List.of("A", "B"));
-        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, "A", cause)).willReturn("A");
-        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, "B", cause)).willReturn("B");
-
-        advancedFailoverHandler.recoverAll(failover, ARGS, String.class, cause);
-
-        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, "A", cause);
-        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, "B", cause);
     }
 
     static class InMemoryObservablePublisher extends AbstractObservablePublisher {

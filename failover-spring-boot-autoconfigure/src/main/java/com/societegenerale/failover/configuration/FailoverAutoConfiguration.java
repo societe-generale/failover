@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,6 +68,7 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -82,6 +83,12 @@ import java.util.List;
  * auto-configurations ({@code FailoverCaffeineStoreAutoConfiguration},
  * {@code FailoverJdbcStoreAutoConfiguration}). The final assembled {@code FailoverStore}
  * bean is produced by {@code FailoverStoreAutoConfiguration}.
+ *
+ * <p><strong>Note on structure:</strong> the core beans are declared flat on this class (rather
+ * than grouped into nested {@code @Configuration} classes) on purpose. {@code @ConditionalOnMissingBean}
+ * relies on auto-configuration ordering to let a user-declared bean win; nested {@code @Configuration}
+ * classes lose that deferred ordering and break bean-override (the framework's primary extension
+ * point). Keep new beans flat here unless they have no {@code @ConditionalOnMissingBean}.
  *
  * @author Anand Manissery
  */
@@ -106,7 +113,8 @@ public class FailoverAutoConfiguration {
     /**
      * Creates the default key generator bean.
      *
-     * @return {@link DefaultKeyGenerator} using MD5-based fixed-length key hashing
+     * @return {@link DefaultKeyGenerator}, which derives the key by joining the method arguments'
+     *         string representations (see {@link DefaultKeyGenerator} for the per-argument rules)
      */
     @ConditionalOnMissingBean(name = "defaultKeyGenerator")
     @Bean(name = "defaultKeyGenerator")
@@ -181,7 +189,7 @@ public class FailoverAutoConfiguration {
      * @return composite expiry policy that delegates to named policies or the default
      */
     @ConditionalOnMissingBean(name = "failoverExpiryPolicy")
-    @Bean
+    @Bean(name = "failoverExpiryPolicy")
     public ExpiryPolicy<Object> failoverExpiryPolicy(@Qualifier("defaultExpiryPolicy") ExpiryPolicy<Object> defaultExpiryPolicy, ExpiryPolicyLookup<Object> expiryPolicyLookup) {
         return new FailoverExpiryPolicy<>(defaultExpiryPolicy, expiryPolicyLookup);
     }
@@ -226,7 +234,7 @@ public class FailoverAutoConfiguration {
     public ContextPropagator contextPropagator(
             ObjectProvider<TenantContextPropagator> tenantPropagatorProvider,
             ObjectProvider<MicrometerContextPropagator> micrometerPropagatorProvider) {
-        List<ContextPropagator> propagators = new java.util.ArrayList<>();
+        List<ContextPropagator> propagators = new ArrayList<>();
         tenantPropagatorProvider.ifAvailable(propagators::add);
         micrometerPropagatorProvider.ifAvailable(propagators::add);
         propagators.add(new MdcContextPropagator());
