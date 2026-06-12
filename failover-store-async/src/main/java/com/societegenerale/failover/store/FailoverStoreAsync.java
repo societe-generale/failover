@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,6 +113,13 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
         return failoverStore.find(name, key);
     }
 
+    /**
+     * Executes findAll synchronously on the calling thread — the result is needed immediately,
+     * so no executor boundary is crossed (same rationale as {@link #find}).
+     *
+     * @param name the referential name
+     * @return all matching payloads, or an empty list if none exist
+     */
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
         return failoverStore.findAll(name);

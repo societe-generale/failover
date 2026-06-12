@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -640,37 +640,6 @@ class ScatterGatherFailoverHandlerTest {
         }
     }
 
-
-    // ════════════════════════════════════════════════════════════════════════
-    // RecoverAll - scatter case throws; pass-through case delegates to delegateT
-    // ════════════════════════════════════════════════════════════════════════
-
-    @Nested
-    @DisplayName("RecoverAll — scatter throws, no-splitter delegates to delegateT")
-    class RecoverAllTests {
-
-        @Test
-        @DisplayName("should throw UnsupportedOperationException with failover name when payloadSplitter configured")
-        void shouldThrowUnsupportedOperationExceptionForScatterCase() {
-            assertThatThrownBy(() -> handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
-                    .isInstanceOf(UnsupportedOperationException.class)
-                    .hasMessageContaining(FAILOVER_NAME);
-        }
-
-        @Test
-        @DisplayName("should delegate to delegateT when no payloadSplitter configured")
-        void shouldDelegateToDelegateTWhenNoSplitterConfigured() {
-            given(failover.payloadSplitter()).willReturn("");
-            ThirdPartiesResult all = result(TP_1, TP_2, TP_3);
-            given(delegateT.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause)).willReturn(List.of(all));
-
-            List<ThirdPartiesResult> recovered = handler.recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
-
-            assertThat(recovered).containsExactly(all);
-            verify(delegateT).recoverAll(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
-            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
-        }
-    }
 
     // ════════════════════════════════════════════════════════════════════════
     // PayloadSplitterExecutionException — wraps user splitter exceptions

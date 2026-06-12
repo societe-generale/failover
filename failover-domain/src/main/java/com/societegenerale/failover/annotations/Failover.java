@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -152,10 +152,21 @@ public @interface Failover {
 
 
     /**
+     * Forces recover-all mode even when the method is called with non-empty (ID) arguments.
      *
-     * @return true when we want to enforce recover all even teh args are not null or empty ( non id args )
-     * false (by default) to perform recover all by normal mode with payload splitter.
-     * You must configure a proper payload splitter in both the case
+     * <p>Recover-all retrieves every stored entry for the failover's referential name (via the
+     * store's {@code findAll}) instead of a single key lookup.
+     *
+     * <p><strong>Trigger precedence:</strong> recover-all is performed when <em>either</em> the
+     * method arguments are {@code null}/empty (no ID args) <em>or</em> this flag is {@code true}.
+     * Setting {@code recoverAll = true} is therefore only needed to force recover-all for a method
+     * that <em>does</em> receive arguments; with no arguments, recover-all already applies and this
+     * flag is redundant.
+     *
+     * <p>A {@link #payloadSplitter()} must be configured in both cases.
+     *
+     * @return {@code true} to force recover-all regardless of arguments; {@code false} (default) to
+     *         recover-all only when no ID arguments are supplied
      * @see #payloadSplitter()
      */
     boolean recoverAll() default false;

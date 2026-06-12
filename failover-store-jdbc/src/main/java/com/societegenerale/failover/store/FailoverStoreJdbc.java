@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -158,6 +158,16 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         }
     }
 
+    /**
+     * Returns all rows for the given referential {@code name}.
+     *
+     * <p>Each row is mapped by {@code rowMapper} into a freshly constructed {@link ReferentialPayload},
+     * so returned instances are inherently independent of any store-internal state. Returns an empty
+     * list when no rows match.
+     *
+     * @param name the referential name
+     * @return all matching payloads, or an empty list if none exist
+     */
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
         return jdbcTemplate.query(queryResolver.getSelectAllByNameQuery(), rowMapper, name);

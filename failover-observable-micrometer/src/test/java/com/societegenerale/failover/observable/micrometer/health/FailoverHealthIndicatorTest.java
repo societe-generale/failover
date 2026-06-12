@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ class FailoverHealthIndicatorTest {
         when(scanner.findAllFailover()).thenReturn(List.of(fo));
 
         Health health = indicator.health();
-
+        assertThat(health).isNotNull();
         assertThat(health.getStatus()).isEqualTo(Status.UP);
         assertThat(health.getDetails()).containsEntry("registered-failovers", 1);
     }
@@ -64,6 +64,7 @@ class FailoverHealthIndicatorTest {
 
         Health health = indicator.health();
 
+        assertThat(health).isNotNull();
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
         assertThat(health.getDetails()).containsEntry("registered-failovers", 0);
         assertThat(health.getDetails()).containsKey("reason");
@@ -79,6 +80,7 @@ class FailoverHealthIndicatorTest {
 
         Health health = indicator.health();
 
+        assertThat(health).isNotNull();
         assertThat(health.getStatus()).isEqualTo(Status.UP);
         assertThat(health.getDetails()).containsEntry("registered-failovers", 3);
     }
