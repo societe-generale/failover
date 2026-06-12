@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -88,6 +88,20 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
         return payloadEnricher.enrichOnRecover(failover, clazz, null, cause).getPayload();
     }
 
+    /**
+     * Recovers every stored entry for the failover's referential via {@link FailoverStore#findAll},
+     * applying the same expiry check and enrichment as {@link #recover}.
+     *
+     * <p>This is the live recover-all path: it is invoked at the slice level by
+     * {@link ScatterGatherFailoverHandler} on its slice delegate (the no-ID-args / recover-all
+     * scenario routed through {@code recover}). It is not a top-level execution entry point.
+     *
+     * @param failover annotation metadata for the failover point
+     * @param args     unused for recover-all; the whole referential is recovered
+     * @param clazz    expected payload type
+     * @param cause    the exception that triggered recovery
+     * @return the recovered payloads (expired entries are skipped/deleted)
+     */
     @Override
     public List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         List<ReferentialPayload<T>> referentialPayloads = failoverStore.findAll(effectiveName(failover));

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -573,7 +573,7 @@ class FailoverStoreJdbcTest {
             var result = failoverStoreJdbc.findAll(NAME);
 
             assertThat(result).hasSize(1);
-            assertThat(result.get(0).getKey()).isEqualTo("key-1");
+            assertThat(result.getFirst().getKey()).isEqualTo("key-1");
         }
 
         @Test

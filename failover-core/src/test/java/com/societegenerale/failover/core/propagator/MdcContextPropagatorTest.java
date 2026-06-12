@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -297,9 +297,7 @@ class MdcContextPropagatorTest {
             List<String> seenValues = new CopyOnWriteArrayList<>();
             CountDownLatch startLatch = new CountDownLatch(1);
             CountDownLatch doneLatch = new CountDownLatch(threadCount);
-
-            var executor = Executors.newFixedThreadPool(threadCount);
-            try {
+            try(var executor = Executors.newFixedThreadPool(threadCount)) {
                 for (int i = 0; i < threadCount; i++) {
                     String threadId = "thread-" + i;
                     MDC.put("threadId", threadId);
@@ -319,10 +317,7 @@ class MdcContextPropagatorTest {
                 MDC.clear();
                 startLatch.countDown();
                 doneLatch.await();
-            } finally {
-                executor.shutdownNow();
             }
-
             assertThat(seenValues).hasSize(threadCount);
             for (int i = 0; i < threadCount; i++) {
                 assertThat(seenValues).contains("thread-" + i);

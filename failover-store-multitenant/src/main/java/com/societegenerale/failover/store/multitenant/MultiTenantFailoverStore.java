@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -118,6 +118,17 @@ public class MultiTenantFailoverStore<T> implements FailoverStore<T> {
         return tenantStore().find(name, key);
     }
 
+    /**
+     * Returns all payloads for the given name from the <b>current tenant's</b> store only.
+     *
+     * <p>Tenant resolution happens on the calling thread (see {@link #tenantStore()}); entries
+     * belonging to other tenants are never returned, preserving tenant isolation on the recover-all
+     * path.
+     *
+     * @param name the referential name
+     * @return all matching payloads for the current tenant, or an empty list if none exist
+     * @throws FailoverStoreException if the delegate lookup fails
+     */
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
         return tenantStore().findAll(name);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,8 +38,12 @@ import static java.util.stream.Collectors.joining;
  *   <li>Primitive, {@link Number}, {@link String}, or {@link Boolean} → {@link String#valueOf(Object)}</li>
  *   <li>{@link java.util.Collection} → elements converted recursively, joined by {@code ","}</li>
  *   <li>Array → elements converted recursively, joined by {@code ","}</li>
- *   <li>Any other type → {@code "ClassName@hashCode"} (hex); a warning is logged recommending
- *       {@code equals}/{@code hashCode} implementation or a custom {@link KeyGenerator}</li>
+ *   <li>Any type that overrides {@link Object#toString()} (records, enums, value objects) →
+ *       its {@code toString()} value, which is deterministic and stable across JVM restarts</li>
+ *   <li>Any other type (identity {@code toString()}) → {@code "ClassName@hashCode"} (hex); a
+ *       warning is logged because the identity hash is unstable across JVM restarts and will cause
+ *       failover lookups to miss with a persistent store. Override {@code toString}/{@code equals}/
+ *       {@code hashCode} or configure a custom {@link KeyGenerator}</li>
  * </ul>
  *
  * <p>Multiple arguments are joined with {@code ":"}.
@@ -98,9 +102,29 @@ public class DefaultKeyGenerator implements KeyGenerator {
             }
             return list.stream().map(e-> this.castToStringValue(e, failover)).collect(joining(COLLECTIONS_DELIMITER));
         }
-        log.warn("Failover '{}': key arg '{}' is a non-primitive/non-String type. Implement equals/hashCode or configure a custom KeyGenerator.",
+        if (overridesToString(item.getClass())) {
+            // Records, enums and value types with a real toString() yield a deterministic, readable
+            // key that is stable across JVM restarts — safe for a persistent store.
+            return valueOf(item);
+        }
+        log.warn("Failover '{}': key arg of type '{}' overrides neither toString() nor a stable hashCode/equals; "
+                        + "its identity hash is unstable across JVM restarts and will cause failover lookups to miss with a persistent store. "
+                        + "Override toString()/equals()/hashCode() or configure a custom KeyGenerator.",
                 failover.name(), item.getClass().getName());
         return "%s@%s".formatted(item.getClass().getName(), toHexString(item.hashCode()));
+    }
+
+    /**
+     * Returns {@code true} when {@code clazz} (or a supertype other than {@link Object}) overrides
+     * {@link Object#toString()}. Such a {@code toString()} is treated as a deterministic key source;
+     * the bare {@link Object#toString()} (identity hash) is not.
+     */
+    private boolean overridesToString(Class<?> clazz) {
+        try {
+            return clazz.getMethod("toString").getDeclaringClass() != Object.class;
+        } catch (NoSuchMethodException e) {
+            return false; // unreachable: toString() is always present
+        }
     }
 
     private boolean isOfType(Object item) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,6 +80,18 @@ public class DefaultFailoverStore<T> implements FailoverStore<T> {
         return failoverStore.find(name, key).map(r -> r.copy().withUpToDate(FALSE));
     }
 
+    /**
+     * Returns all payloads for the given name, each as a defensive copy with {@code upToDate}
+     * forced to {@code false}.
+     *
+     * <p>This is the enforcement point for the {@link FailoverStore#findAll} defensive-copy
+     * contract: standard stores delegating through {@code DefaultFailoverStore} satisfy it
+     * automatically.
+     *
+     * @param name the referential name
+     * @return defensive copies of all matching payloads with {@code upToDate=false}, or an empty list
+     * @throws FailoverStoreException if the delegate lookup operation fails
+     */
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
         return failoverStore.findAll(name).stream().map(r -> r.copy().withUpToDate(FALSE)).toList();

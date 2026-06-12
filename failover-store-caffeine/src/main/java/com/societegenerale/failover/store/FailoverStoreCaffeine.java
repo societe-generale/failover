@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +71,9 @@ import static java.util.Optional.ofNullable;
  */
 @Slf4j
 public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
+
+    /** Separator between referential name and entry key in the composite cache key. */
+    private static final String STORE_KEY_DELIMITER = "##";
 
     private final FailoverClock failoverClock;
 
@@ -147,10 +150,20 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
         return ofNullable(cache.getIfPresent(storeKey(name, key))).map(ReferentialPayload::copy);
     }
 
+    /**
+     * Returns defensive copies of all cached entries whose composite key is prefixed by
+     * {@code name##}.
+     *
+     * <p>Performs a prefix scan over the live cache view ({@link Cache#asMap()}); already-expired
+     * entries are excluded by Caffeine. Returns an empty list when no entry matches.
+     *
+     * @param name the referential name
+     * @return defensive copies of all matching payloads, or an empty list if none match
+     */
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
         return cache.asMap().entrySet().stream().filter(e->
-                e.getKey().startsWith(name+"##")
+                e.getKey().startsWith(name + STORE_KEY_DELIMITER)
         ).map(e-> e.getValue().copy()).toList();
     }
 
@@ -175,6 +188,6 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
      * @return composite key in the form {@code name##key}
      */
     private String storeKey(String name, String key) {
-        return name + "##" + key;
+        return name + STORE_KEY_DELIMITER + key;
     }
 }

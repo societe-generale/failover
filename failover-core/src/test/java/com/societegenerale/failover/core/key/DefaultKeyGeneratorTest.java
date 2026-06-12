@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -194,6 +194,38 @@ class DefaultKeyGeneratorTest {
     @DisplayName("should return the key when the argument is of any non primitive Object")
     void shouldReturnTheKeyWhenArgContainsAnyObjectTypesOtherThanPrimitiveType() {
         var object = new Object();
+        String key = defaultKeyProvider.key(FAILOVER, List.of(1, object, "3"));
+        assertThat(key).isEqualTo("1:java.lang.Object@%s:3".formatted(toHexString(object.hashCode())));
+    }
+
+    @Test
+    @DisplayName("should use toString() for a record arg (deterministic, JVM-restart-stable key)")
+    void shouldUseToStringForRecordArg() {
+        record Money(String currency, long amount) {}
+        String key = defaultKeyProvider.key(FAILOVER, List.of(1, new Money("EUR", 42), "3"));
+        assertThat(key).isEqualTo("1:Money[currency=EUR, amount=42]:3");
+    }
+
+    @Test
+    @DisplayName("should produce equal keys for value-equal record args (identity hash would differ)")
+    void shouldProduceEqualKeysForValueEqualRecords() {
+        record Money(String currency, long amount) {}
+        String key1 = defaultKeyProvider.key(FAILOVER, List.of(new Money("EUR", 42)));
+        String key2 = defaultKeyProvider.key(FAILOVER, List.of(new Money("EUR", 42)));
+        assertThat(key1).isEqualTo(key2);
+    }
+
+    @Test
+    @DisplayName("should use toString() for an enum arg")
+    void shouldUseToStringForEnumArg() {
+        String key = defaultKeyProvider.key(FAILOVER, List.of(1, java.time.DayOfWeek.MONDAY, "3"));
+        assertThat(key).isEqualTo("1:MONDAY:3");
+    }
+
+    @Test
+    @DisplayName("should fall back to Class@hashCode for a type that does not override toString")
+    void shouldFallBackToHashCodeWhenNoToStringOverride() {
+        var object = new Object();   // identity toString()
         String key = defaultKeyProvider.key(FAILOVER, List.of(1, object, "3"));
         assertThat(key).isEqualTo("1:java.lang.Object@%s:3".formatted(toHexString(object.hashCode())));
     }

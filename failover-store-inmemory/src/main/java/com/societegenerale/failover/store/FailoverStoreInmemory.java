@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class FailoverStoreInmemory<T> implements FailoverStore<T> {
 
+    /** Separator between referential name and entry key in the composite store key. */
+    private static final String STORE_KEY_DELIMITER = "##";
+
     private final Map<String, ReferentialPayload<T>> store = new ConcurrentHashMap<>();
 
     /**
@@ -82,10 +85,19 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
         return Optional.ofNullable(store.get(storeKey(name, key))).map(ReferentialPayload::copy);
     }
 
+    /**
+     * Returns defensive copies of all entries whose composite key is prefixed by {@code name##}.
+     *
+     * <p>Performs a full-map prefix scan — O(n) over the store size; acceptable for the
+     * dev/test in-memory store but not intended for large datasets.
+     *
+     * @param name the referential name
+     * @return defensive copies of all matching payloads, or an empty list if none match
+     */
     @Override
     public List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException {
         return store.entrySet().stream().filter(e->
-                e.getKey().startsWith(name+"##")
+                e.getKey().startsWith(name + STORE_KEY_DELIMITER)
         ).map(e-> e.getValue().copy()).toList();
     }
 
@@ -107,6 +119,6 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
      * @return composite key in the form {@code name##key}
      */
     private String storeKey(String name, String key) {
-        return name + "##" + key;
+        return name + STORE_KEY_DELIMITER + key;
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023, Société Générale All rights reserved.
+ * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,6 +67,23 @@ public interface FailoverStore<T> {
      */
     Optional<ReferentialPayload<T>> find(String name, String key) throws FailoverStoreException;
 
+    /**
+     * Looks up every referential payload stored under the given logical name.
+     *
+     * <p>Used by the recover-all path, where there is no single key to resolve (e.g. a list
+     * endpoint recovering all known entities of a referential).
+     *
+     * <p><strong>Implementation contract:</strong> like {@link #find}, each returned entry must be
+     * a defensive copy, not a live internal reference. Callers mutate the returned payloads (e.g.
+     * set {@code upToDate = false}, {@code asOf}) without affecting the data held in the store.
+     *
+     * <p>Returns an empty list (never {@code null}) when no entry matches the name; not-found is
+     * not an error. Ordering is unspecified.
+     *
+     * @param name the referential name whose entries should be returned
+     * @return a list of defensive copies of the stored payloads, or an empty list if none match
+     * @throws FailoverStoreException if the underlying lookup operation fails
+     */
     List<ReferentialPayload<T>> findAll(String name) throws FailoverStoreException;
 
     /**
