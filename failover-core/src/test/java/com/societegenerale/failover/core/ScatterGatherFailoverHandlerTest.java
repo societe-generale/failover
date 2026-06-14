@@ -691,6 +691,20 @@ class ScatterGatherFailoverHandlerTest {
                     .isInstanceOf(CompletionException.class)
                     .hasCauseInstanceOf(TimeoutException.class);
         }
+
+        @Test
+        @DisplayName("scatter-recover-all: a recoverAll slice exceeding the timeout yields no data — recover returns null instead of hanging")
+        void recoverAllTimedOutSliceReturnsNull() {
+            doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
+            given(delegateR.recoverAll(eq(failover), any(), eq(ThirdParty.class), eq(cause))).willAnswer(inv -> {
+                Thread.sleep(2_000);
+                return List.of(TP_1, TP_2, TP_3);
+            });
+
+            ThirdPartiesResult recovered = timeoutHandler.recover(failover, List.of(), ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isNull();
+        }
     }
 
 
