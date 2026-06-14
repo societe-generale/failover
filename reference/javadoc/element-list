@@ -11,10 +11,10 @@ com.societegenerale.failover.core.key
 com.societegenerale.failover.core.observable
 com.societegenerale.failover.core.observable.manifest
 com.societegenerale.failover.core.observable.publisher
-com.societegenerale.failover.core.observable.scanner
 com.societegenerale.failover.core.payload
 com.societegenerale.failover.core.payload.splitter
 com.societegenerale.failover.core.propagator
+com.societegenerale.failover.core.scanner
 com.societegenerale.failover.core.store
 com.societegenerale.failover.core.util
 com.societegenerale.failover.domain
