@@ -11,6 +11,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 ## [3.0.0-SNAPSHOT] — In Development
 
 ### Changed
+
 - Upgraded to Spring Boot 4.x and Spring Cloud 2025.x
 - Upgraded to Java 21 — virtual threads used for async store executor and scatter/gather executor
 - Key generation now produces fixed-length MD5/UUID-based keys to prevent VARCHAR(256) overflow
@@ -18,6 +19,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   shared component (consumed by both observability reporting and store deserialization safety)
 
 ### Added
+
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods
 - Scatter/gather: parallel slice dispatch via virtual threads (`failover.scatter.parallel`)
 - Scatter/gather: `failover.scatter.timeout` (default 10s) — bounds parallel slice joins so a hung
@@ -34,6 +36,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - SpEL expression support for expiry (`expiryDurationExpression`, `expiryUnitExpression`)
 
 ### Security
+
 - Deserialization allowlist for stored payload classes — `JsonSerializer.toClass` rejects unknown
   classes (`FailoverStoreException`). Auto-populated from the packages of discovered `@Failover`
   payload types (secure by default); `failover.store.allowed-payload-classes` is an additive override

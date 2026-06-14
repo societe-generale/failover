@@ -62,12 +62,6 @@ public class MultiTenant {
     private boolean enabled = false;
 
     /**
-     * JDBC isolation strategy. Ignored by Caffeine and InMemory stores.
-     * Default: {@code TABLE_PREFIX}.
-     */
-    private JdbcMultiTenantStrategy strategy = JdbcMultiTenantStrategy.TABLE_PREFIX;
-
-    /**
      * Fallback tenant ID when the resolver returns {@code null}.
      * If left blank and the resolver returns {@code null}, a {@code FailoverStoreException} is thrown.
      */
@@ -84,6 +78,12 @@ public class MultiTenant {
      * The configured {@link #defaultTenant} is always exempt (routing it to the global table is intentional).
      */
     private boolean strict = false;
+
+    /**
+     * JDBC isolation strategy. Ignored by Caffeine and InMemory stores.
+     * Default: {@code TABLE_PREFIX}.
+     */
+    private JdbcMultiTenantStrategy strategy = JdbcMultiTenantStrategy.TABLE_PREFIX;
 
     /**
      * Per-tenant configuration overrides, keyed by tenant ID.

@@ -190,7 +190,7 @@ class SpringContextFailoverScannerTest {
         public SamplePojo[] array() { return null; }
 
         @Failover(name = "voidish")
-        public void doNothing() { }
+        public void doNothing() { /*for test only*/ }
     }
 
     interface ReferentialInterface {

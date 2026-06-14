@@ -76,6 +76,12 @@ public class FailoverStoreMultiTenantAutoConfiguration {
         return new TenantContextPropagator();
     }
 
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /** Tenants already warned about (once each) to avoid log spam under load. */
+    private static final Set<String> WARNED_UNCONFIGURED_TENANTS = ConcurrentHashMap.newKeySet();
+
+
     // ─── TenantStoreFactory (per store type) ─────────────────────────────────
 
     /**
@@ -145,11 +151,6 @@ public class FailoverStoreMultiTenantAutoConfiguration {
         log.info("MultiTenant TenantStoreFactory: InMemory (one map per tenant)");
         return tenantId -> new FailoverStoreInmemory<>();
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    /** Tenants already warned about (once each) to avoid log spam under load. */
-    private static final Set<String> WARNED_UNCONFIGURED_TENANTS = ConcurrentHashMap.newKeySet();
 
     /**
      * Computes the effective JDBC table prefix for a given tenant.

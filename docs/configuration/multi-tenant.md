@@ -141,6 +141,36 @@ When `TenantResolver` returns `null`, the `default-tenant` value is used. If `de
 
 ---
 
+## Strict Mode — Reject Unconfigured Tenants
+
+In `TABLE_PREFIX` mode a tenant that is **not** in the `tenants` map has no prefix, so it resolves to the shared global `FAILOVER_STORE` table — and *every* unconfigured tenant then co-mingles its data in that one table, silently breaking the isolation multi-tenancy exists to provide.
+
+`failover.store.multitenant.strict` controls this:
+
+```yaml title="application.yml"
+failover:
+  store:
+    multitenant:
+      enabled: true
+      strategy: table_prefix
+      strict: true            # reject tenants absent from the tenants map
+      tenants:
+        acme:   { table-prefix: ACME_ }
+        globex: { table-prefix: GLOBEX_ }
+```
+
+| `strict` | Unknown tenant (not in `tenants`) |
+|---|---|
+| `false` (default) | Allowed — routed to the global table, with a one-time `WARN` per tenant ID |
+| `true` | Rejected — `FailoverStoreException` at resolution time |
+
+The configured `default-tenant` is always **exempt** — routing it to the global table is intentional.
+
+!!! note "TABLE_PREFIX only"
+    Caffeine and in-memory stores give each tenant ID its own isolated cache instance regardless, so this gap (and the `strict` flag) applies only to the JDBC `TABLE_PREFIX` strategy.
+
+---
+
 ## Next Steps
 
 - [Database Resolver](../how-to/database-resolver.md) — custom DataSource per tenant

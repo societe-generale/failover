@@ -1618,3 +1618,153 @@ The framework applies no deduplication itself — `merge()` has full domain know
 * No runtime overhead in the framework for the common single-placeholder case.
 * The contract is enforced by documentation and code review, not by a runtime check — this is intentional. A runtime check would require the framework to call `recoverAll` speculatively or inspect the delegate implementation, neither of which is feasible.
 ___
+
+## ADR 37 — Payload Deserialization Allowlist — Secure-by-Default Class Loading
+
+**Date : 14-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+The JDBC store persists each payload's fully-qualified class name in the `PAYLOAD_CLASS` column and, on recovery, reconstructs the type via `Class.forName(name)` in `JsonSerializer.toClass` before Jackson deserializes the JSON. If an attacker can write to `FAILOVER_STORE` (SQL injection elsewhere in the host app, a shared/compromised schema), they control the class name — an arbitrary-class-instantiation primitive and a classic deserialization-gadget entry point. The database is normally a trusted boundary, so this is hardening, not an active vulnerability — but the fix is cheap.
+
+A naive fix (an opt-in allowlist property, default allow-all) only protects operators who know to configure it — an insecure default.
+
+### Decision
+Restrict `JsonSerializer.toClass` to an allowlist; reject unknown names with `FailoverStoreException` (replacing the previous `@SneakyThrows` rethrow of `ClassNotFoundException`).
+
+The allowlist is **secure by default, zero config**, sourced from two places and merged:
+
+1. **Auto-derived** — `FailoverScanner.findAllPayloadTypes()` exposes every `@Failover` payload type (method return type, or the element/component type for `Collection`/array returns). The autoconfig adds each type's **package** as an allowed prefix. JDK packages (`java.*`, `javax.*`, `jakarta.*`) are never added — whitelisting them would re-open the gadget surface.
+2. **Operator override** — `failover.store.allowed-payload-classes` (exact class names or package prefixes), additive, for classes the scanner cannot infer (e.g. a scatter slice type in a different package than its composite).
+
+Package **prefixes** (not exact classes) are used so that scatter slice types sharing a package with their composite are covered without configuration. The allowlist is resolved lazily and memoized on first `toClass` — necessary because the scanner (`SmartInitializingSingleton`) completes after the serializer bean is built.
+
+Allow-all is retained only when the resolved allowlist is empty (no payload types discovered and no property set) — preserving backward compatibility for unusual setups.
+
+### Consequences
+* Out of the box, only the application's own referential packages can be materialized from the store — no configuration required.
+* A poisoned `PAYLOAD_CLASS` value naming an unlisted class is rejected before instantiation.
+* `ClassNotFoundException` (payload class renamed/removed between deployments) now surfaces as a `FailoverStoreException` with a remediation hint instead of an opaque sneaky-thrown checked exception.
+* Operators with split-package slice types must add a prefix to `failover.store.allowed-payload-classes`; this is the documented escape hatch.
+* Applies to serializing stores (JDBC); in-memory/Caffeine hold live objects and are unaffected.
+___
+
+## ADR 38 — Scatter/Gather Per-Slice Timeout — Bounded Parallel Join
+
+**Date : 14-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+Parallel scatter/gather (ADR 24) dispatches each slice on the virtual-thread executor and collects results with `CompletableFuture.allOf(...).join()` (store) or per-future `join()` (recover) — with no timeout. A single hung slice (e.g. JDBC connection-pool exhaustion on one slice store) blocks the business thread indefinitely, defeating the resilience the library exists to provide.
+
+### Decision
+Add `failover.scatter.timeout` (`Duration`, default `10s`) applied via `orTimeout` to the parallel-path futures:
+
+* **Recover path** — a slice that exceeds the timeout is treated as *not recovered*: it contributes a `null` payload (indistinguishable from a cache miss) and the remaining slices still merge. The caller is never blocked.
+* **Store path** — the timeout surfaces to the caller, where it is already isolated by `BasicFailoverExecution` (the business call returns; the store failure is logged/metered).
+
+The timeout applies only to the parallel path (`parallel=true`); sequential calls cannot be interrupted this way. `null`/empty disables it (legacy wait-indefinitely behaviour).
+
+### Consequences
+* A hung slice can no longer stall the business thread — bounded worst-case latency under partial slice-store failure.
+* Recover degrades gracefully: timed-out slices look like misses, so partial recovery still works.
+* `ScatterGatherFailoverHandler` gains a constructor parameter for the timeout; existing constructors delegate with `null` (no timeout) for backward compatibility.
+* Choosing the timeout is an operational trade-off: too low truncates legitimate slow slices, too high weakens the protection. The 10s default favours availability.
+___
+
+## ADR 39 — Error Propagation — Never Recover on a Failing JVM
+
+**Date : 14-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`FailoverAspect.returnResult` caught `Throwable` from the business call and wrapped it in `ExecutionException` (a `RuntimeException`). `BasicFailoverExecution` then caught `Exception` and ran the recovery path. This meant `Error` subclasses — `OutOfMemoryError`, `StackOverflowError`, linkage errors — were wrapped and treated as recoverable, running the recovery path (which itself allocates: deserialization, defensive copies) on a JVM that may be dying. The `Error` javadoc explicitly states these are "abnormal conditions that a reasonable application should not try to catch".
+
+### Decision
+Catch and rethrow `Error` unwrapped, ahead of the generic `Throwable` wrap:
+
+```java
+try {
+    return cast(joinPoint.proceed());
+} catch (Error error) {
+    throw error;            // never convert to a recoverable exception
+} catch (Throwable throwable) {
+    throw new ExecutionException(...);
+}
+```
+
+### Consequences
+* `Error` propagates fail-fast: a dying JVM is recycled by the platform (k8s liveness, circuit breakers) instead of limping while serving stale data.
+* Normal failover is unchanged — `RuntimeException`, checked `Exception`, and upstream-down conditions (the 99.9% case) still trigger recovery exactly as before.
+* Only the rare, catastrophic, genuinely-unrecoverable case changes behaviour. Methods that abuse `Error`/`AssertionError` as control flow will no longer be recovered — an acceptable trade-off, as that is an anti-pattern.
+___
+
+## ADR 40 — Multi-Tenant Strict Mode — Reject Unconfigured Tenants
+
+**Date : 14-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+In the JDBC `TABLE_PREFIX` strategy, `resolveJdbcPrefix` falls back to an empty `TenantConfig` (prefix `""`) for any tenant ID absent from `failover.store.multitenant.tenants`. Such a tenant therefore resolves to `globalPrefix + FAILOVER_STORE` — the shared global table — and **every** unconfigured tenant co-mingles its data there, silently breaking the isolation multi-tenancy exists to provide. A `TenantResolver` returning a typo'd or newly-onboarded tenant ID hits this silently. (Caffeine/in-memory are immune: each tenant ID gets its own cache instance via `computeIfAbsent`.)
+
+### Decision
+Add `failover.store.multitenant.strict` (default `false`). When resolving a tenant absent from the configured map in `TABLE_PREFIX` mode:
+
+* **`strict=true`** — throw `FailoverStoreException`, refusing to route it.
+* **`strict=false`** — allow it (legacy behaviour) but log a one-time `WARN` per tenant ID.
+
+The configured `default-tenant` is always exempt — routing it to the global table is intentional.
+
+### Consequences
+* Operators can opt into fail-fast isolation guarantees with one property.
+* The default remains backward-compatible but now emits a visible warning instead of failing silently, surfacing the latent gap that ADR 21's design left open (and the residual `cleanByExpiry`-coverage gap for runtime-only tenants).
+* JDBC-`TABLE_PREFIX`-specific; other strategies/stores are unaffected.
+___
+
+## ADR 41 — Async Store Failure Metric — Visibility for a Silently-Degraded Layer
+
+**Date : 14-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`FailoverStoreAsync` (ADR 19) offloads `store`/`delete`/`cleanByExpiry` to the executor and catches any exception inside the task so a store failure never breaks the business call. The downside: a persistently failing store layer (DB down, pool exhausted) is visible only in logs — no metric fires, so dashboards and alerts stay green while no failover data is being persisted.
+
+### Decision
+Give `FailoverStoreAsync` an optional `ObservablePublisher`. On a caught executor-side failure it publishes a metric event (action `store-async-failed`) carrying the failover name, the operation (`store`/`delete`/`cleanByExpiry`), and the exception type. `MicrometerObservablePublisher` maps this to a counter `failover.store.async.failed{name,operation,exception_type}`. Publishing is best-effort: a failure in the publisher is swallowed (debug-logged) so it can never mask the original failure or break the swallow contract.
+
+### Consequences
+* A dead async store layer is now observable as a metric, not just log lines — alertable.
+* Backward compatible: the publisher is optional (`null` disables emission); the existing two-arg constructor is retained.
+* In-process publishers (e.g. the MDC logger) also receive the event; only the Micrometer path adds the counter.
+___
+
+## ADR 42 — FailoverScanner Relocation to a Neutral Core Package
+
+**Date : 14-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`FailoverScanner` (the SPI that discovers all `@Failover` methods) lived in `com.societegenerale.failover.core.observable.scanner` because observability reporting was its only consumer. ADR 37 added a second, unrelated consumer — store deserialization safety reads `findAllPayloadTypes()` to build the allowlist. The `observable.*` package now misrepresents the scanner's responsibility: it is shared `@Failover` metadata, not an observability detail.
+
+### Decision
+Move the core SPI (`FailoverScanner`, `FailoverScannerException`, `package-info`) from `core.observable.scanner` to **`core.scanner`**. The scanner becomes a first-class shared component consumed by both observability and store security. Reusing the single scan (one classpath walk, one source of truth) is correct; only the placement was wrong.
+
+The change is a package move only — done inside the `3.0.0-SNAPSHOT` (pre-release) window, so no compatibility break. The implementation module is still named `failover-observable-scanner`; renaming the artifact is deferred (tracked with the broader split-package cleanup, audit A-1) to avoid churn to starter dependencies now.
+
+### Consequences
+* Package name now reflects responsibility; no consumer reads scanner metadata through an `observable` path.
+* No new bad module coupling: `JsonSerializer` depends only on a `Supplier`, not the scanner; only the autoconfig wires scanner → serializer, and it already depends on every module.
+* The impl module name (`failover-observable-scanner`) temporarily diverges from the interface package — a known, documented follow-up for the JPMS/split-package cleanup.
+___
