@@ -63,6 +63,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class FailoverStoreMultiTenantAutoConfiguration {
 
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /** Tenants already warned about (once each) to avoid log spam under load. */
+    private static final Set<String> WARNED_UNCONFIGURED_TENANTS = ConcurrentHashMap.newKeySet();
+
+
     /**
      * Registers {@link TenantContextPropagator} so that scatter/gather slice tasks dispatched to
      * executor threads carry the correct tenant ID. Picked up by {@link FailoverAutoConfiguration}
@@ -75,12 +81,6 @@ public class FailoverStoreMultiTenantAutoConfiguration {
     public TenantContextPropagator tenantContextPropagator() {
         return new TenantContextPropagator();
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    /** Tenants already warned about (once each) to avoid log spam under load. */
-    private static final Set<String> WARNED_UNCONFIGURED_TENANTS = ConcurrentHashMap.newKeySet();
-
 
     // ─── TenantStoreFactory (per store type) ─────────────────────────────────
 
