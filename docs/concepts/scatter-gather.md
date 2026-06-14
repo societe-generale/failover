@@ -168,11 +168,34 @@ failover:
 
 Set `parallel: false` for sequential per-entity processing (useful for debugging or low-throughput scenarios).
 
+### Per-slice timeout
+
+On the parallel path a single hung slice (e.g. a slice store with an exhausted JDBC connection pool) would otherwise block the business thread indefinitely on `join()`. `failover.scatter.timeout` bounds each slice:
+
+```yaml title="application.yml"
+failover:
+  scatter:
+    parallel: true
+    timeout: 10s     # default; empty/null = wait indefinitely
+```
+
+On timeout:
+
+- **Recover path** — the slice is treated as *not recovered* (contributes a `null` payload, exactly like a cache miss), so the rest of the result still merges. The caller is never blocked.
+- **Store path** — the timeout surfaces to the caller, where it is isolated by the execution layer (the business call still returns; the store failure is logged/metered).
+
+The timeout is ignored when `parallel: false` (sequential calls cannot be interrupted this way).
+
 ---
 
 ## Partial Recovery Behaviour
 
-When some slices are missing or expired, `merge()` receives a mix of populated and `null` payloads. Your `merge` implementation decides how to handle nulls — return a partial list, substitute defaults, or propagate null. The default behaviour (as shown above) filters out null entries and returns whatever is available.
+When some slices are missing, expired, or timed out, `merge()` receives a mix of populated and `null` payloads. The framework does **not** filter nulls for you — it only short-circuits to `null` when *every* slice context is empty (then `merge` is not called at all). Your `merge` implementation owns the null policy:
+
+- **Keep positionally** — preserve `null` at the slice's index (the default per-id behaviour; lets the caller see which entries are missing).
+- **Drop / deduplicate** — `filter(Objects::nonNull)` to return only what is available (as the example above does).
+
+A timed-out slice is indistinguishable from a cache miss at `merge` time — both arrive as a `null` payload.
 
 !!! tip "Combined with `domain`"
     When scatter/gather and domain are combined, a `findByCode("FR")` call can recover from an entry previously stored by `findByCodes("FR,DE,US")`. The domain ensures both failovers share the same `FAILOVER_NAME`, and scatter stores each code under its own key. See [Domain Grouping](domain.md).

@@ -19,6 +19,7 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import com.societegenerale.failover.store.FailoverStoreAsync;
 import com.societegenerale.failover.store.FailoverStoreCaffeine;
 import com.societegenerale.failover.store.FailoverStoreInmemory;
@@ -69,6 +70,7 @@ import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FailoverStoreMultiTenantAutoConfigurationTest {
 
@@ -252,6 +254,37 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
                     .isEqualTo("ACME_DEMO_");
             assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "globex"))
                     .isEqualTo("GLOBEX_DEMO_");
+        }
+
+        @Test
+        @DisplayName("strict mode — unknown tenant throws FailoverStoreException instead of sharing the global table")
+        void strictModeRejectsUnknownTenant() {
+            FailoverProperties props = propsWithJdbcAndTenants("DEMO_", Map.of("acme", tenantConfig("ACME_")));
+            props.getStore().getMultitenant().setStrict(true);
+
+            assertThatThrownBy(() -> FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "unknown-tenant"))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("unknown-tenant")
+                    .hasMessageContaining("strict");
+        }
+
+        @Test
+        @DisplayName("strict mode — configured tenant resolves normally")
+        void strictModeAllowsConfiguredTenant() {
+            FailoverProperties props = propsWithJdbcAndTenants("DEMO_", Map.of("acme", tenantConfig("ACME_")));
+            props.getStore().getMultitenant().setStrict(true);
+            assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "acme"))
+                    .isEqualTo("ACME_DEMO_");
+        }
+
+        @Test
+        @DisplayName("strict mode — the configured default tenant is exempt and resolves to the global table")
+        void strictModeExemptsDefaultTenant() {
+            FailoverProperties props = propsWithJdbcAndTenants("DEMO_", Map.of("acme", tenantConfig("ACME_")));
+            props.getStore().getMultitenant().setStrict(true);
+            props.getStore().getMultitenant().setDefaultTenant("fallback");
+            assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "fallback"))
+                    .isEqualTo("DEMO_");
         }
 
         private TenantConfig tenantConfig(String tablePrefix) {

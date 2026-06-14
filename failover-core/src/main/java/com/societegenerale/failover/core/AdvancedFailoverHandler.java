@@ -1,4 +1,4 @@
-   /*
+/*
  * Copyright 2022-2026, Société Générale All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,7 +84,7 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("exception-cause-message", cause.getCause() != null && cause.getCause().getMessage() != null ? cause.getCause().getMessage() : "")
                     .collect("is-recovered", Boolean.toString(result != null))
                     .collect("is-recovery-failed", Boolean.toString(recoveryFailureMsg!=null))
-                    .collect("recovery-failure-message", recoveryFailureMsg)
+                    .collect("recovery-failure-message", recoveryFailureMsg != null ? recoveryFailureMsg : "")
                     .collect("duration-ns", Long.toString(System.nanoTime() - startNanos)));
         }
         return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);

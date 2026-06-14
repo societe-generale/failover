@@ -23,10 +23,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * {@link FailoverHandler} decorator that adds scatter/gather routing to
@@ -74,8 +81,40 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
 
     private final ContextPropagator contextPropagator;
 
+    /** Per-slice timeout for parallel dispatch; {@code null} means no timeout (wait indefinitely). */
+    @Nullable
+    private final Duration timeout;
+
     /**
-     * Full constructor — use when parallel scatter and/or context propagator is required.
+     * Full constructor — use when parallel scatter, context propagator and/or a slice timeout is required.
+     *
+     * @param delegateT            handler for composite-type operations
+     * @param delegateR            handler for slice-type operations
+     * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
+     * @param executor             executor for parallel slice dispatch; {@code null} = sequential
+     * @param contextPropagator    context propagator for executor threads; use {@link ContextPropagator#noOp()} when not needed
+     * @param timeout              per-slice timeout for the parallel path; {@code null} = wait indefinitely.
+     *                             On timeout a recover slice is treated as not recovered (no data) rather than
+     *                             hanging the business thread; a store slice surfaces the timeout to the caller
+     *                             (already isolated by {@code BasicFailoverExecution}). Ignored on the sequential path.
+     */
+    public ScatterGatherFailoverHandler(
+            FailoverHandler<T> delegateT,
+            FailoverHandler<R> delegateR,
+            PayloadSplitterLookup<T, R> payloadSplitterLookup,
+            @Nullable Executor executor,
+            ContextPropagator contextPropagator,
+            @Nullable Duration timeout) {
+        this.delegateT = delegateT;
+        this.delegateR = delegateR;
+        this.payloadSplitterLookup = payloadSplitterLookup;
+        this.executor = executor;
+        this.contextPropagator = contextPropagator;
+        this.timeout = timeout;
+    }
+
+    /**
+     * Parallel constructor without an explicit timeout (waits indefinitely). Retained for backward compatibility.
      *
      * @param delegateT            handler for composite-type operations
      * @param delegateR            handler for slice-type operations
@@ -89,11 +128,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
             PayloadSplitterLookup<T, R> payloadSplitterLookup,
             @Nullable Executor executor,
             ContextPropagator contextPropagator) {
-        this.delegateT = delegateT;
-        this.delegateR = delegateR;
-        this.payloadSplitterLookup = payloadSplitterLookup;
-        this.executor = executor;
-        this.contextPropagator = contextPropagator;
+        this(delegateT, delegateR, payloadSplitterLookup, executor, contextPropagator, null);
     }
 
     /**
@@ -107,7 +142,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
             FailoverHandler<T> delegateT,
             FailoverHandler<R> delegateR,
             PayloadSplitterLookup<T, R> payloadSplitterLookup) {
-        this(delegateT, delegateR, payloadSplitterLookup, null, ContextPropagator.noOp());
+        this(delegateT, delegateR, payloadSplitterLookup, null, ContextPropagator.noOp(), null);
     }
 
     /**
@@ -162,8 +197,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
      * Triggers expiry cleanup on both {@code delegateT} and {@code delegateR}.
      *
      * <p>When both delegates are the same instance (the common auto-configured case),
-     * {@code clean()} is called twice — once per role — so each delegate's cleanup
-     * semantics are honoured independently of object identity.
+     * {@code clean()} is called only once; distinct delegates are each cleaned.
      */
     @Override
     public void clean() {
@@ -185,7 +219,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
                     .map(ctx -> CompletableFuture.runAsync(
                             contextPropagator.wrap(() -> storeSlice(ctx)), executor))
                     .toList();
-            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+            withTimeout(CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))).join();
         } else {
             slices.forEach(this::storeSlice);
         }
@@ -220,6 +254,9 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
             log.warn("Failover scatter-recover: '{}' — no slices recovered, returning null", failover.name());
             return null;
         }
+        // Contexts may carry null payloads — per-key cache misses (positional nulls), expired/missing
+        // entries on recover-all, and timed-out slices. The PayloadSplitter owns the null policy
+        // (keep positionally vs. drop/deduplicate); see PayloadSplitter#merge.
         var finalCtx = invokeMerge(splitter, failover, recovered);
         log.info("Failover scatter-recover: gathered {} slices for '{}'", recovered.size(), failover.name());
         return finalCtx.getPayload();
@@ -234,7 +271,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
                             ctx -> CompletableFuture.supplyAsync(contextPropagator.wrapSupplier(() -> recoverSlice(ctx)), executor)
                     )
                     .toList();
-            recovered = futures.stream().map(CompletableFuture::join).toList();
+            recovered = zip(slices, futures, this::notRecovered);
         } else {
             recovered = slices.stream().map(this::recoverSlice).toList();
         }
@@ -252,7 +289,7 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
                             ctx -> CompletableFuture.supplyAsync(contextPropagator.wrapSupplier(() -> recoverSliceForAll(ctx)), executor)
                     )
                     .toList();
-            return futures.stream().map(CompletableFuture::join).flatMap(Collection::stream).toList();
+            return zip(slices, futures, ctx -> List.of()).stream().flatMap(Collection::stream).toList();
         } else {
             return slices.stream().map(this::recoverSliceForAll).flatMap(Collection::stream).toList();
         }
@@ -287,6 +324,47 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
                 .cause(ctx.getCause())
                 .payload(payload)
                 .build()).toList();
+    }
+
+    // ── Timeout handling for the parallel path ─────────────────────────────────────────────────
+
+    /** Applies the configured {@link #timeout} to a future; no-op when {@code timeout} is null. */
+    private <X> CompletableFuture<X> withTimeout(CompletableFuture<X> future) {
+        return timeout == null ? future : future.orTimeout(timeout.toMillis(), MILLISECONDS);
+    }
+
+    /**
+     * Joins each slice future in order, applying the configured per-slice {@link #timeout}.
+     * A timed-out slice yields {@code onTimeout.apply(slice)} (the not-recovered fallback) instead
+     * of hanging the caller; any other completion failure propagates.
+     */
+    private <X> List<X> zip(List<RecoverContext<R>> slices, List<CompletableFuture<X>> futures, Function<RecoverContext<R>, X> onTimeout) {
+        List<X> result = new ArrayList<>(futures.size());
+        for (int i = 0; i < futures.size(); i++) {
+            RecoverContext<R> ctx = slices.get(i);
+            try {
+                result.add(withTimeout(futures.get(i)).join());
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TimeoutException) {
+                    log.warn("Failover scatter-recover: slice {} timed out after {} for '{}' — treating slice as not recovered", ctx, timeout, ctx.getFailover().name());
+                    result.add(onTimeout.apply(ctx));
+                } else {
+                    throw e;
+                }
+            }
+        }
+        return result;
+    }
+
+    /** A recover context carrying a null payload — the "slice not recovered" marker used on timeout. */
+    private RecoverContext<R> notRecovered(RecoverContext<R> ctx) {
+        return RecoverContext.<R>builder()
+                .failover(ctx.getFailover())
+                .args(ctx.getArgs())
+                .clazz(ctx.getClazz())
+                .cause(ctx.getCause())
+                .payload(null)
+                .build();
     }
 
     // ── Splitter invocation wrappers (catch user exceptions and re-throw with context) ──────────

@@ -28,9 +28,14 @@ Requires a `DataSource` bean in the Spring context. Spring Boot's auto-configure
 failover:
   store:
     type: jdbc
+    allowed-payload-classes: []   # deserialization allowlist (additive; see Serialisation)
     jdbc:
-      table-prefix: MYAPP_     # → table MYAPP_FAILOVER_STORE
+      table-prefix: MYAPP_        # → table MYAPP_FAILOVER_STORE
 ```
+
+`table-prefix` is validated at startup to contain only letters, digits, underscores, and
+dot-separated qualifiers (e.g. `SCHEMA.MYAPP_`); an invalid value fails fast with an
+`IllegalArgumentException` rather than producing a SQL grammar error later.
 
 ---
 
@@ -69,6 +74,23 @@ Dialect is detected automatically at startup via `DatabaseResolver`. See [Databa
 ## Serialisation
 
 Payloads are serialised to JSON using Jackson's `ObjectMapper`. The class name is stored in `PAYLOAD_CLASS` for deserialisation. Override with a custom `PayloadColumnResolver` bean — see [Payload Column Resolver](../how-to/payload-column-resolver.md).
+
+### Deserialization Allowlist
+
+On recovery the store reconstructs the payload type from the `PAYLOAD_CLASS` value via
+`Class.forName`. To prevent a poisoned class name (shared/compromised schema, SQL injection
+elsewhere) from instantiating arbitrary classes, loading is restricted to an allowlist that is
+**secure by default**:
+
+- Auto-derived from the packages of every discovered `@Failover` payload type (return types and
+  collection/array element types) — no configuration needed.
+- Extend with `failover.store.allowed-payload-classes` (exact class names or package prefixes) only
+  for classes the scanner cannot infer, e.g. a scatter slice type in a different package than its
+  composite.
+
+A class name outside the allowlist is rejected with `FailoverStoreException`. The restriction is
+disabled (allow-all) only when no payload types are discovered and the property is empty. See
+[Security](../support/security.md).
 
 ---
 

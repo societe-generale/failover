@@ -45,8 +45,15 @@ Contains all SPI interfaces and their default implementations:
 | `PayloadSplitter<T,R>` | *(none — must provide your own)* | Scatter/gather split/merge |
 | `RecoveredPayloadHandler` | *(none — null by default)* | Handle null recovery result |
 | `ContextPropagator` | `CompositeContextPropagator(noOp)` | Thread context across async slices |
+| `FailoverScanner` | `SpringContextFailoverScanner` *(in `failover-observable-scanner`)* | Discovers `@Failover` methods and their payload types |
 
 All beans use `@ConditionalOnMissingBean` in auto-configuration — declare your own `@Bean` to replace any default.
+
+!!! note "Scanner SPI package"
+    `FailoverScanner` lives in `com.societegenerale.failover.core.scanner` (moved from
+    `core.observable.scanner` in 3.0.0). It is a neutral shared component: observability reporting
+    consumes the discovered annotations, and the JDBC store consumes `findAllPayloadTypes()` to build
+    its [deserialization allowlist](store-jdbc.md#deserialization-allowlist). See ADR 42.
 
 ### Handler Decorator Chain
 

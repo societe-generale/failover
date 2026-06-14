@@ -36,6 +36,25 @@ Every store and recover operation increments the `failover.store` counter:
 - `nonRecover` — upstream failed, no valid entry found.
 - `cleanByExpiry` — expiry cleanup deleted entries.
 
+### Async Store Failure Counter
+
+When `failover.store.async=true` (the default), store writes run on a background executor and any
+failure there is swallowed so it never breaks the business call. To keep a silently-degraded store
+layer visible, `FailoverStoreAsync` emits a dedicated counter on each executor-side failure:
+
+| Counter | Tag | Values |
+|---|---|---|
+| `failover.store.async.failed` | `name` | The `@Failover(name=...)` value |
+| | `operation` | `store`, `delete`, `cleanByExpiry` |
+| | `exception_type` | The failure's class name |
+
+Alert on any increase — it means failover data is not being persisted (e.g. DB down, connection
+pool exhausted):
+
+```
+increase(failover_store_async_failed_total[5m]) > 0
+```
+
 ### Prometheus Scrape Example
 
 ```yaml title="prometheus.yml"

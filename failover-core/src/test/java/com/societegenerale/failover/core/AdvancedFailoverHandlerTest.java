@@ -290,7 +290,7 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
-    @DisplayName("should publish is-recovery-failed=false and null recovery-failure-message in recover happy path")
+    @DisplayName("should publish is-recovery-failed=false and empty recovery-failure-message in recover happy path")
     void shouldPublishIsRecoveryFailedFalseInRecoverHappyPath() {
         given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
 
@@ -298,7 +298,7 @@ class AdvancedFailoverHandlerTest {
 
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-is-recovery-failed", "false")
-                .containsEntry("failover-recovery-failure-message", null);
+                .containsEntry("failover-recovery-failure-message", "");
     }
 
     @Test

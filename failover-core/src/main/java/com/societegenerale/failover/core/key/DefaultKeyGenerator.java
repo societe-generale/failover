@@ -87,7 +87,7 @@ public class DefaultKeyGenerator implements KeyGenerator {
         if (isNull(item)) {
             return EMPTY_STRING;
         }
-        if(item.getClass().isPrimitive() || isOfType(item)) {
+        if(isOfType(item)) {
             return valueOf(item);
         }
         if (Collection.class.isAssignableFrom(item.getClass())) {

@@ -18,6 +18,8 @@ package com.societegenerale.failover.properties;
 
 import lombok.Data;
 
+import java.time.Duration;
+
 /**
  * Scatter/gather configuration for the failover framework.
  *
@@ -37,4 +39,16 @@ public class Scatter {
      * concurrently. When {@code false}, slices are processed sequentially on the calling thread.
      */
     private boolean parallel = true;
+
+    /**
+     * Per-slice timeout for the parallel scatter path (ignored when {@link #parallel} is {@code false}).
+     *
+     * <p>A hung slice (e.g. JDBC connection-pool exhaustion on a slice store) would otherwise block
+     * the business thread indefinitely on {@code join()}. On timeout a recover slice is treated as
+     * not recovered (no data from that slice) rather than hanging the caller; a store slice surfaces
+     * the timeout, which is already isolated by the failover execution layer.
+     *
+     * <p>Default {@code 10s}. Set to {@code null}/empty to wait indefinitely (legacy behaviour).
+     */
+    private Duration timeout = Duration.ofSeconds(10);
 }

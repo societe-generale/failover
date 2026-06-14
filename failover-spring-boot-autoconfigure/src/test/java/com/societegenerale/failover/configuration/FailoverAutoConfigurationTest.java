@@ -38,7 +38,7 @@ import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.core.propagator.MdcContextPropagator;
 import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
 import com.societegenerale.failover.core.observable.FailoverObserver;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.store.FailoverStoreException;

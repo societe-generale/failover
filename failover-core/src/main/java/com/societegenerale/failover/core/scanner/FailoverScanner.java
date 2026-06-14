@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.observable.scanner;
+package com.societegenerale.failover.core.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Scans the application classpath for methods annotated with {@link Failover}
@@ -42,4 +43,18 @@ public interface FailoverScanner {
      * @return list of all failover annotations; never {@code null}
      */
     List<Failover> findAllFailover();
+
+    /**
+     * Returns the payload types discovered on {@code @Failover} methods: each method's return type,
+     * or — for a method returning a {@link java.util.Collection} or array — its element/component type.
+     *
+     * <p>Used to build a secure-by-default deserialization allowlist for serializing stores (the
+     * packages of these types are trusted). Returns an empty set by default for implementations that
+     * do not track types.
+     *
+     * @return discovered payload types; never {@code null}
+     */
+    default Set<Class<?>> findAllPayloadTypes() {
+        return Set.of();
+    }
 }

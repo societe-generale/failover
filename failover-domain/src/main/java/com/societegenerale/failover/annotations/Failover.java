@@ -116,9 +116,10 @@ public @interface Failover {
      * <p>When set, enables scatter/gather mode:
      * <ul>
      *   <li>Store path: the composite method result is split into individual per-entity slices via
-     *       {@code PayloadSplitter#split}, each stored under its own UUID key.</li>
-     *   <li>Recover path: each individual key is looked up independently; available slices are
-     *       merged via {@code PayloadSplitter#merge}. Partial recovery is handled gracefully.</li>
+     *       {@code PayloadSplitter#splitOnStore}, each stored under its own key.</li>
+     *   <li>Recover path: per-slice keys are derived via {@code PayloadSplitter#splitOnRecover} and
+     *       looked up independently; available slices are merged via {@code PayloadSplitter#merge}.
+     *       Partial recovery is handled gracefully.</li>
      * </ul>
      *
      * <p>If empty (default), standard single-key behaviour applies.

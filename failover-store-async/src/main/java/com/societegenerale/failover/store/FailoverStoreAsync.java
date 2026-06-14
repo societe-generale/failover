@@ -16,12 +16,14 @@
 
 package com.societegenerale.failover.store;
 
+import com.societegenerale.failover.core.observable.Metrics;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.core.store.FailoverStoreException;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.core.task.TaskExecutor;
 
 import java.time.Instant;
@@ -57,13 +59,42 @@ import java.util.Optional;
  * @author Anand Manissery
  */
 @Slf4j
-@RequiredArgsConstructor
 public class FailoverStoreAsync<T> implements FailoverStore<T> {
+
+    /** Metric action tag value published when an async store operation fails inside the executor. */
+    static final String ASYNC_FAILED_ACTION = "store-async-failed";
 
     @Getter
     private final FailoverStore<T> failoverStore;
 
     private final TaskExecutor executor;
+
+    /** Optional sink for async-failure visibility; {@code null} disables metric emission. */
+    @Nullable
+    private final ObservablePublisher observablePublisher;
+
+    /**
+     * Creates an async decorator that only logs failures (no metric emission).
+     *
+     * @param failoverStore the delegate store
+     * @param executor      the executor that runs write operations off the calling thread
+     */
+    public FailoverStoreAsync(FailoverStore<T> failoverStore, TaskExecutor executor) {
+        this(failoverStore, executor, null);
+    }
+
+    /**
+     * Creates an async decorator that additionally reports executor-side failures to the given publisher.
+     *
+     * @param failoverStore       the delegate store
+     * @param executor            the executor that runs write operations off the calling thread
+     * @param observablePublisher sink notified on async failure; {@code null} disables metric emission
+     */
+    public FailoverStoreAsync(FailoverStore<T> failoverStore, TaskExecutor executor, @Nullable ObservablePublisher observablePublisher) {
+        this.failoverStore = failoverStore;
+        this.executor = executor;
+        this.observablePublisher = observablePublisher;
+    }
 
     /**
      * Submits the store operation to the executor.
@@ -82,6 +113,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
             } catch (Exception e) {
                 log.error("Failover Store : Async store failed for '{}'. Failover data not persisted. Cause: {}",
                         referentialPayload.getName(), e.getMessage(), e);
+                emitFailure("store", referentialPayload.getName(), e);
             }
         });
     }
@@ -100,6 +132,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
             } catch (Exception e) {
                 log.error("Failover Store : Async delete failed for '{}'. Cause: {}",
                         referentialPayload.getName(), e.getMessage(), e);
+                emitFailure("delete", referentialPayload.getName(), e);
             }
         });
     }
@@ -137,7 +170,27 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
                 failoverStore.cleanByExpiry(expiry);
             } catch (Exception e) {
                 log.error("Failover Store : Async cleanByExpiry failed. Cause: {}", e.getMessage(), e);
+                emitFailure("cleanByExpiry", "", e);
             }
         });
+    }
+
+    /**
+     * Reports an executor-side failure to the {@link ObservablePublisher} (when configured) so a
+     * silently-degraded async store layer is visible as a metric, not only in logs. Publishing must
+     * never mask the original failure, so any error here is swallowed with a debug log.
+     */
+    private void emitFailure(String operation, String name, Exception cause) {
+        if (observablePublisher == null) {
+            return;
+        }
+        try {
+            observablePublisher.publish(Metrics.of(name)
+                    .collect("action", ASYNC_FAILED_ACTION)
+                    .collect("async-operation", operation)
+                    .collect("exception-type", cause.getClass().getCanonicalName()));
+        } catch (Exception publishError) {
+            log.debug("Failover Store : failed to publish async-failure metric for operation '{}'. Cause: {}", operation, publishError.getMessage());
+        }
     }
 }

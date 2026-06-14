@@ -80,8 +80,17 @@ public interface PayloadSplitter<T, R> {
      *     .values().stream().toList();
      * }</pre>
      *
-     * @param contexts per-slice contexts after each slice's payload has been recovered;
-     *                 may contain duplicates when multiple slices target the same store partition
+     * <p><b>Null payloads:</b> a context's payload may be {@code null} — a per-key cache miss (where
+     * the framework preserves positional alignment by passing the null through), an expired/missing
+     * entry on the recover-all path, or a slice that exceeded {@code failover.scatter.timeout}. This
+     * method owns the null policy: keep the null positionally (as the default per-id splitter does),
+     * or filter it out (as the recover-all dedup example below does). The framework only short-circuits
+     * to {@code null} when the entire {@code contexts} list is empty — in that case {@code merge} is
+     * not called at all.
+     *
+     * @param contexts per-slice contexts after each slice's payload has been recovered; payloads may
+     *                 be {@code null}, and the list may contain duplicates when multiple slices target
+     *                 the same store partition
      * @return composite context whose payload is the merged result
      */
     RecoverContext<T> merge(List<RecoverContext<R>> contexts);

@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.store.serializer;
 
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -173,11 +176,101 @@ class JsonSerializerTest {
         }
 
         @Test
-        @DisplayName("should throw when class name does not exist on classpath")
+        @DisplayName("should throw FailoverStoreException when class name does not exist on classpath")
         void unknownClassNameThrows() {
             assertThatThrownBy(() -> serializer.toClass("com.example.NonExistentClass"))
-                    .hasMessage("com.example.NonExistentClass")
-                    .isInstanceOf(ClassNotFoundException.class);
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("com.example.NonExistentClass")
+                    .hasCauseInstanceOf(ClassNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("toClass(String) with allowlist")
+    class ToClassWithAllowlist {
+
+        private final JsonSerializer restricted = new JsonSerializer(OBJECT_MAPPER,
+                List.of("java.lang.String", "com.societegenerale.failover"));
+
+        @Test
+        @DisplayName("should load a class exactly matching an allowlist entry")
+        void exactMatchIsAllowed() {
+            assertThat(restricted.<String>toClass("java.lang.String")).isEqualTo(String.class);
+        }
+
+        @Test
+        @DisplayName("should load a class under an allowlisted package prefix")
+        void packagePrefixMatchIsAllowed() {
+            assertThat(restricted.<SamplePayload>toClass(SamplePayload.class.getName()))
+                    .isEqualTo(SamplePayload.class);
+        }
+
+        @Test
+        @DisplayName("should reject a class not covered by the allowlist")
+        void unlistedClassIsRejected() {
+            assertThatThrownBy(() -> restricted.toClass("java.lang.Runtime"))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("java.lang.Runtime")
+                    .hasMessageContaining("allowlist");
+        }
+
+        @Test
+        @DisplayName("should not treat a package-prefix entry as a partial name match")
+        void prefixDoesNotMatchPartialPackageName() {
+            // "java.lang.String" is an exact entry; "java.lang.StringBuilder" must not pass via it
+            assertThatThrownBy(() -> restricted.toClass("java.lang.StringBuilder"))
+                    .isInstanceOf(FailoverStoreException.class);
+        }
+
+        @Test
+        @DisplayName("should return null for null class name even when restricted")
+        void nullClassNameReturnsNull() {
+            assertThat(restricted.toClass(null)).isNull();
+        }
+
+        @Test
+        @DisplayName("should allow everything when allowlist is empty")
+        void emptyAllowlistAllowsAll() {
+            JsonSerializer unrestricted = new JsonSerializer(OBJECT_MAPPER, List.of());
+            assertThat(unrestricted.<Runtime>toClass("java.lang.Runtime")).isEqualTo(Runtime.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("toClass(String) with a lazily-supplied allowlist")
+    class ToClassWithSuppliedAllowlist {
+
+        @Test
+        @DisplayName("should resolve the allowlist from the supplier on first use")
+        void resolvesFromSupplier() {
+            JsonSerializer supplied = new JsonSerializer(OBJECT_MAPPER, () -> List.of("java.lang.String"));
+            assertThat(supplied.<String>toClass("java.lang.String")).isEqualTo(String.class);
+            assertThatThrownBy(() -> supplied.toClass("java.lang.Runtime"))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("allowlist");
+        }
+
+        @Test
+        @DisplayName("should invoke the supplier only once and memoize the result")
+        void memoizesSupplier() {
+            java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+            JsonSerializer supplied = new JsonSerializer(OBJECT_MAPPER, () -> {
+                calls.incrementAndGet();
+                return List.of("java.lang.String");
+            });
+
+            supplied.toClass("java.lang.String");
+            supplied.toClass("java.lang.String");
+            assertThatThrownBy(() -> supplied.toClass("java.lang.Runtime")).isInstanceOf(FailoverStoreException.class);
+
+            assertThat(calls.get()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("should allow everything when the supplier yields an empty list")
+        void emptySuppliedAllowlistAllowsAll() {
+            JsonSerializer supplied = new JsonSerializer(OBJECT_MAPPER, List::of);
+            assertThat(supplied.<Runtime>toClass("java.lang.Runtime")).isEqualTo(Runtime.class);
         }
     }
 

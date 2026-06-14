@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.configuration;
 
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.FailoverStoreAsync;
@@ -447,4 +448,42 @@ class FailoverStoreAutoConfigurationTest {
                     .isInstanceOf(SyncTaskExecutor.class);
         }
     }
+
+    @Nested
+    @DisplayName("mergeAllowedPayloadClasses — auto-derived scanner packages + configured entries")
+    class MergeAllowedPayloadClasses {
+
+        @Test
+        @DisplayName("adds the packages of scanner-discovered payload types to the configured entries")
+        void mergesScannerPackagesWithConfigured() {
+            FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
+            org.mockito.Mockito.doReturn(Set.of(SampleType.class)).when(scanner).findAllPayloadTypes();
+
+            var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(
+                    java.util.List.of("com.acme.extra"), scanner);
+
+            assertThat(merged).contains("com.acme.extra", SampleType.class.getPackageName());
+        }
+
+        @Test
+        @DisplayName("never whitelists JDK packages (java/javax/jakarta) from scanner types")
+        void skipsJdkPackages() {
+            FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
+            org.mockito.Mockito.doReturn(Set.of(String.class)).when(scanner).findAllPayloadTypes();
+
+            var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(java.util.List.of(), scanner);
+
+            assertThat(merged).isEmpty();
+        }
+
+        @Test
+        @DisplayName("returns configured entries unchanged when no scanner is available")
+        void noScannerKeepsConfigured() {
+            var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(
+                    java.util.List.of("com.acme"), null);
+            assertThat(merged).containsExactly("com.acme");
+        }
+    }
+
+    static class SampleType { }
 }
