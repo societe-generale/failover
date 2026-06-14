@@ -184,7 +184,9 @@ public class FailoverStoreMultiTenantAutoConfiguration {
         if (mt.isStrict()) {
             throw new FailoverStoreException(msg + " Refusing to route it (failover.store.multitenant.strict=true).");
         }
-        if (WARNED_UNCONFIGURED_TENANTS.add(tenantId)) {
+        // tenantId may be null here; the warned-set is a ConcurrentHashMap key-set and rejects null,
+        // so short-circuit and warn unconditionally for the (abnormal) null case.
+        if (tenantId == null || WARNED_UNCONFIGURED_TENANTS.add(tenantId)) {
             log.warn("{} Configure the tenant, or set failover.store.multitenant.strict=true to fail fast.", msg);
         }
     }

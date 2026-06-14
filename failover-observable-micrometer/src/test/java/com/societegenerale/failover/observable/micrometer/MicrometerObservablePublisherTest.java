@@ -201,6 +201,39 @@ class MicrometerObservablePublisherTest {
         assertThat(counter.count()).isEqualTo(1.0);
     }
 
+    @Test
+    @DisplayName("async failure with missing operation/exception tags — falls back to 'unknown'")
+    void asyncFailedDefaultsMissingTags() {
+        publisher.publish(Metrics.of("country").collect("action", "store-async-failed"));
+
+        Counter counter = registry.get("failover.store.async.failed")
+            .tag("operation", "unknown")
+            .tag("exception_type", "unknown")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("unknown action — no meter registered")
+    void shouldIgnoreUnknownAction() {
+        publisher.publish(Metrics.of("fo").collect("action", "no-such-action"));
+
+        assertThat(registry.find("failover.store.total").counter()).isNull();
+        assertThat(registry.find("failover.recover.total").counter()).isNull();
+        assertThat(registry.find("failover.store.async.failed").counter()).isNull();
+    }
+
+    @Test
+    @DisplayName("recover with a non-blank exception cause type — cause_type tag carries the value")
+    void recoverNonBlankCauseType() {
+        publisher.publish(recoverMetrics("fo", "false", "false", "java.lang.Exception", "java.net.SocketTimeoutException"));
+
+        Counter counter = registry.get("failover.exception.total")
+            .tag("cause_type", "java.net.SocketTimeoutException")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
     // ── startup/config events ─────────────────────────────────────────────────
 
     @Test

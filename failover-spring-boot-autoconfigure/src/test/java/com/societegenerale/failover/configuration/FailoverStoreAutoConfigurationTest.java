@@ -49,6 +49,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doReturn;
 
 class FailoverStoreAutoConfigurationTest {
 
@@ -457,7 +458,7 @@ class FailoverStoreAutoConfigurationTest {
         @DisplayName("adds the packages of scanner-discovered payload types to the configured entries")
         void mergesScannerPackagesWithConfigured() {
             FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
-            org.mockito.Mockito.doReturn(Set.of(SampleType.class)).when(scanner).findAllPayloadTypes();
+            doReturn(Set.of(SampleType.class)).when(scanner).findAllPayloadTypes();
 
             var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(
                     java.util.List.of("com.acme.extra"), scanner);
@@ -466,14 +467,31 @@ class FailoverStoreAutoConfigurationTest {
         }
 
         @Test
-        @DisplayName("never whitelists JDK packages (java/javax/jakarta) from scanner types")
-        void skipsJdkPackages() {
+        @DisplayName("never whitelists java.* packages from scanner types")
+        void skipsJavaPackages() {
             FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
-            org.mockito.Mockito.doReturn(Set.of(String.class)).when(scanner).findAllPayloadTypes();
+            doReturn(Set.of(String.class)).when(scanner).findAllPayloadTypes();
 
             var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(java.util.List.of(), scanner);
 
             assertThat(merged).isEmpty();
+        }
+
+        @Test
+        @DisplayName("never whitelists javax.* or jakarta.* packages from scanner types")
+        void skipsJavaxAndJakartaPackages() {
+            FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
+            doReturn(Set.of(
+                    javax.sql.DataSource.class,                  // javax.sql
+                    jakarta.annotation.PostConstruct.class,      // jakarta.annotation
+                    SampleType.class))                           // a real app package — kept
+                .when(scanner).findAllPayloadTypes();
+
+            var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(java.util.List.of(), scanner);
+
+            assertThat(merged)
+                    .containsExactly(SampleType.class.getPackageName())
+                    .doesNotContain("javax.sql", "jakarta.annotation");
         }
 
         @Test
@@ -482,6 +500,19 @@ class FailoverStoreAutoConfigurationTest {
             var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(
                     java.util.List.of("com.acme"), null);
             assertThat(merged).containsExactly("com.acme");
+        }
+
+        @Test
+        @DisplayName("skips a default-package payload type (empty package name) without adding an empty prefix")
+        void skipsDefaultPackageType() throws ClassNotFoundException {
+            Class<?> defaultPackageType = Class.forName("DefaultPackagePayloadType");
+            assertThat(defaultPackageType.getPackageName()).isEmpty();   // sanity: default (unnamed) package
+            FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
+            org.mockito.Mockito.doReturn(Set.of(defaultPackageType)).when(scanner).findAllPayloadTypes();
+
+            var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(java.util.List.of(), scanner);
+
+            assertThat(merged).isEmpty();
         }
     }
 
