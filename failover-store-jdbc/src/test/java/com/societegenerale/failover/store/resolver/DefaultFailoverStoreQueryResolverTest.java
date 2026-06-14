@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 /**
@@ -515,6 +516,49 @@ class DefaultFailoverStoreQueryResolverTest {
             assertThat(types[3]).isEqualTo(Types.VARCHAR);   // PAYLOAD_CLASS
             assertThat(types[4]).isEqualTo(Types.VARCHAR);   // FAILOVER_NAME
             assertThat(types[5]).isEqualTo(Types.VARCHAR);   // FAILOVER_KEY
+        }
+    }
+
+    // =========================================================================
+    // Table prefix validation
+    // =========================================================================
+
+    @Nested
+    @DisplayName("table prefix validation")
+    class TablePrefixValidation {
+
+        @Test
+        @DisplayName("should accept an empty prefix")
+        void emptyPrefixIsAccepted() {
+            assertThat(resolver("").getInsertQuery()).contains("INSERT INTO FAILOVER_STORE");
+        }
+
+        @Test
+        @DisplayName("should accept a prefix of letters, digits and underscores")
+        void identifierPrefixIsAccepted() {
+            assertThat(resolver("My_App_1_").getInsertQuery()).contains("My_App_1_FAILOVER_STORE");
+        }
+
+        @Test
+        @DisplayName("should accept a schema-qualified prefix")
+        void schemaQualifiedPrefixIsAccepted() {
+            assertThat(resolver("SCHEMA.MYAPP_").getInsertQuery()).contains("SCHEMA.MYAPP_FAILOVER_STORE");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"BAD-PREFIX", ".leadingdot", "pre fix", "x;DROP TABLE y;--", "\"quoted\"", "préfix"})
+        @DisplayName("should reject prefixes containing non-identifier characters")
+        void invalidPrefixIsRejected(String prefix) {
+            assertThatThrownBy(() -> resolver(prefix))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining(prefix);
+        }
+
+        @Test
+        @DisplayName("should reject a null prefix")
+        void nullPrefixIsRejected() {
+            assertThatThrownBy(() -> resolver(null))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
     }
 

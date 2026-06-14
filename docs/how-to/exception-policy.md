@@ -73,6 +73,19 @@ failover:
 
 ---
 
+## `Error` Is Never Recovered
+
+Exception policies apply only to `Exception` thrown by the upstream call. A `java.lang.Error`
+(`OutOfMemoryError`, `StackOverflowError`, linkage errors) propagates **unwrapped** straight to the
+caller — the failover aspect never converts it into a recoverable exception, so the recovery path
+(which itself allocates) never runs on a JVM that may be dying.
+
+This is deliberate fail-fast behaviour: a `Error` signals a JVM-fatal condition, not "upstream is
+down", so the process should be recycled by the platform (k8s liveness, circuit breaker) rather than
+limp on while serving stale data. Normal failover for every `Exception` is unchanged.
+
+---
+
 ## Next Steps
 
 - [Recovered Payload Handler](recovered-payload-handler.md) — return a safe default on null recovery

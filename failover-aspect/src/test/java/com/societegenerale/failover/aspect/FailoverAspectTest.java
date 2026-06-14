@@ -91,16 +91,6 @@ class FailoverAspectTest {
     }
 
     @Test
-    @DisplayName("should skip failover when failover annotation name is null")
-    void shouldSkipFailoverWhenFailoverAnnotationNameIsNull() throws Throwable {
-        given(joinPoint.proceed()).willReturn(client);
-        Client result = failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName(null));
-        assertThat(result).isEqualTo(client);
-        assertThat(result.getUpToDate()).isNull();
-        assertThat(result.getAsOf()).isNull();
-    }
-
-    @Test
     @DisplayName("should skip failover when failover annotation name is empty")
     void shouldSkipFailoverWhenFailoverAnnotationNameIsEmpty() throws Throwable {
         given(joinPoint.proceed()).willReturn(client);
@@ -145,6 +135,25 @@ class FailoverAspectTest {
                 .hasMessage("Exception occurred while executing method 'toString' execution failed due to 'Dummy Exception'")
                 .hasCauseInstanceOf(RuntimeException.class)
                 .hasRootCauseMessage("Dummy Exception");
+    }
+
+    @Test
+    @DisplayName("should rethrow Error unwrapped when annotated method execution fails with an Error")
+    void shouldRethrowErrorUnwrappedWhenAnnotatedMethodFailsWithError() throws Throwable {
+        OutOfMemoryError error = new OutOfMemoryError("Dummy Error");
+        given(joinPoint.proceed()).willThrow(error);
+        given(joinPoint.getArgs()).willReturn(new Long[]{1L});
+        OutOfMemoryError thrown = assertThrows(OutOfMemoryError.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("FAILOVER")));
+        assertThat(thrown).isSameAs(error);
+    }
+
+    @Test
+    @DisplayName("should rethrow Error unwrapped when non-failover method execution fails with an Error")
+    void shouldRethrowErrorUnwrappedWhenNonFailoverMethodFailsWithError() throws Throwable {
+        StackOverflowError error = new StackOverflowError();
+        given(joinPoint.proceed()).willThrow(error);
+        StackOverflowError thrown = assertThrows(StackOverflowError.class, () -> failoverAspect.failoverAroundAdvice(joinPoint, failoverWithName("")));
+        assertThat(thrown).isSameAs(error);
     }
 
     private Failover failoverWithName(String name) {

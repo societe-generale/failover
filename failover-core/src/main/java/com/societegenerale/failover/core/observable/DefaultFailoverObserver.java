@@ -20,7 +20,7 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.manifest.ManifestInfoExtractor;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;

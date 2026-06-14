@@ -17,8 +17,8 @@
 package com.societegenerale.failover.observable.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
-import com.societegenerale.failover.core.observable.scanner.FailoverScannerException;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScannerException;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -28,9 +28,15 @@ import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -58,6 +64,8 @@ public class SpringContextFailoverScanner
 
     private volatile Map<String, Failover> failoverMap = new ConcurrentHashMap<>();
 
+    private volatile Set<Class<?>> payloadTypes = Set.of();
+
     @Override
     public void setApplicationContext(@Nullable ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
@@ -70,6 +78,7 @@ public class SpringContextFailoverScanner
     @Override
     public void afterSingletonsInstantiated() {
         Map<String, Failover> discovered = new ConcurrentHashMap<>();
+        Set<Class<?>> discoveredPayloadTypes = new LinkedHashSet<>();
         for (String beanName : applicationContext.getBeanDefinitionNames()) {
             Class<?> type = safeGetType(beanName);
             if (type == null) continue;
@@ -83,12 +92,15 @@ public class SpringContextFailoverScanner
                             "Duplicate @Failover name '%s' found. Each failover must have a unique name."
                                 .formatted(annotation.name()));
                     }
+                    collectPayloadType(method, discoveredPayloadTypes);
                 },
                 method -> !method.isBridge() && !method.isSynthetic()
             );
         }
         this.failoverMap = discovered;
-        log.info("SpringContextFailoverScanner discovered {} @Failover annotation(s).", failoverMap.size());
+        this.payloadTypes = Set.copyOf(discoveredPayloadTypes);
+        log.info("SpringContextFailoverScanner discovered {} @Failover annotation(s) covering {} payload type(s).",
+                failoverMap.size(), payloadTypes.size());
         warnOnDomainExpirtyMismatch(discovered);
     }
 
@@ -100,6 +112,47 @@ public class SpringContextFailoverScanner
     @Override
     public List<Failover> findAllFailover() {
         return new ArrayList<>(failoverMap.values());
+    }
+
+    @Override
+    public Set<Class<?>> findAllPayloadTypes() {
+        return payloadTypes;
+    }
+
+    /**
+     * Resolves the payload type a {@code @Failover} method ultimately stores: its return type, or
+     * the element/component type when the method returns a {@link Collection} or array (the
+     * collection wrapper itself — e.g. {@code java.util.List} — is never the stored payload).
+     * Unresolvable element types (raw or wildcard generics) and {@code void} are skipped.
+     */
+    private void collectPayloadType(Method method, Set<Class<?>> sink) {
+        Class<?> returnType = method.getReturnType();
+        if (returnType == void.class || returnType == Void.class) {
+            return;
+        }
+        if (returnType.isArray()) {
+            sink.add(returnType.getComponentType());
+            return;
+        }
+        if (Collection.class.isAssignableFrom(returnType)) {
+            Class<?> element = resolveCollectionElement(method.getGenericReturnType());
+            if (element != null) {
+                sink.add(element);
+            }
+            return;
+        }
+        sink.add(returnType);
+    }
+
+    @Nullable
+    private Class<?> resolveCollectionElement(Type genericReturnType) {
+        if (genericReturnType instanceof ParameterizedType parameterized) {
+            Type[] args = parameterized.getActualTypeArguments();
+            if (args.length == 1 && args[0] instanceof Class<?> elementClass) {
+                return elementClass;
+            }
+        }
+        return null;
     }
 
     private void warnOnDomainExpirtyMismatch(Map<String, Failover> discovered) {

@@ -19,7 +19,7 @@ package com.societegenerale.failover.observable.micrometer;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;

@@ -20,7 +20,7 @@ import com.societegenerale.failover.annotations.Failover;
 
 /**
  * Test fixture: two methods carry the same {@code @Failover} name.
- * Used to verify that {@link com.societegenerale.failover.core.observable.scanner.FailoverScanner}
+ * Used to verify that {@link com.societegenerale.failover.core.scanner.FailoverScanner}
  * implementations report a clear error on duplicate names.
  */
 public interface DuplicateFailoverFixture {

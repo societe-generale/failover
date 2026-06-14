@@ -17,7 +17,7 @@
 package com.societegenerale.failover.observable.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.observable.scanner.FailoverScannerException;
+import com.societegenerale.failover.core.scanner.FailoverScannerException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -139,6 +139,37 @@ class SpringContextFailoverScannerTest {
         assertThat(scanner.findAllFailover()).isEmpty();
     }
 
+    // ── findAllPayloadTypes ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("payload types include the return type and the element type of a collection return")
+    void shouldCollectReturnAndCollectionElementTypes() {
+        when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[]{"referentialBean"});
+        doReturn(ConcreteReferential.class).when(applicationContext).getType("referentialBean");
+
+        scanner.afterSingletonsInstantiated();
+
+        // findById → String ; findAll → element of List<String> = String
+        assertThat(scanner.findAllPayloadTypes()).containsExactly(String.class);
+    }
+
+    @Test
+    @DisplayName("payload types resolve POJO returns and array component types; void is ignored")
+    void shouldCollectPojoAndArrayComponentTypesAndIgnoreVoid() {
+        when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[]{"varied"});
+        doReturn(VariedReturns.class).when(applicationContext).getType("varied");
+
+        scanner.afterSingletonsInstantiated();
+
+        assertThat(scanner.findAllPayloadTypes()).containsExactlyInAnyOrder(SamplePojo.class);
+    }
+
+    @Test
+    @DisplayName("findAllPayloadTypes returns empty set before scan runs")
+    void payloadTypesEmptyBeforeScan() {
+        assertThat(scanner.findAllPayloadTypes()).isEmpty();
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     static class ConcreteReferential {
@@ -147,6 +178,19 @@ class SpringContextFailoverScannerTest {
 
         @Failover(name = "find-all")
         public List<String> findAll() { return null; }
+    }
+
+    static class SamplePojo { }
+
+    static class VariedReturns {
+        @Failover(name = "pojo")
+        public SamplePojo pojo() { return null; }
+
+        @Failover(name = "array")
+        public SamplePojo[] array() { return null; }
+
+        @Failover(name = "voidish")
+        public void doNothing() { /*for test only*/ }
     }
 
     interface ReferentialInterface {

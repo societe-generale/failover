@@ -17,7 +17,7 @@
 package com.societegenerale.failover.observable.micrometer.health;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

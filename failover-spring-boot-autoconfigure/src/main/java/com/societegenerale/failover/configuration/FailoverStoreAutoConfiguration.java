@@ -17,6 +17,8 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.clock.FailoverClock;
+import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
@@ -40,6 +42,8 @@ import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
 import com.societegenerale.failover.store.serializer.JsonSerializer;
 import com.societegenerale.failover.store.serializer.Serializer;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -56,6 +60,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
@@ -114,6 +121,31 @@ public class FailoverStoreAutoConfiguration {
         return executor;
     }
 
+    /**
+     * Merges the operator-configured payload-class allowlist with the packages of scanner-discovered
+     * payload types. JDK packages ({@code java.*}, {@code javax.*}, {@code jakarta.*}) are never added —
+     * whitelisting them would re-open the deserialization-gadget surface this control closes.
+     *
+     * @param configured operator entries from {@code failover.store.allowed-payload-classes}
+     * @param scanner    the failover scanner, or {@code null} if unavailable
+     * @return the merged allowlist (exact names + package prefixes); empty means allow-all
+     */
+    static List<String> mergeAllowedPayloadClasses(List<String> configured, @Nullable FailoverScanner scanner) {
+        Set<String> merged = new LinkedHashSet<>(configured);
+        if (scanner != null) {
+            for (Class<?> payloadType : scanner.findAllPayloadTypes()) {
+                String packageName = payloadType.getPackageName();
+                if (!packageName.isEmpty()
+                        && !packageName.startsWith("java.")
+                        && !packageName.startsWith("javax.")
+                        && !packageName.startsWith("jakarta.")) {
+                    merged.add(packageName);
+                }
+            }
+        }
+        return List.copyOf(merged);
+    }
+
     // ── Single-tenant ───────────────────────────────────────────────────────────
 
     /**
@@ -122,6 +154,7 @@ public class FailoverStoreAutoConfiguration {
      *
      * @param storeFactory        raw store factory
      * @param failoverTaskExecutor executor for async write offloading
+     * @param observablePublisher  sink for async-failure metrics
      * @return assembled async store chain
      */
     @Bean("failoverStore")
@@ -131,9 +164,10 @@ public class FailoverStoreAutoConfiguration {
     @ConditionalOnProperty(prefix = "failover.store.multitenant", name = "enabled", havingValue = "false", matchIfMissing = true)
     public FailoverStore<Object> asyncFailoverStore(
             TenantStoreFactory<Object> storeFactory,
-            @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor) {
+            @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor,
+            CompositeObservablePublisher observablePublisher) {
         log.info("FailoverStore assembled: FailoverStoreAsync(DefaultFailoverStore(raw)) — async=true.");
-        return new FailoverStoreAsync<>(new DefaultFailoverStore<>(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID)), failoverTaskExecutor);
+        return new FailoverStoreAsync<>(new DefaultFailoverStore<>(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID)), failoverTaskExecutor, observablePublisher);
     }
 
     /**
@@ -164,6 +198,7 @@ public class FailoverStoreAutoConfiguration {
      * @param rawFactory           creates a raw store per tenant
      * @param props                failover properties for strategy and default-tenant config
      * @param failoverTaskExecutor executor for async per-tenant write offloading
+     * @param observablePublisher  sink for async-failure metrics
      * @return assembled multi-tenant async store
      */
     @Bean("failoverStore")
@@ -175,12 +210,13 @@ public class FailoverStoreAutoConfiguration {
             TenantResolver tenantResolver,
             TenantStoreFactory<Object> rawFactory,
             FailoverProperties props,
-            @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor) {
+            @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor,
+            CompositeObservablePublisher observablePublisher) {
         MultiTenant mt = props.getStore().getMultitenant();
         log.info("FailoverStore assembled: MultiTenantFailoverStore (async=true, store.type={}, strategy={}).",
                  props.getStore().getType(), mt.getStrategy());
         UnaryOperator<FailoverStore<Object>> decorator =
-                raw -> new FailoverStoreAsync<>(new DefaultFailoverStore<>(raw), failoverTaskExecutor);
+                raw -> new FailoverStoreAsync<>(new DefaultFailoverStore<>(raw), failoverTaskExecutor, observablePublisher);
         var store = new MultiTenantFailoverStore<>(tenantResolver, rawFactory, decorator, mt.getDefaultTenant());
         store.prewarm(mt.getTenants().keySet());
         return store;
@@ -277,11 +313,21 @@ public class FailoverStoreAutoConfiguration {
         /**
          * Registers a {@link JsonSerializer} backed by the application's {@link ObjectMapper}
          * unless a {@link Serializer} bean is already present.
+         *
+         * <p>The deserialization allowlist is resolved lazily (after the scanner has run) by merging
+         * two sources: the packages of every {@code @Failover} payload type discovered by
+         * {@link FailoverScanner} (secure by default, zero config) and any explicit entries in
+         * {@code failover.store.allowed-payload-classes}. If both are empty the restriction is
+         * disabled (allow-all) for backward compatibility.
          */
         @Bean
         @ConditionalOnMissingBean
-        public Serializer serializer(ObjectMapper objectMapper) {
-            return new JsonSerializer(objectMapper);
+        public Serializer serializer(ObjectMapper objectMapper,
+                                     FailoverProperties failoverProperties,
+                                     ObjectProvider<FailoverScanner> failoverScannerProvider) {
+            List<String> configured = failoverProperties.getStore().getAllowedPayloadClasses();
+            return new JsonSerializer(objectMapper,
+                    () -> mergeAllowedPayloadClasses(configured, failoverScannerProvider.getIfAvailable()));
         }
 
         /**

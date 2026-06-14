@@ -16,12 +16,16 @@
 
 package com.societegenerale.failover.store;
 
+import com.societegenerale.failover.core.observable.Metrics;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.task.SyncTaskExecutor;
@@ -29,6 +33,7 @@ import org.springframework.core.task.TaskExecutor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.Optional;
@@ -39,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * @author Anand Manissery
@@ -176,6 +182,79 @@ class FailoverStoreAsyncTest {
         Instant now = Instant.now();
         doThrow(new RuntimeException("DB unavailable")).when(failoverStore).cleanByExpiry(now);
         assertThatNoException().isThrownBy(() -> failoverStoreAsync.cleanByExpiry(now));
+    }
+
+    @Nested
+    @DisplayName("async-failure metric emission")
+    class AsyncFailureMetricTests {
+
+        @Mock
+        private ObservablePublisher observablePublisher;
+
+        private FailoverStoreAsync<String> failoverStoreAsyncWithPublisher;
+
+        @BeforeEach
+        void setUp() {
+            failoverStoreAsyncWithPublisher = new FailoverStoreAsync<>(failoverStore, SYNC_EXECUTOR, observablePublisher);
+        }
+
+        @Test
+        @DisplayName("store() failure publishes a store-async-failed metric tagged with operation and exception type")
+        void storeFailurePublishesMetric() {
+            given(referentialPayload.getName()).willReturn("country");
+            doThrow(new RuntimeException("DB unavailable")).when(failoverStore).store(referentialPayload);
+
+            failoverStoreAsyncWithPublisher.store(referentialPayload);
+
+            ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+            verify(observablePublisher).publish(captor.capture());
+            Map<String, String> info = captor.getValue().getInfo();
+            assertThat(info).containsEntry("failover-action", "store-async-failed");
+            assertThat(info).containsEntry("failover-async-operation", "store");
+            assertThat(info).containsEntry("failover-name", "country");
+            assertThat(info).containsEntry("failover-exception-type", "java.lang.RuntimeException");
+        }
+
+        @Test
+        @DisplayName("delete() failure publishes a store-async-failed metric for the delete operation")
+        void deleteFailurePublishesMetric() {
+            given(referentialPayload.getName()).willReturn("country");
+            doThrow(new RuntimeException("DB unavailable")).when(failoverStore).delete(referentialPayload);
+
+            failoverStoreAsyncWithPublisher.delete(referentialPayload);
+
+            ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+            verify(observablePublisher).publish(captor.capture());
+            assertThat(captor.getValue().getInfo()).containsEntry("failover-async-operation", "delete");
+        }
+
+        @Test
+        @DisplayName("cleanByExpiry() failure publishes a store-async-failed metric for the cleanByExpiry operation")
+        void cleanByExpiryFailurePublishesMetric() {
+            Instant now = Instant.now();
+            doThrow(new RuntimeException("DB unavailable")).when(failoverStore).cleanByExpiry(now);
+
+            failoverStoreAsyncWithPublisher.cleanByExpiry(now);
+
+            ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+            verify(observablePublisher).publish(captor.capture());
+            assertThat(captor.getValue().getInfo()).containsEntry("failover-async-operation", "cleanByExpiry");
+        }
+
+        @Test
+        @DisplayName("a successful store does not publish any async-failure metric")
+        void successDoesNotPublish() {
+            failoverStoreAsyncWithPublisher.store(referentialPayload);
+            verifyNoInteractions(observablePublisher);
+        }
+
+        @Test
+        @DisplayName("a publisher that itself throws does not break the swallow contract")
+        void publisherFailureIsSwallowed() {
+            doThrow(new RuntimeException("DB unavailable")).when(failoverStore).store(referentialPayload);
+            doThrow(new RuntimeException("publisher down")).when(observablePublisher).publish(org.mockito.ArgumentMatchers.any());
+            assertThatNoException().isThrownBy(() -> failoverStoreAsyncWithPublisher.store(referentialPayload));
+        }
     }
 
     /**

@@ -113,6 +113,8 @@ flowchart LR
 - **Success path** → `FailoverHandler.store(failover, args, result)`
 - **Exception path** → `FailoverHandler.recover(failover, args, clazz, throwable)`
 
+Only `Exception` triggers the recovery path. A `java.lang.Error` (`OutOfMemoryError`, `StackOverflowError`, …) is rethrown unwrapped — recovery never runs on a failing JVM. See [Exception Policy](../how-to/exception-policy.md#error-is-never-recovered).
+
 The aspect is activated on any Spring-proxied bean regardless of type (Feign client, `@Service`, `@Component`, `@Repository`).
 
 ### DefaultFailoverHandler

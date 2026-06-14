@@ -40,6 +40,9 @@ import java.util.concurrent.TimeUnit;
  *       {@code exception_type}, {@code cause_type}</li>
  *   <li>{@code failover.operation.duration} (Timer) — tags: {@code name}, {@code action}
  *       — only when the {@code Metrics} bag carries a {@code failover-duration-ns} key</li>
+ *   <li>{@code failover.store.async.failed} (Counter) — tags: {@code name}, {@code operation},
+ *       {@code exception_type} — emitted when an async store/delete/cleanByExpiry fails inside
+ *       the executor thread (the async store layer is otherwise visible only in logs)</li>
  * </ul>
  *
  * <h2>Tag cardinality</h2>
@@ -64,6 +67,8 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
     static final String EX_TYPE_KEY      = "failover-exception-type";
     static final String CAUSE_TYPE_KEY   = "failover-exception-cause-type";
     static final String DURATION_NS_KEY  = "failover-duration-ns";
+    static final String ASYNC_OP_KEY     = "failover-async-operation";
+    static final String ASYNC_FAILED     = "store-async-failed";
 
     private final MeterRegistry registry;
 
@@ -87,6 +92,7 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
         switch (action) {
             case "store"   -> publishStore(name, info);
             case "recover" -> publishRecover(name, info);
+            case ASYNC_FAILED -> publishAsyncFailed(name, info);
             default        -> { /* unknown action — ignore */ }
         }
         recordDuration(name, action, info);
@@ -122,6 +128,18 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .tag("name", name)
             .tag("exception_type", exType)
             .tag("cause_type", causeType)
+            .register(registry)
+            .increment();
+    }
+
+    private void publishAsyncFailed(String name, Map<String, String> info) {
+        String operation = info.getOrDefault(ASYNC_OP_KEY, "unknown");
+        String exType    = info.getOrDefault(EX_TYPE_KEY, "unknown");
+        Counter.builder("failover.store.async.failed")
+            .description("Async store-layer operations that failed inside the executor")
+            .tag("name", name)
+            .tag("operation", operation)
+            .tag("exception_type", exType)
             .register(registry)
             .increment();
     }

@@ -55,17 +55,8 @@ import java.util.Map;
 @Setter
 public class MultiTenant {
 
-    /** No-arg constructor for Spring property binding. */
-    public MultiTenant() {}
-
     /** Opt-in flag. Defaults to {@code false} — zero impact on existing deployments. */
     private boolean enabled = false;
-
-    /**
-     * JDBC isolation strategy. Ignored by Caffeine and InMemory stores.
-     * Default: {@code TABLE_PREFIX}.
-     */
-    private JdbcMultiTenantStrategy strategy = JdbcMultiTenantStrategy.TABLE_PREFIX;
 
     /**
      * Fallback tenant ID when the resolver returns {@code null}.
@@ -74,11 +65,32 @@ public class MultiTenant {
     private String defaultTenant;
 
     /**
+     * Reject (rather than silently route) tenants that are not present in {@link #tenants}.
+     *
+     * <p>In {@code TABLE_PREFIX} mode an unconfigured tenant has an empty table prefix, so it
+     * resolves to the global {@code FAILOVER_STORE} table — and <em>every</em> unconfigured tenant
+     * then shares that one table, silently breaking the isolation multitenancy exists to provide.
+     * When {@code true}, resolving such a tenant throws a {@code FailoverStoreException}; when
+     * {@code false} (default), it is allowed but a one-time {@code WARN} is logged per tenant ID.
+     * The configured {@link #defaultTenant} is always exempt (routing it to the global table is intentional).
+     */
+    private boolean strict = false;
+
+    /**
+     * JDBC isolation strategy. Ignored by Caffeine and InMemory stores.
+     * Default: {@code TABLE_PREFIX}.
+     */
+    private JdbcMultiTenantStrategy strategy = JdbcMultiTenantStrategy.TABLE_PREFIX;
+
+    /**
      * Per-tenant configuration overrides, keyed by tenant ID.
      * Caffeine and InMemory stores do not require per-tenant entries.
      */
     @NestedConfigurationProperty
     private Map<String, TenantConfig> tenants = new LinkedHashMap<>();
+
+    /** No-arg constructor for Spring property binding. */
+    public MultiTenant() {}
 
     /**
      * Tenant isolation strategy for the JDBC store.

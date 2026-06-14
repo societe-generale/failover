@@ -21,7 +21,7 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.manifest.ManifestInfoExtractor;
 import com.societegenerale.failover.core.observable.publisher.AbstractObservablePublisher;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import lombok.Getter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
