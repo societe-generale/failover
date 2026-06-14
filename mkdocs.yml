@@ -173,6 +173,7 @@ nav:
     - FAQ: support/faq.md
     - Support: support/support.md
     - Contributing: support/contributing.md
+    - Security: support/security.md
     - About: support/about.md
 
 not_in_nav: |

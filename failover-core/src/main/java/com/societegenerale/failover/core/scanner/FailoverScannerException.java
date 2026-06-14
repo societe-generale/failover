@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core.observable.scanner;
+package com.societegenerale.failover.core.scanner;
 
 /**
  * Thrown when the {@link FailoverScanner} encounters an error during Spring context scanning

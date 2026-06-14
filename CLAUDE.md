@@ -85,6 +85,7 @@ Every core bean uses `@ConditionalOnMissingBean`. Declare your own bean to repla
 | `failover-store-jdbc` | JDBC store (H2, PostgreSQL, MySQL, MariaDB, Oracle) |
 | `failover-store-async` | Non-blocking write decorator using virtual-thread executor |
 | `failover-store-multitenant` | TABLE_PREFIX / SCHEMA per-tenant routing |
+| `failover-lookup` | Spring `BeanFactory`-based lookups for named `KeyGenerator` / `ExpiryPolicy` / `PayloadSplitter` beans |
 | `failover-execution-resilience` | Resilience4j circuit-breaker wrapping upstream calls |
 | `failover-observable-scanner` | Startup scanner: walks Spring context for all `@Failover` methods |
 | `failover-observable-micrometer` | Micrometer counters + health indicator |

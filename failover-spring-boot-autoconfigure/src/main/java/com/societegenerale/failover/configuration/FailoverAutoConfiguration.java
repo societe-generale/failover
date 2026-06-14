@@ -42,7 +42,7 @@ import com.societegenerale.failover.propagator.MicrometerContextPropagator;
 import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
 import com.societegenerale.failover.core.observable.*;
 import com.societegenerale.failover.core.observable.manifest.*;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
 import com.societegenerale.failover.observable.scanner.SpringContextFailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
@@ -321,6 +321,7 @@ public class FailoverAutoConfiguration {
      * @param payloadSplitterLookup      looks up named splitter beans
      * @param contextPropagator          propagates thread context to scatter executor threads
      * @param scatterGatherExecutorProvider optional executor for parallel scatter (null = sequential)
+     * @param failoverProperties         framework properties (provides the scatter slice timeout)
      * @return assembled {@link AdvancedFailoverHandler}
      */
     @ConditionalOnMissingBean
@@ -336,10 +337,11 @@ public class FailoverAutoConfiguration {
             FailoverExpiryExtractor failoverExpiryExtractor,
             PayloadSplitterLookup<Object,Object> payloadSplitterLookup,
             @Qualifier("contextPropagator") ContextPropagator contextPropagator,
-            @Qualifier("scatterGatherExecutor") ObjectProvider<TaskExecutor> scatterGatherExecutorProvider) {
+            @Qualifier("scatterGatherExecutor") ObjectProvider<TaskExecutor> scatterGatherExecutorProvider,
+            FailoverProperties failoverProperties) {
         var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
         var scatterHandler = new ScatterGatherFailoverHandler<>(defaultHandler, defaultHandler, payloadSplitterLookup,
-                scatterGatherExecutorProvider.getIfAvailable(), contextPropagator);
+                scatterGatherExecutorProvider.getIfAvailable(), contextPropagator, failoverProperties.getScatter().getTimeout());
         return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, observablePublisher, failoverExpiryExtractor);
     }
 

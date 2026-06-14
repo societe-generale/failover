@@ -19,6 +19,9 @@ package com.societegenerale.failover.properties;
 import lombok.Data;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static com.societegenerale.failover.properties.StoreType.INMEMORY;
 
 /**
@@ -46,6 +49,21 @@ public class Store {
      * which is required when using the JDBC SCHEMA multi-tenant strategy.
      */
     private boolean async = true;
+
+    /**
+     * Allowlist of payload classes that may be materialized when deserializing rows from a
+     * serializing store (e.g. JDBC; in-memory/Caffeine hold live objects and ignore this).
+     * Entries are exact fully-qualified class names or package prefixes (e.g. {@code "com.acme.referential"}).
+     *
+     * <p>This is an <em>additive</em> override: the framework already auto-allows the packages of every
+     * discovered {@code @Failover} payload type (return type and collection/array element types) so the
+     * common case needs no configuration and is secure by default. Add entries here only for payload
+     * classes the scanner cannot infer (e.g. a slice type in a different package than its composite).
+     *
+     * <p>If both this list is empty <em>and</em> the scanner discovers no payload types, the restriction
+     * is disabled (allow-all) to preserve backward compatibility.
+     */
+    private List<String> allowedPayloadClasses = new ArrayList<>();
 
     @NestedConfigurationProperty
     private Jdbc jdbc = new Jdbc();

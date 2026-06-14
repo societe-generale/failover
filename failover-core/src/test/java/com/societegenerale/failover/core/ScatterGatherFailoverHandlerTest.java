@@ -32,11 +32,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -637,6 +640,56 @@ class ScatterGatherFailoverHandlerTest {
         void sequentialHandlerDoesNotInvokePropagator() {
             handler.store(failover, ARGS_1_2, result(TP_1, TP_2));
             assertThat(propagatorCallCount.get()).isZero();
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PARALLEL SCATTER — per-slice timeout (failover.scatter.timeout)
+    // ════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Parallel scatter — per-slice timeout")
+    class ParallelScatterTimeoutTests {
+
+        private ExecutorService executorService;
+        private ScatterGatherFailoverHandler<ThirdPartiesResult, ThirdParty> timeoutHandler;
+
+        @BeforeEach
+        void setUp() {
+            executorService = Executors.newFixedThreadPool(4);
+            timeoutHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup,
+                    executorService, ContextPropagator.noOp(), Duration.ofMillis(150));
+        }
+
+        @AfterEach
+        void tearDown() {
+            executorService.shutdownNow();
+        }
+
+        @Test
+        @DisplayName("scatter-recover: a slice exceeding the timeout is treated as not recovered (null in its position); other slices still merge")
+        void recoverTimedOutSliceTreatedAsNotRecovered() {
+            given(delegateR.recover(failover, ARGS_1, ThirdParty.class, cause)).willReturn(TP_1);
+            given(delegateR.recover(failover, ARGS_3, ThirdParty.class, cause)).willReturn(TP_3);
+            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause)).willAnswer(inv -> {
+                Thread.sleep(2_000);
+                return TP_2;
+            });
+
+            ThirdPartiesResult recovered = timeoutHandler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause);
+
+            assertThat(recovered).isNotNull();
+            assertThat(recovered.getThirdParties()).containsExactly(TP_1, null, TP_3);
+        }
+
+        @Test
+        @DisplayName("scatter-store: a slice exceeding the timeout surfaces a TimeoutException to the caller (isolated upstream)")
+        void storeTimedOutSliceSurfacesTimeout() {
+            doAnswer(inv -> { Thread.sleep(2_000); return null; }).when(delegateR).store(eq(failover), eq(ARGS_2), any());
+
+            assertThatThrownBy(() -> timeoutHandler.store(failover, ARGS_1_2_3, result(TP_1, TP_2, TP_3)))
+                    .isInstanceOf(CompletionException.class)
+                    .hasCauseInstanceOf(TimeoutException.class);
         }
     }
 

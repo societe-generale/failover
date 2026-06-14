@@ -24,6 +24,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.util.regex.Pattern;
 
 import static org.springframework.util.StringUtils.replace;
 
@@ -60,6 +61,9 @@ import static org.springframework.util.StringUtils.replace;
 public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryResolver {
 
     private static final String PREFIX = "%PREFIX%";
+
+    /** Identifier characters, optionally in dot-separated qualifier segments (e.g. "MYAPP_", "SCHEMA.", "SCHEMA.MYAPP_"). */
+    private static final Pattern TABLE_PREFIX_PATTERN = Pattern.compile("([A-Za-z0-9_]+\\.)*[A-Za-z0-9_]*");
 
     // -----------------------------------------------------------------
     // SQL templates  (prefix placeholder = %PREFIX%)
@@ -129,6 +133,7 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
      * @param payloadColumnResolver determines the SQL type of the PAYLOAD column
      */
     public DefaultFailoverStoreQueryResolver(String tablePrefix, Serializer serializer, DatabaseResolver databaseResolver, PayloadColumnResolver payloadColumnResolver) {
+        validateTablePrefix(tablePrefix);
         this.serializer          = serializer;
         this.payloadColumnResolver = payloadColumnResolver;
         this.insertQuery           = applyPrefix(INSERT_SQL,             tablePrefix);
@@ -215,5 +220,19 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
 
     private static String applyPrefix(String template, String prefix) {
         return replace(template, PREFIX, prefix);
+    }
+
+    /**
+     * The prefix is concatenated into SQL text as an identifier fragment, so it must never
+     * contain anything beyond identifier characters and dot-separated qualifier segments
+     * (schema qualification like {@code "SCHEMA."} is supported) — this also catches config
+     * typos (quotes, spaces, semicolons) at startup instead of as SQL grammar errors later.
+     */
+    private static void validateTablePrefix(String tablePrefix) {
+        if (tablePrefix == null || !TABLE_PREFIX_PATTERN.matcher(tablePrefix).matches()) {
+            throw new IllegalArgumentException(
+                    "Invalid failover store table prefix '%s': only letters, digits, underscores and dot-separated qualifiers are allowed (pattern %s)."
+                            .formatted(tablePrefix, TABLE_PREFIX_PATTERN.pattern()));
+        }
     }
 }

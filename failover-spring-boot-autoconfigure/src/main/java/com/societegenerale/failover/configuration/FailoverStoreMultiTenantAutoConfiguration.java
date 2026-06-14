@@ -19,6 +19,7 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.propagator.CompositeContextPropagator;
+import com.societegenerale.failover.core.store.FailoverStoreException;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.MultiTenant;
 import com.societegenerale.failover.properties.TenantConfig;
@@ -40,6 +41,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Autoconfiguration that activates when {@code failover.store.multitenant.enabled=true}.
@@ -144,18 +148,43 @@ public class FailoverStoreMultiTenantAutoConfiguration {
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
+    /** Tenants already warned about (once each) to avoid log spam under load. */
+    private static final Set<String> WARNED_UNCONFIGURED_TENANTS = ConcurrentHashMap.newKeySet();
+
     /**
      * Computes the effective JDBC table prefix for a given tenant.
      *
      * <p>Rule: {@code effectivePrefix = tenantPrefix + globalPrefix}
      * <br>Example: {@code "ACME_" + "DEMO_" = "ACME_DEMO_"}  → table {@code ACME_DEMO_FAILOVER_STORE}
+     *
+     * <p>A tenant absent from {@code failover.store.multitenant.tenants} has no prefix and would
+     * resolve to the shared global table, silently co-mingling its data with every other
+     * unconfigured tenant. Such a tenant is rejected when {@code multitenant.strict=true}, otherwise
+     * allowed with a one-time WARN. The configured {@code defaultTenant} is exempt (its routing to
+     * the global table is intentional).
      */
     static String resolveJdbcPrefix(FailoverProperties props, String tenantId) {
         String globalPrefix = props.getStore().getJdbc().getTablePrefix();
         MultiTenant mt = props.getStore().getMultitenant();
+        guardUnconfiguredTenant(mt, tenantId, globalPrefix);
         String tenantPrefix = mt.getTenants()
                 .getOrDefault(tenantId, new TenantConfig())
                 .getTablePrefix();
         return tenantPrefix + globalPrefix;
+    }
+
+    private static void guardUnconfiguredTenant(MultiTenant mt, String tenantId, String globalPrefix) {
+        boolean isDefaultTenant = tenantId != null && tenantId.equals(mt.getDefaultTenant());
+        if (isDefaultTenant || mt.getTenants().containsKey(tenantId)) {
+            return;
+        }
+        String msg = "Tenant '%s' is not configured in failover.store.multitenant.tenants; in TABLE_PREFIX mode it resolves to the shared global table '%sFAILOVER_STORE', co-mingling its data with every other unconfigured tenant."
+                .formatted(tenantId, globalPrefix);
+        if (mt.isStrict()) {
+            throw new FailoverStoreException(msg + " Refusing to route it (failover.store.multitenant.strict=true).");
+        }
+        if (WARNED_UNCONFIGURED_TENANTS.add(tenantId)) {
+            log.warn("{} Configure the tenant, or set failover.store.multitenant.strict=true to fail fast.", msg);
+        }
     }
 }

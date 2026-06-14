@@ -18,7 +18,7 @@ package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
-import com.societegenerale.failover.core.observable.scanner.FailoverScanner;
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import io.micrometer.core.instrument.MeterRegistry;

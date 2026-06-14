@@ -56,15 +56,19 @@ public class FailoverAspect<T> {
     @Around(value = "@annotation(com.societegenerale.failover.annotations.Failover) && @annotation(failover)", argNames = "joinPoint, failover")
     public T failoverAroundAdvice(ProceedingJoinPoint joinPoint, @Nullable Failover failover) {
         Method method = ((MethodSignature)joinPoint.getSignature()).getMethod();
-        if (failover != null && failover.name()!=null && !failover.name().isEmpty()) {
+        if (failover != null && !failover.name().isEmpty()) {
             return failoverExecution.execute(failover, ()-> returnResult(joinPoint), method, asList(joinPoint.getArgs()));
         }
-         return returnResult(joinPoint);
+        return returnResult(joinPoint);
     }
 
     private T returnResult(ProceedingJoinPoint joinPoint) {
         try {
             return cast(joinPoint.proceed());
+        } catch (Error error) {
+            // Never convert Errors (OutOfMemoryError, StackOverflowError, ...) into a recoverable
+            // exception — the recovery path must not run on a failing JVM.
+            throw error;
         } catch (Throwable throwable) {
             throw new ExecutionException("Exception occurred while executing method '%s' execution failed due to '%s'"
                     .formatted(((MethodSignature)joinPoint.getSignature()).getMethod().getName(), throwable.getMessage()), throwable);

@@ -14,17 +14,32 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Upgraded to Spring Boot 4.x and Spring Cloud 2025.x
 - Upgraded to Java 21 — virtual threads used for async store executor and scatter/gather executor
 - Key generation now produces fixed-length MD5/UUID-based keys to prevent VARCHAR(256) overflow
+- `FailoverScanner` SPI moved from `core.observable.scanner` to `core.scanner` — it is now a neutral
+  shared component (consumed by both observability reporting and store deserialization safety)
 
 ### Added
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods
 - Scatter/gather: parallel slice dispatch via virtual threads (`failover.scatter.parallel`)
+- Scatter/gather: `failover.scatter.timeout` (default 10s) — bounds parallel slice joins so a hung
+  slice cannot block the caller; on timeout a recover slice yields no data, a store slice surfaces it
 - Multi-tenant: `TABLE_PREFIX` and `SCHEMA` isolation strategies
 - Multi-tenant: `TenantContextPropagator` for async context propagation
+- Multi-tenant: `failover.store.multitenant.strict` — reject (or WARN once) tenants absent from the
+  configured map instead of silently sharing the global table
 - `ContextPropagator` SPI for carrying thread-local context into async executor threads
 - `CompositeContextPropagator` for combining multiple propagators
 - Micrometer tracing context propagator (`MicrometerContextPropagator`)
+- Micrometer counter `failover.store.async.failed{name,operation,exception_type}` for async store failures
 - `failover.exception-policy` property (`RETHROW`, `NEVER_THROW`, `CUSTOM`)
 - SpEL expression support for expiry (`expiryDurationExpression`, `expiryUnitExpression`)
+
+### Security
+- Deserialization allowlist for stored payload classes — `JsonSerializer.toClass` rejects unknown
+  classes (`FailoverStoreException`). Auto-populated from the packages of discovered `@Failover`
+  payload types (secure by default); `failover.store.allowed-payload-classes` is an additive override
+- `failover.store.jdbc.table-prefix` validated against an identifier pattern at startup
+- `Error` (e.g. `OutOfMemoryError`) now propagates unwrapped through the aspect — recovery never runs
+  on a failing JVM
 
 ---
 

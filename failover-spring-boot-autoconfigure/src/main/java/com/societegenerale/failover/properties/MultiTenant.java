@@ -74,6 +74,18 @@ public class MultiTenant {
     private String defaultTenant;
 
     /**
+     * Reject (rather than silently route) tenants that are not present in {@link #tenants}.
+     *
+     * <p>In {@code TABLE_PREFIX} mode an unconfigured tenant has an empty table prefix, so it
+     * resolves to the global {@code FAILOVER_STORE} table — and <em>every</em> unconfigured tenant
+     * then shares that one table, silently breaking the isolation multitenancy exists to provide.
+     * When {@code true}, resolving such a tenant throws a {@code FailoverStoreException}; when
+     * {@code false} (default), it is allowed but a one-time {@code WARN} is logged per tenant ID.
+     * The configured {@link #defaultTenant} is always exempt (routing it to the global table is intentional).
+     */
+    private boolean strict = false;
+
+    /**
      * Per-tenant configuration overrides, keyed by tenant ID.
      * Caffeine and InMemory stores do not require per-tenant entries.
      */

@@ -58,12 +58,15 @@ public class Metrics {
     /**
      * Adds a key-value pair to this metrics bag, prefixing the key with {@code "failover-"}.
      *
+     * <p>A {@code null} value is stored as the empty string — consumers such as MDC adapters
+     * or Micrometer tag builders must never receive a {@code null} metric value.
+     *
      * @param key   the metric key (will be stored as {@code "failover-" + key})
-     * @param value the metric value
+     * @param value the metric value; {@code null} is coerced to {@code ""}
      * @return this instance for chaining
      */
     public Metrics collect(String key, String value) {
-        info.put( "%s-%s".formatted(keyPrefix, key), value);
+        info.put( "%s-%s".formatted(keyPrefix, key), value != null ? value : "");
         return this;
     }
 

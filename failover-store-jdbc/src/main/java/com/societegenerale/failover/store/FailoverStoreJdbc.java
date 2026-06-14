@@ -110,6 +110,12 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     /**
      * Inserts the payload; on {@link org.springframework.dao.DuplicateKeyException} falls back to UPDATE.
+     *
+     * <p><b>Race window:</b> between the failed INSERT and the follow-up UPDATE a concurrent
+     * delete (e.g. expiry cleanup) can remove the row, so the UPDATE affects 0 rows and the write
+     * is silently dropped. The window is tiny, the data is a regenerable cache, and the native
+     * merge path (used by every supported dialect) avoids it entirely — so this is logged at debug
+     * rather than retried.
      */
     private void insertOrUpdate(ReferentialPayload<T> referentialPayload) {
         try {
@@ -122,7 +128,12 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
             var count = jdbcTemplate.update(queryResolver.getUpdateQuery(),
                     queryResolver.buildUpdateParams(referentialPayload),
                     queryResolver.buildUpdateTypes());
-            log.debug("Referential payload updated. Records updated: '{}'", count);
+            if (count == 0) {
+                log.debug("Referential payload UPDATE affected 0 rows for name='{}', key='{}' — the row was likely deleted concurrently (expiry cleanup) between the failed INSERT and this UPDATE; write dropped.",
+                        referentialPayload.getName(), referentialPayload.getKey());
+            } else {
+                log.debug("Referential payload updated. Records updated: '{}'", count);
+            }
         }
     }
 

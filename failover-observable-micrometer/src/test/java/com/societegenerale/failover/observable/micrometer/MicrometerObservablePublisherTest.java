@@ -183,6 +183,24 @@ class MicrometerObservablePublisherTest {
         assertThat(registry.find("failover.operation.duration").timer()).isNull();
     }
 
+    // ── async-failure events ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("async failure — increments failover.store.async.failed tagged with operation and exception type")
+    void shouldIncrementAsyncFailedCounter() {
+        publisher.publish(Metrics.of("country")
+            .collect("action", "store-async-failed")
+            .collect("async-operation", "store")
+            .collect("exception-type", "java.lang.RuntimeException"));
+
+        Counter counter = registry.get("failover.store.async.failed")
+            .tag("name", "country")
+            .tag("operation", "store")
+            .tag("exception_type", "java.lang.RuntimeException")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
     // ── startup/config events ─────────────────────────────────────────────────
 
     @Test
