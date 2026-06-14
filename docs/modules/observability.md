@@ -58,6 +58,15 @@ Counter name: `failover.store`
 | `name` | The `@Failover(name=...)` value |
 | `action` | `store`, `recover`, `nonRecover`, `cleanByExpiry` |
 
+Counter name: `failover.store.async.failed` — incremented when an async write fails inside the
+executor (the async store layer is otherwise visible only in logs).
+
+| Tag | Values |
+|---|---|
+| `name` | The `@Failover(name=...)` value |
+| `operation` | `store`, `delete`, `cleanByExpiry` |
+| `exception_type` | The failure's class name |
+
 ### Health Indicator
 
 Registered at `/actuator/health` under the `failover` component:

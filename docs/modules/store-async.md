@@ -56,6 +56,20 @@ Set `async: false` to make all operations synchronous. Required when:
 
 ---
 
+## Failure Visibility
+
+Because writes run on a background thread, a failure inside the executor (e.g. DB down, connection
+pool exhausted) is caught and logged — it never propagates to the business call. To stop such a
+failure from being invisible, `FailoverStoreAsync` also publishes a metric on every executor-side
+failure via the `ObservablePublisher`:
+
+- Micrometer counter `failover.store.async.failed{name, operation, exception_type}`.
+
+Alert on any increase — it means failover data is silently not being persisted. See
+[Observability](../how-to/observability.md#async-store-failure-counter).
+
+---
+
 ## Dependency
 
 `failover-store-async` is included in the starter. It is activated automatically when `failover.store.async=true`.
