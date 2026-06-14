@@ -693,6 +693,19 @@ class ScatterGatherFailoverHandlerTest {
         }
 
         @Test
+        @DisplayName("scatter-recover: a slice failing with a non-timeout exception propagates (not swallowed as a timeout)")
+        void recoverSliceNonTimeoutFailurePropagates() {
+            given(delegateR.recover(failover, ARGS_1, ThirdParty.class, cause)).willReturn(TP_1);
+            given(delegateR.recover(failover, ARGS_3, ThirdParty.class, cause)).willReturn(TP_3);
+            given(delegateR.recover(failover, ARGS_2, ThirdParty.class, cause))
+                    .willThrow(new IllegalStateException("slice boom"));
+
+            assertThatThrownBy(() -> timeoutHandler.recover(failover, ARGS_1_2_3, ThirdPartiesResult.class, cause))
+                    .isInstanceOf(CompletionException.class)
+                    .hasRootCauseInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
         @DisplayName("scatter-recover-all: a recoverAll slice exceeding the timeout yields no data — recover returns null instead of hanging")
         void recoverAllTimedOutSliceReturnsNull() {
             doReturn(thirdPartyPayloadSplitterForRecoverAll).when(payloadSplitterLookup).lookup(SPLITTER_NAME);

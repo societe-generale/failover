@@ -272,6 +272,13 @@ class JsonSerializerTest {
             JsonSerializer supplied = new JsonSerializer(OBJECT_MAPPER, List::of);
             assertThat(supplied.<Runtime>toClass("java.lang.Runtime")).isEqualTo(Runtime.class);
         }
+
+        @Test
+        @DisplayName("should treat a null supplier result as allow-all (defensive)")
+        void nullSuppliedAllowlistAllowsAll() {
+            JsonSerializer supplied = new JsonSerializer(OBJECT_MAPPER, () -> null);
+            assertThat(supplied.<Runtime>toClass("java.lang.Runtime")).isEqualTo(Runtime.class);
+        }
     }
 
     @Nested
