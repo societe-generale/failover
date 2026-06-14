@@ -287,6 +287,23 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
                     .isEqualTo("DEMO_");
         }
 
+        @Test
+        @DisplayName("non-strict — a null tenant id is not the default tenant; warns and resolves to the global table")
+        void nonStrictNullTenantResolvesToGlobal() {
+            FailoverProperties props = propsWithJdbcAndTenants("DEMO_", Map.of("acme", tenantConfig("ACME_")));
+            props.getStore().getMultitenant().setDefaultTenant("acme");
+            assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, null))
+                    .isEqualTo("DEMO_");
+        }
+
+        @Test
+        @DisplayName("non-strict — repeated resolution of the same unknown tenant warns once and stays consistent")
+        void nonStrictRepeatedUnknownTenantWarnsOnce() {
+            FailoverProperties props = propsWithJdbcAndTenants("DEMO_", Map.of("acme", tenantConfig("ACME_")));
+            assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "repeat-tenant")).isEqualTo("DEMO_");
+            assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "repeat-tenant")).isEqualTo("DEMO_");
+        }
+
         private TenantConfig tenantConfig(String tablePrefix) {
             var cfg = new TenantConfig();
             cfg.setTablePrefix(tablePrefix);
