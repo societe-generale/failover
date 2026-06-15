@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - 'main'
+
+# Least-privilege: the autoupdate action merges the base branch into open PRs,
+# which needs write access to repository contents and pull requests.
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   autoupdate:
     name: autoupdate
