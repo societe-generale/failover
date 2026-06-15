@@ -1768,3 +1768,162 @@ The change is a package move only — done inside the `3.0.0-SNAPSHOT` (pre-rele
 * No new bad module coupling: `JsonSerializer` depends only on a `Supplier`, not the scanner; only the autoconfig wires scanner → serializer, and it already depends on every module.
 * The impl module name (`failover-observable-scanner`) temporarily diverges from the interface package — a known, documented follow-up for the JPMS/split-package cleanup.
 ___
+
+## ADR 43 — Dialect Integration Tests via Testcontainers
+
+**Date : 15-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+`DefaultFailoverStoreQueryResolver` selects a native merge/upsert dialect per database — H2
+`MERGE INTO … KEY`, PostgreSQL `ON CONFLICT DO UPDATE`, MySQL/MariaDB `ON DUPLICATE KEY UPDATE`,
+Oracle `MERGE USING DUAL` (ADR 13). The only real database exercised in the test suite is H2;
+the other dialect SQL constants were verified by **string assertion only** (audit T-1).
+
+A typo in a non-H2 dialect would ship silently: at runtime the first `store()` throws
+`BadSqlGrammarException`, the store flips `mergeEnabled=false` permanently, and degrades to
+INSERT/UPDATE — so the broken merge is masked as a "permanent silent downgrade" with no test ever
+failing. The dialect SQL needs to run against the actual databases it targets.
+
+### Decision
+Add **Testcontainers-backed integration tests** that run the full store→merge→find→cleanByExpiry
+round-trip against real **PostgreSQL, MySQL, and MariaDB** containers, asserting both the data
+outcome and that the resolver selected the native dialect (`getMergeQuery()` is non-null and
+contains the dialect-specific fragment) rather than the fallback.
+
+Design constraints that keep the default build fast and hermetic:
+
+* Tests are named **`*DialectIT`** and live in `failover-store-jdbc/src/test` (`store.dialect`
+  package), reusing the existing direct-wiring pattern (`FailoverStoreJdbc` +
+  `DefaultFailoverStoreQueryResolver`, no Spring context).
+* A shared `AbstractDialectIT` holds the scenario; one concrete subclass per database supplies the
+  `@Container` and dialect-specific DDL.
+* The parent POM's failsafe config **excludes `**/*DialectIT.java`** from the default build, so
+  `mvn verify` stays H2-only and Docker-free. A `dialect-its` Maven profile in `failover-store-jdbc`
+  re-includes them. Testcontainers JARs are test-scoped (versions from an imported
+  `testcontainers-bom`), so test sources always compile but the containers start only under the
+  profile.
+* **Oracle is deliberately excluded** from the container set: the `gvenzl/oracle-free` image is
+  ~2 GB with slow startup and licensing caveats. The Oracle `MERGE USING DUAL` SQL remains
+  string-asserted. PostgreSQL + MySQL + MariaDB cover the two distinct non-H2 merge grammars
+  (`ON CONFLICT` and `ON DUPLICATE KEY`).
+
+Run: `mvn -pl failover-store-jdbc -am -Pdialect-its verify` (requires Docker). In CI the job is
+**advisory (non-blocking)**; the H2 build remains the required gate.
+
+### Consequences
+* A typo in the PostgreSQL or MySQL/MariaDB merge SQL now fails a test instead of silently
+  degrading in production.
+* Default `mvn verify` is unchanged: no Docker, no new ITs, same speed.
+* Adding a new dialect = new `*DialectIT` subclass + DDL; the shared scenario is inherited.
+* Oracle coverage remains a known gap (string-assertion only), documented here as a deliberate
+  trade-off rather than an oversight.
+___
+
+## ADR 44 — Concurrency Test Coverage for Multi-Tenant Routing and the Async Store
+
+**Date : 15-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+Two threading invariants are central to correctness but were not covered by contention tests
+(audit T-2):
+
+1. `MultiTenantFailoverStore` uses `ConcurrentHashMap.computeIfAbsent` to build **exactly one**
+   store per tenant. If first access for a tenant races across threads and the store were built
+   more than once, tenants could end up with divergent store instances.
+2. `FailoverStoreAsync` offloads writes to a `TaskExecutor`. Under load every submitted write must
+   still be applied exactly once, and an executor-side failure must surface as the
+   `store-async-failed` metric (ADR 41) — not vanish.
+
+Existing tests covered scatter parallel dispatch and MDC propagation, but not these two paths.
+
+### Decision
+Add deterministic concurrency unit tests (no Docker, part of the default build):
+
+* `MultiTenantFailoverStoreConcurrencyTest` — a `CountDownLatch` start-gate releases N threads
+  simultaneously against the same tenant; a counting `TenantStoreFactory` asserts `create()` ran
+  **once** per tenant. A second case drives M tenants × N threads and asserts exactly M factory
+  invocations with no cross-tenant leakage.
+* `FailoverStoreAsyncConcurrencyTest` — submits hundreds of concurrent `store()` calls through a
+  real `ThreadPoolTaskExecutor`, drains the executor via `awaitTermination` (no polling library),
+  and asserts every write landed exactly once. A second case injects a failing delegate and asserts
+  the `store-async-failed` metric reaches the `ObservablePublisher`.
+
+Draining is done by shutting the executor and joining it, so the tests are deterministic rather
+than timing-dependent.
+
+### Consequences
+* The one-store-per-tenant and async-write-delivery guarantees are now regression-protected.
+* No new runtime dependencies; tests use only the JDK concurrency primitives and Spring's executor.
+* These run in the normal `mvn verify`, so the invariants are checked on every build.
+___
+
+## ADR 45 — ArchUnit Architecture Tests
+
+**Date : 15-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+The decorator architecture depends on invariants the compiler cannot enforce (audit T-3): the async
+decorator must never read `ThreadLocal` (context is bound on the calling thread — ADR 19/20), store
+implementations follow a naming convention, and the functional slices must stay acyclic. These were
+maintained by convention and review only.
+
+### Decision
+Add an `ArchUnit` test (`FailoverArchitectureTest`) in `failover-spring-boot-autoconfigure` — the
+only module with every `failover-*` artifact on its classpath, so one `@AnalyzeClasses` import
+covers the whole library (tests excluded via `ImportOption.DoNotIncludeTests`). Rules enforced:
+
+* `FailoverStoreAsync` must not depend on `java.lang.ThreadLocal`.
+* Every concrete `FailoverStore` is named `*Store`.
+* The `com.societegenerale.failover.(*)` slices are free of cycles.
+
+The split-package rule (audit A-1) is **intentionally not enforced** here: collapsing the split
+packages is a Phase 4 breaking change. The rule is targeted by class name rather than package
+precisely because the store classes currently share a package across modules (the A-1 condition).
+Once A-1 is fixed, a package-based layering rule can be added.
+
+### Consequences
+* The no-`ThreadLocal`-in-async and acyclic-slices invariants now fail the build if violated.
+* Rules are scoped to what holds today; the split-package rule is a documented Phase 4 follow-up.
+* Negative verification: temporarily referencing a `ThreadLocal` inside the async decorator makes
+  the test fail, confirming the rule bites.
+___
+
+## ADR 46 — PIT Mutation Testing on Expiry and Key Logic
+
+**Date : 15-JUN-2026**
+
+### Status
+Accepted
+
+### Context
+Line coverage is collected library-wide, but line coverage does not prove the assertions are
+meaningful. The expiry-boundary logic (`isExpired`, `cleanByExpiry`, `<` vs `<=`) and key
+derivation are exactly the kind of code where an off-by-one or boundary mutation can pass all
+existing tests while being wrong (audit T-4).
+
+### Decision
+Add a profile-gated **PIT (pitest)** mutation-testing setup, scoped to
+`com.societegenerale.failover.core.expiry.*` and `...core.key.*`. It lives in a `mutation` Maven
+profile (parent POM) so the default build is unaffected. The threshold is set to a **pragmatic
+baseline** (`mutationThreshold=0`, `failWhenNoMutations=false`) — the score is *recorded*, not
+gated, to avoid a brittle build while still surfacing surviving mutants in the HTML/XML report.
+
+Run: `mvn -pl failover-core -am -Pmutation test` (report under `failover-core/target/pit-reports`).
+In CI the job is **advisory (non-blocking)** and uploads the report as an artifact.
+
+### Consequences
+* Surviving mutants on the highest-risk boundary logic are now visible per build, guiding where to
+  strengthen assertions.
+* Default build speed is unchanged (profile-gated).
+* The baseline-not-gate choice keeps the build stable; tightening the threshold later is a one-line
+  change once the score stabilises.
+___

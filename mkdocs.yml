@@ -157,6 +157,12 @@ nav:
     - Resilience: modules/execution-resilience.md
     - Scheduler: modules/scheduler.md
     - Observability: modules/observability.md
+  - Quality:
+    - quality/index.md
+    - Dialect Integration Tests: quality/integration-tests.md
+    - Concurrency Tests: quality/concurrency-tests.md
+    - Architecture Tests: quality/architecture-tests.md
+    - Mutation Testing: quality/mutation-testing.md
   - Reference:
     - reference/index.md
     - '@Failover Annotation': reference/annotation.md
