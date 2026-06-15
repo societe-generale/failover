@@ -169,7 +169,7 @@ worth fixing promptly (a broken entry-point pointer in `CLAUDE.md`).
 
 | # | Area | Observation | Severity |
 |---|---|---|:---:|
-| T1 | No coverage gate | PIT enforces a mutation threshold, but **JaCoCo has no `check`/`<minimum>` rule** — line/branch coverage is reported (for Sonar) but not gated in the build. Add a JaCoCo `check` execution to prevent regressions. | Low |
+| T1 | No coverage gate ✅ **RESOLVED (2026-06-15)** | Added a cross-module JaCoCo gate in the `report` module: unpack all module classes, merge every module's `aggregate.exec` into one, then `jacoco:check` (`BUNDLE`, `haltOnFailure`) at **95% line / 95% branch**. `mvn verify` now fails on a regression (current ~99% line / ~97% branch). Non-vacuity verified (a 99.9% floor fails). See ADR 53. | ~~Low~~ |
 | T2 | IT concentration | All integration tests live in `failover-spring-boot-autoconfigure` by design. It centralises wiring tests but makes that module heavy and couples backend IT failures to one place. | Info |
 | T3 | Cross-DB coverage ✅ **RESOLVED (2026-06-15)** | Testcontainers dialect ITs added for PostgreSQL, MySQL and MariaDB (`*DialectIT` over `AbstractDialectIT`): real engine, store/merge/find/clean round-trip, native-merge fragment asserted. Oracle still resolver-unit-tested only. | ~~Low~~ |
 | T4 | `@ConditionalOnBean` tests masked a real bug (see **A5**) | Autoconfig tests that supply the gated bean as a **user bean** (`.withBean(MeterRegistry…)`) always satisfy `@ConditionalOnBean` regardless of ordering, so they hid the production ordering failure. **Lesson applied:** for any `@ConditionalOnBean` on a bean contributed by *another* autoconfiguration, add a test that registers the **real** contributing autoconfigurations via `AutoConfigurations.of(...)` (no hand-injected bean). A `grep` for other `@ConditionalOnBean` usages on framework-contributed types is worthwhile. | Low |
@@ -194,8 +194,8 @@ Phased so each phase is independently shippable and ordered by value-to-effort.
 
 ### Phase 2 — Test gates (low risk, prevents regression)
 **Goal:** lock in the already-high quality.
-1. **T1** Add a JaCoCo `check` execution with line/branch minimums (start at current measured levels,
-   e.g. 90%/80%, fail the build below).
+1. ✅ **T1 DONE** — cross-module JaCoCo `check` in the `report` module (unpack classes + merge all
+   `aggregate.exec`); `mvn verify` fails below **95% line / 95% branch**. ADR 53.
 2. **D2** Author `additional-spring-configuration-metadata.json` for custom `failover.*` properties
    (descriptions, defaults, enum hints) to enrich IDE support.
 
@@ -241,7 +241,7 @@ Phased so each phase is independently shippable and ordered by value-to-effort.
 | A1 | ✅ **Resolved** — dead `spring.factories` block deleted, Javadoc corrected | — | — | Done 2026-06-15 |
 | A5 | ✅ **Resolved** — Micrometer metrics autoconfig now ordered after Boot metrics autoconfigs; regression test added | — | — | Done 2026-06-15 |
 | A6 | ✅ **Resolved** — Micrometer tracing autoconfig now ordered after Boot tracing autoconfigs; ordering-guard test added | — | — | Done 2026-06-15 |
-| T1 | Silent coverage regression over time | Med | Med | Phase 2 JaCoCo gate |
+| T1 | ✅ **Resolved** — cross-module JaCoCo gate fails `verify` below 95% line / 95% branch (ADR 53) | — | — | Done 2026-06-15 |
 | A4 | ✅ **Resolved** — bounded single retry re-inserts the concurrently-deleted row; abandons at `warn` only on repeated loss | — | — | Done 2026-06-15 |
 | T3 | ✅ **Resolved** — Testcontainers dialect ITs (PostgreSQL/MySQL/MariaDB) exercise native merge on real engines | — | — | Done 2026-06-15 |
 

@@ -75,6 +75,31 @@
 
     <build>
         <plugins>
+            <!--
+              Unpack every reactor module's main classes into this aggregator's output directory so the
+              JaCoCo `check` goal (which only analyses ${project.build.outputDirectory}) can enforce an
+              overall, cross-module coverage gate. Classes come from the already-built failover-* jars.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack-classes-for-coverage-check</id>
+                        <phase>process-test-classes</phase>
+                        <goals>
+                            <goal>unpack-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <includeGroupIds>com.societegenerale.failover</includeGroupIds>
+                            <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                            <includes>**/*.class</includes>
+                            <excludes>**/package-info.class,**/module-info.class</excludes>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -89,6 +114,58 @@
                             <dataFileIncludes>
                                 <dataFileInclude>target/coverage-results/*.exec</dataFileInclude>
                             </dataFileIncludes>
+                        </configuration>
+                    </execution>
+                    <!-- Merge every module's per-module (ut+it) exec into one cross-module exec. -->
+                    <execution>
+                        <id>merge-all-modules</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>merge</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.basedir}/..</directory>
+                                    <includes>
+                                        <include>*/target/coverage-results/aggregate.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${project.build.directory}/all-modules.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <!--
+                      Overall coverage gate (audit T-1): fail the build when cross-module coverage drops
+                      below 95% line / 95% branch. Current levels are ~99% line / ~97% branch, so this is
+                      a regression floor with headroom, not a stretch target.
+                    -->
+                    <execution>
+                        <id>check-overall-coverage</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/all-modules.exec</dataFile>
+                            <haltOnFailure>true</haltOnFailure>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.95</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.95</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
                         </configuration>
                     </execution>
                 </executions>
