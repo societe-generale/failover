@@ -2266,3 +2266,55 @@ are available at `DEBUG` when diagnosing.
 * Purely observational change — no behavioural effect on store/recover semantics.
 
 ___
+
+## ADR 49 — ScatterGatherFailoverHandler — Extract Scatter/Gather Collaborators
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+`ScatterGatherFailoverHandler` had grown to ~405 lines with three public constructors, holding the
+scatter (store) path, the gather (recover) path, the parallel-vs-sequential dispatch with per-slice
+timeout, and the splitter lookup/invocation in a single class (audit A-2). The class was cohesive
+but dense — four distinct responsibilities behind one type made each harder to read and test in
+isolation.
+
+### Decision
+
+Keep `ScatterGatherFailoverHandler` as a thin **facade** and extract four focused, **package-private**
+collaborators in the same `com.societegenerale.failover.core` package (no new public API, no new
+slice — ArchUnit's slice matcher maps everything under `core.*` to slice `core`, so no cross-slice
+cycle is introduced):
+
+* `PayloadScatter<T,R>` — the store/scatter side (`store`, `storeSlice`).
+* `PayloadGather<T,R>` — the recover/gather side (`recover`, recover-all decision, per-key and
+  recover-all recovery, slice mapping, the not-recovered timeout marker).
+* `SliceDispatcher<R>` — parallel-vs-sequential dispatch and the per-slice timeout policy
+  (`dispatchStore`, `dispatchRecover`, `withTimeout`, `zip`). Single home for the `Executor` /
+  `ContextPropagator` / `timeout` wiring (ADR 24/25/38).
+* `SplitterInvoker<T,R>` — splitter lookup and user-exception-wrapping invocation of
+  `splitOnStore` / `splitOnRecover` / `merge` (ADR 32).
+
+The facade retains all **three constructors verbatim** (public API and the auto-configuration call
+site are unchanged); the full constructor now wires the collaborators internally. `store` / `recover`
+keep only the pass-through decision (`payloadSplitter().isEmpty()` → `delegateT`) and delegate the
+scatter/gather work; `clean()` is unchanged. All log messages were preserved exactly (only their
+owning class moved). No behaviour changed.
+
+### Consequences
+
+* The facade drops to ~120 lines; each collaborator is single-responsibility and independently
+  readable.
+* `delegateR` is referenced by both the facade (for `clean()`) and the collaborators (slice ops) —
+  a minor, deliberate duplication preferred over routing `clean()` through a collaborator.
+* Verification: existing `ScatterGatherFailoverHandlerTest` (30 tests, public API) passes unchanged
+  as the regression net; full `failover-core` (261 tests), ArchUnit, and the autoconfigure ITs pass;
+  PIT mutation holds at 96% / 99% test strength (95% gate) with coverage carried through the facade.
+* Per-collaborator unit tests are a possible future addition but were not required — behaviour is
+  fully covered through the facade.
+
+___

@@ -25,6 +25,12 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   `failover-core`'s `key`/`expiry`/`payload.splitter` packages into `com.societegenerale.failover.lookup`.
   No two JARs share a package any more. Consumers referencing these classes by fully-qualified name
   (custom configuration, explicit imports) must update their imports; zero-config users are unaffected
+- `DefaultFailoverHandler` store/recover logging: the lifecycle event stays at `INFO` (referential
+  name only); the full `ReferentialPayload` body moved to `DEBUG` — no full-payload serialisation on
+  the hot `INFO` path (audit Q-4, ADR 48)
+- `ScatterGatherFailoverHandler` refactored into a thin facade over package-private collaborators
+  (`PayloadScatter`, `PayloadGather`, `SliceDispatcher`, `SplitterInvoker`) — public API and behaviour
+  unchanged (audit A-2, ADR 49)
 
 ### Added
 
@@ -44,6 +50,13 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - SpEL expression support for expiry (`expiryDurationExpression`, `expiryUnitExpression`)
 - `Automatic-Module-Name` in every published JAR manifest (e.g. `com.societegenerale.failover.core`,
   `…store.jdbc`, `…lookup`) — stable JPMS module names ahead of full `module-info.java` (audit A-1)
+
+### Fixed
+
+- JDBC INSERT/UPDATE fallback no longer silently drops a write when a concurrent expiry delete
+  removes the row between the failed INSERT and the follow-up UPDATE. A **single bounded retry**
+  re-INSERTs the now-absent row; if every attempt loses the race the write is abandoned at `warn`
+  (regenerable cache). Native-merge dialects were never affected (audit A-4, ADR 47)
 
 ### Security
 

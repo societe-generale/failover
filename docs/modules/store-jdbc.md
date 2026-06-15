@@ -71,6 +71,20 @@ Dialect is detected automatically at startup via `DatabaseResolver`. See [Databa
 
 ---
 
+## Write Semantics
+
+A store first attempts the database's native merge/upsert (table above) — a single atomic statement.
+If the dialect is unknown (or the merge SQL fails once with a `BadSqlGrammarException`), the store
+falls back permanently to an **INSERT → UPDATE-on-duplicate** pattern.
+
+On the fallback path a concurrent expiry delete can remove the row between the failed INSERT and the
+follow-up UPDATE (so the UPDATE affects 0 rows). The store applies a **single bounded retry**: the
+row is now absent, so it re-INSERTs once and succeeds. If every attempt loses the race the write is
+abandoned and logged at `warn` — the value is a regenerable cache and is re-stored on the next
+successful upstream call. Native-merge dialects avoid this window entirely. See ADR 47.
+
+---
+
 ## Serialisation
 
 Payloads are serialised to JSON using Jackson's `ObjectMapper`. The class name is stored in `PAYLOAD_CLASS` for deserialisation. Override with a custom `PayloadColumnResolver` bean — see [Payload Column Resolver](../how-to/payload-column-resolver.md).

@@ -101,11 +101,16 @@ The `FailoverHealthIndicator` is registered at `/actuator/health`:
 
 | Level | Event | Logger |
 |---|---|---|
-| `INFO` | Entry stored successfully | `DefaultFailoverHandler` |
-| `INFO` | Entry recovered successfully | `DefaultFailoverHandler` |
+| `INFO` | Entry stored successfully (referential name only) | `DefaultFailoverHandler` |
+| `INFO` | Entry recovered successfully (referential name only) | `DefaultFailoverHandler` |
+| `DEBUG` | Full `ReferentialPayload` body on store / recover / expired-delete | `DefaultFailoverHandler` |
 | `WARN` | No stored entry found | `DefaultFailoverHandler` |
 | `INFO` | Expiry cleanup executed | `DefaultFailoverHandler` |
 | `ERROR` | Recovery threw unexpected exception | `AdvancedFailoverHandler` |
+
+The lifecycle events stay at `INFO` carrying only the referential name; the full payload body is
+logged at `DEBUG` so high-throughput services pay no full-payload serialisation on the `INFO` path
+(ADR 48).
 
 ### Adjust Log Level
 

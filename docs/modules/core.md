@@ -64,7 +64,7 @@ flowchart TD
 ```
 
 - `AdvancedFailoverHandler` — adds metrics publishing and `RecoveredPayloadHandler` invocation.
-- `ScatterGatherFailoverHandler` — intercepts when `payloadSplitter` is set; delegates directly to `DefaultFailoverHandler` for plain failovers.
+- `ScatterGatherFailoverHandler` — intercepts when `payloadSplitter` is set; delegates directly to `DefaultFailoverHandler` for plain failovers. A thin facade over package-private collaborators — `PayloadScatter` (store side), `PayloadGather` (recover side), `SliceDispatcher` (parallel/sequential dispatch + per-slice timeout) and `SplitterInvoker` (splitter lookup and invocation). See ADR 49.
 - `DefaultFailoverHandler` — core key/expiry/store/recover logic.
 
 ---
