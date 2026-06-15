@@ -2190,3 +2190,79 @@ Run: `mvn -pl failover-core -am -Pmutation test` (report under `failover-core/ta
   artificial tests or production-code changes.
 
 ___
+
+## ADR 47 — JDBC insert→update Race — Bounded Retry over Silent Drop
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+On non-merge dialects (or after a `BadSqlGrammarException` disables native merge — ADR 13),
+`FailoverStoreJdbc.store` uses an INSERT → `DuplicateKeyException` → UPDATE pattern. A race window
+exists between the failed INSERT and the follow-up UPDATE: a concurrent expiry delete
+(`ExpiryCleanupScheduler`, ADR 7) can remove the row, so the UPDATE affects 0 rows and the write is
+lost (audit A-4). The original behaviour logged the 0-row case at `debug` and dropped the write —
+acceptable for a regenerable cache, but the lost write was effectively invisible and the edge was
+untested on the fallback path. Native-merge dialects (every supported DB) avoid the window entirely.
+
+### Decision
+
+Apply a **single bounded retry** instead of documenting the drop as accepted. `insertOrUpdate` loops
+up to `MAX_INSERT_OR_UPDATE_ATTEMPTS = 2`: when the UPDATE affects 0 rows, the row is now absent
+(the concurrent delete already ran), so re-running the INSERT on the next iteration succeeds. The
+loop is bounded so a pathologically, repeatedly-deleted key cannot spin — at most one re-INSERT.
+
+If every attempt loses the race, the write is **abandoned and logged at `warn`** (escalated from the
+prior `debug`), stating the value will be re-stored on the next successful upstream call. The retry
+is *not* applied to the native-merge path, which is already atomic.
+
+The deterministic race (UPDATE → 0 rows) is covered by mock-based unit tests in
+`FailoverStoreJdbcMergeFallbackTest`: `reInsertSucceedsAfterUpdateLosesTheRace` (retry recovers the
+write) and `updateZeroRowsAbandonsWriteAfterBoundedRetry` (2 INSERT + 2 UPDATE attempts, then give
+up, no exception).
+
+### Consequences
+
+* The common single-collision race now self-heals with one re-INSERT instead of silently dropping.
+* The bound guarantees termination; a persistently-deleted key abandons after 2 attempts rather than
+  looping.
+* A genuinely lost write is now visible at `warn`, not buried at `debug`.
+* Behavioural change is confined to the INSERT/UPDATE fallback; the native-merge path is untouched.
+
+___
+
+## ADR 48 — Failover Lifecycle Logging — INFO Event, DEBUG Payload Body
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+`DefaultFailoverHandler` logged each store / recover / expired-delete at `INFO` **with the full
+`ReferentialPayload` `toString`** in the message. In high-throughput services every failover store
+and recover then serialises the whole payload at `INFO`, which is both chatty and an allocation cost
+on a path that can fire frequently (audit Q-4). The lifecycle *event* (which referential, store vs
+recover) is the operationally useful signal; the full payload body is diagnostic detail.
+
+### Decision
+
+Split each site into two log statements: an `INFO` **lifecycle** line carrying only the referential
+name (the event), and a `DEBUG` line carrying the full `ReferentialPayload` body. Applied to all
+three sites — store, successful recover, and expired-payload delete. Operators keep
+failover-happening visibility at `INFO` without paying full-payload serialisation; payload bodies
+are available at `DEBUG` when diagnosing.
+
+### Consequences
+
+* No full-payload `toString` on the `INFO` path; lifecycle events still visible at `INFO`.
+* Payload bodies remain obtainable by raising the handler logger to `DEBUG`.
+* Purely observational change — no behavioural effect on store/recover semantics.
+
+___

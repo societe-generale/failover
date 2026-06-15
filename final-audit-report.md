@@ -92,7 +92,7 @@ worth fixing promptly (a broken entry-point pointer in `CLAUDE.md`).
 | A6 | **Micrometer tracing autoconfig ordering** ✅ **RESOLVED (2026-06-15)** | Same class of bug found by auditing all `@ConditionalOnBean` sites: `MicrometerTracingAutoConfiguration` gates `MicrometerContextPropagator` on `@ConditionalOnBean(Tracer.class)` but was ordered only after `FailoverAutoConfiguration`. The `Tracer` is contributed by Spring Boot's Brave/OpenTelemetry tracing autoconfigurations — so on the same ordering race, scatter/gather slices silently **lose span propagation**. **Fix:** added `afterName` ordering against the Boot tracing autoconfigurations (`MicrometerTracingAutoConfiguration`, `brave…BraveAutoConfiguration`, `otel…OpenTelemetryTracingAutoConfiguration`). Added an ordering-guard test (only the micrometer-tracing API is on the test classpath, so a behavioural test would need Brave/OTel deps). *(Note: `FailoverStoreAutoConfiguration`'s `@ConditionalOnBean(TenantStoreFactory)` was checked and is **correctly** ordered after its contributor — no fix needed.)* | ~~High~~ |
 | A2 | `ScatterGatherFailoverHandler` size | ~405 lines, three constructors, scatter + gather + timeout + zip in one class. Cohesive but dense; a future split (scatter vs. gather collaborators) would ease maintenance. | Low |
 | A3 | Metrics construction on hot path | `AdvancedFailoverHandler` builds a `Metrics` map with many string concatenations/boxing on **every** store/recover. Fine today (failover path only), but worth a micro-benchmark if recover rates climb. | Info |
-| A4 | JDBC insert→update race | `FailoverStoreJdbc#insertOrUpdate` has a documented race window (concurrent expiry delete drops a write). Acceptable for a regenerable cache and avoided by the native-merge path, but remains an unhandled edge for non-merge dialects. | Info |
+| A4 | JDBC insert→update race ✅ **RESOLVED (2026-06-15)** | `FailoverStoreJdbc#insertOrUpdate` now applies a **single bounded retry**: when a concurrent expiry delete drops the row between the failed INSERT and the UPDATE (UPDATE → 0 rows), the loop re-INSERTs the now-absent row. Bounded to `MAX_INSERT_OR_UPDATE_ATTEMPTS` (2); on repeated loss the write is abandoned at `warn` (regenerable cache). Two unit tests added. | ~~Info~~ |
 
 ---
 
@@ -124,7 +124,7 @@ worth fixing promptly (a broken entry-point pointer in `CLAUDE.md`).
 | Q1 | Naming | `DefaultKeyGenerator.NUMBER_TYPES` holds `Number`, `String`, `Boolean` — the name under-describes its contents (rename to e.g. `SCALAR_TYPES`). | Trivial |
 | Q2 | Metric string-building | Repeated `Long.toString(...)`/ternary-to-`""` patterns in `AdvancedFailoverHandler` are verbose and allocation-heavy; a small helper would cut duplication. | Low |
 | Q3 | `@SuppressWarnings` | 2 occurrences in main, both `"unchecked"` on generic casts (`CastingUtils`, `RethrowIfNoRecoveryMethodExceptionPolicy`) — **legitimate**; optional clarifying comment only. | Trivial |
-| Q4 | Logging volume | `INFO`-level logs on every store/recover (with full payload `toString`) may be chatty in high-throughput services; consider `DEBUG` for payload bodies. | Low |
+| Q4 | Logging volume ✅ **RESOLVED (2026-06-15)** | `DefaultFailoverHandler` store/recover lifecycle events stay at `INFO` (name only); the full `ReferentialPayload` `toString` body moved to `DEBUG`. No full-payload serialization on the `INFO` path. | ~~Low~~ |
 
 ---
 
@@ -171,7 +171,7 @@ worth fixing promptly (a broken entry-point pointer in `CLAUDE.md`).
 |---|---|---|:---:|
 | T1 | No coverage gate | PIT enforces a mutation threshold, but **JaCoCo has no `check`/`<minimum>` rule** — line/branch coverage is reported (for Sonar) but not gated in the build. Add a JaCoCo `check` execution to prevent regressions. | Low |
 | T2 | IT concentration | All integration tests live in `failover-spring-boot-autoconfigure` by design. It centralises wiring tests but makes that module heavy and couples backend IT failures to one place. | Info |
-| T3 | Cross-DB coverage | ITs run against H2; PostgreSQL/MySQL/MariaDB/Oracle dialects are exercised via resolver unit tests but not a live container. Testcontainers ITs would harden dialect detection. | Low |
+| T3 | Cross-DB coverage ✅ **RESOLVED (2026-06-15)** | Testcontainers dialect ITs added for PostgreSQL, MySQL and MariaDB (`*DialectIT` over `AbstractDialectIT`): real engine, store/merge/find/clean round-trip, native-merge fragment asserted. Oracle still resolver-unit-tested only. | ~~Low~~ |
 | T4 | `@ConditionalOnBean` tests masked a real bug (see **A5**) | Autoconfig tests that supply the gated bean as a **user bean** (`.withBean(MeterRegistry…)`) always satisfy `@ConditionalOnBean` regardless of ordering, so they hid the production ordering failure. **Lesson applied:** for any `@ConditionalOnBean` on a bean contributed by *another* autoconfiguration, add a test that registers the **real** contributing autoconfigurations via `AutoConfigurations.of(...)` (no hand-injected bean). A `grep` for other `@ConditionalOnBean` usages on framework-contributed types is worthwhile. | Low |
 
 ---
@@ -201,15 +201,24 @@ Phased so each phase is independently shippable and ordered by value-to-effort.
 
 *Exit:* coverage regressions fail CI; consumers get autocomplete for all properties.
 
-### Phase 3 — Robustness hardening (medium effort, additive)
+### Phase 3 — Robustness hardening (medium effort, additive) ✅ **DONE (2026-06-15)**
 **Goal:** strengthen the data-layer and observability edges.
-1. **T3** Add Testcontainers ITs for PostgreSQL (and optionally MySQL) to exercise native merge SQL
-   and dialect detection on real engines.
-2. **A4** Decide the policy for the JDBC insert→update race on non-merge dialects: document as
-   accepted, or add a single bounded retry. (Native-merge dialects already avoid it.)
-3. **Q4** Move payload-body logging from `INFO` to `DEBUG`; keep lifecycle events at `INFO`.
+1. ✅ **T3 DONE** — Testcontainers dialect ITs exist for PostgreSQL, MySQL and MariaDB
+   (`*DialectIT` over `AbstractDialectIT`): each spins up a real engine and runs the
+   store/merge/find/clean round-trip, asserting the native merge fragment is selected (not the
+   fallback). Named `*DialectIT` so the default build excludes them (run under the dialect profile;
+   require Docker).
+2. ✅ **A4 DONE** — chose **single bounded retry** over document-as-accepted. `insertOrUpdate` now
+   loops up to `MAX_INSERT_OR_UPDATE_ATTEMPTS` (2): when a concurrent expiry delete drops the row
+   between the failed INSERT and the UPDATE (UPDATE affects 0 rows), the row is now absent so the
+   re-INSERT succeeds. Bounded so a pathologically re-deleted key cannot spin; if every attempt
+   loses the race the write is abandoned at `warn` (regenerable cache, re-stored next upstream call).
+   Two unit tests added (`InsertOrUpdateBoundedRetryScenarios`): retry-succeeds and retry-exhausted.
+3. ✅ **Q4 DONE** — payload-body logging split: `DefaultFailoverHandler` keeps the store/recover
+   **lifecycle** events at `INFO` (name only) and moves the full `ReferentialPayload` `toString`
+   body to `DEBUG`. High-throughput services no longer pay full-payload serialization at `INFO`.
 
-*Exit:* dialect paths verified on real DBs; logging production-friendly; race policy explicit.
+*Exit:* dialect paths verified on real DBs; logging production-friendly; race policy explicit (bounded retry).
 
 ### Phase 4 — Refactor & performance polish (optional, lowest priority)
 **Goal:** maintainability and micro-perf, only if churn justifies it.
@@ -230,8 +239,8 @@ Phased so each phase is independently shippable and ordered by value-to-effort.
 | A5 | ✅ **Resolved** — Micrometer metrics autoconfig now ordered after Boot metrics autoconfigs; regression test added | — | — | Done 2026-06-15 |
 | A6 | ✅ **Resolved** — Micrometer tracing autoconfig now ordered after Boot tracing autoconfigs; ordering-guard test added | — | — | Done 2026-06-15 |
 | T1 | Silent coverage regression over time | Med | Med | Phase 2 JaCoCo gate |
-| A4 | JDBC write dropped under concurrent expiry (non-merge dialect) | Low | Low | Documented; Phase 3 policy |
-| T3 | Dialect bug surfaces only in production DB | Low | Med | Phase 3 Testcontainers |
+| A4 | ✅ **Resolved** — bounded single retry re-inserts the concurrently-deleted row; abandons at `warn` only on repeated loss | — | — | Done 2026-06-15 |
+| T3 | ✅ **Resolved** — Testcontainers dialect ITs (PostgreSQL/MySQL/MariaDB) exercise native merge on real engines | — | — | Done 2026-06-15 |
 
 ---
 
