@@ -1,0 +1,13 @@
+{
+  // Rule config lives in .markdownlint.json (also picked up by IDE extensions).
+  "globs": ["**/*.md"],
+  "ignores": [
+    "node_modules",
+    "**/node_modules/**",
+    "**/target/**",
+    "graphify-out/**",
+    "site/**",
+    "docs/api/**",
+    "docs/reference/javadoc/**"
+  ]
+}

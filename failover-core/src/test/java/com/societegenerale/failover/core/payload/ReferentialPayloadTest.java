@@ -38,6 +38,16 @@ class ReferentialPayloadTest {
     }
 
     @Test
+    @DisplayName("toString summarises the non-key fields")
+    void toStringSummarisesNonKeyFields() {
+        assertThat(referentialPayload.toString())
+                .startsWith("ReferentialPayload{")
+                .contains("name='NAME'")
+                .contains("upToDate=true")
+                .contains("payload=PAYLOAD");
+    }
+
+    @Test
     @DisplayName("should have default constructor for jackson parsing")
     void shouldHaveDefaultConstructorForJacksonParsing() {
         var localReferentialPayload = new ReferentialPayload<String>();

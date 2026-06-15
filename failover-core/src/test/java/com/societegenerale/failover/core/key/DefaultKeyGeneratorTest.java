@@ -16,9 +16,17 @@
 
 package com.societegenerale.failover.core.key;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.societegenerale.failover.annotations.Failover;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -243,5 +251,69 @@ class DefaultKeyGeneratorTest {
         assertThat(key1).isEqualTo("1:2,3,4:5");
         assertThat(key2).isEqualTo("1:4,3,2:5");
         assertThat(key3).isEqualTo("1:2,4,3:5");
+    }
+
+    /**
+     * Asserts the warning-vs-no-warning branching in {@code castToStringValue}. The string a key arg
+     * produces is identical whether it is routed through the known-type ({@code isOfType}) path, the
+     * {@code overridesToString} path, or the identity-hash fallback — so only the emitted WARN log
+     * distinguishes those branches. These tests pin that behaviour (and kill the corresponding
+     * conditional/return mutants).
+     */
+    @Nested
+    @DisplayName("warning on unstable key source")
+    class UnstableKeySourceWarning {
+
+        private Logger logger;
+        private ListAppender<ILoggingEvent> appender;
+
+        @BeforeEach
+        void attachAppender() {
+            logger = (Logger) LoggerFactory.getLogger(DefaultKeyGenerator.class);
+            appender = new ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+        }
+
+        @AfterEach
+        void detachAppender() {
+            logger.detachAppender(appender);
+        }
+
+        private boolean warnLogged() {
+            return appender.list.stream()
+                    .anyMatch(e -> e.getLevel() == Level.WARN
+                            && e.getFormattedMessage().contains("overrides neither toString()"));
+        }
+
+        @Test
+        @DisplayName("warns when an arg overrides neither toString() nor is a known type (identity-hash fallback)")
+        void warnsForIdentityHashFallback() {
+            defaultKeyProvider.key(FAILOVER, List.of(new Object()));
+            assertThat(warnLogged()).isTrue();
+        }
+
+        @Test
+        @DisplayName("does not warn for a Number subtype, even one that does not override toString() (known type)")
+        void doesNotWarnForNumberSubtype() {
+            // A Number that does NOT override toString(): the known-type (isOfType) path must handle it
+            // via valueOf without warning. If that path is bypassed it would fall to the warning branch.
+            Number numberWithoutToString = new Number() {
+                @Override public int intValue()      { return 7; }
+                @Override public long longValue()     { return 7L; }
+                @Override public float floatValue()   { return 7f; }
+                @Override public double doubleValue()  { return 7.0; }
+            };
+            defaultKeyProvider.key(FAILOVER, List.of(numberWithoutToString));
+            assertThat(warnLogged()).isFalse();
+        }
+
+        @Test
+        @DisplayName("does not warn for a record arg (overridesToString path)")
+        void doesNotWarnForRecord() {
+            record Money(String currency, long amount) {}
+            defaultKeyProvider.key(FAILOVER, List.of(new Money("EUR", 42)));
+            assertThat(warnLogged()).isFalse();
+        }
     }
 }

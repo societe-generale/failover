@@ -79,6 +79,7 @@ public Object failoverAround(ProceedingJoinPoint pjp, Failover failover) throws 
 ```
 
 The aspect:
+
 1. Resolves the annotated method's `@Failover` metadata.
 2. Attempts to proceed (call upstream).
 3. On success: calls `failoverExecution.store(failover, args, result)`.

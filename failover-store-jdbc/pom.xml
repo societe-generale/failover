@@ -42,6 +42,86 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+          Dialect integration tests (*DialectIT) against real databases via Testcontainers.
+          Versions are managed by spring-boot-dependencies. These are test-scoped and only
+          compiled/executed in test; the ITs themselves run only under the 'dialect-its' profile
+          (they are excluded from the default failsafe run in the parent POM).
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mariadb</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
+
+    <profiles>
+        <!--
+          Activates the dialect integration tests (*DialectIT) which spin up real
+          PostgreSQL / MySQL / MariaDB containers via Testcontainers. Requires Docker.
+          Run: mvn -pl failover-store-jdbc -am -Pdialect-its verify
+        -->
+        <profile>
+            <id>dialect-its</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <!--
+                              Re-include the dialect ITs excluded by the parent POM's default config.
+                              combine.self="override" replaces the inherited <excludes> (which lists
+                              **/*DialectIT.java) instead of merging with it — otherwise the ITs would
+                              stay excluded and this profile would run nothing.
+                            -->
+                            <excludes combine.self="override">
+                                <exclude>none</exclude>
+                            </excludes>
+                            <includes>
+                                <include>**/*DialectIT.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

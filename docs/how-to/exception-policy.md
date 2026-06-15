@@ -66,6 +66,7 @@ failover:
 ```
 
 `MethodExceptionContext` carries:
+
 - `getFailover()` — the `@Failover` annotation metadata
 - `getArgs()` — the original method arguments
 - `getCause()` — the upstream exception

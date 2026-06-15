@@ -393,4 +393,89 @@ class DefaultPayloadEnricherTest {
             }
         }
     }
+
+    /**
+     * Pins that enrichment <em>overwrites</em> the payload's metadata fields with the envelope's
+     * values. Using values that differ from the payload's pre-set state makes a missing
+     * {@code setUpToDate}/{@code setAsOf} call observable (otherwise the original value masks it).
+     */
+    @Nested
+    @DisplayName("enrich overwrites pre-existing metadata fields from the envelope")
+    class OverwritesFromEnvelope {
+
+        private final Instant older = now.minusSeconds(3600);
+
+        @Test
+        @DisplayName("Referential: upToDate and asOf are replaced by the envelope values")
+        void referentialOverwritten() {
+            var enricher = new DefaultPayloadEnricher<ReferentialThirdParty>();
+            var tp = new ReferentialThirdParty(1L, "TATA", 5);
+            tp.setUpToDate(true);    // differs from the envelope below
+            tp.setAsOf(older);       // differs from the envelope below
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, null);
+
+            assertThat(tp.getUpToDate()).isFalse();
+            assertThat(tp.getAsOf()).isEqualTo(now);
+        }
+
+        @Test
+        @DisplayName("ReferentialAware: upToDate and asOf are replaced by the envelope values")
+        void referentialAwareOverwritten() {
+            var enricher = new DefaultPayloadEnricher<ReferentialAwareThirdParty>();
+            var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
+            tp.setUpToDate(true);
+            tp.setAsOf(older);
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialAwareThirdParty.class, rp, null);
+
+            assertThat(tp.getUpToDate()).isFalse();
+            assertThat(tp.getAsOf()).isEqualTo(now);
+        }
+    }
+
+    /**
+     * Pins that the {@code populateAdditionalInfoOnMetadata} extension point is actually invoked
+     * (with a cause) for both {@link Referential} and {@link ReferentialAware} payloads. The default
+     * hook is a no-op, so a subclass override is needed to make the call observable.
+     */
+    @Nested
+    @DisplayName("populateAdditionalInfoOnMetadata extension point is invoked when a cause is present")
+    class AdditionalMetadataHook {
+
+        /** Enricher whose metadata hook adds a marker entry, so a skipped call is observable. */
+        class TaggingEnricher<X> extends DefaultPayloadEnricher<X> {
+            @Override
+            protected void populateAdditionalInfoOnMetadata(Failover failover, Class<X> clazz,
+                    ReferentialPayload<X> referentialPayload, X payload, Throwable cause, Metadata metadata) {
+                metadata.withInfo("custom-tag", "applied");
+            }
+        }
+
+        @Test
+        @DisplayName("Referential: the hook contributes to the recovery metadata")
+        void referentialHookInvoked() {
+            var enricher = new TaggingEnricher<ReferentialThirdParty>();
+            var tp = new ReferentialThirdParty(1L, "TATA", 5);
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, new RuntimeException("down"));
+
+            assertThat(tp.getMetadata().getInfo()).containsEntry("custom-tag", "applied");
+        }
+
+        @Test
+        @DisplayName("ReferentialAware: the hook contributes to the recovery metadata")
+        void referentialAwareHookInvoked() {
+            var enricher = new TaggingEnricher<ReferentialAwareThirdParty>();
+            var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialAwareThirdParty.class, rp, new IllegalStateException("open"));
+
+            assertThat(tp.getMetadata().getInfo()).containsEntry("custom-tag", "applied");
+        }
+    }
 }

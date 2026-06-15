@@ -35,6 +35,15 @@
         <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
+        <!-- Phase 3 test-depth tooling (JDBC drivers are managed by spring-boot-dependencies) -->
+        <testcontainers.version>1.20.4</testcontainers.version>
+        <archunit.version>1.3.0</archunit.version>
+        <pitest.version>1.20.0</pitest.version>
+        <pitest-junit5.version>1.2.3</pitest-junit5.version>
+        <!-- PIT runs only where overridden to false (failover-core). Default skips it so `-am`
+             reactor builds don't run PIT on modules with no matching target classes (which would
+             fail with "No mutations found" under failWhenNoMutations=true). -->
+        <pitest.skip>true</pitest.skip>
         <rewrite-maven-plugin.version>6.39.0</rewrite-maven-plugin.version>
         <rewrite-spring.version>6.30.4</rewrite-spring.version>
         <rewrite-migrate-java.version>3.7.0</rewrite-migrate-java.version>
@@ -103,6 +112,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -176,6 +192,10 @@
                 <configuration>
                     <!-- @{argLine} is set by jacoco:prepare-agent-integration; keep it first so IT coverage is recorded. -->
                     <argLine>@{argLine} --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.reflect=ALL-UNNAMED -Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Dialect ITs require Docker (Testcontainers); excluded from the default build, re-enabled by the 'dialect-its' profile in failover-store-jdbc. -->
+                    <excludes>
+                        <exclude>**/*DialectIT.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>
@@ -417,6 +437,69 @@
                                 </goals>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          Mutation testing (PIT) — advisory, profile-gated so the default build is unaffected.
+          Scoped to the failover core module boundary logic where mutation testing pays off most (audit T-4).
+          Run: mvn -pl failover-core -Pmutation test   (report under target/pit-reports)
+        -->
+        <profile>
+            <id>mutation</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <version>${pitest.version}</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.pitest</groupId>
+                                <artifactId>pitest-junit5-plugin</artifactId>
+                                <version>${pitest-junit5.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <executions>
+                            <execution>
+                                <id>pit-mutation-coverage</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <!-- Skip in every module except failover-core (which sets pitest.skip=false). -->
+                            <skip>${pitest.skip}</skip>
+                            <!--
+                              Do NOT inherit the surefire argLine: it carries the JaCoCo javaagent and the
+                              late-bound @{argLine} token, which the PIT minion JVM cannot resolve and which
+                              makes it exit abnormally (UNKNOWN_ERROR). Pass only the opens PIT actually needs.
+                            -->
+                            <parseSurefireConfig>false</parseSurefireConfig>
+                            <jvmArgs>
+                                <jvmArg>--add-opens=java.base/java.lang=ALL-UNNAMED</jvmArg>
+                                <jvmArg>--add-opens=java.base/java.lang.reflect=ALL-UNNAMED</jvmArg>
+                                <jvmArg>-Dnet.bytebuddy.experimental=true</jvmArg>
+                            </jvmArgs>
+                            <targetClasses>
+                                <param>com.societegenerale.failover.core.*</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>com.societegenerale.failover.core.*</param>
+                            </targetTests>
+                            <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
+                            <mutationThreshold>95</mutationThreshold>
+                            <!-- Fail if the target globs ever match zero classes, so the 95% gate can never pass vacuously. -->
+                            <failWhenNoMutations>true</failWhenNoMutations>
+                            <outputFormats>
+                                <param>HTML</param>
+                                <param>XML</param>
+                            </outputFormats>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

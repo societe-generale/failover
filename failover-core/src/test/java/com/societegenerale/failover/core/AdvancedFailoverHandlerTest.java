@@ -314,6 +314,32 @@ class AdvancedFailoverHandlerTest {
                 .containsEntry("failover-exception-cause-message", "");
     }
 
+    @Test
+    @DisplayName("store reports a bounded, non-negative duration (nanoTime subtraction, not addition)")
+    void storeReportsBoundedDuration() {
+        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+
+        long before = System.nanoTime();
+        advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+
+        long duration = Long.parseLong(observablePublisher.getMetrics().getInfo().get("failover-duration-ns"));
+        // Real elapsed during the call is tiny; an addition mutant yields ~2x an absolute nanoTime,
+        // which is far larger than the nanoTime captured just before the call.
+        assertThat(duration).isGreaterThanOrEqualTo(0).isLessThan(before);
+    }
+
+    @Test
+    @DisplayName("recover reports a bounded, non-negative duration (nanoTime subtraction, not addition)")
+    void recoverReportsBoundedDuration() {
+        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+
+        long before = System.nanoTime();
+        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+
+        long duration = Long.parseLong(observablePublisher.getMetrics().getInfo().get("failover-duration-ns"));
+        assertThat(duration).isGreaterThanOrEqualTo(0).isLessThan(before);
+    }
+
     static class InMemoryObservablePublisher extends AbstractObservablePublisher {
         @Getter
         private Metrics metrics;

@@ -11,6 +11,11 @@
         <version>3.0.0-SNAPSHOT</version>
     </parent>
 
+    <properties>
+        <!-- This is the only module PIT mutation-tests; the parent defaults pitest.skip=true. -->
+        <pitest.skip>false</pitest.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <artifactId>failover-domain</artifactId>

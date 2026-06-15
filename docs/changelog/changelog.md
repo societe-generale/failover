@@ -44,6 +44,21 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - `Error` (e.g. `OutOfMemoryError`) now propagates unwrapped through the aspect — recovery never runs
   on a failing JVM
 
+### Testing
+
+- Dialect integration tests (Testcontainers) for PostgreSQL, MySQL and MariaDB — exercise the real
+  native merge/upsert SQL. Profile-gated (`-Pdialect-its`, requires Docker) and excluded from the
+  default build; Oracle remains string-asserted. See
+  [Dialect Integration Tests](../quality/integration-tests.md)
+- Concurrency tests for `MultiTenantFailoverStore` (`computeIfAbsent` one-store-per-tenant) and the
+  `FailoverStoreAsync` executor path — part of the default build. See
+  [Concurrency Tests](../quality/concurrency-tests.md)
+- ArchUnit architecture tests: no `ThreadLocal` in the async decorator, `*Store` naming, acyclic
+  slices. See [Architecture Tests](../quality/architecture-tests.md)
+- PIT mutation testing over all of `failover-core` (`-Pmutation`), mandated at a **95% gate**
+  (currently 96%, test strength 99%). See [Mutation Testing](../quality/mutation-testing.md)
+- CI: advisory `dialect-its` job and **blocking** `mutation` job; the H2 build remains the required gate
+
 ---
 
 ## [2.x]

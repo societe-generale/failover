@@ -8,15 +8,18 @@ assignees: anandmnair
 ---
 
 ## Is your request related to a problem? Please describe.
+
 A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
 ## Describe what help you  need from us
+
 A clear and concise description of what help you want from us.
 
 ## Which modules are needed
 <!-- This modules you need help are -->
 <!-- put an `x` the box that apply. -->
-The modules are : 
+The modules are :
+
 - [ ] failover-domain
 - [ ] failover-core
 - [ ] failover-store-inmemory
@@ -31,4 +34,5 @@ The modules are :
 - [ ] failover-spring-boot-starter
 
 ## Additional context
+
 Add any other context or screenshots about the feature request here.
