@@ -46,6 +46,11 @@ packages.
 mvn -pl failover-core -am -Pmutation test
 ```
 
+PIT is scoped to `failover-core` only: the parent POM defaults `pitest.skip=true` and `failover-core`
+overrides it to `false`, so a reactor build (`-am`) does not run PIT on dependency modules that have no
+matching target classes (which would otherwise fail with *"No mutations found"* under
+`failWhenNoMutations=true`).
+
 The HTML and XML reports are written to `failover-core/target/pit-reports`. In CI the job is
 **blocking** (fails the check below 95%) and uploads the report as an artifact.
 
