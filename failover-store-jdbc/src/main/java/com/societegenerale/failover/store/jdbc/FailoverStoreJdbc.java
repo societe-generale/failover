@@ -55,6 +55,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
+    /** Max INSERT→UPDATE attempts before a write is abandoned (1 initial + 1 bounded retry). */
+    private static final int MAX_INSERT_OR_UPDATE_ATTEMPTS = 2;
+
     private final JdbcTemplate jdbcTemplate;
 
     private final FailoverStoreQueryResolver queryResolver;
@@ -107,9 +110,6 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         }
         insertOrUpdate(referentialPayload);
     }
-
-    /** Max INSERT→UPDATE attempts before a write is abandoned (1 initial + 1 bounded retry). */
-    static final int MAX_INSERT_OR_UPDATE_ATTEMPTS = 2;
 
     /**
      * Inserts the payload; on {@link org.springframework.dao.DuplicateKeyException} falls back to UPDATE.
