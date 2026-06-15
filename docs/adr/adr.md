@@ -2381,3 +2381,118 @@ Result (JDK 21, average time, 5 measurement iterations):
   by `MetricsTest`.
 
 ___
+
+## ADR 51 — Per-Method Failover Outcome Metric + Method-Identity Threading
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The Micrometer meters were tagged only by the failover `name` (referential). Two methods sharing a
+`name`/`domain` — e.g. `getById` and `findAll` on the same referential — were indistinguishable, so
+operators could not see *which method call* was impacted. Three operational rates were also wanted as
+first-class, alert-friendly signals: **failover rate** (upstream failures intercepted), **recovery
+rate** (resolved from the store within expiry), and **non-recovery rate** (no stored result — actual
+user impact).
+
+Two facts shaped the design:
+
+1. **`AdvancedFailoverHandler` is the only accurate point.** It is the outermost decorator, so its
+   `recover` fires once per intercepted method call (composite — `findAll()` is one event, not one
+   per slice). Crucially it captures the recovery result **before** `RecoveredPayloadHandler` runs,
+   so its `is-recovered` flag is the true "stored value found within expiry" signal. The execution
+   layer (`BasicFailoverExecution` / `ResilienceFailoverExecution`) sees only the **post-handler**
+   value, which a substituting `RecoveredPayloadHandler` (the documented null→empty use case) makes
+   unreliable — so emitting there would miscount recovery vs non-recovery.
+2. **The method identity was dropped at the handler boundary.** `BasicFailoverExecution.execute`
+   holds the reflected `Method`, but `FailoverHandler.store/recover(failover, args, …)` never
+   received it.
+
+### Decision
+
+* **Thread the method via backward-compatible `FailoverHandler` overloads.** Add
+  `store/recover/recoverAll(Failover, Method, …)` as **default** methods that delegate to the
+  existing `(Failover, …)` signatures. Custom `FailoverHandler` implementations keep compiling
+  unchanged. Only the outermost `AdvancedFailoverHandler` overrides them (consuming `method` for
+  metrics and delegating downstream via the original signatures), so `ScatterGatherFailoverHandler`,
+  `DefaultFailoverHandler` and the scatter collaborators are untouched. `BasicFailoverExecution`
+  calls the method-aware overloads.
+* **`AdvancedFailoverHandler`** adds `failover-method` (`SimpleClass#method`, or `unknown` when
+  absent) and `failover-domain` (the `@Failover(domain)`, falling back to `name`) to the metric bag.
+* **`MicrometerObservablePublisher`** emits a single counter
+  `failover.recovery.outcome.total{name, domain, method, outcome}` with
+  `outcome ∈ {recovered, not_recovered, error}` derived in priority order
+  (`recovery_failed → error`, else `is-recovered → recovered`, else `not_recovered`). The three rates
+  are PromQL projections: failover = `sum without(outcome)`, recovery = `{outcome="recovered"}`,
+  non-recovery = `{outcome="not_recovered"}`. A recover-path fault becomes `outcome=error`, never a
+  silent miss. Existing `failover.recover.total` / `failover.exception.total` are unchanged.
+
+A single outcome-tagged counter was chosen over three dedicated counters (lower cardinality, idiomatic,
+clean error/miss separation) and over a PromQL-only recipe on `failover.recover.total` (which lacked
+the method dimension and conflated errors with misses).
+
+### Consequences
+
+* Per-method visibility of failover / recovery / non-recovery; non-recovery is a clean user-impact
+  alert signal, error isolated from it.
+* No breaking change: the SPI gains default overloads, existing meters are untouched, and the
+  threading is confined to `FailoverHandler`, `BasicFailoverExecution`, `AdvancedFailoverHandler`,
+  and the Micrometer publisher.
+* `domain` tag enriches the operational meters consistently with `FailoverMeterBinder`'s gauges.
+* Verified: core (`AdvancedFailoverHandlerTest`, `BasicFailoverExecutionTest`), publisher
+  (`MicrometerObservablePublisherTest`), resilience + autoconfigure ITs, PIT 95% gate (97% killed,
+  99% strength).
+
+___
+
+## ADR 52 — FailoverHandler Method-Aware Contract + AbstractFailoverHandler (refines ADR 51 threading)
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted — supersedes the method-threading mechanism of [ADR 51](#adr-51-per-method-failover-outcome-metric-method-identity-threading) (its metric design is unchanged).
+
+### Context
+
+ADR 51 threaded the intercepted method through **backward-compatible default overloads** — both the
+old `(Failover, …)` and new `(Failover, Method, …)` signatures lived on `FailoverHandler`. Review
+raised two issues:
+
+1. The SPI then exposed **two public methods per operation**, which is the wrong contract — there
+   should be one.
+2. The intercepted `Method` is **always present** (the aspect always resolves it), so modelling it as
+   `@Nullable` with an `"unknown"`/`null` fallback was misleading; it should be `@NonNull` and never
+   null end-to-end.
+
+### Decision
+
+* **`FailoverHandler` declares only the method-aware operations** — `store` / `recover` /
+  `recoverAll(Failover, @NonNull Method, …)`. Both `Failover` and `Method` are `@NonNull`. One public
+  method per operation.
+* **`AbstractFailoverHandler`** bridges for handlers that do not need the method: `final`
+  method-aware implementations drop the method and delegate to clean, `protected` method-less
+  abstract operations. `DefaultFailoverHandler` (the leaf) extends it and implements only those.
+* **Decorators that thread the method implement the interface directly** and pass the real
+  `@NonNull` method through: `AdvancedFailoverHandler` (consumes it for the per-method metric, then
+  forwards downstream) and `ScatterGatherFailoverHandler` → `PayloadScatter` / `PayloadGather` →
+  per-slice `delegateR` calls. No `null` is ever passed; `methodId` has no null fallback.
+
+### Consequences
+
+* **Breaking SPI change.** A custom `FailoverHandler` must now implement the method-aware signatures
+  (or extend `AbstractFailoverHandler` for the method-less form). The built-in handler chain and the
+  zero-config auto-configuration are unaffected.
+* The contract is single-method-per-operation, and the intercepted method is guaranteed non-null
+  from the aspect through to the metric tag.
+* The method now reaches the slice delegates too (threaded through scatter/gather), so the contract
+  holds uniformly rather than passing a placeholder.
+* Verified: `failover-core` (292 tests, incl. `AbstractFailoverHandler`/`PayloadScatter`/
+  `PayloadGather`/`ScatterGather` paths), micrometer + resilience + autoconfigure ITs, PIT 95% gate
+  (97% killed, 99% strength).
+
+___

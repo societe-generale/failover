@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.List;
 
@@ -50,12 +51,12 @@ class PayloadGather<T, R> {
 
     private final SliceDispatcher<R> sliceDispatcher;
 
-    @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+    @Nullable T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable cause) {
         PayloadSplitter<T, R> splitter = splitterInvoker.lookup(failover);
         RecoverContext<T> compositeCtx = RecoverContext.<T>builder().failover(failover).args(args).clazz(clazz).cause(cause).build();
         List<RecoverContext<R>> recovered = shouldRecoverAll(failover, args)
-                ? doRecoverAll(splitter, compositeCtx)
-                : doRecover(splitter, compositeCtx);
+                ? doRecoverAll(splitter, method, compositeCtx)
+                : doRecover(splitter, method, compositeCtx);
         if (recovered.isEmpty()) {
             log.warn("Failover scatter-recover: '{}' — no slices recovered, returning null", failover.name());
             return null;
@@ -80,28 +81,28 @@ class PayloadGather<T, R> {
      * @param args     the method arguments
      * @return {@code true} to recover the whole referential, {@code false} to recover by key
      */
-    private boolean shouldRecoverAll(Failover failover, List<Object> args) {
+    private boolean shouldRecoverAll(@NonNull Failover failover, List<Object> args) {
         return args == null || args.isEmpty() || failover.recoverAll();
     }
 
-    private @NonNull List<RecoverContext<R>> doRecover(PayloadSplitter<T, R> splitter, RecoverContext<T> compositeCtx) {
+    private @NonNull List<RecoverContext<R>> doRecover(PayloadSplitter<T, R> splitter, @NonNull Method method, RecoverContext<T> compositeCtx) {
         List<RecoverContext<R>> slices = splitterInvoker.splitOnRecover(splitter, compositeCtx.getFailover(), compositeCtx);
-        return sliceDispatcher.dispatchRecover(slices, this::recoverSlice, this::notRecovered);
+        return sliceDispatcher.dispatchRecover(slices, ctx -> recoverSlice(method, ctx), this::notRecovered);
     }
 
-    private @NonNull List<RecoverContext<R>> doRecoverAll(PayloadSplitter<T, R> splitter, RecoverContext<T> compositeCtx) {
+    private @NonNull List<RecoverContext<R>> doRecoverAll(PayloadSplitter<T, R> splitter, @NonNull Method method, RecoverContext<T> compositeCtx) {
         List<RecoverContext<R>> slices = splitterInvoker.splitOnRecover(splitter, compositeCtx.getFailover(), compositeCtx);
         if (slices.isEmpty()) {
             log.warn("Failover scatter-recover-all: '{}' splitOnRecover returned empty — no template context to recover from", compositeCtx.getFailover().name());
             return List.of();
         }
-        return sliceDispatcher.dispatchRecover(slices, this::recoverSliceForAll, ctx -> List.<RecoverContext<R>>of())
+        return sliceDispatcher.dispatchRecover(slices, ctx -> recoverSliceForAll(method, ctx), ctx -> List.<RecoverContext<R>>of())
                 .stream().flatMap(Collection::stream).toList();
     }
 
-    private RecoverContext<R> recoverSlice(RecoverContext<R> ctx) {
+    private RecoverContext<R> recoverSlice(@NonNull Method method, RecoverContext<R> ctx) {
         log.debug("Failover scatter-recover: recovering slice {} for '{}'", ctx, ctx.getFailover().name());
-        R payload = delegateR.recover(ctx.getFailover(), ctx.getArgs(), ctx.getClazz(), ctx.getCause());
+        R payload = delegateR.recover(ctx.getFailover(), method, ctx.getArgs(), ctx.getClazz(), ctx.getCause());
         log.debug("Failover scatter-recover: recovered slice {} for '{}' with recoveredPayload '{}'", ctx, ctx.getFailover().name(), payload);
         return RecoverContext.<R>builder()
                 .failover(ctx.getFailover())
@@ -112,9 +113,9 @@ class PayloadGather<T, R> {
                 .build();
     }
 
-    private List<RecoverContext<R>> recoverSliceForAll(RecoverContext<R> ctx) {
+    private List<RecoverContext<R>> recoverSliceForAll(@NonNull Method method, RecoverContext<R> ctx) {
         log.debug("Failover scatter-recover-all: recovering slice-for-all {} for '{}'", ctx, ctx.getFailover().name());
-        List<R> payloads = delegateR.recoverAll(ctx.getFailover(), ctx.getArgs(), ctx.getClazz(), ctx.getCause());
+        List<R> payloads = delegateR.recoverAll(ctx.getFailover(), method, ctx.getArgs(), ctx.getClazz(), ctx.getCause());
         log.debug("Failover scatter-recover-all: recovered slice-for-all {} for '{}' with recoveredPayloads '{}'", ctx, ctx.getFailover().name(), payloads);
         return payloads.stream().map(payload -> RecoverContext.<R>builder()
                 .failover(ctx.getFailover())

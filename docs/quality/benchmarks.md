@@ -16,9 +16,10 @@ benchmark classes are named `*Benchmark` (not `*Test`), so Surefire never runs t
 mvn -pl failover-core -Pbenchmark test-compile exec:exec
 ```
 
-The `benchmark` profile adds the JMH dependencies, registers `src/benchmark/java` as a source root,
-wires the JMH annotation processor (alongside Lombok), and runs `org.openjdk.jmh.Main` over every
-`*Benchmark` class.
+Benchmark sources live in `src/test/java` named `*Benchmark` (so Surefire never runs them); `jmh-core`
+is a permanent test-scoped dependency so they always compile. The `benchmark` profile wires the JMH
+annotation processor (alongside Lombok) to generate the benchmark metadata, then runs
+`org.openjdk.jmh.Main` over every `*Benchmark` class.
 
 ---
 

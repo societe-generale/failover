@@ -29,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import static java.time.temporal.ChronoUnit.MINUTES;
@@ -49,6 +50,15 @@ class AdvancedFailoverHandlerTest {
     private static final List<Object> ARGS = List.of(1L);
 
     private static final String PAYLOAD = "PAYLOAD";
+
+    private static final Method METHOD;
+    static {
+        try {
+            METHOD = List.class.getMethod("size");
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Mock
     private Failover failover;
@@ -79,9 +89,9 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should store along with reporting")
     void shouldStoreAlongWithReporting() {
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
-        advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
-        verify(failoverHandler).store(failover, ARGS, PAYLOAD);
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+        advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD);
+        verify(failoverHandler).store(failover, METHOD, ARGS, PAYLOAD);
         assertThat(observablePublisher.getMetrics().getInfo()).containsEntry("failover-action", "store")
                 .containsEntry("failover-expiry-duration","1").containsEntry("failover-expiry-unit","MINUTES")
                 .containsEntry("failover-is-stored", "true");
@@ -90,8 +100,8 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should publish metrics with is-stored=false when store delegate throws exception")
     void shouldPublishMetricsEvenWhenStoreDelegateThrowsException() {
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willThrow(new RuntimeException("Store failure"));
-        assertThatThrownBy(() -> advancedFailoverHandler.store(failover, ARGS, PAYLOAD))
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willThrow(new RuntimeException("Store failure"));
+        assertThatThrownBy(() -> advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Store failure");
         assertThat(observablePublisher.getMetrics().getInfo())
@@ -102,9 +112,9 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should recover along with reporting and recovered payload resolver")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandler() {
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
-        verify(failoverHandler).recover(failover, ARGS, String.class, cause);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+        verify(failoverHandler).recover(failover, METHOD, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
@@ -120,9 +130,9 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should recover along with reporting and recovered payload resolver and null result")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandlerAndNullResult() {
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(null);
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
-        verify(failoverHandler).recover(failover, ARGS, String.class, cause);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(null);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+        verify(failoverHandler).recover(failover, METHOD, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
@@ -138,9 +148,9 @@ class AdvancedFailoverHandlerTest {
     @DisplayName("should recover along with reporting and recovered payload resolver and with root cause")
     void shouldRecoverAlongWithReportingAndRecoveredPayloadHandlerAndWithRootCause() {
         cause = new RuntimeException("Dummy-Exception");
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
-        verify(failoverHandler).recover(failover, ARGS, String.class, cause);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+        verify(failoverHandler).recover(failover, METHOD, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
@@ -156,9 +166,9 @@ class AdvancedFailoverHandlerTest {
     @DisplayName("should handled the exception and handle with recovered payload resolver when any exception occurred on recover")
     void shouldHandledTheExceptionAndHandleWithRecoveredPayloadHandlerWhenAnyExceptionOccurredOnRecover() {
         cause = new RuntimeException("Dummy-Exception");
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Exception on recover"));
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
-        verify(failoverHandler).recover(failover, ARGS, String.class, cause);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willThrow(new RuntimeException("Exception on recover"));
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+        verify(failoverHandler).recover(failover, METHOD, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-action", "recover")
@@ -176,8 +186,8 @@ class AdvancedFailoverHandlerTest {
     @DisplayName("should capture recovery failure message in metrics when recover delegate throws exception")
     void shouldCaptureRecoveryFailureMessageInMetricsWhenRecoverDelegateThrowsException() {
         cause = new RuntimeException("Original-Exception");
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willThrow(new RuntimeException("Recovery failed - store unavailable"));
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willThrow(new RuntimeException("Recovery failed - store unavailable"));
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
         verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, null, cause);
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-is-recovered", "false")
@@ -188,9 +198,9 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should return the stored payload from the delegate")
     void shouldReturnStoredPayloadFromDelegate() {
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willReturn(PAYLOAD);
 
-        String result = advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+        String result = advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD);
 
         assertThat(result).isEqualTo(PAYLOAD);
     }
@@ -199,9 +209,9 @@ class AdvancedFailoverHandlerTest {
     @DisplayName("should use empty string in metrics when cause message is null")
     void shouldUseEmptyStringInMetricsWhenCauseMessageIsNull() {
         cause = new RuntimeException();   // getMessage() == null
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
 
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-exception-message", "")
@@ -211,8 +221,8 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should include duration-ns in store metrics")
     void shouldIncludeDurationNsInStoreMetrics() {
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
-        advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+        advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD);
 
         String durationNs = observablePublisher.getMetrics().getInfo().get("failover-duration-ns");
         assertThat(durationNs).isNotNull();
@@ -222,8 +232,8 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should include duration-ns in recover metrics")
     void shouldIncludeDurationNsInRecoverMetrics() {
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         String durationNs = observablePublisher.getMetrics().getInfo().get("failover-duration-ns");
         assertThat(durationNs).isNotNull();
@@ -242,9 +252,9 @@ class AdvancedFailoverHandlerTest {
     void shouldPublishExpressionBasedExpiryInStoreMetrics() {
         given(failover.expiryDurationExpression()).willReturn("24");
         given(failover.expiryUnitExpression()).willReturn("HOURS");
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willReturn(PAYLOAD);
 
-        advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+        advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD);
 
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-expiry-duration", "24")
@@ -256,9 +266,9 @@ class AdvancedFailoverHandlerTest {
     void shouldPublishExpressionBasedExpiryInRecoverMetrics() {
         given(failover.expiryDurationExpression()).willReturn("48");
         given(failover.expiryUnitExpression()).willReturn("HOURS");
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
 
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-expiry-duration", "48")
@@ -268,9 +278,9 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should publish is-stored=false when store delegate returns null (no exception)")
     void shouldPublishIsStoredFalseWhenDelegateReturnsNull() {
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(null);
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willReturn(null);
 
-        String result = advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+        String result = advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD);
 
         assertThat(result).isNull();
         assertThat(observablePublisher.getMetrics().getInfo())
@@ -281,10 +291,10 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should return value from recoveredPayloadHandler on recover")
     void shouldReturnValueFromRecoveredPayloadHandlerOnRecover() {
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
         given(recoveredPayloadHandler.handle(failover, ARGS, String.class, PAYLOAD, cause)).willReturn("ENRICHED");
 
-        String result = advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        String result = advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         assertThat(result).isEqualTo("ENRICHED");
     }
@@ -292,9 +302,9 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("should publish is-recovery-failed=false and empty recovery-failure-message in recover happy path")
     void shouldPublishIsRecoveryFailedFalseInRecoverHappyPath() {
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
 
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-is-recovery-failed", "false")
@@ -305,9 +315,9 @@ class AdvancedFailoverHandlerTest {
     @DisplayName("should use empty string for exception-cause-message when cause has root cause with null message")
     void shouldUseEmptyStringForCauseMessageWhenRootCauseHasNullMessage() {
         cause = new RuntimeException("Dummy-Exception", new IllegalArgumentException());  // getCause().getMessage() == null
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
 
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         assertThat(observablePublisher.getMetrics().getInfo())
                 .containsEntry("failover-exception-cause-type", "java.lang.IllegalArgumentException")
@@ -317,10 +327,10 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("store reports a bounded, non-negative duration (nanoTime subtraction, not addition)")
     void storeReportsBoundedDuration() {
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+        given(failoverHandler.store(failover, METHOD, ARGS, PAYLOAD)).willReturn(PAYLOAD);
 
         long before = System.nanoTime();
-        advancedFailoverHandler.store(failover, ARGS, PAYLOAD);
+        advancedFailoverHandler.store(failover, METHOD, ARGS, PAYLOAD);
 
         long duration = Long.parseLong(observablePublisher.getMetrics().getInfo().get("failover-duration-ns"));
         // Real elapsed during the call is tiny; an addition mutant yields ~2x an absolute nanoTime,
@@ -331,13 +341,60 @@ class AdvancedFailoverHandlerTest {
     @Test
     @DisplayName("recover reports a bounded, non-negative duration (nanoTime subtraction, not addition)")
     void recoverReportsBoundedDuration() {
-        given(failoverHandler.recover(failover, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
 
         long before = System.nanoTime();
-        advancedFailoverHandler.recover(failover, ARGS, String.class, cause);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
 
         long duration = Long.parseLong(observablePublisher.getMetrics().getInfo().get("failover-duration-ns"));
         assertThat(duration).isGreaterThanOrEqualTo(0).isLessThan(before);
+    }
+
+    // ── method-aware overloads: method + domain dimensions ──────────────────────
+
+    @Test
+    @DisplayName("store(method) publishes failover-method (SimpleClass#method) and failover-domain")
+    void storeMethodAwarePublishesMethodAndDomain() throws NoSuchMethodException {
+        Method method = SampleService.class.getMethod("findAll");
+        given(failover.domain()).willReturn("country");
+        given(failoverHandler.store(failover, method, ARGS, PAYLOAD)).willReturn(PAYLOAD);
+
+        advancedFailoverHandler.store(failover, method, ARGS, PAYLOAD);
+
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-method", "SampleService#findAll")
+                .containsEntry("failover-domain", "country");
+    }
+
+    @Test
+    @DisplayName("recover(method) publishes failover-method and failover-domain")
+    void recoverMethodAwarePublishesMethodAndDomain() throws NoSuchMethodException {
+        Method method = SampleService.class.getMethod("findAll");
+        given(failover.domain()).willReturn("country");
+        given(failoverHandler.recover(failover, method, ARGS, String.class, cause)).willReturn(PAYLOAD);
+
+        advancedFailoverHandler.recover(failover, method, ARGS, String.class, cause);
+
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-method", "SampleService#findAll")
+                .containsEntry("failover-domain", "country");
+    }
+
+    @Test
+    @DisplayName("blank domain falls back to the failover name; method tag is SimpleClass#method")
+    void domainFallsBackToNameWhenBlank() {
+        given(failover.domain()).willReturn("");
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
+
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-domain", FAILOVER_NAME)
+                .containsEntry("failover-method", "List#size");
+    }
+
+    interface SampleService {
+        List<String> findAll();
     }
 
     static class InMemoryObservablePublisher extends AbstractObservablePublisher {

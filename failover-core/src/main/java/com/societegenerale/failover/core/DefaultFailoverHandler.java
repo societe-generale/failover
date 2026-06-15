@@ -25,6 +25,7 @@ import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
@@ -42,7 +43,7 @@ import static com.societegenerale.failover.core.util.FailoverNameResolver.effect
  */
 @Slf4j
 @AllArgsConstructor
-public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
+public class DefaultFailoverHandler<T> extends AbstractFailoverHandler<T> {
 
     private final KeyGenerator keyGenerator;
 
@@ -55,7 +56,7 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
     private final PayloadEnricher<T> payloadEnricher;
 
     @Override
-    public T store(Failover failover, List<Object> args, T payload) {
+    protected T store(@NonNull Failover failover, List<Object> args, T payload) {
         if (payload == null) {
             log.debug("Failover store skipped for '{}': method returned null payload", failover.name());
             return null;
@@ -69,14 +70,14 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
     }
 
     @Override
-    public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+    protected @Nullable T recover(@NonNull Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         log.info("Failover Recovery : Recovering information on '{}' from failover store due to exception {}", failover.name(), cause.getMessage());
         log.debug("Failover Recovery : Recovering information on '{}' from failover store", failover.name(), cause);
         var optionalReferential = failoverStore.find(effectiveName(failover), keyGenerator.key(failover, args));
         return doRecover(failover, clazz, cause, optionalReferential.orElse(null));
     }
 
-    private T doRecover(Failover failover, Class<T> clazz, Throwable cause, ReferentialPayload<T> referentialPayload) {
+    private T doRecover(@NonNull Failover failover, Class<T> clazz, Throwable cause, ReferentialPayload<T> referentialPayload) {
         if(referentialPayload!=null) {
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {
                 log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store.", failover.name());
@@ -106,7 +107,7 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
      * @return the recovered payloads (expired entries are skipped/deleted)
      */
     @Override
-    public List<T> recoverAll(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+    protected List<T> recoverAll(@NonNull Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
         List<ReferentialPayload<T>> referentialPayloads = failoverStore.findAll(effectiveName(failover));
         return referentialPayloads.stream().map(payload-> this.doRecover(failover, clazz, cause, payload)).toList();
     }

@@ -38,6 +38,13 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   unchanged (audit A-3/Q-2, ADR 50). Profile-gated JMH harness added — `mvn -pl failover-core
   -Pbenchmark test-compile exec:exec`
 
+- **Breaking — `FailoverHandler` SPI is now method-aware.** `store` / `recover` / `recoverAll` carry
+  the intercepted `@NonNull Method` (one method-aware operation each; the old method-less signatures
+  are gone). Handlers that don't need the method extend the new `AbstractFailoverHandler`, which
+  bridges to clean `protected` method-less operations; decorators that need it thread the non-null
+  method through (used for the per-method outcome metric). Zero-config users and the built-in chain
+  are unaffected; only custom `FailoverHandler` implementations must migrate (audit, ADR 52)
+
 ### Added
 
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods
@@ -52,6 +59,9 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - `CompositeContextPropagator` for combining multiple propagators
 - Micrometer tracing context propagator (`MicrometerContextPropagator`)
 - Micrometer counter `failover.store.async.failed{name,operation,exception_type}` for async store failures
+- Micrometer counter `failover.recovery.outcome.total{name,domain,method,outcome}` — per-intercepted-method
+  failover / recovery / non-recovery rates (`outcome=recovered|not_recovered|error`); recorded once per
+  method call, tagged by the actual method (`SimpleClass#method`) (ADR 51)
 - `failover.exception-policy` property (`RETHROW`, `NEVER_THROW`, `CUSTOM`)
 - SpEL expression support for expiry (`expiryDurationExpression`, `expiryUnitExpression`)
 - `Automatic-Module-Name` in every published JAR manifest (e.g. `com.societegenerale.failover.core`,

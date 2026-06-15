@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +52,15 @@ class PayloadGatherTest {
 
     private static final String SPLITTER_NAME = "gatherSplitter";
     private static final List<Object> COMPOSITE_ARGS = List.of("active", "1,2", "India");
+
+    private static final Method METHOD;
+    static {
+        try {
+            METHOD = List.class.getMethod("size");
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Mock private Failover failover;
     @Mock private Throwable cause;
@@ -90,16 +100,16 @@ class PayloadGatherTest {
         @DisplayName("recovers each slice via the slice delegate and merges into the composite payload")
         void recoversEachSliceAndMerges() {
             given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("1"), sliceCtx("2")));
-            given(delegateR.recover(failover, List.of("1"), String.class, cause)).willReturn("A");
-            given(delegateR.recover(failover, List.of("2"), String.class, cause)).willReturn("B");
+            given(delegateR.recover(failover, METHOD, List.of("1"), String.class, cause)).willReturn("A");
+            given(delegateR.recover(failover, METHOD, List.of("2"), String.class, cause)).willReturn("B");
             given(splitter.merge(any())).willReturn(mergedCtx("A,B"));
 
-            String recovered = gather.recover(failover, COMPOSITE_ARGS, String.class, cause);
+            String recovered = gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause);
 
             assertThat(recovered).isEqualTo("A,B");
-            verify(delegateR).recover(failover, List.of("1"), String.class, cause);
-            verify(delegateR).recover(failover, List.of("2"), String.class, cause);
-            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+            verify(delegateR).recover(failover, METHOD, List.of("1"), String.class, cause);
+            verify(delegateR).recover(failover, METHOD, List.of("2"), String.class, cause);
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any(), any());
         }
 
         @Test
@@ -107,7 +117,7 @@ class PayloadGatherTest {
         void noSlicesReturnsNull() {
             given(splitter.splitOnRecover(any())).willReturn(List.of());
 
-            String recovered = gather.recover(failover, COMPOSITE_ARGS, String.class, cause);
+            String recovered = gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause);
 
             assertThat(recovered).isNull();
             verify(splitter, never()).merge(any());
@@ -117,10 +127,10 @@ class PayloadGatherTest {
         @DisplayName("merge yields a null payload — recover returns null")
         void mergeNullPayloadReturnsNull() {
             given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("1")));
-            given(delegateR.recover(any(), any(), any(), any())).willReturn("A");
+            given(delegateR.recover(any(), any(), any(), any(), any())).willReturn("A");
             given(splitter.merge(any())).willReturn(mergedCtx(null));
 
-            assertThat(gather.recover(failover, COMPOSITE_ARGS, String.class, cause)).isNull();
+            assertThat(gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause)).isNull();
         }
     }
 
@@ -134,14 +144,14 @@ class PayloadGatherTest {
         @DisplayName("empty args route to recover-all: delegates to recoverAll and merges all entries")
         void emptyArgsRecoverAll() {
             given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("template")));
-            given(delegateR.recoverAll(failover, List.of("template"), String.class, cause)).willReturn(List.of("A", "B"));
+            given(delegateR.recoverAll(failover, METHOD, List.of("template"), String.class, cause)).willReturn(List.of("A", "B"));
             given(splitter.merge(any())).willReturn(mergedCtx("A,B"));
 
-            String recovered = gather.recover(failover, List.of(), String.class, cause);
+            String recovered = gather.recover(failover, METHOD, List.of(), String.class, cause);
 
             assertThat(recovered).isEqualTo("A,B");
-            verify(delegateR).recoverAll(failover, List.of("template"), String.class, cause);
-            verify(delegateR, never()).recover(any(), any(), any(), any());
+            verify(delegateR).recoverAll(failover, METHOD, List.of("template"), String.class, cause);
+            verify(delegateR, never()).recover(any(), any(), any(), any(), any());
         }
 
         @Test
@@ -149,14 +159,14 @@ class PayloadGatherTest {
         void recoverAllFlagForcesRecoverAll() {
             given(failover.recoverAll()).willReturn(true);
             given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("template")));
-            given(delegateR.recoverAll(any(), any(), any(), any())).willReturn(List.of("A"));
+            given(delegateR.recoverAll(any(), any(), any(), any(), any())).willReturn(List.of("A"));
             given(splitter.merge(any())).willReturn(mergedCtx("A"));
 
-            String recovered = gather.recover(failover, COMPOSITE_ARGS, String.class, cause);
+            String recovered = gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause);
 
             assertThat(recovered).isEqualTo("A");
-            verify(delegateR).recoverAll(any(), any(), any(), any());
-            verify(delegateR, never()).recover(any(), any(), any(), any());
+            verify(delegateR).recoverAll(any(), any(), any(), any(), any());
+            verify(delegateR, never()).recover(any(), any(), any(), any(), any());
         }
 
         @Test
@@ -164,10 +174,10 @@ class PayloadGatherTest {
         void emptyTemplateReturnsNull() {
             given(splitter.splitOnRecover(any())).willReturn(List.of());
 
-            String recovered = gather.recover(failover, List.of(), String.class, cause);
+            String recovered = gather.recover(failover, METHOD, List.of(), String.class, cause);
 
             assertThat(recovered).isNull();
-            verify(delegateR, never()).recoverAll(any(), any(), any(), any());
+            verify(delegateR, never()).recoverAll(any(), any(), any(), any(), any());
             verify(splitter, never()).merge(any());
         }
     }
@@ -177,8 +187,8 @@ class PayloadGatherTest {
     void missingSplitterThrows() {
         given(payloadSplitterLookup.lookup(SPLITTER_NAME)).willReturn(null);
 
-        assertThatThrownBy(() -> gather.recover(failover, COMPOSITE_ARGS, String.class, cause))
+        assertThatThrownBy(() -> gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause))
                 .isInstanceOf(PayloadSplitterNotFoundException.class);
-        verify(delegateR, never()).recover(any(), any(), any(), any());
+        verify(delegateR, never()).recover(any(), any(), any(), any(), any());
     }
 }

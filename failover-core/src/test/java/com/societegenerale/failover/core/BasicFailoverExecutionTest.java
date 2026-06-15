@@ -77,19 +77,19 @@ class BasicFailoverExecutionTest {
         String result = basicFailoverExecution.execute(failover, supplier, method, ARGS);
 
         assertThat(result).isEqualTo(PAYLOAD);
-        verify(failoverHandler).store(failover, ARGS, PAYLOAD);
+        verify(failoverHandler).store(failover, method, ARGS, PAYLOAD);
     }
 
     @Test
     @DisplayName("should return the actual result when store execution is failed")
     void shouldReturnTheActualResultWhenStoreExecutionIsFailed() {
         given(supplier.get()).willReturn(PAYLOAD);
-        given(failoverHandler.store(failover, ARGS, PAYLOAD)).willThrow(new RuntimeException("SomeException"));
+        given(failoverHandler.store(failover, method, ARGS, PAYLOAD)).willThrow(new RuntimeException("SomeException"));
 
         String result = basicFailoverExecution.execute(failover, supplier, method, ARGS);
 
         assertThat(result).isEqualTo(PAYLOAD);
-        verify(failoverHandler).store(failover, ARGS, PAYLOAD);
+        verify(failoverHandler).store(failover, method, ARGS, PAYLOAD);
     }
 
     @Test
@@ -97,14 +97,14 @@ class BasicFailoverExecutionTest {
     void shouldRecoverTheResultFromFailoverWhenAnExceptionOccurred() {
         Throwable throwable = new RuntimeException("Some Exception");
         given(supplier.get()).willThrow(throwable);
-        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, method, ARGS, String.class, throwable)).willReturn(PAYLOAD);
         given(methodExceptionHandler.handle(any())).willReturn(PAYLOAD);
 
         String result = basicFailoverExecution.execute(failover, supplier, method, ARGS);
 
         assertThat(result).isEqualTo(PAYLOAD);
-        verify(failoverHandler).recover(failover, ARGS, String.class, throwable);
-        verify(failoverHandler, never()).store(failover, ARGS, PAYLOAD);
+        verify(failoverHandler).recover(failover, method, ARGS, String.class, throwable);
+        verify(failoverHandler, never()).store(failover, method, ARGS, PAYLOAD);
     }
 
     @Test
@@ -112,7 +112,7 @@ class BasicFailoverExecutionTest {
     void shouldDelegateToMethodExceptionPolicyAfterRecovery() {
         Throwable throwable = new RuntimeException("Some Exception");
         given(supplier.get()).willThrow(throwable);
-        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(PAYLOAD);
+        given(failoverHandler.recover(failover, method, ARGS, String.class, throwable)).willReturn(PAYLOAD);
         given(methodExceptionHandler.handle(any(MethodExceptionContext.class))).willReturn(PAYLOAD);
 
         basicFailoverExecution.execute(failover, supplier, method, ARGS);
@@ -125,14 +125,14 @@ class BasicFailoverExecutionTest {
     void shouldReturnNullWhenFailoverRecoverHasAnyException() {
         Throwable throwable = new RuntimeException("Some Exception");
         given(supplier.get()).willThrow(throwable);
-        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willThrow(throwable);
+        given(failoverHandler.recover(failover, method, ARGS, String.class, throwable)).willThrow(throwable);
         given(methodExceptionHandler.handle(any())).willReturn(null);
 
         String result = basicFailoverExecution.execute(failover, supplier, method, ARGS);
 
         assertThat(result).isNull();
-        verify(failoverHandler).recover(failover, ARGS, String.class, throwable);
-        verify(failoverHandler, never()).store(failover, ARGS, PAYLOAD);
+        verify(failoverHandler).recover(failover, method, ARGS, String.class, throwable);
+        verify(failoverHandler, never()).store(failover, method, ARGS, PAYLOAD);
     }
 
     @Test
@@ -141,7 +141,7 @@ class BasicFailoverExecutionTest {
         Throwable throwable = new RuntimeException("Some Exception");
         RuntimeException rethrown = new RuntimeException("rethrown");
         given(supplier.get()).willThrow(throwable);
-        given(failoverHandler.recover(failover, ARGS, String.class, throwable)).willReturn(null);
+        given(failoverHandler.recover(failover, method, ARGS, String.class, throwable)).willReturn(null);
         given(methodExceptionHandler.handle(any())).willThrow(rethrown);
 
         assertThatThrownBy(() -> basicFailoverExecution.execute(failover, supplier, method, ARGS))

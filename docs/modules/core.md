@@ -67,6 +67,8 @@ flowchart TD
 - `ScatterGatherFailoverHandler` — intercepts when `payloadSplitter` is set; delegates directly to `DefaultFailoverHandler` for plain failovers. A thin facade over package-private collaborators — `PayloadScatter` (store side), `PayloadGather` (recover side), `SliceDispatcher` (parallel/sequential dispatch + per-slice timeout) and `SplitterInvoker` (splitter lookup and invocation). See ADR 49.
 - `DefaultFailoverHandler` — core key/expiry/store/recover logic.
 
+For the full store / recover / clean **invocation order** (and how it maps to the auto-configuration bean wiring), see [How It Works — Handler Chain and Execution Order](../concepts/how-it-works.md#handler-chain-and-execution-order).
+
 ---
 
 ## failover-aspect

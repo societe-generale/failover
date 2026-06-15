@@ -20,8 +20,10 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.payload.splitter.*;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -151,16 +153,16 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
      * @throws PayloadSplitterNotFoundException if {@link Failover#payloadSplitter()} names a bean that does not exist
      */
     @Override
-    public T store(Failover failover, List<Object> args, T payload) {
+    public T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload) {
         if (payload == null) {
             log.debug("Failover scatter-store skipped for '{}': method returned null payload", failover.name());
             return null;
         }
         if (!failover.payloadSplitter().isEmpty()) {
             log.debug("Failover scatter-store: storing '{}' via scatter", failover.name());
-            return payloadScatter.store(failover, args, payload);
+            return payloadScatter.store(failover, method, args, payload);
         }
-        return delegateT.store(failover, args, payload);
+        return delegateT.store(failover, method, args, payload);
     }
 
     /**
@@ -179,12 +181,12 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
      * @throws PayloadSplitterNotFoundException if {@link Failover#payloadSplitter()} names a bean that does not exist
      */
     @Override
-    public @Nullable T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause) {
+    public @Nullable T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable cause) {
         if (!failover.payloadSplitter().isEmpty()) {
             log.debug("Failover scatter-recover: recovering '{}' due to {}", failover.name(), cause.getMessage());
-            return payloadGather.recover(failover, args, clazz, cause);
+            return payloadGather.recover(failover, method, args, clazz, cause);
         }
-        return delegateT.recover(failover, args, clazz, cause);
+        return delegateT.recover(failover, method, args, clazz, cause);
     }
 
     /**

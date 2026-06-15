@@ -234,6 +234,84 @@ class MicrometerObservablePublisherTest {
         assertThat(counter.count()).isEqualTo(1.0);
     }
 
+    // ── recovery outcome (failover / recovery / non-recovery rates) ─────────────
+
+    @Test
+    @DisplayName("recovered within expiry — failover.recovery.outcome.total{outcome=recovered} with name, domain, method")
+    void outcomeRecovered() {
+        publisher.publish(outcomeMetrics("country-by-id", "country", "CountryService#getById", "true", "false"));
+
+        Counter counter = registry.get("failover.recovery.outcome.total")
+            .tag("name", "country-by-id")
+            .tag("domain", "country")
+            .tag("method", "CountryService#getById")
+            .tag("outcome", "recovered")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("no stored value (not found / expired) — outcome=not_recovered (the user-impact signal)")
+    void outcomeNotRecovered() {
+        publisher.publish(outcomeMetrics("country-all", "country", "CountryService#findAll", "false", "false"));
+
+        Counter counter = registry.get("failover.recovery.outcome.total")
+            .tag("method", "CountryService#findAll")
+            .tag("outcome", "not_recovered")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("recover path threw — outcome=error (kept distinct from a clean miss)")
+    void outcomeError() {
+        publisher.publish(outcomeMetrics("country-all", "country", "CountryService#findAll", "false", "true"));
+
+        Counter counter = registry.get("failover.recovery.outcome.total")
+            .tag("method", "CountryService#findAll")
+            .tag("outcome", "error")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+        // not double-counted as not_recovered
+        assertThat(registry.find("failover.recovery.outcome.total").tag("outcome", "not_recovered").counter()).isNull();
+    }
+
+    @Test
+    @DisplayName("recovery_failed wins over recovered when both set — outcome=error")
+    void outcomeErrorTakesPrecedence() {
+        publisher.publish(outcomeMetrics("fo", "fo", "S#m", "true", "true"));
+
+        assertThat(registry.get("failover.recovery.outcome.total").tag("outcome", "error").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("missing domain/method — fall back to name and 'unknown'")
+    void outcomeDefaultsDomainAndMethod() {
+        publisher.publish(recoverMetrics("solo", "true", "false", "java.lang.Exception", ""));
+
+        Counter counter = registry.get("failover.recovery.outcome.total")
+            .tag("name", "solo")
+            .tag("domain", "solo")
+            .tag("method", "unknown")
+            .tag("outcome", "recovered")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("failover rate = sum across outcomes; outcomes accumulate independently per method")
+    void outcomeAccumulatesPerMethod() {
+        publisher.publish(outcomeMetrics("fo", "d", "S#findAll", "true", "false"));
+        publisher.publish(outcomeMetrics("fo", "d", "S#findAll", "false", "false"));
+        publisher.publish(outcomeMetrics("fo", "d", "S#findAll", "false", "false"));
+
+        double recovered    = registry.get("failover.recovery.outcome.total").tag("method", "S#findAll").tag("outcome", "recovered").counter().count();
+        double notRecovered = registry.get("failover.recovery.outcome.total").tag("method", "S#findAll").tag("outcome", "not_recovered").counter().count();
+        assertThat(recovered).isEqualTo(1.0);
+        assertThat(notRecovered).isEqualTo(2.0);
+        assertThat(recovered + notRecovered).isEqualTo(3.0); // failover rate
+    }
+
     // ── startup/config events ─────────────────────────────────────────────────
 
     @Test
@@ -269,5 +347,12 @@ class MicrometerObservablePublisherTest {
             .collect("is-recovered", recovered)
             .collect("is-recovery-failed", recoveryFailed)
             .collect("recovery-failure-message", "");
+    }
+
+    private static Metrics outcomeMetrics(String name, String domain, String method,
+                                          String recovered, String recoveryFailed) {
+        return recoverMetrics(name, recovered, recoveryFailed, "java.lang.Exception", "")
+            .collect("domain", domain)
+            .collect("method", method);
     }
 }
