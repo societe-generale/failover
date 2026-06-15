@@ -25,22 +25,22 @@ import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.MultiTenant;
 import com.societegenerale.failover.properties.StoreType;
-import com.societegenerale.failover.store.FailoverStoreAsync;
-import com.societegenerale.failover.store.FailoverStoreCaffeine;
-import com.societegenerale.failover.store.FailoverStoreInmemory;
-import com.societegenerale.failover.store.FailoverStoreJdbc;
-import com.societegenerale.failover.store.mapper.ReferentialPayloadRowMapper;
+import com.societegenerale.failover.store.async.FailoverStoreAsync;
+import com.societegenerale.failover.store.caffeine.FailoverStoreCaffeine;
+import com.societegenerale.failover.store.inmemory.FailoverStoreInmemory;
+import com.societegenerale.failover.store.jdbc.FailoverStoreJdbc;
+import com.societegenerale.failover.store.jdbc.mapper.ReferentialPayloadRowMapper;
 import com.societegenerale.failover.store.multitenant.MultiTenantFailoverStore;
 import com.societegenerale.failover.store.multitenant.TenantResolver;
 import com.societegenerale.failover.store.multitenant.TenantStoreFactory;
-import com.societegenerale.failover.store.resolver.DatabaseResolver;
-import com.societegenerale.failover.store.resolver.DefaultDatabaseResolver;
-import com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver;
-import com.societegenerale.failover.store.resolver.FailoverStoreQueryResolver;
-import com.societegenerale.failover.store.resolver.PayloadColumnResolver;
-import com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver;
-import com.societegenerale.failover.store.serializer.JsonSerializer;
-import com.societegenerale.failover.store.serializer.Serializer;
+import com.societegenerale.failover.store.jdbc.resolver.DatabaseResolver;
+import com.societegenerale.failover.store.jdbc.resolver.DefaultDatabaseResolver;
+import com.societegenerale.failover.store.jdbc.resolver.DefaultFailoverStoreQueryResolver;
+import com.societegenerale.failover.store.jdbc.resolver.FailoverStoreQueryResolver;
+import com.societegenerale.failover.store.jdbc.resolver.PayloadColumnResolver;
+import com.societegenerale.failover.store.jdbc.resolver.VarcharPayloadColumnResolver;
+import com.societegenerale.failover.store.jdbc.serializer.JsonSerializer;
+import com.societegenerale.failover.store.jdbc.serializer.Serializer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -301,7 +301,7 @@ public class FailoverStoreAutoConfiguration {
     static class JdbcStoreConfiguration {
 
         /**
-         * Registers a {@link com.societegenerale.failover.store.mapper.ReferentialPayloadRowMapper}
+         * Registers a {@link com.societegenerale.failover.store.jdbc.mapper.ReferentialPayloadRowMapper}
          * unless a {@code RowMapper<ReferentialPayload<Object>>} bean is already present.
          */
         @Bean
@@ -331,7 +331,7 @@ public class FailoverStoreAutoConfiguration {
         }
 
         /**
-         * Registers a {@link com.societegenerale.failover.store.resolver.VarcharPayloadColumnResolver}
+         * Registers a {@link com.societegenerale.failover.store.jdbc.resolver.VarcharPayloadColumnResolver}
          * (VARCHAR payload column) unless a {@link PayloadColumnResolver} bean is already present.
          */
         @Bean
@@ -341,7 +341,7 @@ public class FailoverStoreAutoConfiguration {
         }
 
         /**
-         * Registers a {@link com.societegenerale.failover.store.resolver.DefaultDatabaseResolver}
+         * Registers a {@link com.societegenerale.failover.store.jdbc.resolver.DefaultDatabaseResolver}
          * unless a {@link DatabaseResolver} bean is already present.
          */
         @Bean
@@ -351,7 +351,7 @@ public class FailoverStoreAutoConfiguration {
         }
 
         /**
-         * Registers a {@link com.societegenerale.failover.store.resolver.DefaultFailoverStoreQueryResolver}
+         * Registers a {@link com.societegenerale.failover.store.jdbc.resolver.DefaultFailoverStoreQueryResolver}
          * configured with the table prefix from {@link FailoverProperties},
          * unless a {@link FailoverStoreQueryResolver} bean is already present.
          */

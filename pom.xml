@@ -18,6 +18,9 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
 
+        <!-- JPMS automatic module name; overridden per module (audit A-1 / Phase 4.2). -->
+        <automatic.module.name>com.societegenerale.failover</automatic.module.name>
+
         <jspecify.version>1.0.0</jspecify.version>
         <!-- SPRING BOOT VERSION -->
         <spring-boot.version>4.0.6</spring-boot.version>
@@ -318,6 +321,9 @@
                         <manifest>
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                         </manifest>
+                        <manifestEntries>
+                            <Automatic-Module-Name>${automatic.module.name}</Automatic-Module-Name>
+                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>

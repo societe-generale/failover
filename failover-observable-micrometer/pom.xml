@@ -12,6 +12,10 @@
         <version>3.0.0-SNAPSHOT</version>
     </parent>
 
+    <properties>
+        <automatic.module.name>com.societegenerale.failover.observable.micrometer</automatic.module.name>
+    </properties>
+
     <dependencies>
         <!-- Core interfaces: FailoverScanner, ReportPublisher, FailoverReporter, Metrics -->
         <dependency>

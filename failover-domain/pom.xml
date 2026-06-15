@@ -11,4 +11,8 @@
         <version>3.0.0-SNAPSHOT</version>
     </parent>
 
+    <properties>
+        <automatic.module.name>com.societegenerale.failover.domain</automatic.module.name>
+    </properties>
+
 </project>
