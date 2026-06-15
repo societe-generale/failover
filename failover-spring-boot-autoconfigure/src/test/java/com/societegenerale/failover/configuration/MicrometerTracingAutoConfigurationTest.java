@@ -21,6 +21,7 @@ import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -73,6 +74,31 @@ class MicrometerTracingAutoConfigurationTest {
         void doesNotRegisterMicrometerContextPropagator() {
             contextRunner
                     .run(ctx -> assertThat(ctx).doesNotHaveBean(MicrometerContextPropagator.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("autoconfiguration ordering")
+    class Ordering {
+
+        /**
+         * The {@code Tracer} that {@code @ConditionalOnBean(Tracer.class)} gates on is contributed by
+         * Spring Boot's own tracing autoconfigurations (Brave / OpenTelemetry). This autoconfiguration
+         * must therefore be ordered <em>after</em> them, or the condition is evaluated before the
+         * {@code Tracer} exists and {@link MicrometerContextPropagator} silently never registers.
+         * A behavioural test would require Brave/OTel test dependencies (only the micrometer-tracing
+         * API is on the test classpath), so this guards the ordering declaration directly to prevent
+         * accidental removal. See finding A6 in the audit report.
+         */
+        @Test
+        @DisplayName("declared after the Spring Boot Brave/OpenTelemetry tracing autoconfigurations")
+        void orderedAfterBootTracingAutoConfigurations() {
+            AutoConfiguration annotation =
+                    MicrometerTracingAutoConfiguration.class.getAnnotation(AutoConfiguration.class);
+            assertThat(annotation).isNotNull();
+            assertThat(annotation.afterName()).contains(
+                    "org.springframework.boot.micrometer.tracing.brave.autoconfigure.BraveAutoConfiguration",
+                    "org.springframework.boot.micrometer.tracing.otel.autoconfigure.OpenTelemetryTracingAutoConfiguration");
         }
     }
 }

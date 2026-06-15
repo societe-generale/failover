@@ -82,10 +82,9 @@ import java.util.List;
  * enricher, recovered-payload handler, method-exception policy, schedulers, and the
  * in-memory store factory (when no other store type is configured).
  *
- * <p>Store-type-specific beans (Caffeine, JDBC) are registered by their own
- * auto-configurations ({@code FailoverCaffeineStoreAutoConfiguration},
- * {@code FailoverJdbcStoreAutoConfiguration}). The final assembled {@code FailoverStore}
- * bean is produced by {@code FailoverStoreAutoConfiguration}.
+ * <p>Store-type-specific beans (Caffeine, JDBC) and the final assembled {@code FailoverStore}
+ * bean are produced by {@code FailoverStoreAutoConfiguration} (with per-tenant routing layered on
+ * by {@code FailoverStoreMultiTenantAutoConfiguration} when enabled).
  *
  * <p><strong>Note on structure:</strong> the core beans are declared flat on this class (rather
  * than grouped into nested {@code @Configuration} classes) on purpose. {@code @ConditionalOnMissingBean}

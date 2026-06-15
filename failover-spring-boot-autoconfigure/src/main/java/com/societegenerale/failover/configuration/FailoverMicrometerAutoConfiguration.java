@@ -33,9 +33,18 @@ import org.springframework.context.annotation.Bean;
  * Autoconfiguration for Micrometer-based failover metrics.
  *
  * <p>Active only when a {@link MeterRegistry} bean is present in the application context.
- * {@code @ConditionalOnBean(MeterRegistry.class)} is evaluated at the outer autoconfiguration
- * class level — guaranteeing it runs after all user bean definitions are loaded, making it
- * visible to beans from any configuration class (including test configurations).
+ *
+ * <p><strong>Ordering is critical.</strong> The {@link MeterRegistry} this autoconfiguration
+ * depends on is itself contributed by Spring Boot's own metrics autoconfigurations
+ * ({@code CompositeMeterRegistryAutoConfiguration}, {@code SimpleMetricsExportAutoConfiguration},
+ * and the registry-specific exporters). Because {@code @ConditionalOnBean} only sees beans that
+ * were registered by autoconfigurations evaluated <em>before</em> this one, this class must be
+ * ordered <em>after</em> those metrics autoconfigurations — otherwise {@code MeterRegistry} does
+ * not yet exist when the condition is evaluated, the condition fails, and the application silently
+ * falls back to {@code MdcLoggerObservablePublisher} only (no Micrometer metrics). This mirrors how
+ * Spring Boot's own meter-binder autoconfigurations (e.g. {@code JvmMetricsAutoConfiguration}) are
+ * ordered. The metrics autoconfigurations are referenced by name via {@code afterName} so this
+ * module needs no compile-time dependency on the Boot metrics-autoconfigure artifact.
  *
  * <p>The class-level {@code @ConditionalOnClass(name = ...)} uses the string form so that
  * Spring Boot's ASM reader evaluates the condition without loading the class into the JVM.
@@ -44,7 +53,13 @@ import org.springframework.context.annotation.Bean;
  *
  * @author Anand Manissery
  */
-@AutoConfiguration(after = FailoverAutoConfiguration.class)
+@AutoConfiguration(
+        after = FailoverAutoConfiguration.class,
+        afterName = {
+                "org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration",
+                "org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration",
+                "org.springframework.boot.micrometer.metrics.autoconfigure.export.simple.SimpleMetricsExportAutoConfiguration"
+        })
 @ConditionalOnExpression("${failover.enabled:true} eq true")
 @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
 @ConditionalOnBean(MeterRegistry.class)

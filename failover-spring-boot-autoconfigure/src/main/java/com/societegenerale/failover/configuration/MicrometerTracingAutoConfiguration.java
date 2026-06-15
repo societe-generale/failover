@@ -38,11 +38,27 @@ import org.springframework.context.annotation.Bean;
  * via {@code ObjectProvider} and composed into the active
  * {@link com.societegenerale.failover.core.propagator.ContextPropagator}.
  *
+ * <p><strong>Ordering is critical.</strong> The {@link Tracer} this autoconfiguration gates on
+ * ({@code @ConditionalOnBean(Tracer.class)}) is contributed by Spring Boot's own tracing
+ * autoconfigurations (Brave / OpenTelemetry). Because {@code @ConditionalOnBean} only sees beans
+ * registered by autoconfigurations evaluated <em>before</em> this one, this class must be ordered
+ * <em>after</em> them — otherwise the {@code Tracer} does not yet exist when the condition is
+ * evaluated, the bean silently backs off, and scatter/gather slices lose span propagation with no
+ * error. They are referenced by name via {@code afterName} so this module needs no compile-time
+ * dependency on the Boot tracing-autoconfigure artifacts (and the OpenTelemetry name is a harmless
+ * no-op when that implementation is absent).
+ *
  * @author Anand Manissery
  * @see MicrometerContextPropagator
  * @see FailoverAutoConfiguration
  */
-@AutoConfiguration(after = FailoverAutoConfiguration.class)
+@AutoConfiguration(
+        after = FailoverAutoConfiguration.class,
+        afterName = {
+                "org.springframework.boot.micrometer.tracing.autoconfigure.MicrometerTracingAutoConfiguration",
+                "org.springframework.boot.micrometer.tracing.brave.autoconfigure.BraveAutoConfiguration",
+                "org.springframework.boot.micrometer.tracing.otel.autoconfigure.OpenTelemetryTracingAutoConfiguration"
+        })
 @ConditionalOnClass(name = "io.micrometer.tracing.Tracer")
 @Slf4j
 public class MicrometerTracingAutoConfiguration {
