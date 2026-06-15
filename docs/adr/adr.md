@@ -2496,3 +2496,46 @@ raised two issues:
   (97% killed, 99% strength).
 
 ___
+
+## ADR 53 — Overall JaCoCo Coverage Gate
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+JaCoCo collected coverage (unit + integration, merged per module, aggregated by the `report` module
+for Sonar) but **nothing failed the build on a regression** (audit T-1). PIT mutation testing gates
+`failover-core` only; the rest of the reactor had no coverage floor.
+
+JaCoCo's `check` goal analyses a single module's `${project.build.outputDirectory}` against one exec
+file — it has no native cross-module/aggregate mode. The `report` module is an empty aggregator, so a
+naive `check` there would find zero classes and pass vacuously.
+
+### Decision
+
+Enforce an **overall** gate in the `report` module:
+
+1. `maven-dependency-plugin:unpack-dependencies` unpacks every `com.societegenerale.failover` module's
+   main classes into the aggregator's output directory (so `check` has all classes to analyse).
+2. A second `jacoco:merge` (`merge-all-modules`) merges every module's per-module `aggregate.exec`
+   (unit + integration) into one cross-module `all-modules.exec`.
+3. `jacoco:check` (`check-overall-coverage`, `haltOnFailure=true`) enforces a single `BUNDLE` rule on
+   that merged data: **line ≥ 95%, branch ≥ 95%**.
+
+Measured at adoption: ~99% line / ~97% branch — so the gate is a **regression floor with headroom**,
+not a stretch target. Non-vacuity verified: raising a floor to 99.9% fails the build
+(`lines covered ratio is 0.989`).
+
+### Consequences
+
+* `mvn verify` now fails if overall coverage drops below 95% line / 95% branch — a regression can no
+  longer slip in silently.
+* The gate is aggregate (cross-module), complementing the per-`failover-core` PIT mutation gate (ADR 46).
+* Cost: the `report` module unpacks module classes and does one extra merge; negligible. The gate runs
+  only in a full reactor `verify` (the `report` module is last and depends on all others).
+
+___
