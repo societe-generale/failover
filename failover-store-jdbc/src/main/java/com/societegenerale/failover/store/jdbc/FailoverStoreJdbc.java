@@ -108,33 +108,43 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
         insertOrUpdate(referentialPayload);
     }
 
+    /** Max INSERT→UPDATE attempts before a write is abandoned (1 initial + 1 bounded retry). */
+    static final int MAX_INSERT_OR_UPDATE_ATTEMPTS = 2;
+
     /**
      * Inserts the payload; on {@link org.springframework.dao.DuplicateKeyException} falls back to UPDATE.
      *
-     * <p><b>Race window:</b> between the failed INSERT and the follow-up UPDATE a concurrent
-     * delete (e.g. expiry cleanup) can remove the row, so the UPDATE affects 0 rows and the write
-     * is silently dropped. The window is tiny, the data is a regenerable cache, and the native
-     * merge path (used by every supported dialect) avoids it entirely — so this is logged at debug
-     * rather than retried.
+     * <p><b>Race window &amp; bounded retry:</b> between the failed INSERT and the follow-up UPDATE a
+     * concurrent delete (e.g. expiry cleanup) can remove the row, so the UPDATE affects 0 rows. When
+     * that happens the row is now absent, so the loop re-runs the INSERT once — which succeeds. The
+     * retry is bounded to {@value #MAX_INSERT_OR_UPDATE_ATTEMPTS} attempts so a pathological,
+     * repeatedly-deleted key cannot spin. If every attempt loses the race the write is abandoned and
+     * logged at {@code warn}; the data is a regenerable cache and the native merge path (used by every
+     * supported dialect) avoids the window entirely.
      */
     private void insertOrUpdate(ReferentialPayload<T> referentialPayload) {
-        try {
-            var count = jdbcTemplate.update(queryResolver.getInsertQuery(),
-                    queryResolver.buildInsertMergeParams(referentialPayload),
-                    queryResolver.buildInsertMergeTypes());
-            log.debug("Referential payload inserted. Records inserted: '{}'", count);
-        } catch (DuplicateKeyException e) {
-            log.debug("Referential payload already exists for name='{}', key='{}'. Retrying as UPDATE.", referentialPayload.getName(), referentialPayload.getKey());
-            var count = jdbcTemplate.update(queryResolver.getUpdateQuery(),
-                    queryResolver.buildUpdateParams(referentialPayload),
-                    queryResolver.buildUpdateTypes());
-            if (count == 0) {
-                log.debug("Referential payload UPDATE affected 0 rows for name='{}', key='{}' — the row was likely deleted concurrently (expiry cleanup) between the failed INSERT and this UPDATE; write dropped.",
-                        referentialPayload.getName(), referentialPayload.getKey());
-            } else {
-                log.debug("Referential payload updated. Records updated: '{}'", count);
+        for (int attempt = 1; attempt <= MAX_INSERT_OR_UPDATE_ATTEMPTS; attempt++) {
+            try {
+                var count = jdbcTemplate.update(queryResolver.getInsertQuery(),
+                        queryResolver.buildInsertMergeParams(referentialPayload),
+                        queryResolver.buildInsertMergeTypes());
+                log.debug("Referential payload inserted. Records inserted: '{}'", count);
+                return;
+            } catch (DuplicateKeyException e) {
+                log.debug("Referential payload already exists for name='{}', key='{}'. Retrying as UPDATE.", referentialPayload.getName(), referentialPayload.getKey());
+                var count = jdbcTemplate.update(queryResolver.getUpdateQuery(),
+                        queryResolver.buildUpdateParams(referentialPayload),
+                        queryResolver.buildUpdateTypes());
+                if (count > 0) {
+                    log.debug("Referential payload updated. Records updated: '{}'", count);
+                    return;
+                }
+                log.debug("Referential payload UPDATE affected 0 rows for name='{}', key='{}' (attempt {}/{}) — the row was likely deleted concurrently (expiry cleanup) between the failed INSERT and this UPDATE; re-inserting.",
+                        referentialPayload.getName(), referentialPayload.getKey(), attempt, MAX_INSERT_OR_UPDATE_ATTEMPTS);
             }
         }
+        log.warn("Referential payload write abandoned for name='{}', key='{}' after {} INSERT/UPDATE attempts — the row was repeatedly removed by concurrent expiry cleanup. The value will be re-stored on the next successful upstream call.",
+                referentialPayload.getName(), referentialPayload.getKey(), MAX_INSERT_OR_UPDATE_ATTEMPTS);
     }
 
     /**

@@ -141,8 +141,25 @@ class FailoverStoreJdbcMergeFallbackTest {
     }
 
     @Test
-    @DisplayName("UPDATE affects 0 rows (concurrent delete) — write is dropped silently, no exception")
-    void updateZeroRowsDoesNotThrow() {
+    @DisplayName("UPDATE affects 0 rows (concurrent delete) then re-INSERT succeeds — bounded retry recovers the write")
+    void reInsertSucceedsAfterUpdateLosesTheRace() {
+        // attempt 1: INSERT → DuplicateKey; attempt 2: INSERT → success (row absent after concurrent delete)
+        given(jdbcTemplate.update(eq(INSERT_SQL), any(Object[].class), any(int[].class)))
+                .willThrow(new DuplicateKeyException("exists"))
+                .willReturn(1);
+        // UPDATE between the two INSERTs affects 0 rows — row deleted by expiry cleanup
+        given(jdbcTemplate.update(eq(UPDATE_SQL), any(Object[].class), any(int[].class))).willReturn(0);
+        FailoverStoreJdbc<String> store = storeWithMerge(null);
+
+        assertThatNoException().isThrownBy(() -> store.store(payload));
+
+        verify(jdbcTemplate, times(2)).update(eq(INSERT_SQL), any(Object[].class), any(int[].class));
+        verify(jdbcTemplate, times(1)).update(eq(UPDATE_SQL), any(Object[].class), any(int[].class));
+    }
+
+    @Test
+    @DisplayName("UPDATE affects 0 rows on every attempt — write abandoned after the bounded retry, no exception")
+    void updateZeroRowsAbandonsWriteAfterBoundedRetry() {
         given(jdbcTemplate.update(eq(INSERT_SQL), any(Object[].class), any(int[].class)))
                 .willThrow(new DuplicateKeyException("exists"));
         given(jdbcTemplate.update(eq(UPDATE_SQL), any(Object[].class), any(int[].class))).willReturn(0);
@@ -150,6 +167,8 @@ class FailoverStoreJdbcMergeFallbackTest {
 
         assertThatNoException().isThrownBy(() -> store.store(payload));
 
-        verify(jdbcTemplate).update(eq(UPDATE_SQL), any(Object[].class), any(int[].class));
+        // MAX_INSERT_OR_UPDATE_ATTEMPTS = 2: INSERT and UPDATE each tried twice, then give up
+        verify(jdbcTemplate, times(2)).update(eq(INSERT_SQL), any(Object[].class), any(int[].class));
+        verify(jdbcTemplate, times(2)).update(eq(UPDATE_SQL), any(Object[].class), any(int[].class));
     }
 }

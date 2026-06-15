@@ -63,7 +63,8 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
         Class<T> clazz = cast(payload.getClass());
         var referentialPayload = payloadEnricher.enrichOnStore(failover, clazz, new ReferentialPayload<>(effectiveName(failover), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);
-        log.info("Failover : Storing information on '{}' for failover. ReferentialPayload : {{}}", failover.name(), referentialPayload);
+        log.info("Failover : Storing information on '{}' for failover.", failover.name());
+        log.debug("Failover : Stored ReferentialPayload on '{}' : {{}}", failover.name(), referentialPayload);
         return referentialPayload.getPayload();
     }
 
@@ -78,10 +79,12 @@ public class DefaultFailoverHandler<T> implements FailoverHandler<T> {
     private T doRecover(Failover failover, Class<T> clazz, Throwable cause, ReferentialPayload<T> referentialPayload) {
         if(referentialPayload!=null) {
             if(!expiryPolicy.isExpired(failover, referentialPayload)) {
-                log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
+                log.info("Failover Recovery : Successfully recovered the information on '{}' from failover store.", failover.name());
+                log.debug("Failover Recovery : Recovered ReferentialPayload on '{}' : {{}}", failover.name(), referentialPayload);
                 return payloadEnricher.enrichOnRecover(failover, clazz, referentialPayload, cause).getPayload();
             }
-            log.info("Failover Recovery : Deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}", failover.name(), referentialPayload);
+            log.info("Failover Recovery : Deleting the expired payload on '{}' from failover store.", failover.name());
+            log.debug("Failover Recovery : Deleting expired ReferentialPayload on '{}' : {{}}", failover.name(), referentialPayload);
             failoverStore.delete(referentialPayload);
         }
         log.warn("Failover Recovery : Could not recover information on '{}' from failover store, Either not found or expired for the given key!", failover.name());
