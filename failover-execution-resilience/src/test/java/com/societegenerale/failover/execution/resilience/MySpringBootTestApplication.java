@@ -39,7 +39,7 @@ import com.societegenerale.failover.core.observable.publisher.MdcLoggerObservabl
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
-import com.societegenerale.failover.store.FailoverStoreInmemory;
+import com.societegenerale.failover.store.inmemory.FailoverStoreInmemory;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

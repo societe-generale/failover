@@ -12,6 +12,7 @@
     </parent>
 
     <properties>
+        <automatic.module.name>com.societegenerale.failover.core</automatic.module.name>
         <!-- This is the only module PIT mutation-tests; the parent defaults pitest.skip=true. -->
         <pitest.skip>false</pitest.skip>
     </properties>

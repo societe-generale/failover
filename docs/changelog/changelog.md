@@ -17,6 +17,14 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Key generation now produces fixed-length MD5/UUID-based keys to prevent VARCHAR(256) overflow
 - `FailoverScanner` SPI moved from `core.observable.scanner` to `core.scanner` — it is now a neutral
   shared component (consumed by both observability reporting and store deserialization safety)
+- **Breaking — split packages eliminated (audit A-1).** Store implementations moved out of the shared
+  `com.societegenerale.failover.store` package into per-backend subpackages:
+  `FailoverStoreInmemory` → `…store.inmemory`, `FailoverStoreCaffeine` → `…store.caffeine`,
+  `FailoverStoreJdbc` (and its `serializer`/`mapper`/`resolver` packages) → `…store.jdbc.*`,
+  `FailoverStoreAsync` → `…store.async`. The `failover-lookup` `BeanFactory*` beans moved out of
+  `failover-core`'s `key`/`expiry`/`payload.splitter` packages into `com.societegenerale.failover.lookup`.
+  No two JARs share a package any more. Consumers referencing these classes by fully-qualified name
+  (custom configuration, explicit imports) must update their imports; zero-config users are unaffected
 
 ### Added
 
@@ -34,6 +42,8 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Micrometer counter `failover.store.async.failed{name,operation,exception_type}` for async store failures
 - `failover.exception-policy` property (`RETHROW`, `NEVER_THROW`, `CUSTOM`)
 - SpEL expression support for expiry (`expiryDurationExpression`, `expiryUnitExpression`)
+- `Automatic-Module-Name` in every published JAR manifest (e.g. `com.societegenerale.failover.core`,
+  `…store.jdbc`, `…lookup`) — stable JPMS module names ahead of full `module-info.java` (audit A-1)
 
 ### Security
 
@@ -54,7 +64,8 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   `FailoverStoreAsync` executor path — part of the default build. See
   [Concurrency Tests](../quality/concurrency-tests.md)
 - ArchUnit architecture tests: no `ThreadLocal` in the async decorator, `*Store` naming, acyclic
-  slices. See [Architecture Tests](../quality/architecture-tests.md)
+  slices, and split-package guards (no store in the bare `…store` package; `BeanFactory*` beans in
+  `…lookup`). See [Architecture Tests](../quality/architecture-tests.md)
 - PIT mutation testing over all of `failover-core` (`-Pmutation`), mandated at a **95% gate**
   (currently 96%, test strength 99%). See [Mutation Testing](../quality/mutation-testing.md)
 - CI: advisory `dialect-its` job and **blocking** `mutation` job; the H2 build remains the required gate

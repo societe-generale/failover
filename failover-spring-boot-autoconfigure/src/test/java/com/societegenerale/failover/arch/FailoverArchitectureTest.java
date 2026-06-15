@@ -32,8 +32,9 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  * only module with every {@code failover-*} artifact on its classpath, so a single import covers the
  * whole library.
  *
- * <p>The split-package rule (audit A-1) is intentionally <b>not</b> enforced here — it is a Phase 4
- * breaking change. These rules cover invariants that hold today.
+ * <p>Includes the split-package rules (audit A-1, fixed in Phase 4): store implementations live in
+ * per-backend subpackages and the {@code BeanFactory*} lookup beans live in {@code ..lookup}, so no
+ * two modules export the same package.
  *
  * @author Anand Manissery
  */
@@ -76,4 +77,30 @@ class FailoverArchitectureTest {
             slices()
                     .matching("com.societegenerale.failover.(*)..")
                     .should().beFreeOfCycles();
+
+    /**
+     * Split-package guard (audit A-1). The bare {@code com.societegenerale.failover.store} package is
+     * owned by no module: every concrete store lives in a per-backend subpackage ({@code ..store.jdbc},
+     * {@code ..store.caffeine}, {@code ..store.inmemory}, {@code ..store.async}, {@code ..store.multitenant})
+     * and the core contract lives in {@code ..core.store}. Two JARs sharing one package break JPMS and shading.
+     */
+    @ArchTest
+    static final ArchRule no_store_implementation_in_the_split_store_package =
+            noClasses()
+                    .that().areAssignableTo(FailoverStore.class)
+                    .and().areNotInterfaces()
+                    .should().resideInAPackage("com.societegenerale.failover.store")
+                    .because("the bare ..store package was split across four JARs (A-1); stores belong in per-backend subpackages");
+
+    /**
+     * Split-package guard (audit A-1). The {@code BeanFactory*} lookup beans previously sat in
+     * {@code failover-core}'s {@code key}/{@code expiry}/{@code payload.splitter} packages from a
+     * separate {@code failover-lookup} JAR. They now live in {@code com.societegenerale.failover.lookup}.
+     */
+    @ArchTest
+    static final ArchRule lookup_beans_reside_in_the_lookup_package =
+            classes()
+                    .that().haveSimpleNameStartingWith("BeanFactory")
+                    .should().resideInAPackage("com.societegenerale.failover.lookup")
+                    .because("BeanFactory*Lookup beans must not split failover-core's packages (A-1)");
 }

@@ -18,7 +18,7 @@ package com.societegenerale.failover.store.multitenant;
 
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
-import com.societegenerale.failover.store.FailoverStoreCaffeine;
+import com.societegenerale.failover.store.caffeine.FailoverStoreCaffeine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
