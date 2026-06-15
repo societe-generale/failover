@@ -11,12 +11,14 @@ icon: material/file-document-multiple-outline
 
 ## ADR 1 — Build a failover lib
 
-**Date : 10-NOV-2021**    
+**Date : 10-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Most of our platforms are highly dependent on many referential systems (external api / internal api) for various business process.  
 In such case any issues ( ex: unavailability ) on these referential systems will have a huge impact on our platform, both in prod and non prod.  
 This can cause a huge impact on our platform resilience, where due to such issues on the referential systems or external systems (API) , our platform will become not usable.  
@@ -25,59 +27,72 @@ This can cause a huge impact on our platform resilience, where due to such issue
 * If you have more such dependent services ( referential ) then the impact on your platforms wil be exponential
 
 ### Decision
+
 Build a lib to handle the failover with very minimal changes in each project or services.  
+
 * Keep a local store (persistence store) for storing the referential after every successful call.
 * On failure , recover the referential information from the local store
 * Keep an expiry policy for each referential, so that we don't serve the data once its expired
 * Keep do the cleanup for old / expired data from the local store
-* The expiry duration need to be decided with the business 
-
+* The expiry duration need to be decided with the business
 
 ### Consequences
+
 * The expiry duration need to be decided with the business
 * IT Team should not keep the long expiry for all referential without discussing with the business. If they do so, the platform can have very old data
 
 **Challenges:**
+
 * This may be needed for many services, so the lib need to be kept very simple.
   
 ___
 
-## ADR 2 — @Failover Annotations 
+## ADR 2 — @Failover Annotations
 
 **Date : 10-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
-Use @Failover annotation for declaring the failover.   
+
+Use @Failover annotation for declaring the failover.
 We could also leverage the FeignClient annotation, but having a dedicated annotation for @Failover will help the readability of the code.  
 Each Failover must have a unique name and should also help the developers to configure the expiry.
 
 ### Decision
+
 * **@Failover** annotation for declaring the failover. ex: ***@Failover(name = "client-all", expiryDuration = 1, expiryUnit = ChronoUnit.HOURS)***. The ***'name'*** must be unique, default value of expiry is 1 HOUR.
 
 ### Consequences
+
 * This only works with spring AOP.
 * The expiry need to be configured wisely, with the business acceptable expiry.
+
 ___
 
-## ADR 3 — Metadata for referential : As Of , Up To Date ? 
+## ADR 3 — Metadata for referential : As Of , Up To Date ?
 
 **Date : 15-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
-Most of the time, when we recover the referential from local store, it is important to keep below two information : 
-1. **As Of** : To mention how old is the local referential data on the local storage 
+
+Most of the time, when we recover the referential from local store, it is important to keep below two information :
+
+1. **As Of** : To mention how old is the local referential data on the local storage
 2. **upToDate** : To mention whether the data is a live data or a recovered data
 
 ### Decision
+
 * Build a lightweight module for domain. The domain module which has only 1 annotation, 1 interface, 1 class
 
 1. Referential to extend Abstract **Referential** Class with asOf , upToDate fields
+
 ```java
 @Data
 public abstract class Referential implements Serializable {
@@ -88,19 +103,23 @@ public abstract class Referential implements Serializable {
 }
 ```
 
-2. Referential to implement **ReferentialAware** interface with setAsOf , setUpToDate methods
+1. Referential to implement **ReferentialAware** interface with setAsOf , setUpToDate methods
+
 ```java
 public interface ReferentialAware {
     void setUpToDate(Boolean upToDate);
     void setAsOf(Instant asOf);
 }
 ```
-* 
-* If any of the above contract is applied , we will populate the information. 
+
+*
+* If any of the above contract is applied , we will populate the information.
 * These are optional, and if we did not apply any of these contract, the metadata information will be not applied  
 
 ### Consequences
+
 * Failover Domain module dependency required for your service domain
+
 ___
 
 ## ADR 4 — Recovered Payload Handler
@@ -108,16 +127,20 @@ ___
 **Date : 15-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
-Some time, we won't be able to recover the referential , either we don't have the information in our local store , or the available information is too old and expired.   
+
+Some time, we won't be able to recover the referential , either we don't have the information in our local store , or the available information is too old and expired.
 In this context, the framework return null and this may create an issue in the further processing of your code.  
 
 Some case , if team want to return a default object instead of null.  
 
 ### Decision
+
 * Provide a option to handle all recovered data.
+
 ```java
 public interface RecoveredPayloadHandler {
     <T> T handle(Failover failover, List<Object> args, Class<T> clazz, T payload);
@@ -126,6 +149,7 @@ public interface RecoveredPayloadHandler {
 
 * Each team can plug their own RecoveredPayloadHandler to handle all the recovered data ( in case of returning null or non-null data )
 * By default, we provided PassThroughRecoveredPayloadHandler which does nothing, just pass through the same data.
+
 ```java
 public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandler {
 
@@ -137,7 +161,9 @@ public class PassThroughRecoveredPayloadHandler implements RecoveredPayloadHandl
 ```
 
 ### Consequences
+
 * The custom RecoveredPayloadHandler implementation can impact the behaviour of your platform based on the implementation.
+
 ___
 
 ## ADR 5 — Failover Store
@@ -145,23 +171,28 @@ ___
 **Date : 16-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
+
 How do we store the data locally for recovery ? It will be better to provide some basic storage options as part of the lib.  
 
-
 ### Decision
+
 * The lib provide below storage types :
+
 1. **INMEMORY** : With basic ConcurrentHashMap implementation. We highly recommend to ***NOT USE*** this in ***Production***
 2. **CAFFEINE** : With Caffeine cache implementation.
 3. **JDBC** : With Jdbc implementation. This required ***JdbcTemplate*** and ***ObjectMapper*** beans
 4. **CUSTOM** : Allows each service to provide a custom store.
 
-* Both **store** & **delete** can be executed **asynchronously** 
+* Both **store** & **delete** can be executed **asynchronously**
 
 ### Consequences
-* The performance of the I/O operation on store and recover may impact the overall performance of your platform 
+
+* The performance of the I/O operation on store and recover may impact the overall performance of your platform
+
 ___
 
 ## ADR 6 — Failover Execution
@@ -169,13 +200,17 @@ ___
 **Date : 17-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
+
 By default, provide a basic failover execution with a simple try catch.
 
 ### Decision
+
 * We have provided below Failover Execution
+
 1. BASIC : Basic failover execution with a simple try catch.
 2. RESILIENCE : failover execution with resilience4j implementation. We highly recommend ***NOT TO CLUB*** this with other resilience or retry solutions.
 3. CUSTOM : Allows each service to provide a custom Failover Execution.
@@ -183,7 +218,9 @@ By default, provide a basic failover execution with a simple try catch.
 * Make the failover execution as fault tolerant. Any exception on failover execution should not impact the actual business flow.
 
 ### Consequences
+
 * Clubbing multiple resilience with RESILIENCE Failover Execution may impact the overall performance and behaviour of your platforms
+
 ___
 
 ## ADR 7 — Auto Cleanup
@@ -191,20 +228,25 @@ ___
 **Date : 17-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Provide a provision to auto cleanup the expired referential data from the referential store
 
 ### Decision
+
 * A configurable scheduler to trigger a auto cleanup
 * Default is 1 hour.
 * This can configure from yml by providing a new cron expression
 * **Auto cleanup** can be executed **asynchronously**
 
 ### Consequences
-* Any custom expiry policy may not be applied on auto cleanup. 
+
+* Any custom expiry policy may not be applied on auto cleanup.
 * After expiry cleanup, you may have no data to recover.
+
 ___
 
 ## ADR 8 — Monitoring
@@ -212,16 +254,21 @@ ___
 **Date : 17-NOV-2021**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Provide useful metrics for monitoring  
 
 ### Decision
+
 * Publish useful metrics for monitoring , which help us to create useful dashboard in Kibana
 
 ### Consequences
-* NA 
+
+* NA
+
 ___
 
 ## ADR 9 — Key Generator
@@ -229,18 +276,23 @@ ___
 **Date : 30-DEC-2021**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Provide an option to customize the key generator for a specific failover
 
 ### Decision
+
 * Provide an option to declare the custom key generator bean name in @Failover
 * Provide a KeyGenerator lookup features to get the Key Generator by a given name
 * Provide a Failover composite key generator which select the proper Key Generator if mentioned, else to use the Default Key Generator.
 
 ### Consequences
+
 * If the custom key generator (name) is missing, an exception may occur.
+
 ___
 
 ## ADR 10 — DefaultFailoverStore — Defensive Copy for Immutability
@@ -248,14 +300,17 @@ ___
 **Date : 25-MAY-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverStore` implementations hold `ReferentialPayload` instances in memory (ConcurrentHashMap, Caffeine cache).
 If the same object reference is shared between the store and the caller, mutations on either side corrupt the stored state silently.
 Additionally, data recovered from the failover store must always be distinguishable from a live response — a recovered payload must never appear as `upToDate=true`.
 
 ### Decision
+
 Introduce `DefaultFailoverStore<T>` as a mandatory decorator around every concrete `FailoverStore`.
 
 * **Before storing (`store`, `delete`)**: call `referentialPayload.copy().withUpToDate(false)` to write a defensive copy with `upToDate` forced to `false`. The caller retains their original object; the store holds its own independent copy.
@@ -271,10 +326,12 @@ cleanByExpiry    →  delegate.cleanByExpiry(expiry)   // passthrough
 ```
 
 ### Consequences
+
 * Every store/find operation allocates one extra `ReferentialPayload` object — negligible overhead.
 * `upToDate` is always `false` for data served from the failover store, regardless of what was stored. Callers can rely on this invariant unconditionally.
 * Mutating the payload object received from `find()` has no effect on the store.
 * `DefaultFailoverStore` is automatically applied to all `FailoverStore` beans via `FailoverStoreBeanPostProcessor` (see ADR 11) — no manual wiring required.
+
 ___
 
 ## ADR 11 — FailoverStoreBeanPostProcessor — Uniform Store Wrapping via BeanPostProcessor
@@ -282,19 +339,24 @@ ___
 **Date : 25-MAY-2026**
 
 ### Status
+
 Deprecated — superseded by ADR 16, ADR 18, ADR 19
 
 ### Context
+
 Every `FailoverStore` bean — whether auto-configured (INMEMORY, CAFFEINE, JDBC) or user-provided (CUSTOM) — must be consistently wrapped with:
+
 1. `DefaultFailoverStore` — enforces `upToDate=false` and defensive copy (see ADR 10).
 2. `FailoverStoreAsync` — makes `store`, `delete`, and `cleanByExpiry` asynchronous via Spring `@Async`.
 
 Previously, each auto-configuration class manually constructed the wrapping chain, leading to duplication and risk of inconsistency for custom stores. User-defined `FailoverStore` beans received no wrapping at all.
 
 ### Decision
+
 Implement `FailoverStoreBeanPostProcessor implements BeanPostProcessor` and register it as a `static @Bean` in `FailoverAutoConfiguration`.
 
 **Wrapping rule** applied in `postProcessBeforeInitialization`:
+
 ```
 if bean is FailoverStore
    AND NOT already FailoverStoreAsync
@@ -311,6 +373,7 @@ All auto-configuration `@Bean` methods (INMEMORY, CAFFEINE, JDBC) return the raw
 **Why `postProcessBeforeInitialization` and not `postProcessAfterInitialization`:**
 
 Spring's bean lifecycle runs in this order:
+
 ```
 1. Bean instantiated
 2. Dependencies injected
@@ -327,10 +390,12 @@ If wrapping happened in step 5 (`postProcessAfterInitialization`), the returned 
 `BeanPostProcessor` beans are instantiated very early in the Spring context lifecycle, before regular `@Configuration` class instances are created. Declaring the bean `static` avoids eager instantiation of the `@Configuration` class and prevents proxy-related issues.
 
 ### Consequences
+
 * All `FailoverStore` beans — auto-configured or user-defined — get the same `FailoverStoreAsync → DefaultFailoverStore → concrete store` chain automatically.
 * Custom store authors define only the raw `FailoverStore` implementation; wrapping is transparent. **CustomStore should not use any bean post construct or bean init**
 * `FailoverStoreAsync` and `DefaultFailoverStore` themselves are excluded from re-wrapping by the guard.
 * BPP ordering relative to `AsyncAnnotationBeanPostProcessor` is safe because `postProcessBeforeInitialization` always precedes AOP proxy creation.
+
 ___
 
 ## ADR 12 — MethodExceptionPolicy — Pluggable Exception Handling Strategy
@@ -338,9 +403,11 @@ ___
 **Date : 26-MAY-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 When a primary call fails and failover recovery is attempted, the framework previously had a fixed outcome: swallow the original exception and return the recovered result (or `null` if recovery also failed).
 This gave callers no way to control what happens post-recovery:
 
@@ -349,6 +416,7 @@ This gave callers no way to control what happens post-recovery:
 * Some teams need custom logic — enriching the exception, mapping it to a domain-specific type, publishing a metric.
 
 ### Decision
+
 Introduce a `MethodExceptionPolicy` strategy interface to decide the final outcome after recovery is attempted.
 
 ```java
@@ -371,6 +439,7 @@ public record MethodExceptionContext<T>(
 ```
 
 Implementations may:
+
 * Return `context.recoveredResult()` — serve stale data transparently.
 * Return `null` — propagate nothing; let the caller handle absence.
 * Rethrow `context.cause()` via sneaky throw — cascade the original exception.
@@ -387,10 +456,12 @@ The policy is resolved by auto-configuration using `failover.exception-policy` p
 A `MethodExceptionHandler` wraps the policy to add debug logging before delegating.
 
 ### Consequences
+
 * Default behaviour (`RethrowIfNoRecoveryMethodExceptionPolicy`) is safe: stale data is preferred, but the original failure is surfaced when there is nothing to serve. This ensures monitoring fires on genuine outages with empty stores.
 * `NeverRethrowMethodExceptionPolicy` gives a pure degraded-mode experience at the cost of silent failures.
 * Any team can inject a custom `MethodExceptionPolicy` bean to override auto-configuration via `@ConditionalOnMissingBean`.
 * The exception policy operates at the failover boundary only — exceptions thrown during store/recover operations are already logged and swallowed internally.
+
 ___
 
 ## ADR 13 — JDBC Native Merge/Upsert — Dialect Detection and Runtime Fallback
@@ -398,18 +469,22 @@ ___
 **Date : 26-MAY-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverStoreJdbc.store()` previously relied on INSERT-only for new records. Under concurrent writes to the same key this created a race between a SELECT-check and an INSERT, causing `DuplicateKeyException` noise and requiring careful retry logic. Additionally, a simple INSERT gives no atomicity guarantee when the same key is written from multiple threads or nodes.
 
 Native merge/upsert operations (H2 `MERGE INTO…KEY`, PostgreSQL `ON CONFLICT DO UPDATE`, MySQL/MariaDB `ON DUPLICATE KEY UPDATE`, Oracle `MERGE USING DUAL`) provide atomic upsert semantics. However, each database uses a different syntax and not all databases support any of these forms.
 
 Two failure scenarios must be handled:
+
 1. **Build-time unknown dialect**: the detected product name does not match any known dialect (e.g. HSQLDB, DB2, or unrecognised proxies).
 2. **Runtime dialect mismatch**: the product name reported at startup is incorrect (e.g. a middleware proxy reports `"PostgreSQL"` but the actual underlying DB rejects the query), causing a `BadSqlGrammarException` on the first `store()` call.
 
 ### Decision
+
 1. At construction, `FailoverStoreJdbc` calls `FailoverStoreQueryResolver.getMergeQuery()`. If non-null, set `mergeEnabled = true` via `AtomicBoolean`. If null (unknown dialect), `mergeEnabled = false` from the start.
 2. When `mergeEnabled.get()` is `true`, attempt the native merge SQL. On success, return immediately.
 3. On `BadSqlGrammarException` at runtime: log a warning, call `mergeEnabled.set(false)` (permanent — `AtomicBoolean` ensures thread safety), then fall through to `insertOrUpdate`. All subsequent `store()` calls skip the merge block entirely — no per-call overhead.
@@ -436,11 +511,13 @@ The four supported native dialects:
 | Everything else   | `mergeQuery = null` → INSERT + UPDATE fallback  |
 
 ### Consequences
+
 * Atomic upsert with zero additional SELECT round-trip for all four supported databases.
 * Unknown databases fall back gracefully to INSERT + UPDATE — no configuration change required.
 * A single `BadSqlGrammarException` permanently disables merge for the lifetime of the bean. Subsequent calls pay only one `update()` (INSERT) instead of two, recovering performance after the one-time failure.
 * The `AtomicBoolean` flip is thread-safe: multiple concurrent threads may each throw `BadSqlGrammarException` and call `set(false)` simultaneously — this is safe and idempotent.
 * Adding a new dialect requires only a new SQL constant and a new `contains()` branch in `DefaultFailoverStoreQueryResolver.resolveMergeQuery()`.
+
 ___
 
 ## ADR 14 — DatabaseResolver — Strategy Interface for Database Product Detection
@@ -448,15 +525,19 @@ ___
 **Date : 26-MAY-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Database dialect selection (ADR 13) requires knowing the database product name at startup. Previously this detection logic was embedded directly inside `FailoverStoreJdbc` constructor, which caused three problems:
+
 1. **Untestable in isolation**: unit tests for `FailoverStoreJdbc` required a live `DataSource` to exercise dialect selection.
 2. **Not overridable**: applications using proxies, middleware (e.g. PgBouncer), or test environments where the reported product name is incorrect had no way to override detection.
 3. **Single responsibility violation**: `FailoverStoreJdbc` held unrelated JDBC metadata concerns alongside store operations.
 
 ### Decision
+
 Extract a `DatabaseResolver` strategy interface with a single no-argument method:
 
 ```java
@@ -472,11 +553,13 @@ public interface DatabaseResolver {
 - `DefaultFailoverStoreQueryResolver` receives `DatabaseResolver` via constructor injection and calls `resolve()` exactly once during its own construction to select and cache the merge SQL string.
 
 ### Consequences
+
 * `DefaultFailoverStoreQueryResolver` is fully unit-testable: mock or stub `DatabaseResolver.resolve()` without a live datasource.
 * `DefaultDatabaseResolver` is independently unit-testable: mock `JdbcTemplate` to simulate product name retrieval and failure paths.
 * Applications with non-standard environments (proxies, cloud SQL, test doubles) override detection by providing a single-bean `DatabaseResolver` implementation.
 * `resolve()` is called once at construction — no repeated metadata queries per `store()` call.
 * Returning `null` is the defined contract for "unknown" — all consumers treat `null` as "disable merge/use fallback".
+
 ___
 
 ## ADR 15 — FailoverStoreQueryResolver — Single-Responsibility Co-location of All JDBC Query Concerns
@@ -484,16 +567,20 @@ ___
 **Date : 26-MAY-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverStoreJdbc` originally held SQL strings, parameter arrays, SQL type arrays, and `ResultSet` mapping inline. This caused several issues:
+
 1. **Fragile column ordering**: SQL column order, `Object[]` parameter order, and `int[]` type order must always agree. When scattered across a class, a column rename or reorder requires coordinated changes in at least three places, with no compile-time safety net.
 2. **Untestable SQL logic**: verifying that INSERT column order matches the UPDATE SET/WHERE order, or that all SQL placeholders `?` match the parameter array length, required a running database.
 3. **Not replaceable**: users who needed custom SQL (different schema, encrypted payload column, additional audit columns) had no extension point short of replacing the entire `FailoverStoreJdbc` bean.
 4. **Dialect SQL embedded in the store**: merge-dialect SQL templates lived alongside CRUD operation code, mixing concerns.
 
 ### Decision
+
 Extract a `FailoverStoreQueryResolver` interface that owns every JDBC query concern:
 
 ```java
@@ -517,6 +604,7 @@ public interface FailoverStoreQueryResolver {
 ```
 
 `DefaultFailoverStoreQueryResolver` implements this interface with:
+
 - All SQL templates as private `static final` constants with a `%PREFIX%` placeholder substituted at construction time.
 - Parameter builders (`buildInsertMergeParams`, `buildUpdateParams`) and type builders (`buildInsertMergeTypes`, `buildUpdateTypes`) declared adjacent to their SQL templates — column order is enforced by co-location.
 - `mapRow` and `deserializePayload` co-located with the SQL they serve.
@@ -527,11 +615,13 @@ public interface FailoverStoreQueryResolver {
 `FailoverStoreQueryResolver` is registered as a `@ConditionalOnMissingBean` Spring bean in `FailoverJdbcStoreAutoConfiguration`. Users replace the entire query layer by providing a single bean of this type.
 
 ### Consequences
+
 * SQL text, parameter order, and SQL types for each operation live in one class. A column change requires editing exactly one file.
 * `DefaultFailoverStoreQueryResolver` is fully unit-tested without a database: placeholder count consistency, column order, dialect selection, parameter binding, row mapping, and deserialization edge cases are all covered by pure unit tests.
 * `FailoverStoreJdbc` is reduced to pure JDBC execution logic — it knows nothing about SQL, column types, or serialization.
 * Teams that need a different schema (additional columns, different key structure, encrypted payload, non-JSON serialization) implement `FailoverStoreQueryResolver` and declare the bean — no other changes required.
 * `PayloadColumnResolver` remains a separate, narrower extension point for teams that only need to change the payload column SQL type and extraction method, without replacing the entire resolver.
+
 ___
 
 ## ADR 16 — Removal of BeanPostProcessor-based Store Wrapping (Supersedes ADR 11)
@@ -539,9 +629,11 @@ ___
 **Date : 02-JUN-2026**
 
 ### Status
+
 Accepted — supersedes ADR 11
 
 ### Context
+
 ADR 11 introduced `DefaultFailoverStoreBeanPostProcessor` and `AsyncFailoverStoreBeanPostProcessor` registered as `static @Bean` entries inside `FailoverAutoConfiguration` to intercept raw `FailoverStore` beans and wrap them with `DefaultFailoverStore → FailoverStoreAsync`.
 
 This approach had two critical problems once multi-tenancy was introduced:
@@ -550,6 +642,7 @@ This approach had two critical problems once multi-tenancy was introduced:
 2. **@Async depends on Spring AOP proxy.** `FailoverStoreAsync` previously used `@Async` on its methods to offload work. `@Async` only functions when the call goes through a Spring-managed AOP proxy. A `FailoverStoreAsync` instance created inside a factory lambda is not a proxy — `@Async` degrades to synchronous execution silently with no error or warning.
 
 ### Decision
+
 Remove `DefaultFailoverStoreBeanPostProcessor` and `AsyncFailoverStoreBeanPostProcessor` entirely.
 
 Store wrapping is now performed **explicitly** inside `FailoverStoreAutoConfiguration` (see ADR 18) — not via BPP interception. The assembler directly constructs:
@@ -569,10 +662,12 @@ for sync mode (`failover.store.async=false`).
 The inner `@EnableAsync` nested configuration class (`AsyncBeanProcessorConfiguration`) is also removed. `FailoverStoreAsync` no longer uses `@Async`; it holds an explicit `TaskExecutor` (see ADR 19).
 
 ### Consequences
+
 * Wrapping chain is explicit, deterministic, and visible at a single assembly point — no implicit BPP intercept magic.
 * Multi-tenant per-tenant stores receive the same wrapping chain as single-tenant stores (see ADR 20).
 * ADR 11 is deprecated. The threading and ordering guarantees it relied on (`postProcessBeforeInitialization` ordering vs. `AsyncAnnotationBeanPostProcessor`) are no longer relevant.
 * Removing `@EnableAsync` from the autoconfigure module means applications must provide `@EnableAsync` themselves if they need `@Async` elsewhere — this is the correct responsibility boundary.
+
 ___
 
 ## ADR 17 — TenantStoreFactory SPI — Abstracting Store Creation from Store Assembly
@@ -580,9 +675,11 @@ ___
 **Date : 02-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Previously each store auto-configuration (`FailoverCaffeineStoreAutoConfiguration`, `FailoverJdbcStoreAutoConfiguration`, `FailoverAutoConfiguration`) produced a fully assembled `FailoverStore<Object>` bean directly. This fused two separate concerns:
 
 1. **How to create a raw store** (which implementation, with which configuration).
@@ -591,6 +688,7 @@ Previously each store auto-configuration (`FailoverCaffeineStoreAutoConfiguratio
 When multi-tenancy was introduced, each tenant needed its own isolated raw store instance (separate Caffeine cache, separate JDBC table prefix). Producing a single fully-assembled `FailoverStore` bean from a store auto-configuration was incompatible with this: the bean registry holds one bean, but multiple tenant stores must exist simultaneously and be created on demand.
 
 ### Decision
+
 Introduce `TenantStoreFactory<T>` as a `@FunctionalInterface` SPI:
 
 ```java
@@ -614,10 +712,12 @@ The factory's `create(tenantId)` method is **always called on the calling (reque
 In single-tenant mode, `create(SINGLE_TENANT_ID)` is called once at application startup by `FailoverStoreAutoConfiguration`.
 
 ### Consequences
+
 * Store creation and store assembly are decoupled. Adding a new store type requires implementing `TenantStoreFactory` only; the decorator chain is applied uniformly by the assembler.
 * Multi-tenant configurations override the auto-configured `TenantStoreFactory` via `@ConditionalOnMissingBean(TenantStoreFactory.class)` — no changes to `FailoverStoreAutoConfiguration`.
 * Custom store authors implement `TenantStoreFactory` (not `FailoverStore` directly) when registering custom stores with multi-tenant awareness. For single-tenant custom stores, `() -> myStore` is sufficient since `SINGLE_TENANT_ID` is the only argument ever passed.
 * `SINGLE_TENANT_ID = "_single_"` is a sentinel chosen to be unlikely to collide with real tenant IDs. It is not validated — implementations may ignore it.
+
 ___
 
 ## ADR 18 — FailoverStoreAutoConfiguration — Central Assembler
@@ -625,14 +725,17 @@ ___
 **Date : 02-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 After introducing `TenantStoreFactory` (ADR 17), the store auto-configurations produce a factory, not a ready `FailoverStore`. Something must consume the factory and produce the single `FailoverStore<Object>` bean that the rest of the framework depends on.
 
 Previously this assembly was implicit via `BeanPostProcessor` interception (ADR 11, now removed). With explicit assembly, a dedicated `@AutoConfiguration` class is the correct location.
 
 ### Decision
+
 Introduce `FailoverStoreAutoConfiguration` as the single assembly point for the `FailoverStore<Object>` bean.
 
 It runs `after` all store-type auto-configurations and `FailoverAutoConfiguration`, so `TenantStoreFactory` is guaranteed to be present.
@@ -640,15 +743,18 @@ It runs `after` all store-type auto-configurations and `FailoverAutoConfiguratio
 Two conditional `@Bean` methods produce `failoverStore`:
 
 **Async mode (default, `failover.store.async=true` or property absent):**
+
 ```java
 new FailoverStoreAsync<>(
     new DefaultFailoverStore<>(storeFactory.create(SINGLE_TENANT_ID)),
     failoverTaskExecutor
 )
 ```
+
 A `failoverTaskExecutor` bean (`SimpleAsyncTaskExecutor` with virtual threads on JDK 21+) is also registered, overridable by name.
 
 **Sync mode (`failover.store.async=false`):**
+
 ```java
 new DefaultFailoverStore<>(storeFactory.create(SINGLE_TENANT_ID))
 ```
@@ -658,10 +764,12 @@ Both beans are guarded by `@ConditionalOnBean(TenantStoreFactory.class)` and `@C
 In multi-tenant mode, `FailoverStoreMultiTenantAutoConfiguration` registers `MultiTenantFailoverStore` as the `FailoverStore` bean — which satisfies `@ConditionalOnMissingBean(FailoverStore.class)`, causing this assembler to skip its own bean registration.
 
 ### Consequences
+
 * Assembly is visible in one class — no implicit interception.
 * Async vs. sync is a single YAML property (`failover.store.async`), not two separate auto-configurations or BPP registrations.
 * `failoverTaskExecutor` uses virtual threads by default (JDK 21+); applications override by declaring a `TaskExecutor` bean named `failoverTaskExecutor`.
 * `@ConditionalOnMissingBean(FailoverStore.class)` means applications that declare their own `FailoverStore` bean bypass this assembler entirely — same behaviour as before.
+
 ___
 
 ## ADR 19 — FailoverStoreAsync — Explicit TaskExecutor Replacing @Async
@@ -669,9 +777,11 @@ ___
 **Date : 02-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverStoreAsync` previously used `@Async` on `store`, `delete`, and `cleanByExpiry` to offload writes to a Spring-managed thread pool.
 
 `@Async` has a critical limitation: it only works when the call is dispatched through a Spring AOP proxy. An instance created programmatically — such as one created inside a `TenantStoreFactory.create()` lambda — is not a Spring proxy and `@Async` degrades to synchronous, in-thread execution with no warning.
@@ -681,6 +791,7 @@ In multi-tenant mode, each tenant's `FailoverStoreAsync` is created programmatic
 Additionally, `@Async` relies on `@EnableAsync` being active in the application context, which imposed a constraint on the autoconfiguration module (it had to include `@EnableAsync` in a nested configuration class). Removing this is desirable: `@EnableAsync` is a cross-cutting concern that belongs to the application, not the library.
 
 ### Decision
+
 Remove `@Async` from all methods in `FailoverStoreAsync`. Inject an explicit `TaskExecutor` as a constructor parameter:
 
 ```java
@@ -704,11 +815,13 @@ Each lambda captures only method arguments — never any `ThreadLocal` values. T
 `@Async` and `@EnableAsync` are removed from the autoconfigure module entirely.
 
 ### Consequences
+
 * `FailoverStoreAsync` works correctly whether instantiated as a Spring bean or programmatically inside a factory — behaviour is identical in both cases.
 * `@EnableAsync` is no longer imposed on the application context by the library. Applications that need `@Async` for their own beans must add `@EnableAsync` themselves (same as any other Spring project).
 * The executor used for failover async operations is the `failoverTaskExecutor` bean registered by `FailoverStoreAutoConfiguration` (virtual threads on JDK 21+, overridable).
 * `find()` remains synchronous — the caller needs the result immediately and there is no asynchrony benefit.
 * `cleanByExpiry()` is now also submitted to the executor — previously it was `@Async` but with the same silent-degradation risk in non-Spring-managed instances.
+
 ___
 
 ## ADR 20 — MultiTenantFailoverStore — Outermost Per-Tenant Routing Decorator
@@ -716,19 +829,23 @@ ___
 **Date : 02-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Multi-tenant applications need to isolate failover data per tenant: tenant A must not read or write tenant B's referential store, regardless of the backing store technology.
 
 The decorator chain for a single tenant is `FailoverStoreAsync(DefaultFailoverStore(rawStore))`. Multi-tenancy requires this chain to be replicated per tenant, with routing at the outermost layer so that every operation is directed to the correct tenant's chain before any thread boundary is crossed.
 
 Key constraints:
+
 1. **ThreadLocal must be read on the calling thread.** `TenantResolver` reads tenant context from a `ThreadLocal` (or HTTP request). Once the operation enters `FailoverStoreAsync`'s executor, the `ThreadLocal` may not be set.
 2. **Per-tenant stores must be created lazily.** The full set of tenants is not always known at startup, and eagerly creating stores for all tenants may be wasteful or impossible.
 3. **`cleanByExpiry` is called by the scheduler** (not a request thread) — no tenant context is available. It must clean all initialized tenant stores.
 
 ### Decision
+
 Introduce `MultiTenantFailoverStore<T> implements FailoverStore<T>` as the **outermost** decorator in the chain. It sits above `FailoverStoreAsync` and `DefaultFailoverStore`:
 
 ```
@@ -759,11 +876,13 @@ public class MultiTenantFailoverStore<T> implements FailoverStore<T> {
 **Pre-warming:** `prewarm(Set<String> tenantIds)` can be called at startup to initialise stores for known tenants, ensuring `cleanByExpiry` covers them from the first scheduler tick.
 
 ### Consequences
+
 * Tenant resolution always occurs on the calling thread — `ThreadLocal` contract is preserved.
 * Per-tenant stores are created lazily on first access; `SINGLE_TENANT_ID` is never used in multi-tenant mode.
 * `cleanByExpiry` is fan-out across all initialized tenants. Tenants receiving their first request after the cleanup tick will skip one cleanup cycle — acceptable because an empty store has nothing to expire.
 * `defaultTenant` allows applications to configure a fallback for unauthenticated or system requests without throwing an exception.
 * `decorator` parameter makes `MultiTenantFailoverStore` independent of specific decorator implementations — it can be unit-tested with a simple identity decorator.
+
 ___
 
 ## ADR 21 — FailoverStoreMultiTenantAutoConfiguration — Multi-Tenant Auto-Configuration and TenantResolver SPI
@@ -771,14 +890,17 @@ ___
 **Date : 02-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Multi-tenant store support (ADR 20) requires configuration wiring: the `MultiTenantFailoverStore` bean must be assembled with the correct `TenantStoreFactory`, `TenantResolver`, and decorator function. Additionally, JDBC isolation strategy and per-tenant parameters must be configurable via YAML.
 
 Tenant resolution strategy (HTTP header, security context, custom logic) varies by application — the library cannot provide a universal default without pulling in inappropriate dependencies (Spring Security, Servlet API, etc.).
 
 ### Decision
+
 **Auto-configuration:** Introduce `FailoverStoreMultiTenantAutoConfiguration`, activated by `failover.store.multitenant.enabled=true`. It:
 
 1. Registers a multitenant `TenantStoreFactory` (one per store type) via `@ConditionalOnMissingBean(TenantStoreFactory.class)` — overrides the single-tenant factory from the store-type auto-configurations.
@@ -786,6 +908,7 @@ Tenant resolution strategy (HTTP header, security context, custom logic) varies 
 3. Injects the decorator function that mirrors single-tenant assembly: `raw -> new FailoverStoreAsync<>(new DefaultFailoverStore<>(raw), executor)`.
 
 **TenantResolver SPI:** `TenantResolver` is a `@FunctionalInterface` with a single `resolve()` method returning the current tenant ID (or `null`). The library provides:
+
 - `TenantContextTenantResolver` — reads from `TenantContext` (a `ThreadLocal` holder).
 - `FixedTenantResolver` — always returns a literal (useful for testing).
 
@@ -799,6 +922,7 @@ The application must provide the `TenantResolver` bean. The autoconfiguration de
 | `SCHEMA` | Application provides an `AbstractRoutingDataSource` that routes to the correct schema using `TenantContext.get()` as the lookup key | Application-managed `DataSource` routing |
 
 **Properties:**
+
 ```yaml
 failover:
   store:
@@ -814,12 +938,14 @@ failover:
 ```
 
 ### Consequences
+
 * Zero impact on existing single-tenant deployments: `failover.store.multitenant.enabled` defaults to `false`.
 * Applications must declare a `TenantResolver` bean; the library does not auto-detect tenant context to avoid opinionated dependencies.
 * `TABLE_PREFIX` strategy works with a single shared `DataSource` and `JdbcTemplate` — no infrastructure changes required.
 * `SCHEMA` strategy delegates all routing to the application's `DataSource` — the library performs no schema-level work beyond using the provided `JdbcTemplate`.
 * Per-tenant `TenantConfig` entries are optional for Caffeine and InMemory stores; only JDBC uses `tablePrefix`.
 * `defaultTenant` prevents exceptions for unauthenticated or internal requests that have no tenant context, at the cost of routing all such requests to a shared store.
+
 ___
 
 ## ADR 22 — FailoverKeyGenerator — UUID-Based Key Normalisation for Fixed-Width Store Keys
@@ -827,9 +953,11 @@ ___
 **Date : 03-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverKeyGenerator` originally returned the raw key produced by the delegate `KeyGenerator` directly to the store (initial commit, 2022). No transformation was applied.
 
 This created two latent problems as the library's store options grew:
@@ -841,6 +969,7 @@ This created two latent problems as the library's store options grew:
 Additionally, raw keys built from argument values exposed business data (IDs, names, codes) in the store's key column — a minor but avoidable privacy concern.
 
 ### Decision
+
 Introduce a `generateFinalKey` step in `FailoverKeyGenerator` that wraps the raw key from any delegate `KeyGenerator` in a deterministic type-3 UUID before returning:
 
 ```java
@@ -851,6 +980,7 @@ private String generateFinalKey(Failover failover, String tempKey) {
 ```
 
 **Why `UUID.nameUUIDFromBytes`:**
+
 - Produces a type-3 UUID (MD5-based, RFC 4122 §4.3). Output is always exactly 36 characters (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`), regardless of input size.
 - Deterministic: same byte input → same UUID every invocation, across JVM.
 - Character Encoding: The result of string.getBytes() depends on the default charset of the system. To ensure you get the same UUID across different machines or environments, it is safer to specify a fixed encoding (UUID.nameUUIDFromBytes("string".getBytes(StandardCharsets.UTF_8)); otherwise, you might get different UUIDs if the default charset differs.)
@@ -864,6 +994,7 @@ Two failovers with different names but identical method arguments must produce d
 The change is applied uniformly: both the default path (`defaultKeyGenerator`) and the custom-generator path (`keyGeneratorLookup`) pass through `generateFinalKey`. The delegate `KeyGenerator` contract is unchanged — implementations continue to return an arbitrary string.
 
 ### Consequences
+
 * All store keys are exactly 36 characters. `FAILOVER_KEY VARCHAR(256)` is always satisfied with 220 characters to spare, regardless of argument size or custom `KeyGenerator` output.
 * Custom `KeyGenerator` implementors are freed from managing key length: any string they return is hashed. Length and character-set restrictions on the raw key are eliminated.
 * Keys are deterministic and stable: the same `failover.name()` and raw key always map to the same UUID. No randomness is introduced.
@@ -871,6 +1002,7 @@ The change is applied uniformly: both the default path (`defaultKeyGenerator`) a
 * Two failovers with the same arguments but different names produce different stored keys — cross-failover isolation is enforced at the hashing step.
 * Keys are not human-readable in the store. Debugging which stored row corresponds to which call requires re-computing `UUID.nameUUIDFromBytes((name + ":" + rawKey).getBytes(UTF_8))` externally. Logging the raw key before hashing (at the `KeyGenerator` level) is the recommended debugging pattern.
 * Collision probability via MD5 is negligible at failover-argument cardinalities, but MD5 is not cryptographically strong. This is acceptable: the UUID is a cache key, not a security token. No authentication or authorisation decision is made from it.
+
 ___
 
 ## ADR 23 — PayloadSplitter — Scatter/Gather Storage for Composite-Key Failover
@@ -878,9 +1010,11 @@ ___
 **Date : 04-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Methods annotated with `@Failover` that accept a comma-separated string (e.g. `ids = "1,2,3,4"`)
 or a collection argument are stored under a single composite key derived from the entire argument.
 This causes two classes of cache misses:
@@ -936,6 +1070,7 @@ without this attribute follow the unchanged single-key path.
 ### Consequences
 
 **Easier:**
+
 - Batch-fetch failover now works across any subset or superset of IDs, not only the exact
   previously-seen combination.
 - Partial recovery: if 3 of 4 IDs are cached and the primary fails, the caller receives the
@@ -945,6 +1080,7 @@ without this attribute follow the unchanged single-key path.
 - The extension point is purely additive — no existing API changes.
 
 **More complex:**
+
 - Implementors must keep `splitOnRecover()` and `splitOnStore()` in sync: the contexts returned
   by each must match for the same composite input.
 - `merge()` must handle slices whose recovered payload is null (cache miss on individual entry).
@@ -952,6 +1088,7 @@ without this attribute follow the unchanged single-key path.
   to the number of IDs in the batch.
 - Store expiry operates per-slice: if individual slices expire at different wall-clock times (due
   to separate store calls), a gather may see mixed freshness.
+
 ___
 
 ## ADR 24 — Parallel Scatter/Gather — CompletableFuture with Injected Executor
@@ -959,6 +1096,7 @@ ___
 **Date: 04-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
@@ -998,15 +1136,18 @@ new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup);
 ### Consequences
 
 **Easier:**
+
 - Slice latency reduced from O(N) to O(1) for I/O-bound stores under parallel mode.
 - Thread strategy is fully configurable — users can supply their own named `Executor` bean
   (`scatterGatherExecutor`) to tune pool size, rejection policy, or monitoring.
 
 **More complex:**
+
 - Thread-local context (tenant ID, MDC, security) is not propagated to executor threads by
   default — requires explicit `ContextPropagator` (see ADR 25).
 - Any slice failure causes the entire `CompletableFuture.allOf().join()` to throw — there is
   no partial-success path in the current implementation.
+
 ___
 
 ## ADR 25 — ContextPropagator SPI — Thread-Local Context Propagation for Parallel Scatter
@@ -1014,6 +1155,7 @@ ___
 **Date: 04-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
@@ -1074,6 +1216,7 @@ entirely (e.g. to add security-principal propagation or a custom `ThreadLocal`).
 ### Consequences
 
 **Easier:**
+
 - Thread-local context is propagated transparently to all executor threads without changes to
   `MultiTenantFailoverStore`, MDC configuration, or Micrometer setup.
 - New context types (Spring Security principal, custom `ThreadLocal`) are added by implementing
@@ -1081,6 +1224,7 @@ entirely (e.g. to add security-principal propagation or a custom `ThreadLocal`).
 - `CompositeContextPropagator` chains any number of propagators without modifying existing ones.
 
 **More complex:**
+
 - Each `wrap()` call performs a `ThreadLocal` read on the calling thread — negligible overhead
   but non-zero.
 - `MicrometerContextPropagator` requires `io.micrometer.tracing.Tracer` on the classpath and a
@@ -1088,6 +1232,7 @@ entirely (e.g. to add security-principal propagation or a custom `ThreadLocal`).
 - Users who declare a custom `ContextPropagator` bean replace the entire auto-composed chain —
   they must explicitly include `MdcContextPropagator`, `TenantContextPropagator`, etc. if still
   needed.
+
 ___
 
 ## ADR 26 — Replace `LocalDateTime` with `Instant` for Timezone-Aware Expiry Timestamps
@@ -1095,9 +1240,11 @@ ___
 **Date : 06-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 All expiry-related timestamps (`asOf`, `expireOn`) used `java.time.LocalDateTime` throughout the expiry chain — `FailoverClock`, `ReferentialPayload`, `ExpiryPolicy`, `FailoverStore.cleanByExpiry()`, and the JDBC layer.
 
 `LocalDateTime` has no timezone concept. Two JVM nodes running in different time zones (or with different `TZ` environment variables) interpret the same stored `LocalDateTime` value differently:
@@ -1115,6 +1262,7 @@ The JDBC store uses a `TIMESTAMP` column (not `TIMESTAMP(9) WITH TIME ZONE`). `T
 Additionally, `DefaultExpiryPolicy` used `LocalDateTime.now(ZoneId.of("UTC"))`, which creates a `LocalDateTime` with UTC wall-clock values but no attached timezone offset. This prevented correct comparison against entries stored by nodes in other zones.
 
 ### Decision
+
 Replace `java.time.LocalDateTime` with `java.time.Instant` throughout the expiry chain.
 
 `Instant` is always UTC-relative, unambiguous across JVM timezone settings, and directly comparable regardless of where it was produced.
@@ -1146,11 +1294,13 @@ public Instant computeExpiry(Failover failover) {
 **JDBC binding** uses `Timestamp.from(Instant)` for writes and `Timestamp.toInstant()` for reads, preserving UTC semantics at the database boundary.
 
 ### Consequences
+
 * Expiry calculations are correct and identical across all JVM nodes regardless of system timezone.
 * All `FailoverStore` implementations (`InMemory`, `Caffeine`, `JDBC`, `Async`, `MultiTenant`) accept `Instant` for `cleanByExpiry()` — consistent interface.
 * Custom `ExpiryPolicy` implementations must update their `computeExpiry()` return type from `LocalDateTime` to `Instant` — this is a source-incompatible API change.
 * Custom `ReferentialAware` implementations must update `setAsOf(LocalDateTime)` to `setAsOf(Instant)` — source-incompatible.
 * JDBC stores using existing `TIMESTAMP` columns continue to work; `Timestamp.from(Instant)` writes UTC epoch milliseconds. No schema migration is required for databases that interpret `TIMESTAMP` as UTC internally (H2, PostgreSQL with `UTC` session timezone). For databases that apply local timezone during storage, changing the column to `TIMESTAMP(9) WITH TIME ZONE` is recommended but not mandatory.
+
 ___
 
 ## ADR 27 — Migrate Deprecated `JdbcTemplate` Overloads in `FailoverStoreJdbc`
@@ -1158,9 +1308,11 @@ ___
 **Date : 06-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverStoreJdbc` used the `JdbcTemplate` overloads that take explicit `Object[]` parameter arrays and `int[]` SQL type arrays:
 
 ```java
@@ -1171,6 +1323,7 @@ jdbcTemplate.update(sql, new Object[]{name, key}, new int[]{Types.VARCHAR, Types
 These overloads were deprecated in Spring Framework 5.3 and are not recommended for use with Spring Boot 4.x (Spring Framework 6.x). The `int[]` SQL type hints are unnecessary when the JDBC driver can infer types from the bound values, and the `Object[]` form adds boilerplate with no benefit.
 
 ### Decision
+
 Migrate to the non-deprecated varargs overloads:
 
 ```java
@@ -1187,9 +1340,11 @@ jdbcTemplate.update(sql, Timestamp.from(expiry));
 The `java.sql.Types` import is removed from `FailoverStoreJdbc` as it is no longer referenced.
 
 ### Consequences
+
 * No deprecated API usage in `FailoverStoreJdbc`.
 * `int[]` SQL type arrays removed — less boilerplate; driver-inferred types are sufficient for `VARCHAR` and `TIMESTAMP` parameters.
 * Behaviour is identical: Spring's varargs overload internally delegates to the same `PreparedStatementSetter` path as the deprecated forms.
+
 ___
 
 ## ADR 28 — `domain` Attribute — Shared Store Partitioning Across `@Failover` Annotations
@@ -1197,6 +1352,7 @@ ___
 **Date : 07-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
@@ -1251,15 +1407,18 @@ Logging in `DefaultFailoverHandler` retains `failover.name()` — for debugging,
 ### Consequences
 
 **Easier:**
+
 * Scatter/gather bulk endpoints and single-entity endpoints can share store entries with a one-line annotation change — no store schema change, no migration.
 * Backward compatible: `domain` defaults to `""`, so all existing annotations behave identically.
 * `FailoverNameResolver` centralises the logic — no risk of `FailoverKeyGenerator` and `DefaultFailoverHandler` using different namespaces.
 * Expiry mismatch warning fires at startup, before any runtime data is stored — operations can catch misconfiguration early.
 
 **More complex:**
+
 * Developers must align expiry across all `@Failover` annotations in the same domain. No compile-time enforcement.
 * Cross-domain store entry collision is theoretically possible if two unrelated failovers choose the same `domain` string. Convention (e.g. reverse-DNS prefix) prevents this.
 * Keys stored under a domain are no longer tied to a single `@Failover` name — debugging requires knowing which domain is in use.
+
 ___
 
 ## ADR 29 — Observability Layer — Observer, Publisher SPI and MDC Logger Refactor
@@ -1267,6 +1426,7 @@ ___
 **Date : 07-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
@@ -1323,6 +1483,7 @@ The `finally` block unconditionally restores the prior MDC state — metric keys
 * `ObservablePublisher` is a stable SPI — third-party publishers (Datadog, OpenTelemetry, custom event bus) implement it without coupling to the renamed internals.
 * `CompositeObservablePublisher` means the log publisher and Micrometer publisher coexist at no additional wiring cost.
 * The rename is source-incompatible for applications that implement `ReportPublisher` directly. Applications that only use Spring Boot auto-configuration are unaffected — the beans are replaced transparently.
+
 ___
 
 ## ADR 30 — SpringContextFailoverScanner — Replacing Reflections-Based Classpath Scanning
@@ -1330,6 +1491,7 @@ ___
 **Date : 07-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
@@ -1380,15 +1542,18 @@ public class SpringContextFailoverScanner
 ### Consequences
 
 **Easier:**
+
 * Zero configuration required — no `failover.package-to-scan`, no JVM flags, no Guava transitive.
 * Startup scan cost is O(registered beans) instead of O(classpath files). Typical saving: 50–300ms.
 * `@Failover` on interface methods is found correctly without any annotation repetition on concrete classes.
 * CGLIB-proxied beans are handled transparently.
 
 **More complex:**
+
 * `SpringContextFailoverScanner` sees only Spring-managed beans. `@Failover` on a class not registered in the Spring context is invisible. This is intentional — the AOP proxy (which is the actual interception mechanism) only covers Spring beans, so unscanned non-Spring classes would never be intercepted anyway.
 * Applications that extend `DefaultFailoverScanner` directly must migrate to `FailoverScanner` SPI — the concrete class is removed.
 * `failover.package-to-scan` configuration is a no-op after migration — it should be removed from application YAML to avoid confusion.
+
 ___
 
 ## ADR 31 — failover-observable-micrometer — Micrometer Extension as an Optional Module
@@ -1396,6 +1561,7 @@ ___
 **Date : 07-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
@@ -1440,15 +1606,18 @@ Tags on `failover.config.expiry.seconds`: `name` (annotation name), `domain` (ef
 ### Consequences
 
 **Easier:**
+
 * Applications without Micrometer pay zero cost — `failover-observable-micrometer` is not on their classpath and none of its beans are activated.
 * The `failover.config.expiry.seconds` gauge with `domain` tag allows dashboards to group related failovers by domain, providing a higher-level view than per-name metrics.
 * `FailoverMeterBinder` as a `SmartInitializingSingleton` guarantees gauge registration happens after the scanner completes — no race between binder and scanner initialization order.
 * `FailoverHealthIndicator` requires no additional dependency when Actuator is already present — common in Spring Boot applications.
 
 **More complex:**
+
 * Applications that want Micrometer metrics must add the `failover-observable-micrometer` Maven dependency explicitly. This is intentional opt-in.
 * Lifecycle ordering relies on both `FailoverMeterBinder` and `SpringContextFailoverScanner` implementing `SmartInitializingSingleton` — invocation order within the `afterSingletonsInstantiated` phase is determined by bean registration order in the application context, which is normally correct but should be verified in custom bootstrap scenarios.
 * `MicrometerObservablePublisher` handles store/recover runtime events published through the `ObservablePublisher` SPI. It is a separate class from `FailoverMeterBinder` which handles static configuration gauges. Both must be active for full metric coverage.
+
 ___
 
 ## ADR 32 — PayloadSplitterExecutionException — Wrapping User-Splitter Failures with Diagnostic Context
@@ -1456,19 +1625,23 @@ ___
 **Date : 10-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `ScatterGatherFailoverHandler` calls user-provided `PayloadSplitter` methods at three points: `splitOnStore`, `splitOnRecover`, and `merge`. Any of these can throw a runtime exception — for example, an `IndexOutOfBoundsException` if the splitter reads `args.get(0)` on a `findAll()` call where args are empty.
 
 Without wrapping, the raw exception propagates with no context indicating which splitter raised it, which operation was executing, or which `@Failover` annotation was active. Diagnosing the failure requires a full stack trace and correlation with the calling code.
 
 ### Decision
+
 Introduce `PayloadSplitterExecutionException` (in `failover-core`) as a `RuntimeException` that wraps all user-splitter failures.
 
 Three private helpers in `ScatterGatherFailoverHandler` — `invokeSplitOnStore`, `invokeSplitOnRecover`, and `invokeMerge` — call the corresponding splitter method inside a `try/catch(Exception)` and rethrow as `PayloadSplitterExecutionException`. Every splitter call site goes through one of these helpers; no splitter method is called directly.
 
 The exception message includes:
+
 - **operation** — `splitOnStore`, `splitOnRecover`, or `merge`
 - **splitter bean name** — from `failover.payloadSplitter()`
 - **failover name** — from `failover.name()`
@@ -1476,6 +1649,7 @@ The exception message includes:
 - **original cause message** — the exception thrown by the splitter
 
 Example:
+
 ```
 PayloadSplitter 'countrySplitter' failed during 'splitOnRecover'
   for failover 'countries-by-codes'
@@ -1484,10 +1658,12 @@ PayloadSplitter 'countrySplitter' failed during 'splitOnRecover'
 ```
 
 ### Consequences
+
 * A single exception class distinguishes splitter errors from framework errors. Stack traces point at the splitter method, not deep inside `ScatterGatherFailoverHandler`.
 * Service-layer catch blocks can filter specifically on `PayloadSplitterExecutionException` without catching unrelated `RuntimeException`s.
 * The original cause is preserved as `getCause()` — full stack trace from inside the splitter is retained.
 * Callers that previously relied on raw `IndexOutOfBoundsException` or `NullPointerException` propagating from splitters will now receive `PayloadSplitterExecutionException` wrapping those exceptions — a source-compatible change (both are `RuntimeException`).
+
 ___
 
 ## ADR 33 — doRecoverAll All-Slices Iteration — User-Controlled Slice Count
@@ -1495,16 +1671,20 @@ ___
 **Date : 10-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `doRecoverAll` calls `splitOnRecover` and then dispatches each returned context to `delegateR.recoverAll`. An earlier draft limited this to `slices.get(0)` (first slice only) to prevent N×duplication when using the default `DefaultFailoverHandler` — whose `recoverAll` ignores args and returns all store entries by name, so N contexts produce N×all-entries.
 
 Limiting to the first slice was rejected because:
+
 1. It silently discards valid user intent. A `PayloadSplitter` may return multiple contexts intentionally — for example, when the slice delegate's `recoverAll` partitions results by the context's args (e.g. by tenant ID, region, or a custom shard key). The framework has no way to distinguish "returning multiple contexts for a reason" from "returning multiple contexts by mistake".
 2. It violates the extension contract: the `PayloadSplitter` API surface implies that the framework honours all returned contexts, not just the first.
 
 ### Decision
+
 `doRecoverAll` iterates **all** contexts returned by `splitOnRecover`. Each context drives one `delegateR.recoverAll` call. The results are flat-mapped into a single list passed to `merge`.
 
 An empty-list guard exits early with a `WARN` log and returns `List.of()` without calling `merge` (ADR 35 covers this separately).
@@ -1514,10 +1694,12 @@ Deduplication is documented as the responsibility of `PayloadSplitter.merge()` w
 > When using the default `DefaultFailoverHandler` whose `recoverAll` ignores args and returns all entries by name, return exactly one placeholder context to avoid N-times duplication. Return multiple contexts only when the slice delegate's `recoverAll` partitions results by the supplied args.
 
 ### Consequences
+
 * Splitters that intentionally return multiple contexts for partitioned `recoverAll` work correctly.
 * Splitters using the default handler must return one context or handle N×duplication in `merge`.
 * The framework imposes no deduplication overhead on splitters that return a single context (the common case).
 * `merge()` receives duplicates when N>1 contexts are used with a non-partitioning delegate — a documented trade-off that gives the splitter full control over merge semantics.
+
 ___
 
 ## ADR 34 — ScatterGatherFailoverHandler.recoverAll() Override — Clear Error for Scatter Case
@@ -1525,14 +1707,17 @@ ___
 **Date : 10-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `ScatterGatherFailoverHandler` did not previously override `recoverAll()`. The inherited implementation from the delegate chain was called, which returns all composite entries by name. This is wrong in scatter mode: slices are stored per entity (type `R`), not per composite (type `T`). Returning slice data as composite data is a type mismatch that causes a `ClassCastException` at the call site with no clear message.
 
 Additionally, the correct pattern for recovering all slices in scatter mode is `recover()` (not `recoverAll()`) with empty args or `@Failover(recoverAll=true)`. The `BasicFailoverExecution` (used by the AOP aspect) always calls `recover()`, never `recoverAll()` directly. `recoverAll()` is only reachable via the handler API directly — and in scatter mode it is meaningless.
 
 ### Decision
+
 Override `recoverAll()` in `ScatterGatherFailoverHandler` with two branches:
 
 1. **Splitter configured (`payloadSplitter` non-empty):** throw `UnsupportedOperationException` with a message directing the caller to use `recover()` with empty args or `@Failover(recoverAll=true)`.
@@ -1541,10 +1726,12 @@ Override `recoverAll()` in `ScatterGatherFailoverHandler` with two branches:
 The error message names the failover and explains the correct alternative, so developers hitting this path during testing receive actionable guidance.
 
 ### Consequences
+
 * The silent type-mismatch `ClassCastException` is replaced by a clear `UnsupportedOperationException` naming the failover.
 * Scatter recover-all is supported via `recover()` + `@Failover(recoverAll=true)` — the existing, correct path.
 * No-splitter callers are unaffected: `delegateT.recoverAll()` is the same behaviour as before.
 * `recoverAll()` is now documented as unsupported in scatter mode and the reason is explicit in both the Javadoc and the exception message.
+
 ___
 
 ## ADR 35 — Empty splitOnRecover Guard — Null Return Instead of merge([])
@@ -1552,9 +1739,11 @@ ___
 **Date : 10-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `PayloadSplitter.merge()` is always called with the list of recovered slice contexts. Most `merge()` implementations read `contexts.get(0)` to build the composite `RecoverContext` builder. When `splitOnRecover` returns an empty list (misconfigured splitter, wrong args type, or intentional suppression), `merge([])` throws `IndexOutOfBoundsException` — a confusing crash with no failover context in the message.
 
 Two distinct scenarios need guarding:
@@ -1563,6 +1752,7 @@ Two distinct scenarios need guarding:
 2. **`doRecoverAll`:** `splitOnRecover` itself returns an empty list — no template context to dispatch to `delegateR.recoverAll`. Proceeding produces no recovered data and calling `merge([])` would crash.
 
 ### Decision
+
 **`doRecoverAll`:** guard before dispatching — if `invokeSplitOnRecover` returns empty, log `WARN` with the failover name and return `List.of()` immediately. This bubbles up to `scatterRecover` as an empty `recovered` list.
 
 **`scatterRecover`:** guard before calling `invokeMerge` — if `recovered.isEmpty()`, log `WARN` with the failover name and return `null`. The caller (the AOP aspect) treats `null` as a no-recovery result, consistent with single-key failover behaviour when no data is stored.
@@ -1570,10 +1760,12 @@ Two distinct scenarios need guarding:
 Both guards use `WARN` level (not `ERROR`) because: returning `null` from a failover is a valid degraded state (no data stored yet, first call after startup). `ERROR` is reserved for exceptions.
 
 ### Consequences
+
 * `merge()` is never called with an empty list — implementations that read `contexts.get(0)` are safe.
 * A misconfigured splitter that returns no contexts produces a `WARN` log entry, not a `ClassCastException` or `IndexOutOfBoundsException`.
 * Callers receive `null` on the empty-slices path, same as the no-entry-in-store path — consistent failover semantics.
 * The `WARN` log includes the failover name so operators can identify the misconfigured annotation.
+
 ___
 
 ## ADR 36 — splitOnRecover RecoverAll Contract — Single Placeholder for DefaultFailoverHandler
@@ -1581,9 +1773,11 @@ ___
 **Date : 10-JUN-2026**
 
 ### Status
+
 Accepted (documentation-only decision)
 
 ### Context
+
 The `splitOnRecover` method serves two distinct roles depending on the recovery path:
 
 1. **Normal scatter recover (args contain entity IDs):** returns N per-entity contexts, each with single-entity args → `delegateR.recover()` called N times with individual keys.
@@ -1594,6 +1788,7 @@ When the slice delegate is the default `DefaultFailoverHandler`, its `recoverAll
 The framework cannot detect this case automatically: it does not know whether the user's delegate implements partitioned `recoverAll` (where each context produces a disjoint result) or flat `recoverAll` (where each context produces the same full result). Applying automatic deduplication would silently break partitioned implementations.
 
 ### Decision
+
 Document the contract in `PayloadSplitter.splitOnRecover` Javadoc rather than enforcing it in framework code:
 
 - When using `DefaultFailoverHandler` as the slice delegate, `splitOnRecover` must return exactly **one** placeholder context for the recover-all path.
@@ -1612,11 +1807,13 @@ List<R> deduped = contexts.stream()
 The framework applies no deduplication itself — `merge()` has full domain knowledge of type `R` and can deduplicate by the correct business key.
 
 ### Consequences
+
 * Default case (one placeholder) produces zero duplication — the most common splitter implementation is correct by default.
 * Partitioned delegates (custom `recoverAll` that partitions by args) work without any special handling — N contexts produce N disjoint result sets, merged correctly.
 * Implementors who accidentally return multiple placeholders with a flat delegate receive N×all-entries in `merge` — behaviour is consistent and documented. `merge` can deduplicate if needed.
 * No runtime overhead in the framework for the common single-placeholder case.
 * The contract is enforced by documentation and code review, not by a runtime check — this is intentional. A runtime check would require the framework to call `recoverAll` speculatively or inspect the delegate implementation, neither of which is feasible.
+
 ___
 
 ## ADR 37 — Payload Deserialization Allowlist — Secure-by-Default Class Loading
@@ -1624,14 +1821,17 @@ ___
 **Date : 14-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 The JDBC store persists each payload's fully-qualified class name in the `PAYLOAD_CLASS` column and, on recovery, reconstructs the type via `Class.forName(name)` in `JsonSerializer.toClass` before Jackson deserializes the JSON. If an attacker can write to `FAILOVER_STORE` (SQL injection elsewhere in the host app, a shared/compromised schema), they control the class name — an arbitrary-class-instantiation primitive and a classic deserialization-gadget entry point. The database is normally a trusted boundary, so this is hardening, not an active vulnerability — but the fix is cheap.
 
 A naive fix (an opt-in allowlist property, default allow-all) only protects operators who know to configure it — an insecure default.
 
 ### Decision
+
 Restrict `JsonSerializer.toClass` to an allowlist; reject unknown names with `FailoverStoreException` (replacing the previous `@SneakyThrows` rethrow of `ClassNotFoundException`).
 
 The allowlist is **secure by default, zero config**, sourced from two places and merged:
@@ -1644,11 +1844,13 @@ Package **prefixes** (not exact classes) are used so that scatter slice types sh
 Allow-all is retained only when the resolved allowlist is empty (no payload types discovered and no property set) — preserving backward compatibility for unusual setups.
 
 ### Consequences
+
 * Out of the box, only the application's own referential packages can be materialized from the store — no configuration required.
 * A poisoned `PAYLOAD_CLASS` value naming an unlisted class is rejected before instantiation.
 * `ClassNotFoundException` (payload class renamed/removed between deployments) now surfaces as a `FailoverStoreException` with a remediation hint instead of an opaque sneaky-thrown checked exception.
 * Operators with split-package slice types must add a prefix to `failover.store.allowed-payload-classes`; this is the documented escape hatch.
 * Applies to serializing stores (JDBC); in-memory/Caffeine hold live objects and are unaffected.
+
 ___
 
 ## ADR 38 — Scatter/Gather Per-Slice Timeout — Bounded Parallel Join
@@ -1656,12 +1858,15 @@ ___
 **Date : 14-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Parallel scatter/gather (ADR 24) dispatches each slice on the virtual-thread executor and collects results with `CompletableFuture.allOf(...).join()` (store) or per-future `join()` (recover) — with no timeout. A single hung slice (e.g. JDBC connection-pool exhaustion on one slice store) blocks the business thread indefinitely, defeating the resilience the library exists to provide.
 
 ### Decision
+
 Add `failover.scatter.timeout` (`Duration`, default `10s`) applied via `orTimeout` to the parallel-path futures:
 
 * **Recover path** — a slice that exceeds the timeout is treated as *not recovered*: it contributes a `null` payload (indistinguishable from a cache miss) and the remaining slices still merge. The caller is never blocked.
@@ -1670,10 +1875,12 @@ Add `failover.scatter.timeout` (`Duration`, default `10s`) applied via `orTimeou
 The timeout applies only to the parallel path (`parallel=true`); sequential calls cannot be interrupted this way. `null`/empty disables it (legacy wait-indefinitely behaviour).
 
 ### Consequences
+
 * A hung slice can no longer stall the business thread — bounded worst-case latency under partial slice-store failure.
 * Recover degrades gracefully: timed-out slices look like misses, so partial recovery still works.
 * `ScatterGatherFailoverHandler` gains a constructor parameter for the timeout; existing constructors delegate with `null` (no timeout) for backward compatibility.
 * Choosing the timeout is an operational trade-off: too low truncates legitimate slow slices, too high weakens the protection. The 10s default favours availability.
+
 ___
 
 ## ADR 39 — Error Propagation — Never Recover on a Failing JVM
@@ -1681,12 +1888,15 @@ ___
 **Date : 14-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverAspect.returnResult` caught `Throwable` from the business call and wrapped it in `ExecutionException` (a `RuntimeException`). `BasicFailoverExecution` then caught `Exception` and ran the recovery path. This meant `Error` subclasses — `OutOfMemoryError`, `StackOverflowError`, linkage errors — were wrapped and treated as recoverable, running the recovery path (which itself allocates: deserialization, defensive copies) on a JVM that may be dying. The `Error` javadoc explicitly states these are "abnormal conditions that a reasonable application should not try to catch".
 
 ### Decision
+
 Catch and rethrow `Error` unwrapped, ahead of the generic `Throwable` wrap:
 
 ```java
@@ -1700,9 +1910,11 @@ try {
 ```
 
 ### Consequences
+
 * `Error` propagates fail-fast: a dying JVM is recycled by the platform (k8s liveness, circuit breakers) instead of limping while serving stale data.
 * Normal failover is unchanged — `RuntimeException`, checked `Exception`, and upstream-down conditions (the 99.9% case) still trigger recovery exactly as before.
 * Only the rare, catastrophic, genuinely-unrecoverable case changes behaviour. Methods that abuse `Error`/`AssertionError` as control flow will no longer be recovered — an acceptable trade-off, as that is an anti-pattern.
+
 ___
 
 ## ADR 40 — Multi-Tenant Strict Mode — Reject Unconfigured Tenants
@@ -1710,12 +1922,15 @@ ___
 **Date : 14-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 In the JDBC `TABLE_PREFIX` strategy, `resolveJdbcPrefix` falls back to an empty `TenantConfig` (prefix `""`) for any tenant ID absent from `failover.store.multitenant.tenants`. Such a tenant therefore resolves to `globalPrefix + FAILOVER_STORE` — the shared global table — and **every** unconfigured tenant co-mingles its data there, silently breaking the isolation multi-tenancy exists to provide. A `TenantResolver` returning a typo'd or newly-onboarded tenant ID hits this silently. (Caffeine/in-memory are immune: each tenant ID gets its own cache instance via `computeIfAbsent`.)
 
 ### Decision
+
 Add `failover.store.multitenant.strict` (default `false`). When resolving a tenant absent from the configured map in `TABLE_PREFIX` mode:
 
 * **`strict=true`** — throw `FailoverStoreException`, refusing to route it.
@@ -1724,9 +1939,11 @@ Add `failover.store.multitenant.strict` (default `false`). When resolving a tena
 The configured `default-tenant` is always exempt — routing it to the global table is intentional.
 
 ### Consequences
+
 * Operators can opt into fail-fast isolation guarantees with one property.
 * The default remains backward-compatible but now emits a visible warning instead of failing silently, surfacing the latent gap that ADR 21's design left open (and the residual `cleanByExpiry`-coverage gap for runtime-only tenants).
 * JDBC-`TABLE_PREFIX`-specific; other strategies/stores are unaffected.
+
 ___
 
 ## ADR 41 — Async Store Failure Metric — Visibility for a Silently-Degraded Layer
@@ -1734,18 +1951,23 @@ ___
 **Date : 14-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverStoreAsync` (ADR 19) offloads `store`/`delete`/`cleanByExpiry` to the executor and catches any exception inside the task so a store failure never breaks the business call. The downside: a persistently failing store layer (DB down, pool exhausted) is visible only in logs — no metric fires, so dashboards and alerts stay green while no failover data is being persisted.
 
 ### Decision
+
 Give `FailoverStoreAsync` an optional `ObservablePublisher`. On a caught executor-side failure it publishes a metric event (action `store-async-failed`) carrying the failover name, the operation (`store`/`delete`/`cleanByExpiry`), and the exception type. `MicrometerObservablePublisher` maps this to a counter `failover.store.async.failed{name,operation,exception_type}`. Publishing is best-effort: a failure in the publisher is swallowed (debug-logged) so it can never mask the original failure or break the swallow contract.
 
 ### Consequences
+
 * A dead async store layer is now observable as a metric, not just log lines — alertable.
 * Backward compatible: the publisher is optional (`null` disables emission); the existing two-arg constructor is retained.
 * In-process publishers (e.g. the MDC logger) also receive the event; only the Micrometer path adds the counter.
+
 ___
 
 ## ADR 42 — FailoverScanner Relocation to a Neutral Core Package
@@ -1753,20 +1975,25 @@ ___
 **Date : 14-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `FailoverScanner` (the SPI that discovers all `@Failover` methods) lived in `com.societegenerale.failover.core.observable.scanner` because observability reporting was its only consumer. ADR 37 added a second, unrelated consumer — store deserialization safety reads `findAllPayloadTypes()` to build the allowlist. The `observable.*` package now misrepresents the scanner's responsibility: it is shared `@Failover` metadata, not an observability detail.
 
 ### Decision
+
 Move the core SPI (`FailoverScanner`, `FailoverScannerException`, `package-info`) from `core.observable.scanner` to **`core.scanner`**. The scanner becomes a first-class shared component consumed by both observability and store security. Reusing the single scan (one classpath walk, one source of truth) is correct; only the placement was wrong.
 
 The change is a package move only — done inside the `3.0.0-SNAPSHOT` (pre-release) window, so no compatibility break. The implementation module is still named `failover-observable-scanner`; renaming the artifact is deferred (tracked with the broader split-package cleanup, audit A-1) to avoid churn to starter dependencies now.
 
 ### Consequences
+
 * Package name now reflects responsibility; no consumer reads scanner metadata through an `observable` path.
 * No new bad module coupling: `JsonSerializer` depends only on a `Supplier`, not the scanner; only the autoconfig wires scanner → serializer, and it already depends on every module.
 * The impl module name (`failover-observable-scanner`) temporarily diverges from the interface package — a known, documented follow-up for the JPMS/split-package cleanup.
+
 ___
 
 ## ADR 43 — Dialect Integration Tests via Testcontainers
@@ -1774,9 +2001,11 @@ ___
 **Date : 15-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 `DefaultFailoverStoreQueryResolver` selects a native merge/upsert dialect per database — H2
 `MERGE INTO … KEY`, PostgreSQL `ON CONFLICT DO UPDATE`, MySQL/MariaDB `ON DUPLICATE KEY UPDATE`,
 Oracle `MERGE USING DUAL` (ADR 13). The only real database exercised in the test suite is H2;
@@ -1788,6 +2017,7 @@ INSERT/UPDATE — so the broken merge is masked as a "permanent silent downgrade
 failing. The dialect SQL needs to run against the actual databases it targets.
 
 ### Decision
+
 Add **Testcontainers-backed integration tests** that run the full store→merge→find→cleanByExpiry
 round-trip against real **PostgreSQL, MySQL, and MariaDB** containers, asserting both the data
 outcome and that the resolver selected the native dialect (`getMergeQuery()` is non-null and
@@ -1814,12 +2044,14 @@ Run: `mvn -pl failover-store-jdbc -am -Pdialect-its verify` (requires Docker). I
 **advisory (non-blocking)**; the H2 build remains the required gate.
 
 ### Consequences
+
 * A typo in the PostgreSQL or MySQL/MariaDB merge SQL now fails a test instead of silently
   degrading in production.
 * Default `mvn verify` is unchanged: no Docker, no new ITs, same speed.
 * Adding a new dialect = new `*DialectIT` subclass + DDL; the shared scenario is inherited.
 * Oracle coverage remains a known gap (string-assertion only), documented here as a deliberate
   trade-off rather than an oversight.
+
 ___
 
 ## ADR 44 — Concurrency Test Coverage for Multi-Tenant Routing and the Async Store
@@ -1827,9 +2059,11 @@ ___
 **Date : 15-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Two threading invariants are central to correctness but were not covered by contention tests
 (audit T-2):
 
@@ -1843,6 +2077,7 @@ Two threading invariants are central to correctness but were not covered by cont
 Existing tests covered scatter parallel dispatch and MDC propagation, but not these two paths.
 
 ### Decision
+
 Add deterministic concurrency unit tests (no Docker, part of the default build):
 
 * `MultiTenantFailoverStoreConcurrencyTest` — a `CountDownLatch` start-gate releases N threads
@@ -1858,9 +2093,11 @@ Draining is done by shutting the executor and joining it, so the tests are deter
 than timing-dependent.
 
 ### Consequences
+
 * The one-store-per-tenant and async-write-delivery guarantees are now regression-protected.
 * No new runtime dependencies; tests use only the JDK concurrency primitives and Spring's executor.
 * These run in the normal `mvn verify`, so the invariants are checked on every build.
+
 ___
 
 ## ADR 45 — ArchUnit Architecture Tests
@@ -1868,15 +2105,18 @@ ___
 **Date : 15-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 The decorator architecture depends on invariants the compiler cannot enforce (audit T-3): the async
 decorator must never read `ThreadLocal` (context is bound on the calling thread — ADR 19/20), store
 implementations follow a naming convention, and the functional slices must stay acyclic. These were
 maintained by convention and review only.
 
 ### Decision
+
 Add an `ArchUnit` test (`FailoverArchitectureTest`) in `failover-spring-boot-autoconfigure` — the
 only module with every `failover-*` artifact on its classpath, so one `@AnalyzeClasses` import
 covers the whole library (tests excluded via `ImportOption.DoNotIncludeTests`). Rules enforced:
@@ -1891,10 +2131,12 @@ precisely because the store classes currently share a package across modules (th
 Once A-1 is fixed, a package-based layering rule can be added.
 
 ### Consequences
+
 * The no-`ThreadLocal`-in-async and acyclic-slices invariants now fail the build if violated.
 * Rules are scoped to what holds today; the split-package rule is a documented Phase 4 follow-up.
 * Negative verification: temporarily referencing a `ThreadLocal` inside the async decorator makes
   the test fail, confirming the rule bites.
+
 ___
 
 ## ADR 46 — PIT Mutation Testing on Expiry and Key Logic
@@ -1902,15 +2144,18 @@ ___
 **Date : 15-JUN-2026**
 
 ### Status
+
 Accepted
 
 ### Context
+
 Line coverage is collected library-wide, but line coverage does not prove the assertions are
 meaningful. The expiry-boundary logic (`isExpired`, `cleanByExpiry`, `<` vs `<=`) and key
 derivation are exactly the kind of code where an off-by-one or boundary mutation can pass all
 existing tests while being wrong (audit T-4).
 
 ### Decision
+
 Add a profile-gated **PIT (pitest)** mutation-testing setup, scoped to the whole
 `com.societegenerale.failover.core.*` package tree (handlers, expiry, key generation, payload
 enrichment, exception policy). It lives in a `mutation` Maven profile (parent POM) so the default
@@ -1937,9 +2182,11 @@ call whose values are already asserted in both branches) — none killable witho
 Run: `mvn -pl failover-core -am -Pmutation test` (report under `failover-core/target/pit-reports`).
 
 ### Consequences
+
 * All of `failover-core` is gated at 95% mutation coverage; a regression in assertion strength fails
   the build, not just line coverage.
 * Default build speed is unchanged (profile-gated); only the `mutation` profile/CI job runs PIT.
 * The residual gap is equivalent/unreachable mutants, documented here rather than chased with
   artificial tests or production-code changes.
+
 ___

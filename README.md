@@ -18,7 +18,7 @@
 <p align="center">
   <a href="https://societe-generale.github.io/failover/" target="_blank">
     <img src="docs/web/assets/logo.svg" width="80" alt="Failover logo" />
-  </a>    
+  </a>
 </p>
 
 <h1 align="center">Failover</h1>

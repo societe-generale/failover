@@ -12,5 +12,5 @@
 - [ ] Documentation has been updated accordingly to this PR
 - [ ] I have verified all the modules and confirmed no impacts
 
-## Related issue : 
+## Related issue :
 <!-- If it fixes an open issue, please link to the issue here. -->
