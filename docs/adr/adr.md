@@ -1927,9 +1927,12 @@ warn-vs-no-warn branching is pinned with log-capture tests (the key string is id
 `isOfType` / `overridesToString` / identity-hash branches, so only the emitted WARN distinguishes
 them); `ReferentialPayload.toString` gets a positive assertion; and the
 `populateAdditionalInfoOnMetadata` extension point is exercised via a subclass so its invocation is
-observable. Result: **206/216 killed (95%), test strength 98%**. The residual survivors are equivalent
-or unreachable mutants (e.g. the unreachable `catch (NoSuchMethodException)` in `overridesToString`,
-and a `setMetadata` on an already-in-place-mutated instance).
+observable; and the reported `duration-ns` is bounded so a nanoTime subtraction→addition mutant is
+caught. Result: **208/216 killed (96%), test strength 99%**. The residual survivors are equivalent,
+unreachable, or `finally`-inlining artifacts (the unreachable `catch (NoSuchMethodException)` in
+`overridesToString`, the dead `areturn` after `sneakyThrow`, an in-place `setMetadata`, a null-envelope
+return on the not-found path, and four duplicated negate-conditional mutants on the metric `publish`
+call whose values are already asserted in both branches) — none killable without production changes.
 
 Run: `mvn -pl failover-core -am -Pmutation test` (report under `failover-core/target/pit-reports`).
 

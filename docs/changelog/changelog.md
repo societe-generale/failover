@@ -56,7 +56,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - ArchUnit architecture tests: no `ThreadLocal` in the async decorator, `*Store` naming, acyclic
   slices. See [Architecture Tests](../quality/architecture-tests.md)
 - PIT mutation testing over all of `failover-core` (`-Pmutation`), mandated at a **95% gate**
-  (currently 95%, test strength 98%). See [Mutation Testing](../quality/mutation-testing.md)
+  (currently 96%, test strength 99%). See [Mutation Testing](../quality/mutation-testing.md)
 - CI: advisory `dialect-its` job and **blocking** `mutation` job; the H2 build remains the required gate
 
 ---

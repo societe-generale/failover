@@ -53,14 +53,21 @@ The HTML and XML reports are written to `failover-core/target/pit-reports`. In C
 
 Over the whole `failover-core` package:
 
-- **216** mutations generated, **206 killed (95%)**, meeting the gate
-- **Test strength 98%** (of the covered mutants)
-- The remaining survivors are equivalent or unreachable mutants — e.g. an unreachable
-  `catch (NoSuchMethodException)` in `overridesToString` (`toString()` always exists), and a
-  `setMetadata` call on a metadata instance that was already mutated in place
+- **216** mutations generated, **208 killed (96%)**, above the gate
+- **Test strength 99%** (of the covered mutants — only one covered mutant survives)
+- The remaining survivors are **equivalent, unreachable, or `finally`-inlining artifacts** and cannot
+  be killed without changing production code:
+    - unreachable `catch (NoSuchMethodException)` in `overridesToString` (`toString()` always exists)
+    - the dead `areturn` after `sneakyThrow(...)` in `RethrowIfNoRecoveryMethodExceptionPolicy` (the
+      method always throws)
+    - a `setMetadata` on a metadata instance already mutated in place, and a null-envelope return on
+      the not-found recover path (both equivalent)
+    - four negate-conditional mutants on the metric `publish(...)` call, duplicated by the compiler's
+      `finally`-block inlining — the produced values are already asserted in both branches by existing
+      tests
 
 Reaching the gate required strengthening several assertions — asserting *returned* values rather than
 just delegate invocation, pinning `castToStringValue` warn-vs-no-warn branching with log capture, a
-positive `ReferentialPayload.toString` assertion, and exercising the `populateAdditionalInfoOnMetadata`
-extension point. If a future change drops a covered mutant, the report points straight at the
-assertion to strengthen.
+positive `ReferentialPayload.toString` assertion, exercising the `populateAdditionalInfoOnMetadata`
+extension point, and bounding the reported `duration-ns` so a subtraction→addition mutant is caught.
+If a future change drops a *covered* mutant, the report points straight at the assertion to strengthen.
