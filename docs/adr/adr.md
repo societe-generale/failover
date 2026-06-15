@@ -1913,17 +1913,26 @@ existing tests while being wrong (audit T-4).
 ### Decision
 Add a profile-gated **PIT (pitest)** mutation-testing setup, scoped to
 `com.societegenerale.failover.core.expiry.*` and `...core.key.*`. It lives in a `mutation` Maven
-profile (parent POM) so the default build is unaffected. The threshold is set to a **pragmatic
-baseline** (`mutationThreshold=0`, `failWhenNoMutations=false`) — the score is *recorded*, not
-gated, to avoid a brittle build while still surfacing surviving mutants in the HTML/XML report.
+profile (parent POM) so the default build is unaffected.
+
+The gate is **mandated at 95%** (`mutationThreshold=95`): `mvn -Pmutation test` fails when mutation
+coverage drops below 95%, and the CI `mutation` job is **blocking** (not advisory).
+`failWhenNoMutations=true` guards against a misconfigured target glob silently producing zero
+mutations and passing the gate vacuously.
+
+Reaching the gate required strengthening the suite: the delegating `FailoverExpiryPolicy` methods now
+assert the *returned* value (not just that the delegate was called), and `DefaultKeyGenerator`'s
+warn-vs-no-warn branching is pinned with log-capture tests — the key string is identical across the
+`isOfType` / `overridesToString` / identity-hash branches, so only the emitted WARN distinguishes
+them. Result: **52/53 killed (98%), test strength 100%**. The single un-killable mutation is the
+unreachable `catch (NoSuchMethodException)` in `overridesToString` (`toString()` always exists, but
+the checked exception forces the catch to compile), making 98% the honest ceiling.
 
 Run: `mvn -pl failover-core -am -Pmutation test` (report under `failover-core/target/pit-reports`).
-In CI the job is **advisory (non-blocking)** and uploads the report as an artifact.
 
 ### Consequences
-* Surviving mutants on the highest-risk boundary logic are now visible per build, guiding where to
-  strengthen assertions.
-* Default build speed is unchanged (profile-gated).
-* The baseline-not-gate choice keeps the build stable; tightening the threshold later is a one-line
-  change once the score stabilises.
+* The expiry + key boundary logic is gated at 95% mutation coverage; a regression in assertion
+  strength fails the build, not just line coverage.
+* Default build speed is unchanged (profile-gated); only the `mutation` profile/CI job runs PIT.
+* The 98% ceiling is documented; the lone survivor is unreachable defensive code, not a test gap.
 ___

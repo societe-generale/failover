@@ -25,10 +25,13 @@ unaffected:
 |---|---|
 | Target classes | `com.societegenerale.failover.core.expiry.*`, `…core.key.*` |
 | Profile | `mutation` |
-| Threshold | `0` — score is **recorded, not gated** |
+| Threshold | **95%** — the build **fails** below it |
+| `failWhenNoMutations` | `true` — a zero-mutation misconfiguration fails loudly, so the gate can never pass vacuously |
 
-The baseline-not-gate choice keeps the build stable while still surfacing surviving mutants in the
-report. Tightening the threshold later is a one-line change once the score stabilises.
+The 95% gate is **mandated**: `mvn -Pmutation test` fails if mutation coverage drops below 95%, and
+the CI `mutation` job is **blocking** (not advisory). The one mutation that cannot be killed is an
+unreachable `catch (NoSuchMethodException)` in `overridesToString` — `toString()` always exists, but
+the checked exception forces the catch to compile — so the achievable ceiling is **98%** (52/53).
 
 !!! note "JUnit Platform 6 compatibility"
     The project runs on JUnit Jupiter / Platform 6. PIT requires `pitest-maven` ≥ 1.20 and
@@ -43,15 +46,16 @@ report. Tightening the threshold later is a one-line change once the score stabi
 mvn -pl failover-core -am -Pmutation test
 ```
 
-The HTML and XML reports are written to `failover-core/target/pit-reports`. In CI the job runs as an
-**advisory, non-blocking** check and uploads the report as an artifact.
+The HTML and XML reports are written to `failover-core/target/pit-reports`. In CI the job is
+**blocking** (fails the check below 95%) and uploads the report as an artifact.
 
-## Current baseline
+## Current score
 
-The first run over the expiry + key packages produced:
+Over the expiry + key packages:
 
-- **53** mutations generated, **85%** killed
-- Test strength **87%**, line coverage of mutated classes **97%**
+- **53** mutations generated, **52 killed (98%)**
+- **Test strength 100%** (every covered mutant is killed)
+- The single survivor is the unreachable `catch` branch in `overridesToString` (NO_COVERAGE)
 
-Surviving mutants are the actionable output — they point at boundary or return-value assertions worth
-strengthening.
+If a future change drops a mutant below the gate, the surviving mutant in the report points straight
+at the boundary or return-value assertion that needs strengthening.

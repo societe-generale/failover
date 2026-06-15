@@ -487,9 +487,10 @@
                                 <param>com.societegenerale.failover.core.expiry.*</param>
                                 <param>com.societegenerale.failover.core.key.*</param>
                             </targetTests>
-                            <!-- Pragmatic baseline: record the score, do not fail the (advisory) build. -->
-                            <mutationThreshold>0</mutationThreshold>
-                            <failWhenNoMutations>false</failWhenNoMutations>
+                            <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
+                            <mutationThreshold>95</mutationThreshold>
+                            <!-- Fail if the target globs ever match zero classes, so the 95% gate can never pass vacuously. -->
+                            <failWhenNoMutations>true</failWhenNoMutations>
                             <outputFormats>
                                 <param>HTML</param>
                                 <param>XML</param>

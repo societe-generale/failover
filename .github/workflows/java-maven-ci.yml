@@ -59,11 +59,11 @@ jobs:
     - name: Run dialect ITs (PostgreSQL / MySQL / MariaDB)
       run: mvn -pl failover-store-jdbc -am -Pdialect-its verify --no-transfer-progress
 
-  # Advisory (non-blocking) PIT mutation testing of the expiry + key boundary logic.
+  # Mandated (blocking) PIT mutation testing of the expiry + key boundary logic.
+  # The 95% mutation threshold is enforced in the POM, so this job fails the check below 95%.
   mutation:
     runs-on: ubuntu-latest
     needs: build
-    continue-on-error: true
     steps:
     - uses: actions/checkout@v3
     - name: Set up JDK 21

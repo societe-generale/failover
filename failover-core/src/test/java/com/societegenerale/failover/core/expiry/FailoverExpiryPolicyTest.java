@@ -121,6 +121,34 @@ class FailoverExpiryPolicyTest {
     }
 
     @Test
+    @DisplayName("computeExpiry returns the exact instant produced by the delegating policy")
+    void computeExpiryReturnsValueFromDelegate() {
+        Instant expected = Instant.parse("2026-06-15T10:15:30Z");
+        given(failover.expiryPolicy()).willReturn("");
+        given(defaultExpiryPolicy.computeExpiry(failover)).willReturn(expected);
+
+        assertThat(failoverExpiryPolicy.computeExpiry(failover)).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("isExpired returns true when the delegating policy reports expired")
+    void isExpiredReturnsTrueFromDelegate() {
+        given(failover.expiryPolicy()).willReturn("");
+        given(defaultExpiryPolicy.isExpired(failover, REFERENTIAL_PAYLOAD)).willReturn(true);
+
+        assertThat(failoverExpiryPolicy.isExpired(failover, REFERENTIAL_PAYLOAD)).isTrue();
+    }
+
+    @Test
+    @DisplayName("isExpired returns false when the delegating policy reports not expired")
+    void isExpiredReturnsFalseFromDelegate() {
+        given(failover.expiryPolicy()).willReturn("");
+        given(defaultExpiryPolicy.isExpired(failover, REFERENTIAL_PAYLOAD)).willReturn(false);
+
+        assertThat(failoverExpiryPolicy.isExpired(failover, REFERENTIAL_PAYLOAD)).isFalse();
+    }
+
+    @Test
     @DisplayName("check throw exception when no custom key generator found for a given key generator name")
     void checkThrowExceptionWhenNoCustomKeyGeneratorFoundForAGivenKeyGeneratorName() {
         when(failover.name()).thenReturn("failover-xyz");
