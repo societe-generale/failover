@@ -17,11 +17,13 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,14 +33,23 @@ class FailoverHandlerTest {
 
     @Mock private Failover failover;
 
+    private static final Method METHOD;
+    static {
+        try {
+            METHOD = List.class.getMethod("size");
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private final FailoverHandler<String> handler = new FailoverHandler<>() {
         @Override
-        public String store(Failover failover, List<Object> args, String payload) {
+        public String store(@NonNull Failover failover, @NonNull Method method, List<Object> args, String payload) {
             return payload;
         }
 
         @Override
-        public String recover(Failover failover, List<Object> args, Class<String> clazz, Throwable throwable) {
+        public String recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<String> clazz, Throwable throwable) {
             return null;
         }
 
@@ -50,7 +61,7 @@ class FailoverHandlerTest {
 
     @Test
     void defaultRecoverAllShouldThrowUnsupportedOperationException() {
-        assertThatThrownBy(() -> handler.recoverAll(failover, List.of(), String.class, new RuntimeException()))
+        assertThatThrownBy(() -> handler.recoverAll(failover, METHOD, List.of(), String.class, new RuntimeException()))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessage("Not supported yet.");
     }

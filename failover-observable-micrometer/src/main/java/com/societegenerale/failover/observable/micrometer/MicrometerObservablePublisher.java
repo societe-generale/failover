@@ -36,6 +36,9 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code failover.store.total} (Counter) — tags: {@code name}, {@code stored}</li>
  *   <li>{@code failover.recover.total} (Counter) — tags: {@code name}, {@code recovered},
  *       {@code recovery_failed}</li>
+ *   <li>{@code failover.recovery.outcome.total} (Counter) — tags: {@code name}, {@code domain},
+ *       {@code method}, {@code outcome} ({@code recovered} | {@code not_recovered} | {@code error}).
+ *       Per intercepted method; the source for the failover / recovery / non-recovery rates.</li>
  *   <li>{@code failover.exception.total} (Counter) — tags: {@code name},
  *       {@code exception_type}, {@code cause_type}</li>
  *   <li>{@code failover.operation.duration} (Timer) — tags: {@code name}, {@code action}
@@ -61,6 +64,8 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
 
     static final String ACTION_KEY       = "failover-action";
     static final String NAME_KEY         = "failover-name";
+    static final String DOMAIN_KEY       = "failover-domain";
+    static final String METHOD_KEY       = "failover-method";
     static final String STORED_KEY       = "failover-is-stored";
     static final String RECOVERED_KEY    = "failover-is-recovered";
     static final String RECOVERY_FAIL    = "failover-is-recovery-failed";
@@ -69,6 +74,13 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
     static final String DURATION_NS_KEY  = "failover-duration-ns";
     static final String ASYNC_OP_KEY     = "failover-async-operation";
     static final String ASYNC_FAILED     = "store-async-failed";
+
+    /** Recover outcome tag values for {@code failover.recovery.outcome.total}. */
+    static final String OUTCOME_RECOVERED     = "recovered";
+    static final String OUTCOME_NOT_RECOVERED = "not_recovered";
+    static final String OUTCOME_ERROR         = "error";
+    /** Fallback tag value when a tag is absent from the metrics bag. */
+    static final String UNKNOWN              = "unknown";
 
     private final MeterRegistry registry;
 
@@ -128,6 +140,33 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .tag("name", name)
             .tag("exception_type", exType)
             .tag("cause_type", causeType)
+            .register(registry)
+            .increment();
+
+        publishRecoveryOutcome(name, info, recovered, recovFailed);
+    }
+
+    /**
+     * Single per-method outcome counter from which the three operational rates are derived:
+     * <ul>
+     *   <li><b>failover rate</b> — total intercepted upstream failures = sum over all outcomes;</li>
+     *   <li><b>recovery rate</b> — {@code outcome=recovered} (a stored value was returned within expiry);</li>
+     *   <li><b>non-recovery rate</b> — {@code outcome=not_recovered} (no stored value: not found or expired)
+     *       — the user-impact signal worth alerting on.</li>
+     * </ul>
+     * A recover-path failure ({@code recovery_failed=true}) is reported as a distinct
+     * {@code outcome=error} so a store/serialization fault is never miscounted as a clean miss.
+     */
+    private void publishRecoveryOutcome(String name, Map<String, String> info, String recovered, String recovFailed) {
+        String outcome = "true".equals(recovFailed) ? OUTCOME_ERROR
+                : "true".equals(recovered) ? OUTCOME_RECOVERED
+                : OUTCOME_NOT_RECOVERED;
+        Counter.builder("failover.recovery.outcome.total")
+            .description("Failover recover outcomes per intercepted method: recovered / not_recovered / error")
+            .tag("name", name)
+            .tag("domain", info.getOrDefault(DOMAIN_KEY, name))
+            .tag("method", info.getOrDefault(METHOD_KEY, UNKNOWN))
+            .tag("outcome", outcome)
             .register(registry)
             .increment();
     }

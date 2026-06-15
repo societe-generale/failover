@@ -66,8 +66,32 @@ public class Metrics {
      * @return this instance for chaining
      */
     public Metrics collect(String key, String value) {
-        info.put( "%s-%s".formatted(keyPrefix, key), value != null ? value : "");
+        info.put(keyPrefix + "-" + key, value != null ? value : "");
         return this;
+    }
+
+    /**
+     * {@code long} overload of {@link #collect(String, String)} — removes the repeated
+     * {@code Long.toString(...)} noise at call sites (audit A-3/Q-2).
+     *
+     * @param key   the metric key
+     * @param value the numeric metric value
+     * @return this instance for chaining
+     */
+    public Metrics collect(String key, long value) {
+        return collect(key, Long.toString(value));
+    }
+
+    /**
+     * {@code boolean} overload of {@link #collect(String, String)} — removes the repeated
+     * {@code Boolean.toString(...)} noise at call sites (audit A-3/Q-2).
+     *
+     * @param key   the metric key
+     * @param value the boolean metric value
+     * @return this instance for chaining
+     */
+    public Metrics collect(String key, boolean value) {
+        return collect(key, Boolean.toString(value));
     }
 
     /**

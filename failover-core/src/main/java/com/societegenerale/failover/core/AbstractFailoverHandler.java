@@ -23,57 +23,65 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 /**
- * Core handler for failover lifecycle operations: storing payloads, recovering them on failure,
- * and cleaning up expired entries.
+ * Base class for {@link FailoverHandler} implementations that do not need the intercepted
+ * {@link Method}. It implements the public, method-aware {@link FailoverHandler} contract as
+ * {@code final} bridges that drop the {@code method} and delegate to the clean, method-less
+ * {@code protected} operations — so subclasses implement only those.
  *
- * <p>Every operation carries the reflected intercepted {@code method}, so the outermost handler can
- * tag observability per intercepted method (e.g. {@code CountryService#findAll}). Handlers that do
- * not need the method should extend {@link AbstractFailoverHandler}, which bridges these signatures
- * to a clean method-less {@code (Failover, …)} form so subclasses implement only that.
+ * <p>The outermost decorator that <em>does</em> need the method (to tag per-method metrics)
+ * implements {@link FailoverHandler} directly instead of extending this class.
  *
  * @param <T> the type of the payload managed by this handler
  * @author Anand Manissery
- * @see AbstractFailoverHandler
  */
-public interface FailoverHandler<T> {
+public abstract class AbstractFailoverHandler<T> implements FailoverHandler<T> {
+
+    @Override
+    public final T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload) {
+        return store(failover, args, payload);
+    }
+
+    @Override
+    public final T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable) {
+        return recover(failover, args, clazz, throwable);
+    }
+
+    @Override
+    public final List<T> recoverAll(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable) {
+        return recoverAll(failover, args, clazz, throwable);
+    }
 
     /**
      * Stores the payload for later recovery.
      *
      * @param failover annotation metadata for the failover point
-     * @param method   the reflected intercepted method (never {@code null})
      * @param args     method arguments used to derive the store key
      * @param payload  the result to store
      * @return the stored payload
      */
-    T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload);
+    protected abstract T store(@NonNull Failover failover, List<Object> args, T payload);
 
     /**
      * Recovers a previously stored payload after a failure.
      *
      * @param failover  annotation metadata for the failover point
-     * @param method    the reflected intercepted method (never {@code null})
      * @param args      method arguments used to derive the lookup key
      * @param clazz     expected return type
      * @param throwable the exception that triggered recovery
      * @return the recovered payload, or {@code null} if not found or expired
      */
-    T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable);
+    protected abstract T recover(@NonNull Failover failover, List<Object> args, Class<T> clazz, Throwable throwable);
 
     /**
-     * Recovers every stored entry for the failover's referential.
+     * Recovers every stored entry for the failover's referential. Unsupported by default.
      *
      * @param failover  annotation metadata for the failover point
-     * @param method    the reflected intercepted method (never {@code null})
      * @param args      method arguments used to derive the lookup key
      * @param clazz     expected return type
      * @param throwable the exception that triggered recovery
      * @return the recovered payloads
      */
-    default List<T> recoverAll(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable) {
+    protected List<T> recoverAll(@NonNull Failover failover, List<Object> args, Class<T> clazz, Throwable throwable) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
-
-    /** Removes all expired entries from the failover store. */
-    void clean();
 }

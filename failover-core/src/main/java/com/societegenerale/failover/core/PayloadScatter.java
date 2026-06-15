@@ -21,7 +21,9 @@ import com.societegenerale.failover.core.payload.splitter.PayloadSplitter;
 import com.societegenerale.failover.core.payload.splitter.StoreContext;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 /**
@@ -46,19 +48,19 @@ class PayloadScatter<T, R> {
 
     private final SliceDispatcher<R> sliceDispatcher;
 
-    T store(Failover failover, List<Object> args, T payload) {
+    T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload) {
         PayloadSplitter<T, R> splitter = splitterInvoker.lookup(failover);
         StoreContext<T> compositeCtx = StoreContext.<T>builder().failover(failover).args(args).payload(payload).build();
         List<StoreContext<R>> slices = splitterInvoker.splitOnStore(splitter, failover, compositeCtx);
 
-        sliceDispatcher.dispatchStore(slices, this::storeSlice);
+        sliceDispatcher.dispatchStore(slices, ctx -> storeSlice(method, ctx));
 
         log.info("Failover scatter-store: stored {} slices for '{}'", slices.size(), failover.name());
         return payload;
     }
 
-    private void storeSlice(StoreContext<R> ctx) {
+    private void storeSlice(@NonNull Method method, StoreContext<R> ctx) {
         log.debug("Failover scatter-store: storing slice {} for '{}'", ctx, ctx.getFailover().name());
-        delegateR.store(ctx.getFailover(), ctx.getArgs(), ctx.getPayload());
+        delegateR.store(ctx.getFailover(), method, ctx.getArgs(), ctx.getPayload());
     }
 }

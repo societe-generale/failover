@@ -47,7 +47,7 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
     public T execute(Failover failover, Supplier<T> supplier, Method method, List<Object> args) {
         T result;
         try {
-            result = failoverSupplier(failover, supplier, args).get();
+            result = failoverSupplier(failover, method, supplier, args).get();
         } catch (Exception cause) {
             log.warn("Exception occurred while trying to 'execute' the actual method '{}' with failover. We will try to recover the data from failover...", method.getName(), cause);
             result = executeRecoverOnException(method, args, failover, cause);
@@ -55,12 +55,12 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
         return result;
     }
 
-    private Supplier<T> failoverSupplier(Failover failover, Supplier<T> supplier, List<Object> args) {
+    private Supplier<T> failoverSupplier(Failover failover, Method method, Supplier<T> supplier, List<Object> args) {
         return decorateSupplier(failover,
                 () -> {
                     T result = supplier.get();
                     try {
-                        failoverHandler.store(failover, args, result);
+                        failoverHandler.store(failover, method, args, result);
                     } catch (Exception exception) {
                         log.error("Ignoring Failover Exception !! Exception occurred while trying to 'store' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);
                     }
@@ -86,7 +86,7 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
         T recovered = null;
         try {
             Class<T> clazz = cast(method.getReturnType());
-            recovered = failoverHandler.recover(failover, args, clazz, cause);
+            recovered = failoverHandler.recover(failover, method, args, clazz, cause);
         } catch (Exception exception) {
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover '{}'. This will impact only the failover flow", failover.name(), exception);
         }

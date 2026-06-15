@@ -51,12 +51,20 @@ Includes `failover-observable-scanner` transitively.
 
 ### Micrometer Counter
 
-Counter name: `failover.store`
+Counters: `failover.store.total{name, stored}` (one per store) and
+`failover.recover.total{name, recovered, recovery_failed}` (one per recover attempt). A `Timer`
+`failover.operation.duration{name, action}` records wall time.
+
+Counter name: `failover.recovery.outcome.total` — one event **per intercepted method call**; the
+source for the failover / recovery / non-recovery rates. See
+[Observability how-to](../how-to/observability.md#failover-recovery-non-recovery-rate-per-method).
 
 | Tag | Values |
 |---|---|
 | `name` | The `@Failover(name=...)` value |
-| `action` | `store`, `recover`, `nonRecover`, `cleanByExpiry` |
+| `domain` | The `@Failover(domain=...)`, falling back to `name` |
+| `method` | The intercepted method as `SimpleClass#method` |
+| `outcome` | `recovered`, `not_recovered`, `error` |
 
 Counter name: `failover.store.async.failed` — incremented when an async write fails inside the
 executor (the async store layer is otherwise visible only in logs).

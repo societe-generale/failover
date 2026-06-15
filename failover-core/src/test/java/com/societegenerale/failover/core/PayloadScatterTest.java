@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,6 +51,15 @@ class PayloadScatterTest {
 
     private static final String SPLITTER_NAME = "scatterSplitter";
     private static final List<Object> COMPOSITE_ARGS = List.of("active", "1,2", "India");
+
+    private static final Method METHOD;
+    static {
+        try {
+            METHOD = List.class.getMethod("size");
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Mock private Failover failover;
     @Mock private FailoverHandler<String> delegateR;
@@ -78,11 +88,11 @@ class PayloadScatterTest {
     void storesEachSliceAndReturnsPayload() {
         given(splitter.splitOnStore(any())).willReturn(List.of(sliceCtx("1", "A"), sliceCtx("2", "B")));
 
-        String returned = scatter.store(failover, COMPOSITE_ARGS, "A,B");
+        String returned = scatter.store(failover, METHOD, COMPOSITE_ARGS, "A,B");
 
         assertThat(returned).isEqualTo("A,B");
-        verify(delegateR).store(failover, List.of("1"), "A");
-        verify(delegateR).store(failover, List.of("2"), "B");
+        verify(delegateR).store(failover, METHOD, List.of("1"), "A");
+        verify(delegateR).store(failover, METHOD, List.of("2"), "B");
     }
 
     @Test
@@ -90,10 +100,10 @@ class PayloadScatterTest {
     void noSlicesReturnsPayload() {
         given(splitter.splitOnStore(any())).willReturn(List.of());
 
-        String returned = scatter.store(failover, COMPOSITE_ARGS, "A,B");
+        String returned = scatter.store(failover, METHOD, COMPOSITE_ARGS, "A,B");
 
         assertThat(returned).isEqualTo("A,B");
-        verify(delegateR, never()).store(any(), any(), any());
+        verify(delegateR, never()).store(any(), any(), any(), any());
     }
 
     @Test
@@ -101,8 +111,8 @@ class PayloadScatterTest {
     void missingSplitterThrows() {
         given(payloadSplitterLookup.lookup(SPLITTER_NAME)).willReturn(null);
 
-        assertThatThrownBy(() -> scatter.store(failover, COMPOSITE_ARGS, "A,B"))
+        assertThatThrownBy(() -> scatter.store(failover, METHOD, COMPOSITE_ARGS, "A,B"))
                 .isInstanceOf(PayloadSplitterNotFoundException.class);
-        verify(delegateR, never()).store(any(), any(), any());
+        verify(delegateR, never()).store(any(), any(), any(), any());
     }
 }

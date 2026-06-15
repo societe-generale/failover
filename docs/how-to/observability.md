@@ -24,17 +24,58 @@ Requires `micrometer-core` and `spring-boot-starter-actuator` on the classpath (
 
 ## Micrometer Counters
 
-Every store and recover operation increments the `failover.store` counter:
+`MicrometerObservablePublisher` emits a dedicated meter per operation:
 
-| Tag | Values | Description |
+| Meter | Type | Tags |
 |---|---|---|
-| `name` | `<failover name>` | The `@Failover(name=...)` value |
-| `action` | `store`, `recover`, `nonRecover`, `cleanByExpiry` | The operation performed |
+| `failover.store.total` | Counter | `name`, `stored` |
+| `failover.recover.total` | Counter | `name`, `recovered`, `recovery_failed` |
+| `failover.recovery.outcome.total` | Counter | `name`, `domain`, `method`, `outcome` (see below) |
+| `failover.exception.total` | Counter | `name`, `exception_type`, `cause_type` |
+| `failover.operation.duration` | Timer | `name`, `action` |
+| `failover.store.async.failed` | Counter | `name`, `operation`, `exception_type` |
 
-- `store` — upstream succeeded, entry stored.
-- `recover` — upstream failed, stored entry served.
-- `nonRecover` — upstream failed, no valid entry found.
-- `cleanByExpiry` — expiry cleanup deleted entries.
+- `failover.store.total` — one increment per store; `stored=true|false`.
+- `failover.recover.total` — one increment per recover attempt (one per intercepted method call).
+- `failover.recovery.outcome.total` — the per-method failover / recovery / non-recovery rates (below).
+
+### Failover / Recovery / Non-recovery Rate (per method)
+
+`failover.recovery.outcome.total` is a single counter, recorded **once per intercepted method call**
+(the composite — a `findAll()` is one event, not one per entity), from which the three operational
+rates are derived. It is tagged by the actual method, so two methods sharing a referential `name`
+/`domain` (e.g. `getById` and `findAll`) are distinguishable.
+
+| Counter | Tag | Values |
+|---|---|---|
+| `failover.recovery.outcome.total` | `name` | the `@Failover(name=...)` value |
+| | `domain` | the `@Failover(domain=...)`, falling back to `name` |
+| | `method` | the intercepted method as `SimpleClass#method` (e.g. `CountryService#findAll`) |
+| | `outcome` | `recovered`, `not_recovered`, `error` |
+
+- `recovered` — a stored value was returned within its expiry (user unblocked).
+- `not_recovered` — no stored value (not found or expired) — **actual user impact**.
+- `error` — the recover path itself threw (store/serialization fault); kept distinct so a fault is
+  never miscounted as a clean miss.
+
+```promql
+# Failover rate — upstream failures intercepted, per method
+sum(rate(failover_recovery_outcome_total[5m])) by (name, method)
+
+# Recovery rate — failures resolved from the store
+rate(failover_recovery_outcome_total{outcome="recovered"}[5m])
+
+# Non-recovery rate — failures with no stored result (alert on this)
+rate(failover_recovery_outcome_total{outcome="not_recovered"}[5m])
+```
+
+```promql
+# Alert: non-recovery share of intercepted failures climbs for a method
+sum by (name, method) (rate(failover_recovery_outcome_total{outcome="not_recovered"}[5m]))
+/
+sum by (name, method) (rate(failover_recovery_outcome_total[5m]))
+  > 0.2
+```
 
 ### Async Store Failure Counter
 
@@ -65,12 +106,12 @@ scrape_configs:
     metrics_path: /actuator/prometheus
 ```
 
-Query to track recovery rate:
+Query to track the recovery success ratio (recovered ÷ all intercepted failures), per method:
 
-```
-rate(failover_store_total{action="recover"}[5m])
+```promql
+sum by (name, method) (rate(failover_recovery_outcome_total{outcome="recovered"}[5m]))
 /
-(rate(failover_store_total{action="recover"}[5m]) + rate(failover_store_total{action="nonRecover"}[5m]))
+sum by (name, method) (rate(failover_recovery_outcome_total[5m]))
 ```
 
 ---
