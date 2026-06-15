@@ -9,6 +9,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Least-privilege default for GITHUB_TOKEN across all jobs (build, dialect-its, mutation).
+# Jobs only read the repo; coverage/artifact upload use their own tokens/APIs.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
