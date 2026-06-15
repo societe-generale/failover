@@ -10,12 +10,19 @@ All public SPI interfaces with their method signatures and contracts.
 
 ## FailoverHandler\<T\>
 
-Central coordinator. The default implementation chain is `AdvancedFailoverHandler → ScatterGatherFailoverHandler → DefaultFailoverHandler`.
+Central coordinator. The default implementation chain is `AdvancedFailoverHandler → ScatterGatherFailoverHandler → DefaultFailoverHandler` (see [How It Works — Handler Chain and Execution Order](../concepts/how-it-works.md#handler-chain-and-execution-order)).
+
+Every operation carries the intercepted `@NonNull Method` so the outermost handler can tag metrics per method (e.g. `CountryService#findAll`):
 
 ```java
 public interface FailoverHandler<T> {
-    T store(Failover failover, List<Object> args, T payload);
-    T recover(Failover failover, List<Object> args, Class<T> clazz, Throwable cause);
+    T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload);
+    T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable);
+
+    default List<T> recoverAll(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
     void clean();
 }
 ```
@@ -24,7 +31,15 @@ public interface FailoverHandler<T> {
 |---|---|---|
 | `store` | Upstream succeeds | Writes entry to `FailoverStore` |
 | `recover` | Upstream throws | Reads from `FailoverStore`, checks expiry |
+| `recoverAll` | Recover-all / scatter slice path | Reads every entry for the referential |
 | `clean` | Scheduled cleanup | Deletes expired entries via `cleanByExpiry` |
+
+!!! note "Implementing a custom handler"
+    Handlers that do not need the `Method` should extend `AbstractFailoverHandler`, which bridges the
+    method-aware contract to clean `protected` method-less operations — you implement only
+    `store(failover, args, payload)` / `recover(failover, args, clazz, throwable)`. Decorators that
+    need the method (to tag per-method metrics) implement `FailoverHandler` directly. See
+    [ADR 52](../adr/adr.md#adr-52-failoverhandler-method-aware-contract-abstractfailoverhandler-refines-adr-51-threading).
 
 ---
 

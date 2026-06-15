@@ -24,17 +24,20 @@ Requires `micrometer-core` and `spring-boot-starter-actuator` on the classpath (
 
 ## Micrometer Counters
 
-Every store and recover operation increments the `failover.store` counter:
+`MicrometerObservablePublisher` emits a dedicated meter per operation:
 
-| Tag | Values | Description |
+| Meter | Type | Tags |
 |---|---|---|
-| `name` | `<failover name>` | The `@Failover(name=...)` value |
-| `action` | `store`, `recover`, `nonRecover`, `cleanByExpiry` | The operation performed |
+| `failover.store.total` | Counter | `name`, `stored` |
+| `failover.recover.total` | Counter | `name`, `recovered`, `recovery_failed` |
+| `failover.recovery.outcome.total` | Counter | `name`, `domain`, `method`, `outcome` (see below) |
+| `failover.exception.total` | Counter | `name`, `exception_type`, `cause_type` |
+| `failover.operation.duration` | Timer | `name`, `action` |
+| `failover.store.async.failed` | Counter | `name`, `operation`, `exception_type` |
 
-- `store` — upstream succeeded, entry stored.
-- `recover` — upstream failed, stored entry served.
-- `nonRecover` — upstream failed, no valid entry found.
-- `cleanByExpiry` — expiry cleanup deleted entries.
+- `failover.store.total` — one increment per store; `stored=true|false`.
+- `failover.recover.total` — one increment per recover attempt (one per intercepted method call).
+- `failover.recovery.outcome.total` — the per-method failover / recovery / non-recovery rates (below).
 
 ### Failover / Recovery / Non-recovery Rate (per method)
 
@@ -103,12 +106,12 @@ scrape_configs:
     metrics_path: /actuator/prometheus
 ```
 
-Query to track recovery rate:
+Query to track the recovery success ratio (recovered ÷ all intercepted failures), per method:
 
-```
-rate(failover_store_total{action="recover"}[5m])
+```promql
+sum by (name, method) (rate(failover_recovery_outcome_total{outcome="recovered"}[5m]))
 /
-(rate(failover_store_total{action="recover"}[5m]) + rate(failover_store_total{action="nonRecover"}[5m]))
+sum by (name, method) (rate(failover_recovery_outcome_total[5m]))
 ```
 
 ---

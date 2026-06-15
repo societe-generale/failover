@@ -51,12 +51,9 @@ Includes `failover-observable-scanner` transitively.
 
 ### Micrometer Counter
 
-Counter name: `failover.store`
-
-| Tag | Values |
-|---|---|
-| `name` | The `@Failover(name=...)` value |
-| `action` | `store`, `recover`, `nonRecover`, `cleanByExpiry` |
+Counters: `failover.store.total{name, stored}` (one per store) and
+`failover.recover.total{name, recovered, recovery_failed}` (one per recover attempt). A `Timer`
+`failover.operation.duration{name, action}` records wall time.
 
 Counter name: `failover.recovery.outcome.total` — one event **per intercepted method call**; the
 source for the failover / recovery / non-recovery rates. See

@@ -225,7 +225,7 @@ For both cases, the recover path must fetch **all stored slices by failover name
 recover(args=[], clazz=List<Country>)
   → doRecoverAll(splitter, compositeCtx)
     → splitter.splitOnRecover(compositeCtx)     ← returns ONE placeholder context
-      → delegateR.recoverAll(failover, args, Country.class, cause)
+      → delegateR.recoverAll(failover, method, args, Country.class, cause)
         → failoverStore.findAll("country")      ← fetches all slices by name
     → [ctx(FR), ctx(DE), ctx(US)]
   → splitter.merge([ctx(FR), ctx(DE), ctx(US)])

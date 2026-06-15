@@ -82,10 +82,10 @@ public Object failoverAround(ProceedingJoinPoint pjp, Failover failover) throws 
 
 The aspect:
 
-1. Resolves the annotated method's `@Failover` metadata.
-2. Attempts to proceed (call upstream).
-3. On success: calls `failoverExecution.store(failover, args, result)`.
-4. On exception: calls `failoverExecution.recover(failover, args, clazz, cause)`.
+1. Resolves the annotated method's `@Failover` metadata and the reflected `Method`.
+2. Hands off to `FailoverExecution.execute(failover, supplier, method, args)`, which proceeds (calls upstream).
+3. On success: `FailoverExecution` calls `failoverHandler.store(failover, method, args, result)`.
+4. On exception: `FailoverExecution` calls `failoverHandler.recover(failover, method, args, clazz, cause)`, then `MethodExceptionHandler` applies the exception policy.
 
 `FailoverExecution` is the thin wrapper that selects between `BASIC` (try/catch) and `RESILIENCE` (circuit-breaker) modes.
 
