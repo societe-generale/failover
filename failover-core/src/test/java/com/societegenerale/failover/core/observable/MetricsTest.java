@@ -42,4 +42,35 @@ class MetricsTest {
         assertThat(metrics.getInfo()).containsEntry("failover-recovery-failure-message", "");
         assertThat(metrics.getInfo().values()).doesNotContainNull();
     }
+
+    @Test
+    @DisplayName("long overload stringifies the numeric value")
+    void collectLongOverload() {
+        Metrics metrics = Metrics.of("my-failover")
+                .collect("expiry-duration", 30L)
+                .collect("duration-ns", 123456789L);
+        assertThat(metrics.getInfo())
+                .containsEntry("failover-expiry-duration", "30")
+                .containsEntry("failover-duration-ns", "123456789");
+    }
+
+    @Test
+    @DisplayName("boolean overload stringifies the flag value")
+    void collectBooleanOverload() {
+        Metrics metrics = Metrics.of("my-failover")
+                .collect("is-stored", true)
+                .collect("is-recovered", false);
+        assertThat(metrics.getInfo())
+                .containsEntry("failover-is-stored", "true")
+                .containsEntry("failover-is-recovered", "false");
+    }
+
+    @Test
+    @DisplayName("collect returns the same instance for fluent chaining across all overloads")
+    void collectReturnsSameInstance() {
+        Metrics metrics = Metrics.of("my-failover");
+        assertThat(metrics.collect("a", "x")).isSameAs(metrics);
+        assertThat(metrics.collect("b", 1L)).isSameAs(metrics);
+        assertThat(metrics.collect("c", true)).isSameAs(metrics);
+    }
 }

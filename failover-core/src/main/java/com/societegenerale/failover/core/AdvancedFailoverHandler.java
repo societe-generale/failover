@@ -55,10 +55,10 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
         } finally {
             observablePublisher.publish(of(failover.name())
                     .collect("action", "store")
-                    .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                    .collect("expiry-duration", failoverExpiryExtractor.expiryDuration(failover))
                     .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
-                    .collect("is-stored", Boolean.toString(result!=null))
-                    .collect("duration-ns", Long.toString(System.nanoTime() - startNanos)));
+                    .collect("is-stored", result != null)
+                    .collect("duration-ns", System.nanoTime() - startNanos));
         }
         return result;
     }
@@ -74,18 +74,19 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
             recoveryFailureMsg = exception.getMessage();
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover. This will impact only the failover flow. However a 'null' payload will be handled by RecoveredPayloadHandler and returned.", exception);
         } finally {
+            Throwable rootCause = cause.getCause();
             observablePublisher.publish(of(failover.name())
                     .collect("action", "recover")
-                    .collect("expiry-duration",Long.toString(failoverExpiryExtractor.expiryDuration(failover)))
+                    .collect("expiry-duration", failoverExpiryExtractor.expiryDuration(failover))
                     .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
                     .collect("exception-type", cause.getClass().getCanonicalName())
-                    .collect("exception-cause-type", cause.getCause() !=null ? cause.getCause().getClass().getCanonicalName() : "")
-                    .collect("exception-message", cause.getMessage() != null ? cause.getMessage() : "")
-                    .collect("exception-cause-message", cause.getCause() != null && cause.getCause().getMessage() != null ? cause.getCause().getMessage() : "")
-                    .collect("is-recovered", Boolean.toString(result != null))
-                    .collect("is-recovery-failed", Boolean.toString(recoveryFailureMsg!=null))
-                    .collect("recovery-failure-message", recoveryFailureMsg != null ? recoveryFailureMsg : "")
-                    .collect("duration-ns", Long.toString(System.nanoTime() - startNanos)));
+                    .collect("exception-cause-type", canonicalTypeOf(rootCause))
+                    .collect("exception-message", cause.getMessage())
+                    .collect("exception-cause-message", messageOf(rootCause))
+                    .collect("is-recovered", result != null)
+                    .collect("is-recovery-failed", recoveryFailureMsg != null)
+                    .collect("recovery-failure-message", recoveryFailureMsg)
+                    .collect("duration-ns", System.nanoTime() - startNanos));
         }
         return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);
     }
@@ -93,5 +94,15 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
     @Override
     public void clean() {
         failoverHandler.clean();
+    }
+
+    /** Null-safe canonical class name; {@code null} is coerced to {@code ""} by {@link com.societegenerale.failover.core.observable.Metrics#collect}. */
+    private static String canonicalTypeOf(Throwable throwable) {
+        return throwable == null ? null : throwable.getClass().getCanonicalName();
+    }
+
+    /** Null-safe message; {@code null} is coerced to {@code ""} by {@link com.societegenerale.failover.core.observable.Metrics#collect}. */
+    private static String messageOf(Throwable throwable) {
+        return throwable == null ? null : throwable.getMessage();
     }
 }

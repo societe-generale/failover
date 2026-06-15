@@ -2318,3 +2318,66 @@ owning class moved). No behaviour changed.
   fully covered through the facade.
 
 ___
+
+## ADR 50 — Metrics Builder Helper — Cheaper Metric Construction on the Recover Path
+
+**Date : 15-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+`AdvancedFailoverHandler` builds a `Metrics` bag on every store and recover (the recover bag has 11
+entries). Two costs accumulated on this path (audit A-3/Q-2):
+
+* `Metrics.collect` built each prefixed key with `"%s-%s".formatted(keyPrefix, key)` — `String.format`
+  spins up a `Formatter` and parses the format string on every entry, by far the dominant allocation
+  and CPU cost.
+* Call sites were noisy and allocation-heavy: repeated `Long.toString(...)` / `Boolean.toString(...)`
+  and `x != null ? x : ""` ternaries that merely re-implemented the null-coercion `collect` already does.
+
+### Decision
+
+Make `Metrics` the single helper for metric construction:
+
+* `collect(String, String)` builds the key with plain concatenation (`keyPrefix + "-" + key`) instead
+  of `String.format` — same result, a fraction of the cost.
+* Add typed overloads `collect(String, long)` and `collect(String, boolean)` so call sites pass the
+  raw value and the helper stringifies once.
+* `AdvancedFailoverHandler` drops the `Long/Boolean.toString` and `?…:""` noise, relying on `collect`'s
+  existing null→`""` coercion; two tiny null-safe helpers (`canonicalTypeOf`, `messageOf`) cover the
+  nested-cause fields. `DefaultFailoverObserver` adopts the `long` overload for consistency.
+
+Behaviour (keys, values, null coercion) is unchanged.
+
+### Micro-benchmark
+
+A JMH benchmark (`MetricsBuildBenchmark`) builds the full 11-entry recover bag, comparing the previous
+`String.format`-based construction against the helper. Profile-gated and excluded from the default
+build (named `*Benchmark`, so Surefire skips it); run with:
+
+```
+mvn -pl failover-core -Pbenchmark test-compile exec:exec
+```
+
+Result (JDK 21, average time, 5 measurement iterations):
+
+| Implementation | ns/op |
+|---|---|
+| Legacy (`String.format` key + `toString`/ternary noise) | **744.1 ± 16.8** |
+| Helper (concatenated key + typed overloads) | **204.4 ± 2.2** |
+
+≈ **3.6× faster** (−540 ns/op, ~73%) per recover-metric build, the gain dominated by removing
+`String.format`.
+
+### Consequences
+
+* Lower per-call CPU/allocation on the failover recover path; call sites are shorter and read clearer.
+* `Metrics` is now the one place metric keys/values are formatted — future call sites stay clean.
+* A reusable, profile-gated JMH harness exists in `failover-core` for future micro-benchmarks.
+* PIT mutation holds at the 95% gate (98% killed, 99% test strength) with the new overloads covered
+  by `MetricsTest`.
+
+___

@@ -43,6 +43,8 @@
         <archunit.version>1.3.0</archunit.version>
         <pitest.version>1.20.0</pitest.version>
         <pitest-junit5.version>1.2.3</pitest-junit5.version>
+        <!-- JMH micro-benchmark harness (profile-gated `-Pbenchmark`; excluded from the default build). -->
+        <jmh.version>1.37</jmh.version>
         <!-- PIT runs only where overridden to false (failover-core). Default skips it so `-am`
              reactor builds don't run PIT on modules with no matching target classes (which would
              fail with "No mutations found" under failWhenNoMutations=true). -->

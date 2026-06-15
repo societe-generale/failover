@@ -31,6 +31,12 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - `ScatterGatherFailoverHandler` refactored into a thin facade over package-private collaborators
   (`PayloadScatter`, `PayloadGather`, `SliceDispatcher`, `SplitterInvoker`) — public API and behaviour
   unchanged (audit A-2, ADR 49)
+- Performance: failover metric construction made the `Metrics` helper's responsibility — keys are
+  built by concatenation instead of `String.format`, with typed `collect(String, long)` /
+  `collect(String, boolean)` overloads replacing per-call `toString`/ternary noise in
+  `AdvancedFailoverHandler`. ≈ 3.6× faster recover-bag build (JMH `744 → 204 ns/op`); behaviour
+  unchanged (audit A-3/Q-2, ADR 50). Profile-gated JMH harness added — `mvn -pl failover-core
+  -Pbenchmark test-compile exec:exec`
 
 ### Added
 

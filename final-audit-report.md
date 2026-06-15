@@ -91,7 +91,7 @@ worth fixing promptly (a broken entry-point pointer in `CLAUDE.md`).
 | A5 | **Micrometer (metrics) autoconfig ordering** ✅ **RESOLVED (2026-06-15)** | `FailoverMicrometerAutoConfiguration` was ordered only `@AutoConfiguration(after = FailoverAutoConfiguration.class)`. The `MeterRegistry` it gates on (`@ConditionalOnBean(MeterRegistry.class)`) is contributed by Spring Boot's **own** metrics autoconfigurations; with no ordering relative to them, the condition was evaluated **before** the registry existed, so the bean silently backed off and the app fell back to `MdcLoggerObservablePublisher` only — **no Micrometer metrics in production**. The unit tests masked it by injecting `MeterRegistry` as a *user bean* (always visible before conditions). **Fix:** added `afterName` ordering against the Boot metrics autoconfigurations (`MetricsAutoConfiguration`, `CompositeMeterRegistryAutoConfiguration`, `SimpleMetricsExportAutoConfiguration`) — by name, so no compile-time dependency is introduced. Added a regression test (`WhenMeterRegistryAutoConfigured`) that lets Boot **auto-configure** the registry; verified it **fails** without the fix and **passes** with it. | ~~High~~ |
 | A6 | **Micrometer tracing autoconfig ordering** ✅ **RESOLVED (2026-06-15)** | Same class of bug found by auditing all `@ConditionalOnBean` sites: `MicrometerTracingAutoConfiguration` gates `MicrometerContextPropagator` on `@ConditionalOnBean(Tracer.class)` but was ordered only after `FailoverAutoConfiguration`. The `Tracer` is contributed by Spring Boot's Brave/OpenTelemetry tracing autoconfigurations — so on the same ordering race, scatter/gather slices silently **lose span propagation**. **Fix:** added `afterName` ordering against the Boot tracing autoconfigurations (`MicrometerTracingAutoConfiguration`, `brave…BraveAutoConfiguration`, `otel…OpenTelemetryTracingAutoConfiguration`). Added an ordering-guard test (only the micrometer-tracing API is on the test classpath, so a behavioural test would need Brave/OTel deps). *(Note: `FailoverStoreAutoConfiguration`'s `@ConditionalOnBean(TenantStoreFactory)` was checked and is **correctly** ordered after its contributor — no fix needed.)* | ~~High~~ |
 | A2 | `ScatterGatherFailoverHandler` size ✅ **RESOLVED (2026-06-15)** | Split into a ~120-line facade plus four package-private collaborators — `PayloadScatter`, `PayloadGather`, `SliceDispatcher`, `SplitterInvoker` (ADR 49). Public API (3 constructors) and behaviour unchanged; all log messages preserved. Regression-covered by the existing `ScatterGatherFailoverHandlerTest`; PIT holds at 96%/99%. | ~~Low~~ |
-| A3 | Metrics construction on hot path | `AdvancedFailoverHandler` builds a `Metrics` map with many string concatenations/boxing on **every** store/recover. Fine today (failover path only), but worth a micro-benchmark if recover rates climb. | Info |
+| A3 | Metrics construction on hot path ✅ **RESOLVED (2026-06-15)** | `Metrics.collect` now builds keys by concatenation instead of `String.format`; `AdvancedFailoverHandler` uses typed `collect` overloads. JMH (`MetricsBuildBenchmark`) shows the recover bag build dropping **744 → 204 ns/op (~3.6×)**. See A-3/Q-2 fix and ADR 50. | ~~Info~~ |
 | A4 | JDBC insert→update race ✅ **RESOLVED (2026-06-15)** | `FailoverStoreJdbc#insertOrUpdate` now applies a **single bounded retry**: when a concurrent expiry delete drops the row between the failed INSERT and the UPDATE (UPDATE → 0 rows), the loop re-INSERTs the now-absent row. Bounded to `MAX_INSERT_OR_UPDATE_ATTEMPTS` (2); on repeated loss the write is abandoned at `warn` (regenerable cache). Two unit tests added. | ~~Info~~ |
 
 ---
@@ -122,7 +122,7 @@ worth fixing promptly (a broken entry-point pointer in `CLAUDE.md`).
 | # | Area | Observation | Severity |
 |---|---|---|:---:|
 | Q1 | Naming | `DefaultKeyGenerator.NUMBER_TYPES` holds `Number`, `String`, `Boolean` — the name under-describes its contents (rename to e.g. `SCALAR_TYPES`). | Trivial |
-| Q2 | Metric string-building | Repeated `Long.toString(...)`/ternary-to-`""` patterns in `AdvancedFailoverHandler` are verbose and allocation-heavy; a small helper would cut duplication. | Low |
+| Q2 | Metric string-building ✅ **RESOLVED (2026-06-15)** | Typed `Metrics.collect(String, long)` / `(String, boolean)` overloads plus `collect`'s existing null→`""` coercion remove the repeated `Long.toString`/`Boolean.toString`/ternary noise in `AdvancedFailoverHandler`; nested-cause fields use two small null-safe helpers. See ADR 50. | ~~Low~~ |
 | Q3 | `@SuppressWarnings` | 2 occurrences in main, both `"unchecked"` on generic casts (`CastingUtils`, `RethrowIfNoRecoveryMethodExceptionPolicy`) — **legitimate**; optional clarifying comment only. | Trivial |
 | Q4 | Logging volume ✅ **RESOLVED (2026-06-15)** | `DefaultFailoverHandler` store/recover lifecycle events stay at `INFO` (name only); the full `ReferentialPayload` `toString` body moved to `DEBUG`. No full-payload serialization on the `INFO` path. | ~~Low~~ |
 
@@ -225,8 +225,9 @@ Phased so each phase is independently shippable and ordered by value-to-effort.
 1. ✅ **A2 DONE** — `ScatterGatherFailoverHandler` split into a thin facade + `PayloadScatter` /
    `PayloadGather` / `SliceDispatcher` / `SplitterInvoker` collaborators (ADR 49). Public API and
    behaviour unchanged; PIT 96%/99% held.
-2. **A3/Q2** Introduce a small `Metrics` builder helper to remove repeated `toString`/ternary noise
-   and reduce per-call allocation on the recover path; back with a micro-benchmark.
+2. ✅ **A3/Q2 DONE** — `Metrics` builder helper: concatenated keys (no `String.format`) + typed
+   `collect` overloads; `AdvancedFailoverHandler` noise removed. Backed by a profile-gated JMH
+   benchmark (`MetricsBuildBenchmark`): recover-bag build **744 → 204 ns/op (~3.6×)**. ADR 50.
 
 *Exit:* smaller, cheaper hot path; no functional change.
 

@@ -163,6 +163,7 @@ nav:
     - Concurrency Tests: quality/concurrency-tests.md
     - Architecture Tests: quality/architecture-tests.md
     - Mutation Testing: quality/mutation-testing.md
+    - Micro-Benchmarks: quality/benchmarks.md
   - Reference:
     - reference/index.md
     - '@Failover Annotation': reference/annotation.md
