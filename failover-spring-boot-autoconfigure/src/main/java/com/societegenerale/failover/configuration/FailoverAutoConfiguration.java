@@ -82,10 +82,9 @@ import java.util.List;
  * enricher, recovered-payload handler, method-exception policy, schedulers, and the
  * in-memory store factory (when no other store type is configured).
  *
- * <p>Store-type-specific beans (Caffeine, JDBC) are registered by their own
- * auto-configurations ({@code FailoverCaffeineStoreAutoConfiguration},
- * {@code FailoverJdbcStoreAutoConfiguration}). The final assembled {@code FailoverStore}
- * bean is produced by {@code FailoverStoreAutoConfiguration}.
+ * <p>Store-type-specific beans (Caffeine, JDBC) and the final assembled {@code FailoverStore}
+ * bean are produced by {@code FailoverStoreAutoConfiguration} (with per-tenant routing layered on
+ * by {@code FailoverStoreMultiTenantAutoConfiguration} when enabled).
  *
  * <p><strong>Note on structure:</strong> the core beans are declared flat on this class (rather
  * than grouped into nested {@code @Configuration} classes) on purpose. {@code @ConditionalOnMissingBean}
@@ -220,26 +219,34 @@ public class FailoverAutoConfiguration {
     }
 
     /**
-     * Composes the active {@link ContextPropagator} from available propagator beans:
+     * Composes the active {@link ContextPropagator} from <em>every</em> {@link ContextPropagator}
+     * bean in the application context, plus an always-on {@link MdcContextPropagator}:
      * <ol>
-     *   <li>{@link TenantContextPropagator} — present when {@code failover.store.multitenant.enabled=true}</li>
-     *   <li>{@link MicrometerContextPropagator} — present when {@code io.micrometer.tracing.Tracer} is on classpath and a {@code Tracer} bean exists</li>
-     *   <li>{@link MdcContextPropagator} — always included</li>
+     *   <li>All {@code ContextPropagator} beans, gathered in
+     *       {@link ObjectProvider#orderedStream() ordered} form. This includes the auto-configured
+     *       {@link TenantContextPropagator} (when {@code failover.store.multitenant.enabled=true})
+     *       and {@link MicrometerContextPropagator} (when {@code io.micrometer.tracing.Tracer} is on
+     *       the classpath and a {@code Tracer} bean exists), <em>and any custom {@code ContextPropagator}
+     *       bean you declare</em>. Annotate a custom bean with {@code @Order} to control its position
+     *       in the chain.</li>
+     *   <li>{@link MdcContextPropagator} — always appended last (innermost: restored immediately
+     *       before the slice runs).</li>
      * </ol>
-     * Declare your own {@code ContextPropagator} bean to replace this composition entirely.
+     * Declare a bean <strong>named {@code contextPropagator}</strong> to replace this composition
+     * entirely; declare any other {@code ContextPropagator} bean to <strong>add</strong> it to the chain.
      *
-     * @param tenantPropagatorProvider    optional {@link TenantContextPropagator} bean
-     * @param micrometerPropagatorProvider optional {@link MicrometerContextPropagator} bean
+     * <p>The parameter is a {@link List} (not an {@code ObjectProvider}) on purpose: Spring's
+     * collection injection excludes the bean currently in creation, so this {@code contextPropagator}
+     * bean does not gather itself (which would be a self-referential {@code BeanCurrentlyInCreationException}).
+     * The list is ordered by {@code @Order}/{@link org.springframework.core.Ordered}.
+     *
+     * @param contextPropagators all {@link ContextPropagator} beans in the context (self excluded), {@code @Order}-sorted
      * @return a single propagator or a {@link CompositeContextPropagator} when multiple are present
      */
     @ConditionalOnMissingBean(name = "contextPropagator")
     @Bean
-    public ContextPropagator contextPropagator(
-            ObjectProvider<TenantContextPropagator> tenantPropagatorProvider,
-            ObjectProvider<MicrometerContextPropagator> micrometerPropagatorProvider) {
-        List<ContextPropagator> propagators = new ArrayList<>();
-        tenantPropagatorProvider.ifAvailable(propagators::add);
-        micrometerPropagatorProvider.ifAvailable(propagators::add);
+    public ContextPropagator contextPropagator(List<ContextPropagator> contextPropagators) {
+        List<ContextPropagator> propagators = new ArrayList<>(contextPropagators);
         propagators.add(new MdcContextPropagator());
         return propagators.size() == 1
                 ? propagators.getFirst()

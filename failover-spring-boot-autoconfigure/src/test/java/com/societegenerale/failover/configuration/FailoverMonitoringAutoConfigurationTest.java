@@ -30,6 +30,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration;
+import org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration;
+import org.springframework.boot.micrometer.metrics.autoconfigure.export.simple.SimpleMetricsExportAutoConfiguration;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -62,6 +65,22 @@ class FailoverMonitoringAutoConfigurationTest {
      */
     private final ApplicationContextRunner micrometerRunner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
+            .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
+            .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
+
+    /**
+     * Runner that lets Spring Boot's own metrics autoconfigurations create the {@link MeterRegistry}
+     * (instead of hand-registering one as a user bean). This is the only configuration that exercises
+     * the real autoconfiguration ordering: {@link FailoverMicrometerAutoConfiguration} must be ordered
+     * <em>after</em> the Boot metrics autoconfigurations, otherwise its {@code @ConditionalOnBean(MeterRegistry)}
+     * sees no registry and silently backs off.
+     */
+    private final ApplicationContextRunner autoConfiguredRegistryRunner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                    MetricsAutoConfiguration.class,
+                    CompositeMeterRegistryAutoConfiguration.class,
+                    SimpleMetricsExportAutoConfiguration.class,
+                    FailoverMicrometerAutoConfiguration.class))
             .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
             .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
 
@@ -142,6 +161,31 @@ class FailoverMonitoringAutoConfigurationTest {
         void failoverMeterBinderNotRegisteredWithoutRegistry() {
             micrometerRunner.run(ctx ->
                 assertThat(ctx.getBeansOfType(FailoverMeterBinder.class)).isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("Micrometer — ordering regression: publisher registered when the MeterRegistry is auto-configured by Spring Boot")
+    class WhenMeterRegistryAutoConfigured {
+
+        /**
+         * Regression for the auto-configuration ordering bug: when the {@link MeterRegistry} is
+         * contributed by Spring Boot's own metrics autoconfigurations (the real-world case) rather
+         * than hand-registered as a user bean, {@link FailoverMicrometerAutoConfiguration} must still
+         * see it and register the {@link MicrometerObservablePublisher}. Without the {@code afterName}
+         * ordering on {@link FailoverMicrometerAutoConfiguration}, this autoconfiguration runs before
+         * the registry exists, its {@code @ConditionalOnBean} fails, and the app silently falls back
+         * to {@code MdcLoggerObservablePublisher} only.
+         */
+        @Test
+        @DisplayName("auto-configured MeterRegistry is visible to FailoverMicrometerAutoConfiguration → MicrometerObservablePublisher registered")
+        void publisherRegisteredWhenRegistryAutoConfigured() {
+            autoConfiguredRegistryRunner.run(ctx -> {
+                assertThat(ctx).hasSingleBean(MeterRegistry.class);
+                assertThat(ctx.getBeansOfType(ObservablePublisher.class).values())
+                        .anyMatch(MicrometerObservablePublisher.class::isInstance);
+                assertThat(ctx).hasSingleBean(FailoverMeterBinder.class);
+            });
         }
     }
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - ALWAYS query the knowledge graph first.
 - Only read raw files if explicitly asked.
-- Use graphify-out/wiki/index.md as your entry point.
+- Use graphify-out/GRAPH_REPORT.md as your entry point.
 
 ## Build and test commands
 

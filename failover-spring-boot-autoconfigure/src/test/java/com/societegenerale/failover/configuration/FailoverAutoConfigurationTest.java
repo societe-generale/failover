@@ -73,6 +73,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBasicBean;
@@ -505,6 +506,49 @@ class FailoverAutoConfigurationTest {
         @Bean
         public ContextPropagator contextPropagator() {
             return new StubPropagator();
+        }
+    }
+
+    // ── Custom (differently-named) ContextPropagator joins the composed chain ─
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class, FailoverAutoConfigurationTest.CustomNamedPropagatorConfig.class})
+    @DisplayName("when a custom, differently-named ContextPropagator bean is present")
+    class WhenCustomNamedContextPropagatorPresent {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("auto-composed contextPropagator is a Composite that includes the custom propagator in the chain")
+        void customPropagatorJoinsChain() {
+            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
+            assertThat(propagator).isInstanceOf(CompositeContextPropagator.class);
+
+            CustomNamedPropagatorConfig.MarkerPropagator marker =
+                    applicationContext.getBean(CustomNamedPropagatorConfig.MarkerPropagator.class);
+            marker.wrapped.set(false);
+            // Composing the chain must invoke every member propagator's wrap() — proving the custom
+            // bean was gathered into the composite alongside the always-on MdcContextPropagator.
+            propagator.wrap(() -> { });
+            assertThat(marker.wrapped.get()).isTrue();
+        }
+    }
+
+    @TestConfiguration
+    static class CustomNamedPropagatorConfig {
+
+        static class MarkerPropagator implements ContextPropagator {
+            final AtomicBoolean wrapped = new AtomicBoolean(false);
+            @Override public @NonNull Runnable wrap(@NonNull Runnable task) {
+                wrapped.set(true);
+                return task;
+            }
+        }
+
+        @Bean("myCustomPropagator")
+        public ContextPropagator myCustomPropagator() {
+            return new MarkerPropagator();
         }
     }
 
