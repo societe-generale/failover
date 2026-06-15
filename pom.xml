@@ -440,7 +440,7 @@
 
         <!--
           Mutation testing (PIT) — advisory, profile-gated so the default build is unaffected.
-          Scoped to the expiry + key boundary logic where mutation testing pays off most (audit T-4).
+          Scoped to the failover core module boundary logic where mutation testing pays off most (audit T-4).
           Run: mvn -pl failover-core -Pmutation test   (report under target/pit-reports)
         -->
         <profile>
@@ -480,12 +480,10 @@
                                 <jvmArg>-Dnet.bytebuddy.experimental=true</jvmArg>
                             </jvmArgs>
                             <targetClasses>
-                                <param>com.societegenerale.failover.core.expiry.*</param>
-                                <param>com.societegenerale.failover.core.key.*</param>
+                                <param>com.societegenerale.failover.core.*</param>
                             </targetClasses>
                             <targetTests>
-                                <param>com.societegenerale.failover.core.expiry.*</param>
-                                <param>com.societegenerale.failover.core.key.*</param>
+                                <param>com.societegenerale.failover.core.*</param>
                             </targetTests>
                             <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
                             <mutationThreshold>95</mutationThreshold>

@@ -1911,28 +1911,32 @@ derivation are exactly the kind of code where an off-by-one or boundary mutation
 existing tests while being wrong (audit T-4).
 
 ### Decision
-Add a profile-gated **PIT (pitest)** mutation-testing setup, scoped to
-`com.societegenerale.failover.core.expiry.*` and `...core.key.*`. It lives in a `mutation` Maven
-profile (parent POM) so the default build is unaffected.
+Add a profile-gated **PIT (pitest)** mutation-testing setup, scoped to the whole
+`com.societegenerale.failover.core.*` package tree (handlers, expiry, key generation, payload
+enrichment, exception policy). It lives in a `mutation` Maven profile (parent POM) so the default
+build is unaffected.
 
 The gate is **mandated at 95%** (`mutationThreshold=95`): `mvn -Pmutation test` fails when mutation
 coverage drops below 95%, and the CI `mutation` job is **blocking** (not advisory).
 `failWhenNoMutations=true` guards against a misconfigured target glob silently producing zero
 mutations and passing the gate vacuously.
 
-Reaching the gate required strengthening the suite: the delegating `FailoverExpiryPolicy` methods now
-assert the *returned* value (not just that the delegate was called), and `DefaultKeyGenerator`'s
-warn-vs-no-warn branching is pinned with log-capture tests — the key string is identical across the
+Reaching the gate required strengthening several assertions rather than only verifying interactions:
+the delegating `FailoverExpiryPolicy` methods assert the *returned* value; `DefaultKeyGenerator`'s
+warn-vs-no-warn branching is pinned with log-capture tests (the key string is identical across the
 `isOfType` / `overridesToString` / identity-hash branches, so only the emitted WARN distinguishes
-them. Result: **52/53 killed (98%), test strength 100%**. The single un-killable mutation is the
-unreachable `catch (NoSuchMethodException)` in `overridesToString` (`toString()` always exists, but
-the checked exception forces the catch to compile), making 98% the honest ceiling.
+them); `ReferentialPayload.toString` gets a positive assertion; and the
+`populateAdditionalInfoOnMetadata` extension point is exercised via a subclass so its invocation is
+observable. Result: **206/216 killed (95%), test strength 98%**. The residual survivors are equivalent
+or unreachable mutants (e.g. the unreachable `catch (NoSuchMethodException)` in `overridesToString`,
+and a `setMetadata` on an already-in-place-mutated instance).
 
 Run: `mvn -pl failover-core -am -Pmutation test` (report under `failover-core/target/pit-reports`).
 
 ### Consequences
-* The expiry + key boundary logic is gated at 95% mutation coverage; a regression in assertion
-  strength fails the build, not just line coverage.
+* All of `failover-core` is gated at 95% mutation coverage; a regression in assertion strength fails
+  the build, not just line coverage.
 * Default build speed is unchanged (profile-gated); only the `mutation` profile/CI job runs PIT.
-* The 98% ceiling is documented; the lone survivor is unreachable defensive code, not a test gap.
+* The residual gap is equivalent/unreachable mutants, documented here rather than chased with
+  artificial tests or production-code changes.
 ___

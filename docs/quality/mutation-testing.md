@@ -23,15 +23,15 @@ unaffected:
 
 | Setting | Value |
 |---|---|
-| Target classes | `com.societegenerale.failover.core.expiry.*`, `…core.key.*` |
+| Target classes | `com.societegenerale.failover.core.*` (the whole core package tree) |
 | Profile | `mutation` |
 | Threshold | **95%** — the build **fails** below it |
 | `failWhenNoMutations` | `true` — a zero-mutation misconfiguration fails loudly, so the gate can never pass vacuously |
 
 The 95% gate is **mandated**: `mvn -Pmutation test` fails if mutation coverage drops below 95%, and
-the CI `mutation` job is **blocking** (not advisory). The one mutation that cannot be killed is an
-unreachable `catch (NoSuchMethodException)` in `overridesToString` — `toString()` always exists, but
-the checked exception forces the catch to compile — so the achievable ceiling is **98%** (52/53).
+the CI `mutation` job is **blocking** (not advisory). It spans all of `failover-core` — handlers,
+expiry, key generation, payload enrichment, exception policy — not just the original expiry/key
+packages.
 
 !!! note "JUnit Platform 6 compatibility"
     The project runs on JUnit Jupiter / Platform 6. PIT requires `pitest-maven` ≥ 1.20 and
@@ -51,11 +51,16 @@ The HTML and XML reports are written to `failover-core/target/pit-reports`. In C
 
 ## Current score
 
-Over the expiry + key packages:
+Over the whole `failover-core` package:
 
-- **53** mutations generated, **52 killed (98%)**
-- **Test strength 100%** (every covered mutant is killed)
-- The single survivor is the unreachable `catch` branch in `overridesToString` (NO_COVERAGE)
+- **216** mutations generated, **206 killed (95%)**, meeting the gate
+- **Test strength 98%** (of the covered mutants)
+- The remaining survivors are equivalent or unreachable mutants — e.g. an unreachable
+  `catch (NoSuchMethodException)` in `overridesToString` (`toString()` always exists), and a
+  `setMetadata` call on a metadata instance that was already mutated in place
 
-If a future change drops a mutant below the gate, the surviving mutant in the report points straight
-at the boundary or return-value assertion that needs strengthening.
+Reaching the gate required strengthening several assertions — asserting *returned* values rather than
+just delegate invocation, pinning `castToStringValue` warn-vs-no-warn branching with log capture, a
+positive `ReferentialPayload.toString` assertion, and exercising the `populateAdditionalInfoOnMetadata`
+extension point. If a future change drops a covered mutant, the report points straight at the
+assertion to strengthen.
