@@ -161,6 +161,26 @@
          <lastmod>2026-06-15</lastmod>
     </url>
     <url>
+         <loc>https://societe-generale.github.io/failover/quality/</loc>
+         <lastmod>2026-06-15</lastmod>
+    </url>
+    <url>
+         <loc>https://societe-generale.github.io/failover/quality/architecture-tests/</loc>
+         <lastmod>2026-06-15</lastmod>
+    </url>
+    <url>
+         <loc>https://societe-generale.github.io/failover/quality/concurrency-tests/</loc>
+         <lastmod>2026-06-15</lastmod>
+    </url>
+    <url>
+         <loc>https://societe-generale.github.io/failover/quality/integration-tests/</loc>
+         <lastmod>2026-06-15</lastmod>
+    </url>
+    <url>
+         <loc>https://societe-generale.github.io/failover/quality/mutation-testing/</loc>
+         <lastmod>2026-06-15</lastmod>
+    </url>
+    <url>
          <loc>https://societe-generale.github.io/failover/reference/</loc>
          <lastmod>2026-06-15</lastmod>
     </url>
