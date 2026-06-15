@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core.util;
 
 import com.societegenerale.failover.annotations.Failover;
+import lombok.experimental.UtilityClass;
 
 /**
  * Resolves the effective store namespace for a {@link Failover} annotation.
@@ -27,9 +28,8 @@ import com.societegenerale.failover.annotations.Failover;
  *
  * @author Anand Manissery
  */
+@UtilityClass
 public final class FailoverNameResolver {
-
-    private FailoverNameResolver() {}
 
     /**
      * Returns {@code failover.domain()} when non-blank, otherwise {@code failover.name()}.
