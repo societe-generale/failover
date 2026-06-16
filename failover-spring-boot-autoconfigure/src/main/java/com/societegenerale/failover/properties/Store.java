@@ -69,6 +69,9 @@ public class Store {
     private Inmemory inmemory = new Inmemory();
 
     @NestedConfigurationProperty
+    private Caffeine caffeine = new Caffeine();
+
+    @NestedConfigurationProperty
     private Jdbc jdbc = new Jdbc();
 
     @NestedConfigurationProperty

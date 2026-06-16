@@ -223,7 +223,7 @@ public class FailoverStoreAutoConfiguration {
         @ConditionalOnMissingBean(TenantStoreFactory.class)
         public TenantStoreFactory<Object> inmemoryTenantStoreFactory(FailoverProperties properties) {
             int maxEntries = properties.getStore().getInmemory().getMaxEntries();
-            log.warn("FailoverStore configured to FailoverStoreInmemory (maxEntries={}). We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", maxEntries, (Object) StoreType.values());
+            log.warn("FailoverStore configured to FailoverStoreInmemory (maxEntries={}). We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", maxEntries, StoreType.values());
             return tenantId -> new FailoverStoreInmemory<>(maxEntries);
         }
     }
@@ -241,9 +241,10 @@ public class FailoverStoreAutoConfiguration {
          */
         @Bean
         @ConditionalOnMissingBean(TenantStoreFactory.class)
-        public TenantStoreFactory<Object> caffeineTenantStoreFactory(FailoverClock failoverClock) {
-            log.warn("FailoverStore configured to FailoverStoreCaffeine. This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", (Object) StoreType.values());
-            return tenantId -> new FailoverStoreCaffeine<>(failoverClock);
+        public TenantStoreFactory<Object> caffeineTenantStoreFactory(FailoverClock failoverClock, FailoverProperties properties) {
+            long maxSize = properties.getStore().getCaffeine().getMaxSize();
+            log.warn("FailoverStore configured to FailoverStoreCaffeine (maxSize={}). This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", maxSize, StoreType.values());
+            return tenantId -> new FailoverStoreCaffeine<>(failoverClock, maxSize);
         }
     }
 

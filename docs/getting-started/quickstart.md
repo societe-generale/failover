@@ -157,6 +157,12 @@ public interface CountryClient {
 !!! warning "Annotate the implementation, not the interface"
     Spring AOP uses CGLIB proxies on concrete classes. If your `@Failover` is on an interface method (like a Feign client), the framework still intercepts it — but if you use CGLIB proxies directly, the annotation must be on the concrete class method.
 
+!!! tip "`name` vs `domain` — don't confuse them"
+    - **`name`** (required) identifies *this* failover point. It is the metric label and the default store grouping. Keep it **unique per method** — two methods sharing a `name` (without an explicit `domain`) will share store entries and clash.
+    - **`domain`** (optional) deliberately *groups* several `@Failover` methods so they share store entries — e.g. a single-fetch and a batch-fetch over the same referential. Methods in one `domain` must agree on expiry; a mismatch is warned at startup.
+
+    Rule of thumb: set only `name` until you actually need two methods to read each other's stored data — then give them the same `domain`. See [Domain Grouping](../concepts/domain.md).
+
 ---
 
 ## 5. What You Get

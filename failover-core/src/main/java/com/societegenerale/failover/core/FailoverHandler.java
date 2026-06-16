@@ -61,17 +61,33 @@ public interface FailoverHandler<T> {
     T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable);
 
     /**
-     * Recovers every stored entry for the failover's referential.
+     * Recovers every stored entry for the failover's referential (the recover-all / {@code findAll} path).
+     *
+     * <p><strong>This is an optional operation.</strong> It is meaningful only for the innermost
+     * <em>store-backed</em> handler that can enumerate a referential — {@link DefaultFailoverHandler},
+     * which overrides it. Decorator and composite handlers
+     * ({@link AdvancedFailoverHandler}, {@link ScatterGatherFailoverHandler}) drive recover-all through
+     * {@link #recover} instead (the scatter path dispatches one {@code recoverAll} per slice onto its
+     * slice delegate), so they do not implement this method and inherit the default.
+     *
+     * <p><strong>Implementation contract:</strong> The default throws {@link UnsupportedOperationException}, following the JDK
+     * "optional operation" convention (cf. {@code Collection.add} on an immutable collection). Only call
+     * this on a handler documented to support it — i.e. the slice/store-level recover-all delegate, never
+     * a decorator reference. Implementations that support it must return a non-null list (empty, never
+     * {@code null}, when the referential has no live entries) and must not throw for the empty case.
      *
      * @param failover  annotation metadata for the failover point
      * @param method    the reflected intercepted method (never {@code null})
      * @param args      method arguments used to derive the lookup key
      * @param clazz     expected return type
      * @param throwable the exception that triggered recovery
-     * @return the recovered payloads
+     * @return the recovered payloads (never {@code null} for supporting implementations)
+     * @throws UnsupportedOperationException if this handler does not support recover-all (the default)
      */
     default List<T> recoverAll(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable throwable) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException(
+                "recoverAll is an optional operation supported only by the store-level recover-all delegate; "
+                        + "this handler (" + getClass().getSimpleName() + ") drives recover-all via recover(...)");
     }
 
     /** Removes all expired entries from the failover store. */

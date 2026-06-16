@@ -247,6 +247,31 @@ class FailoverStoreCaffeineTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    @DisplayName("bounded cache (maxSize) evicts entries beyond the cap (audit I-15)")
+    void shouldEvictEntriesBeyondMaxSize() {
+        var bounded = new FailoverStoreCaffeine<ThirdParty>(clock, 10);
+        for (int i = 0; i < 200; i++) {
+            bounded.store(new ReferentialPayload<>(NAME, "k-" + i, true, NOW, NOW.plusSeconds(600L),
+                    new ThirdParty((long) i, "V" + i, i)));
+        }
+
+        // Caffeine size-eviction is asynchronous; poll until the cap is enforced.
+        await().atMost(3, TimeUnit.SECONDS).until(() -> bounded.findAll(NAME).size() <= 10);
+        assertThat(bounded.findAll(NAME)).hasSizeLessThanOrEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("unbounded cache (maxSize <= 0) retains all unexpired entries")
+    void shouldRetainAllEntriesWhenUnbounded() {
+        var unbounded = new FailoverStoreCaffeine<ThirdParty>(clock, 0);
+        for (int i = 0; i < 200; i++) {
+            unbounded.store(new ReferentialPayload<>(NAME, "k-" + i, true, NOW, NOW.plusSeconds(600L),
+                    new ThirdParty((long) i, "V" + i, i)));
+        }
+        assertThat(unbounded.findAll(NAME)).hasSize(200);
+    }
+
     @Data
     @AllArgsConstructor
     static class ThirdParty  {

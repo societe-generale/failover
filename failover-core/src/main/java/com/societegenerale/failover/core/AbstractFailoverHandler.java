@@ -73,15 +73,22 @@ public abstract class AbstractFailoverHandler<T> implements FailoverHandler<T> {
     protected abstract T recover(@NonNull Failover failover, List<Object> args, Class<T> clazz, Throwable throwable);
 
     /**
-     * Recovers every stored entry for the failover's referential. Unsupported by default.
+     * Recovers every stored entry for the failover's referential — an <strong>optional operation</strong>.
+     *
+     * <p><strong>Implementation contract:</strong> The default throws {@link UnsupportedOperationException} (JDK optional-operation
+     * convention). Subclasses that are store-level recover-all delegates override this; decorator
+     * subclasses that drive recover-all via {@code recover} leave it unsupported. See
+     * {@link FailoverHandler#recoverAll}.
      *
      * @param failover  annotation metadata for the failover point
      * @param args      method arguments used to derive the lookup key
      * @param clazz     expected return type
      * @param throwable the exception that triggered recovery
-     * @return the recovered payloads
+     * @return the recovered payloads (never {@code null} for supporting subclasses)
+     * @throws UnsupportedOperationException if this handler does not support recover-all (the default)
      */
     protected List<T> recoverAll(@NonNull Failover failover, List<Object> args, Class<T> clazz, Throwable throwable) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException(
+                "recoverAll is an optional operation not supported by " + getClass().getSimpleName());
     }
 }

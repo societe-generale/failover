@@ -63,6 +63,6 @@ class FailoverHandlerTest {
     void defaultRecoverAllShouldThrowUnsupportedOperationException() {
         assertThatThrownBy(() -> handler.recoverAll(failover, METHOD, List.of(), String.class, new RuntimeException()))
                 .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Not supported yet.");
+                .hasMessageContaining("optional operation");
     }
 }
