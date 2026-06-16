@@ -649,21 +649,6 @@
     "ast_hash": "db5a4ad405d4b188072dba3d4196f706",
     "semantic_hash": "db5a4ad405d4b188072dba3d4196f706"
   },
-  "failover-observable-scanner/src/main/java/com/societegenerale/failover/observable/scanner/SpringContextFailoverScanner.java": {
-    "mtime": 1780829388.0944984,
-    "ast_hash": "ea5948fb86370708d4bde5d3fc7c7d21",
-    "semantic_hash": "ea5948fb86370708d4bde5d3fc7c7d21"
-  },
-  "failover-observable-scanner/src/main/java/com/societegenerale/failover/observable/scanner/package-info.java": {
-    "mtime": 1780821301.029622,
-    "ast_hash": "1053a6bfc7f1c5e73028fee89f0f2f73",
-    "semantic_hash": "1053a6bfc7f1c5e73028fee89f0f2f73"
-  },
-  "failover-observable-scanner/src/test/java/com/societegenerale/failover/observable/scanner/SpringContextFailoverScannerTest.java": {
-    "mtime": 1780818095.1564786,
-    "ast_hash": "b82e4046ffb79da841eb9697fcca7378",
-    "semantic_hash": "b82e4046ffb79da841eb9697fcca7378"
-  },
   "failover-scheduler/src/main/java/com/societegenerale/failover/scheduler/ExpiryCleanupScheduler.java": {
     "mtime": 1780815596.5735393,
     "ast_hash": "d75b241621aacb7f3f3f622ca4855bdf",
@@ -1415,14 +1400,14 @@
     "semantic_hash": "faa81a0bf5006b580dc9e73070f8a191"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/AbstractFailoverHandler.java": {
-    "mtime": 1781533628.9689736,
-    "ast_hash": "df11b4d7f98f6398b6bb5bdc5b626ade",
-    "semantic_hash": "df11b4d7f98f6398b6bb5bdc5b626ade"
+    "mtime": 1781617331.3844163,
+    "ast_hash": "1aa29c984d8756c8077d8d739579f4f3",
+    "semantic_hash": "1aa29c984d8756c8077d8d739579f4f3"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/AdvancedFailoverHandler.java": {
-    "mtime": 1781534232.69012,
-    "ast_hash": "c474c2963dba7153f63c0edfe12f260e",
-    "semantic_hash": "c474c2963dba7153f63c0edfe12f260e"
+    "mtime": 1781615697.4124556,
+    "ast_hash": "d60fea8a564dcf6eba2c93022e3cd9c8",
+    "semantic_hash": "d60fea8a564dcf6eba2c93022e3cd9c8"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/BasicFailoverExecution.java": {
     "mtime": 1781529132.9397213,
@@ -1440,14 +1425,14 @@
     "semantic_hash": "f8dbcecefb61fe07ac85bc3e1f5de64c"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/FailoverHandler.java": {
-    "mtime": 1781533628.9645019,
-    "ast_hash": "0a647026af66919024fd8b0643312b72",
-    "semantic_hash": "0a647026af66919024fd8b0643312b72"
+    "mtime": 1781617331.3846123,
+    "ast_hash": "cae69cf07bc8bec88219426d447c944d",
+    "semantic_hash": "cae69cf07bc8bec88219426d447c944d"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/PayloadGather.java": {
-    "mtime": 1781533628.9844666,
-    "ast_hash": "53c3a95ef82693f362bb03b0fb88bc56",
-    "semantic_hash": "53c3a95ef82693f362bb03b0fb88bc56"
+    "mtime": 1781615697.4127817,
+    "ast_hash": "4d7440e4e560b03dc408afb4f431e827",
+    "semantic_hash": "4d7440e4e560b03dc408afb4f431e827"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/PayloadScatter.java": {
     "mtime": 1781533628.9811974,
@@ -1455,9 +1440,9 @@
     "semantic_hash": "59d103d8e20b60247620274be794616e"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/ScatterGatherFailoverHandler.java": {
-    "mtime": 1781533628.9777617,
-    "ast_hash": "6007b714e547f5c52918cf70b869c83f",
-    "semantic_hash": "6007b714e547f5c52918cf70b869c83f"
+    "mtime": 1781582663.8504097,
+    "ast_hash": "6aab67857b368fb3ad88d458304610b2",
+    "semantic_hash": "6aab67857b368fb3ad88d458304610b2"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/SliceDispatcher.java": {
     "mtime": 1781527232.067003,
@@ -1535,9 +1520,9 @@
     "semantic_hash": "872af116b1add37d621cf05b3335451e"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/expiry/ExpiryPolicy.java": {
-    "mtime": 1781501983.2178748,
-    "ast_hash": "6499aa1159cb94eb24a75bf72f75a3e3",
-    "semantic_hash": "6499aa1159cb94eb24a75bf72f75a3e3"
+    "mtime": 1781617331.3847768,
+    "ast_hash": "0e81e5566372e3cb7547fcba5ea7dab9",
+    "semantic_hash": "0e81e5566372e3cb7547fcba5ea7dab9"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/expiry/ExpiryPolicyLookup.java": {
     "mtime": 1781501983.217335,
@@ -1575,9 +1560,9 @@
     "semantic_hash": "36abfaab669245fa0fbac63041689dd2"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/key/KeyGenerator.java": {
-    "mtime": 1781501983.2154572,
-    "ast_hash": "50103b48b1b96111f1e264f8bd3d46b4",
-    "semantic_hash": "50103b48b1b96111f1e264f8bd3d46b4"
+    "mtime": 1781617331.3849547,
+    "ast_hash": "c164f4d4a3a066827402550048995f57",
+    "semantic_hash": "c164f4d4a3a066827402550048995f57"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/key/KeyGeneratorLookup.java": {
     "mtime": 1781501983.2157638,
@@ -1685,14 +1670,14 @@
     "semantic_hash": "9540ee931c2deac4b01d8711d225df9f"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/payload/PayloadEnricher.java": {
-    "mtime": 1781501983.215155,
-    "ast_hash": "14830985567e4625e6b38131d97d502d",
-    "semantic_hash": "14830985567e4625e6b38131d97d502d"
+    "mtime": 1781617331.385122,
+    "ast_hash": "b804f9345a1bc9854e886adeafe7173d",
+    "semantic_hash": "b804f9345a1bc9854e886adeafe7173d"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/payload/RecoveredPayloadHandler.java": {
-    "mtime": 1781501983.214573,
-    "ast_hash": "b7707e7785bfc7ac25940f5dbd0fe0d6",
-    "semantic_hash": "b7707e7785bfc7ac25940f5dbd0fe0d6"
+    "mtime": 1781617331.3853374,
+    "ast_hash": "68a4ea0acad53eb80b996aef6f776d26",
+    "semantic_hash": "68a4ea0acad53eb80b996aef6f776d26"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/payload/ReferentialPayload.java": {
     "mtime": 1781501983.214751,
@@ -1770,9 +1755,9 @@
     "semantic_hash": "f26fb864d661312c6ec6590cebcf0acc"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/scanner/package-info.java": {
-    "mtime": 1781501983.2195067,
-    "ast_hash": "11615b0046822ff89033a3ac2d30652f",
-    "semantic_hash": "11615b0046822ff89033a3ac2d30652f"
+    "mtime": 1781618163.5668716,
+    "ast_hash": "5bc7cec072a03cfa0caff1014f906045",
+    "semantic_hash": "5bc7cec072a03cfa0caff1014f906045"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/store/DefaultFailoverStore.java": {
     "mtime": 1781501983.2212198,
@@ -1810,14 +1795,14 @@
     "semantic_hash": "2dfaa95f0bbf8952dcb7499979b5b56e"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/AbstractFailoverHandlerTest.java": {
-    "mtime": 1781537405.066961,
-    "ast_hash": "2bf62c0330b7f2693ba28e5b680b68b6",
-    "semantic_hash": "2bf62c0330b7f2693ba28e5b680b68b6"
+    "mtime": 1781617331.3855274,
+    "ast_hash": "b1beee7177c35cc29469df57574629c1",
+    "semantic_hash": "b1beee7177c35cc29469df57574629c1"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/AdvancedFailoverHandlerTest.java": {
-    "mtime": 1781533980.8994582,
-    "ast_hash": "5df76e9d14744891bf7094db6f4c2f40",
-    "semantic_hash": "5df76e9d14744891bf7094db6f4c2f40"
+    "mtime": 1781615697.4130166,
+    "ast_hash": "daaac1dc974d437b92b6e7abba8e095c",
+    "semantic_hash": "daaac1dc974d437b92b6e7abba8e095c"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/BasicFailoverExecutionTest.java": {
     "mtime": 1781529304.3868802,
@@ -1825,19 +1810,19 @@
     "semantic_hash": "25907005d207d9315d4f6e0e512a8820"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/DefaultFailoverHandlerTest.java": {
-    "mtime": 1781501983.1988757,
-    "ast_hash": "271cc4e8c5384e96762b433ce6623c59",
-    "semantic_hash": "271cc4e8c5384e96762b433ce6623c59"
+    "mtime": 1781615697.4132364,
+    "ast_hash": "ff743806574bfb773960f43bf674a643",
+    "semantic_hash": "ff743806574bfb773960f43bf674a643"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/FailoverHandlerTest.java": {
-    "mtime": 1781534809.6170964,
-    "ast_hash": "6a80d922abaf0c2a58cd0a2ebc3b2ec1",
-    "semantic_hash": "6a80d922abaf0c2a58cd0a2ebc3b2ec1"
+    "mtime": 1781617331.3856955,
+    "ast_hash": "3eb596e62be658597e2a73f045224987",
+    "semantic_hash": "3eb596e62be658597e2a73f045224987"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/PayloadGatherTest.java": {
-    "mtime": 1781533890.8199747,
-    "ast_hash": "60736039d444bc7bffca05ffd508f734",
-    "semantic_hash": "60736039d444bc7bffca05ffd508f734"
+    "mtime": 1781582663.8509877,
+    "ast_hash": "72ad8a80fe557372d832b2a66f44e31b",
+    "semantic_hash": "72ad8a80fe557372d832b2a66f44e31b"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/PayloadScatterTest.java": {
     "mtime": 1781533847.7717035,
@@ -1850,9 +1835,9 @@
     "semantic_hash": "41e94a00ec63aa896f2cf39643601eac"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/SliceDispatcherTest.java": {
-    "mtime": 1781527232.0674632,
-    "ast_hash": "db8a485dc56af8b6b672d93214b68164",
-    "semantic_hash": "db8a485dc56af8b6b672d93214b68164"
+    "mtime": 1781618538.7277222,
+    "ast_hash": "6a73a66ff620e4446f7eff112c00b386",
+    "semantic_hash": "6a73a66ff620e4446f7eff112c00b386"
   },
   "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/SplitterInvokerTest.java": {
     "mtime": 1781527232.067529,
@@ -2075,9 +2060,9 @@
     "semantic_hash": "31e8ed205086898551350342a813e7f0"
   },
   "/Users/workbook/IdeaProjects/failover/failover-execution-resilience/src/test/java/com/societegenerale/failover/execution/resilience/ResilienceFailoverExecutionTest.java": {
-    "mtime": 1781501983.2277036,
-    "ast_hash": "6c173b7a160472207c9f913fbcd31654",
-    "semantic_hash": "6c173b7a160472207c9f913fbcd31654"
+    "mtime": 1781583254.418563,
+    "ast_hash": "7054f903db661a876c9dd3002c26b6bc",
+    "semantic_hash": "7054f903db661a876c9dd3002c26b6bc"
   },
   "/Users/workbook/IdeaProjects/failover/failover-execution-resilience/src/test/java/com/societegenerale/failover/execution/resilience/demo/Client.java": {
     "mtime": 1781501983.2314892,
@@ -2155,14 +2140,14 @@
     "semantic_hash": "a90587809be8a0b06aa2ee9dc1de2f0b"
   },
   "/Users/workbook/IdeaProjects/failover/failover-observable-micrometer/src/main/java/com/societegenerale/failover/observable/micrometer/FailoverMeterBinder.java": {
-    "mtime": 1781501983.2474098,
-    "ast_hash": "8a99b67ca5b6f86bd9077450dbdff6bd",
-    "semantic_hash": "8a99b67ca5b6f86bd9077450dbdff6bd"
+    "mtime": 1781618163.5672948,
+    "ast_hash": "3452a174f7e3052bbd776a4665fd3de4",
+    "semantic_hash": "3452a174f7e3052bbd776a4665fd3de4"
   },
   "/Users/workbook/IdeaProjects/failover/failover-observable-micrometer/src/main/java/com/societegenerale/failover/observable/micrometer/MicrometerObservablePublisher.java": {
-    "mtime": 1781529237.292532,
-    "ast_hash": "b268ae02ddb1dbce3cc617d35d730cc4",
-    "semantic_hash": "b268ae02ddb1dbce3cc617d35d730cc4"
+    "mtime": 1781582663.85155,
+    "ast_hash": "509c4659a759027cb721eaa388c51335",
+    "semantic_hash": "509c4659a759027cb721eaa388c51335"
   },
   "/Users/workbook/IdeaProjects/failover/failover-observable-micrometer/src/main/java/com/societegenerale/failover/observable/micrometer/health/FailoverHealthIndicator.java": {
     "mtime": 1781501983.2527795,
@@ -2180,29 +2165,14 @@
     "semantic_hash": "be7fa9b53ee80befe5ea3e32bdd48585"
   },
   "/Users/workbook/IdeaProjects/failover/failover-observable-micrometer/src/test/java/com/societegenerale/failover/observable/micrometer/MicrometerObservablePublisherTest.java": {
-    "mtime": 1781529393.6708233,
-    "ast_hash": "6955fc03166064480e738adb723c8499",
-    "semantic_hash": "6955fc03166064480e738adb723c8499"
+    "mtime": 1781582663.852662,
+    "ast_hash": "660c97f5af3ae97aabf0a58a0f5e9ca9",
+    "semantic_hash": "660c97f5af3ae97aabf0a58a0f5e9ca9"
   },
   "/Users/workbook/IdeaProjects/failover/failover-observable-micrometer/src/test/java/com/societegenerale/failover/observable/micrometer/health/FailoverHealthIndicatorTest.java": {
     "mtime": 1781501983.2525628,
     "ast_hash": "64a588fb0d134abaad5c31a84367079b",
     "semantic_hash": "64a588fb0d134abaad5c31a84367079b"
-  },
-  "/Users/workbook/IdeaProjects/failover/failover-observable-scanner/src/main/java/com/societegenerale/failover/observable/scanner/SpringContextFailoverScanner.java": {
-    "mtime": 1781501983.2461073,
-    "ast_hash": "0da4ed6604ca8e6e141ddf73766658c3",
-    "semantic_hash": "0da4ed6604ca8e6e141ddf73766658c3"
-  },
-  "/Users/workbook/IdeaProjects/failover/failover-observable-scanner/src/main/java/com/societegenerale/failover/observable/scanner/package-info.java": {
-    "mtime": 1781501983.2462547,
-    "ast_hash": "ec2abcd27c074185deac29f497e0e742",
-    "semantic_hash": "ec2abcd27c074185deac29f497e0e742"
-  },
-  "/Users/workbook/IdeaProjects/failover/failover-observable-scanner/src/test/java/com/societegenerale/failover/observable/scanner/SpringContextFailoverScannerTest.java": {
-    "mtime": 1781501983.2464607,
-    "ast_hash": "37ada962411ae444ed241d10baea722a",
-    "semantic_hash": "37ada962411ae444ed241d10baea722a"
   },
   "/Users/workbook/IdeaProjects/failover/failover-scheduler/src/main/java/com/societegenerale/failover/scheduler/ExpiryCleanupScheduler.java": {
     "mtime": 1781501983.203016,
@@ -2240,9 +2210,9 @@
     "semantic_hash": "fe1d789cc23db19e2cd5b12fb023e577"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/configuration/FailoverAutoConfiguration.java": {
-    "mtime": 1781524096.624547,
-    "ast_hash": "7d1ca3a540d681536ec59c745f7916db",
-    "semantic_hash": "7d1ca3a540d681536ec59c745f7916db"
+    "mtime": 1781618163.5686328,
+    "ast_hash": "8dbc0f6ded6aefb703a7f3636fc074a3",
+    "semantic_hash": "8dbc0f6ded6aefb703a7f3636fc074a3"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/configuration/FailoverMicrometerAutoConfiguration.java": {
     "mtime": 1781524096.624794,
@@ -2250,14 +2220,14 @@
     "semantic_hash": "f70ee36042bbf3a59ca20fff5c09e5e1"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/configuration/FailoverStoreAutoConfiguration.java": {
-    "mtime": 1781504329.8517504,
-    "ast_hash": "e3bd786dd493a4547132bd2626917fe0",
-    "semantic_hash": "e3bd786dd493a4547132bd2626917fe0"
+    "mtime": 1781617331.3858979,
+    "ast_hash": "7c1c131dc5e4805046082f8e52ca87bc",
+    "semantic_hash": "7c1c131dc5e4805046082f8e52ca87bc"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/configuration/FailoverStoreMultiTenantAutoConfiguration.java": {
-    "mtime": 1781504329.8519747,
-    "ast_hash": "c7651563e164f644815840791f119845",
-    "semantic_hash": "c7651563e164f644815840791f119845"
+    "mtime": 1781617331.3861268,
+    "ast_hash": "33fbbfeff2ccc88bdbe3c6001c7ca462",
+    "semantic_hash": "33fbbfeff2ccc88bdbe3c6001c7ca462"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/configuration/MicrometerTracingAutoConfiguration.java": {
     "mtime": 1781524096.626181,
@@ -2320,9 +2290,9 @@
     "semantic_hash": "0405afe599dab005abca11d7e2f6952a"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/properties/Store.java": {
-    "mtime": 1781501983.2268372,
-    "ast_hash": "0579f78a1b71e2dbef98bc6e5d86914c",
-    "semantic_hash": "0579f78a1b71e2dbef98bc6e5d86914c"
+    "mtime": 1781617331.3864703,
+    "ast_hash": "e8445ebd7c442ed10848d7e39c4db4cf",
+    "semantic_hash": "e8445ebd7c442ed10848d7e39c4db4cf"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/properties/StoreType.java": {
     "mtime": 1781501983.2265153,
@@ -2365,19 +2335,19 @@
     "semantic_hash": "fd4c683d35ad747a9c02949526830048"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/java/com/societegenerale/failover/configuration/FailoverMonitoringAutoConfigurationTest.java": {
-    "mtime": 1781524096.631538,
-    "ast_hash": "7f102410f38027d4713a6bdc280825d4",
-    "semantic_hash": "7f102410f38027d4713a6bdc280825d4"
+    "mtime": 1781618163.5689466,
+    "ast_hash": "5a5e6349b005a117af3cab306ffd090d",
+    "semantic_hash": "5a5e6349b005a117af3cab306ffd090d"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/java/com/societegenerale/failover/configuration/FailoverStoreAutoConfigurationTest.java": {
-    "mtime": 1781504329.8550842,
-    "ast_hash": "16c30a2d5763b29c2196cdc9922b52f4",
-    "semantic_hash": "16c30a2d5763b29c2196cdc9922b52f4"
+    "mtime": 1781579939.715659,
+    "ast_hash": "5fc7fda8daad3a89fc30a1e855aae3c3",
+    "semantic_hash": "5fc7fda8daad3a89fc30a1e855aae3c3"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/java/com/societegenerale/failover/configuration/FailoverStoreMultiTenantAutoConfigurationTest.java": {
-    "mtime": 1781504329.8553004,
-    "ast_hash": "f416649729e703a7751c584d66225aaf",
-    "semantic_hash": "f416649729e703a7751c584d66225aaf"
+    "mtime": 1781582663.8534076,
+    "ast_hash": "8e765baa914d9dff1b0d47c3104e9f37",
+    "semantic_hash": "8e765baa914d9dff1b0d47c3104e9f37"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/java/com/societegenerale/failover/configuration/MicrometerTracingAutoConfigurationTest.java": {
     "mtime": 1781524096.6318352,
@@ -2465,9 +2435,9 @@
     "semantic_hash": "05feb58d1a82e24ac36778067d9655b5"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/java/com/societegenerale/failover/properties/FailoverPropertiesTest.java": {
-    "mtime": 1781501983.2376268,
-    "ast_hash": "b913e27c3098bd9fb5ec90e7fb23ab32",
-    "semantic_hash": "b913e27c3098bd9fb5ec90e7fb23ab32"
+    "mtime": 1781617331.3866475,
+    "ast_hash": "3db9004c48370be6f21710fe1e5627e3",
+    "semantic_hash": "3db9004c48370be6f21710fe1e5627e3"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/java/com/societegenerale/failover/properties/FailoverTypeTest.java": {
     "mtime": 1781501983.238558,
@@ -2510,19 +2480,19 @@
     "semantic_hash": "c36fdc49d7cfdb19d08b51412add4dab"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/resources/multitenant-jdbc-schema-tenant.sql": {
-    "mtime": 1780804883.087458,
-    "ast_hash": "40b2f71747ccc3568ad3cdf2971567dd",
-    "semantic_hash": "40b2f71747ccc3568ad3cdf2971567dd"
+    "mtime": 1781615697.414642,
+    "ast_hash": "c5a9f693b4f690ac9b519f915e0730bc",
+    "semantic_hash": "c5a9f693b4f690ac9b519f915e0730bc"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/resources/multitenant-jdbc-table-prefix.sql": {
-    "mtime": 1780804883.087532,
-    "ast_hash": "b45a4f7c6bacc3b2960b9adb377c356a",
-    "semantic_hash": "b45a4f7c6bacc3b2960b9adb377c356a"
+    "mtime": 1781615697.414807,
+    "ast_hash": "7332d079a2df6af4e81a928d6f521897",
+    "semantic_hash": "7332d079a2df6af4e81a928d6f521897"
   },
   "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/test/resources/schema-it.sql": {
-    "mtime": 1780804883.0876067,
-    "ast_hash": "de008d11d12f5411969d674e7cef3e68",
-    "semantic_hash": "de008d11d12f5411969d674e7cef3e68"
+    "mtime": 1781615697.4149656,
+    "ast_hash": "6aed11888ef5195acfe3f805c7732070",
+    "semantic_hash": "6aed11888ef5195acfe3f805c7732070"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-async/src/main/java/com/societegenerale/failover/store/async/FailoverStoreAsync.java": {
     "mtime": 1781504329.856993,
@@ -2540,19 +2510,19 @@
     "semantic_hash": "a4145e2f9d80ad5fce0c7291031fba7e"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-caffeine/src/main/java/com/societegenerale/failover/store/caffeine/FailoverStoreCaffeine.java": {
-    "mtime": 1781504329.8604312,
-    "ast_hash": "45824b9f4fdc0ce37239ec856764d395",
-    "semantic_hash": "45824b9f4fdc0ce37239ec856764d395"
+    "mtime": 1781617331.3868957,
+    "ast_hash": "f32c27329e59e4cef95479b9ae06a9b9",
+    "semantic_hash": "f32c27329e59e4cef95479b9ae06a9b9"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-caffeine/src/test/java/com/societegenerale/failover/store/caffeine/FailoverStoreCaffeineTest.java": {
-    "mtime": 1781504329.8612652,
-    "ast_hash": "5093ebe77d00af7c35b02d11e82b70b5",
-    "semantic_hash": "5093ebe77d00af7c35b02d11e82b70b5"
+    "mtime": 1781617331.387149,
+    "ast_hash": "0ca54f6e8075dfde4c73d5342b33faf6",
+    "semantic_hash": "0ca54f6e8075dfde4c73d5342b33faf6"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-inmemory/src/main/java/com/societegenerale/failover/store/inmemory/FailoverStoreInmemory.java": {
-    "mtime": 1781504329.8620384,
-    "ast_hash": "d5f6bbea58eed1b2f02793da1c30f4f0",
-    "semantic_hash": "d5f6bbea58eed1b2f02793da1c30f4f0"
+    "mtime": 1781615697.415289,
+    "ast_hash": "8bd3a2c3a4fee4cbeaa57fd00e01414c",
+    "semantic_hash": "8bd3a2c3a4fee4cbeaa57fd00e01414c"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-inmemory/src/main/java/com/societegenerale/failover/store/inmemory/package-info.java": {
     "mtime": 1781504329.862101,
@@ -2560,9 +2530,9 @@
     "semantic_hash": "10f6aaabd9c3e584023c29f6abf72798"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-inmemory/src/test/java/com/societegenerale/failover/store/inmemory/FailoverStoreInmemoryTest.java": {
-    "mtime": 1781504329.8624444,
-    "ast_hash": "cc236a9b7565d229709c66ceb2f14d1d",
-    "semantic_hash": "cc236a9b7565d229709c66ceb2f14d1d"
+    "mtime": 1781615697.4156308,
+    "ast_hash": "2e1916c79c01c04558c95be2b897352d",
+    "semantic_hash": "2e1916c79c01c04558c95be2b897352d"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/main/java/com/societegenerale/failover/store/jdbc/FailoverStoreJdbc.java": {
     "mtime": 1781525571.7441058,
@@ -2635,9 +2605,9 @@
     "semantic_hash": "69321359801d2062b2d844f079d1cfdc"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/test/java/com/societegenerale/failover/store/jdbc/FailoverStoreJdbcTest.java": {
-    "mtime": 1781524628.684994,
-    "ast_hash": "3d0ad1a50eb0f109b52385ddfd048fad",
-    "semantic_hash": "3d0ad1a50eb0f109b52385ddfd048fad"
+    "mtime": 1781618472.9031906,
+    "ast_hash": "4d177c375daed472e995bc1fdf022092",
+    "semantic_hash": "4d177c375daed472e995bc1fdf022092"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/test/java/com/societegenerale/failover/store/jdbc/MySpringBootApplication.java": {
     "mtime": 1781504329.864338,
@@ -2645,9 +2615,9 @@
     "semantic_hash": "ed43f1b5eaf5cafd4975a611bb75d82e"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/test/java/com/societegenerale/failover/store/jdbc/dialect/AbstractDialectIT.java": {
-    "mtime": 1781504329.8644466,
-    "ast_hash": "dc96e5991fc18dcf56b38b7e8c7f9135",
-    "semantic_hash": "dc96e5991fc18dcf56b38b7e8c7f9135"
+    "mtime": 1781615697.4159198,
+    "ast_hash": "0b5b1b6e7582c681e414a3161d9cd9d3",
+    "semantic_hash": "0b5b1b6e7582c681e414a3161d9cd9d3"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/test/java/com/societegenerale/failover/store/jdbc/dialect/MariaDbDialectIT.java": {
     "mtime": 1781504329.8645205,
@@ -2685,14 +2655,14 @@
     "semantic_hash": "b5d8900412b92edc337d24cb2a3b7faf"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/test/java/com/societegenerale/failover/store/jdbc/serializer/JsonSerializerTest.java": {
-    "mtime": 1781504329.8683631,
-    "ast_hash": "7f0786bba5f33020a1257cd7b00a8d4a",
-    "semantic_hash": "7f0786bba5f33020a1257cd7b00a8d4a"
+    "mtime": 1781582663.8537197,
+    "ast_hash": "b6d4494fe6dd7d4ca751a2ef9b864039",
+    "semantic_hash": "b6d4494fe6dd7d4ca751a2ef9b864039"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-jdbc/src/test/resources/schema.sql": {
-    "mtime": 1780804883.0891173,
-    "ast_hash": "1bf4fa81c3a82e1b8e4fe19b965ec472",
-    "semantic_hash": "1bf4fa81c3a82e1b8e4fe19b965ec472"
+    "mtime": 1781615697.4160967,
+    "ast_hash": "8350c65aa017d79ac7ae50105482980d",
+    "semantic_hash": "8350c65aa017d79ac7ae50105482980d"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-multitenant/src/main/java/com/societegenerale/failover/store/multitenant/FixedTenantResolver.java": {
     "mtime": 1781501983.2325459,
@@ -2745,9 +2715,9 @@
     "semantic_hash": "afe21bdbfebda198ec93551db1de6c6b"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-multitenant/src/test/java/com/societegenerale/failover/store/multitenant/MultiTenantFailoverStoreConcurrencyTest.java": {
-    "mtime": 1781501983.2129624,
-    "ast_hash": "c4c383e635dcd2eff5357377622c02cb",
-    "semantic_hash": "c4c383e635dcd2eff5357377622c02cb"
+    "mtime": 1781583013.8804111,
+    "ast_hash": "8fa1e00735f2768f062a16f7411a6cae",
+    "semantic_hash": "8fa1e00735f2768f062a16f7411a6cae"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-multitenant/src/test/java/com/societegenerale/failover/store/multitenant/MultiTenantFailoverStoreTest.java": {
     "mtime": 1781501983.212491,
@@ -2785,9 +2755,9 @@
     "semantic_hash": "b30411a8fda8356a48fb3e0818c26c6c"
   },
   "/Users/workbook/IdeaProjects/failover/failover-store-multitenant/src/test/resources/multitenant-jdbc-schema.sql": {
-    "mtime": 1780804883.0899236,
-    "ast_hash": "7a239a45e49b2f6ccc8489d66fc2ec5f",
-    "semantic_hash": "7a239a45e49b2f6ccc8489d66fc2ec5f"
+    "mtime": 1781615697.4162695,
+    "ast_hash": "5ccb81691b231377d74ae383c9e1ee0a",
+    "semantic_hash": "5ccb81691b231377d74ae383c9e1ee0a"
   },
   "/Users/workbook/IdeaProjects/failover/scripts/gen_properties.py": {
     "mtime": 1780665936.437249,
@@ -2840,9 +2810,9 @@
     "semantic_hash": "ede3e357f940300acd681f697f2f4603"
   },
   "/Users/workbook/IdeaProjects/failover/CLAUDE.md": {
-    "mtime": 1781524096.624137,
-    "ast_hash": "b949984c5b1b36b9a602304bda297b6b",
-    "semantic_hash": "b949984c5b1b36b9a602304bda297b6b"
+    "mtime": 1781618163.56482,
+    "ast_hash": "fe14ec78d407429f1459add6beaab2e3",
+    "semantic_hash": "fe14ec78d407429f1459add6beaab2e3"
   },
   "/Users/workbook/IdeaProjects/failover/CONTRIBUTING.md": {
     "mtime": 1781501547.6285965,
@@ -2860,19 +2830,19 @@
     "semantic_hash": "2943acebc06044072e7b758e4679c849"
   },
   "/Users/workbook/IdeaProjects/failover/docs/adr/adr.md": {
-    "mtime": 1781537314.0987427,
-    "ast_hash": "a14b86a81a4c9c105a41074fccc5c725",
-    "semantic_hash": "a14b86a81a4c9c105a41074fccc5c725"
+    "mtime": 1781618163.5653346,
+    "ast_hash": "1f1562a89939b4c03ead6cc960fe07ca",
+    "semantic_hash": "1f1562a89939b4c03ead6cc960fe07ca"
   },
   "/Users/workbook/IdeaProjects/failover/docs/adr/index.md": {
-    "mtime": 1781537314.0991185,
-    "ast_hash": "5146381f04b712a3163a28053fa84863",
-    "semantic_hash": "5146381f04b712a3163a28053fa84863"
+    "mtime": 1781618163.565613,
+    "ast_hash": "3e65be3642c72b36b3c9927db4c87f96",
+    "semantic_hash": "3e65be3642c72b36b3c9927db4c87f96"
   },
   "/Users/workbook/IdeaProjects/failover/docs/changelog/changelog.md": {
-    "mtime": 1781537314.0992768,
-    "ast_hash": "213f0164bf7806823324b5254d016c20",
-    "semantic_hash": "213f0164bf7806823324b5254d016c20"
+    "mtime": 1781618601.2387478,
+    "ast_hash": "b4873a720888d091f787aa329dbc294b",
+    "semantic_hash": "b4873a720888d091f787aa329dbc294b"
   },
   "/Users/workbook/IdeaProjects/failover/docs/changelog/index.md": {
     "mtime": 1780885582.5005496,
@@ -2890,9 +2860,9 @@
     "semantic_hash": "fe1f273b73360ef63f63b84027b3b486"
   },
   "/Users/workbook/IdeaProjects/failover/docs/concepts/how-it-works.md": {
-    "mtime": 1781534840.944481,
-    "ast_hash": "f600a353f22690b069b8fe58a059c0b0",
-    "semantic_hash": "f600a353f22690b069b8fe58a059c0b0"
+    "mtime": 1781579939.7153316,
+    "ast_hash": "6e1e32d7f8920f01184d1ba6d5a147b4",
+    "semantic_hash": "6e1e32d7f8920f01184d1ba6d5a147b4"
   },
   "/Users/workbook/IdeaProjects/failover/docs/concepts/index.md": {
     "mtime": 1780893978.6185002,
@@ -2905,9 +2875,9 @@
     "semantic_hash": "dd7959b33ed3f67cceab2e6494f74d83"
   },
   "/Users/workbook/IdeaProjects/failover/docs/concepts/scatter-gather.md": {
-    "mtime": 1781535037.6560218,
-    "ast_hash": "ce5288da51a514c5197fc977e47c6f6e",
-    "semantic_hash": "ce5288da51a514c5197fc977e47c6f6e"
+    "mtime": 1781615697.4107497,
+    "ast_hash": "b4049c1970ec7d6a8a9cf4f7597bc5ce",
+    "semantic_hash": "b4049c1970ec7d6a8a9cf4f7597bc5ce"
   },
   "/Users/workbook/IdeaProjects/failover/docs/configuration/index.md": {
     "mtime": 1780894017.4392061,
@@ -2920,14 +2890,14 @@
     "semantic_hash": "20b75300ef67ae6d962022a841fb4f2e"
   },
   "/Users/workbook/IdeaProjects/failover/docs/configuration/properties-reference.md": {
-    "mtime": 1781448896.2961986,
-    "ast_hash": "e4c8cf9221521b1a44208bac48f8935f",
-    "semantic_hash": "e4c8cf9221521b1a44208bac48f8935f"
+    "mtime": 1781617331.383802,
+    "ast_hash": "09f4e3a0a4a986425b1617de1688859c",
+    "semantic_hash": "09f4e3a0a4a986425b1617de1688859c"
   },
   "/Users/workbook/IdeaProjects/failover/docs/configuration/store-types.md": {
-    "mtime": 1780892827.9762793,
-    "ast_hash": "5e6b8b706628bafda3589656a848c9a8",
-    "semantic_hash": "5e6b8b706628bafda3589656a848c9a8"
+    "mtime": 1781617331.3840144,
+    "ast_hash": "92d11f3d4ecd35fbdd3694a32154364c",
+    "semantic_hash": "92d11f3d4ecd35fbdd3694a32154364c"
   },
   "/Users/workbook/IdeaProjects/failover/docs/getting-started/index.md": {
     "mtime": 1780893958.4807777,
@@ -2935,14 +2905,14 @@
     "semantic_hash": "f8589eeb654fc836c6a53d1f11b0d46c"
   },
   "/Users/workbook/IdeaProjects/failover/docs/getting-started/installation.md": {
-    "mtime": 1780892827.9767327,
-    "ast_hash": "bdab4e7ff113a54542f38a30ea436820",
-    "semantic_hash": "bdab4e7ff113a54542f38a30ea436820"
+    "mtime": 1781618163.5661125,
+    "ast_hash": "a4a7b4350a5e70ce6efc0105a42fd6d0",
+    "semantic_hash": "a4a7b4350a5e70ce6efc0105a42fd6d0"
   },
   "/Users/workbook/IdeaProjects/failover/docs/getting-started/quickstart.md": {
-    "mtime": 1780906190.251844,
-    "ast_hash": "ba1fd685a9a84f3b618ddad75c5e9feb",
-    "semantic_hash": "ba1fd685a9a84f3b618ddad75c5e9feb"
+    "mtime": 1781617331.3842092,
+    "ast_hash": "5bbfe97d11ec8188ec52eedf1e1893ca",
+    "semantic_hash": "5bbfe97d11ec8188ec52eedf1e1893ca"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/configure-failover-annotation.md": {
     "mtime": 1781129233.3362048,
@@ -2950,14 +2920,14 @@
     "semantic_hash": "0a20fa24d84c770fd9ccac70d7ffdd9e"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/context-propagation.md": {
-    "mtime": 1780892827.977004,
-    "ast_hash": "f6a08d7e2885ff2d7e2e348f98545e85",
-    "semantic_hash": "f6a08d7e2885ff2d7e2e348f98545e85"
+    "mtime": 1781581634.4548802,
+    "ast_hash": "5dd51c6ef6a49a58d850dd71310d19c6",
+    "semantic_hash": "5dd51c6ef6a49a58d850dd71310d19c6"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/custom-expiry-policy.md": {
-    "mtime": 1780892827.9770854,
-    "ast_hash": "80ecc74b0b0f38334d68c3e5eeb88b5c",
-    "semantic_hash": "80ecc74b0b0f38334d68c3e5eeb88b5c"
+    "mtime": 1781583259.343548,
+    "ast_hash": "218c7576468e5d604a3ff86490e8b367",
+    "semantic_hash": "218c7576468e5d604a3ff86490e8b367"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/custom-key-generator.md": {
     "mtime": 1780892827.977165,
@@ -2965,9 +2935,9 @@
     "semantic_hash": "ba28a923068ceec4bd065262f44eb8fa"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/custom-payload-enricher.md": {
-    "mtime": 1780892827.9772348,
-    "ast_hash": "30c43451fa65df2035cde81a5fda2827",
-    "semantic_hash": "30c43451fa65df2035cde81a5fda2827"
+    "mtime": 1781581634.4552197,
+    "ast_hash": "eb0463c3f1a8c07c5184b310bc55bf7f",
+    "semantic_hash": "eb0463c3f1a8c07c5184b310bc55bf7f"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/database-resolver.md": {
     "mtime": 1780892827.9773092,
@@ -2990,9 +2960,9 @@
     "semantic_hash": "9f0ff80634a97b5865825a48950c0213"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/observability.md": {
-    "mtime": 1781535065.6129582,
-    "ast_hash": "5949d0cb134210c32a6f5f8eaf961d68",
-    "semantic_hash": "5949d0cb134210c32a6f5f8eaf961d68"
+    "mtime": 1781582663.8464084,
+    "ast_hash": "ccd4f0733ef32d7985e2a637b4f465ed",
+    "semantic_hash": "ccd4f0733ef32d7985e2a637b4f465ed"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/payload-column-resolver.md": {
     "mtime": 1780892827.9776926,
@@ -3000,9 +2970,9 @@
     "semantic_hash": "0001f2062f22bcdf51c545bec5b73177"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/payload-splitter.md": {
-    "mtime": 1781129233.3363135,
-    "ast_hash": "86ce86f94ecab9fe5068b01d0df39ccb",
-    "semantic_hash": "86ce86f94ecab9fe5068b01d0df39ccb"
+    "mtime": 1781581634.4554677,
+    "ast_hash": "b0450642e347d112d595e8bc3e18f48b",
+    "semantic_hash": "b0450642e347d112d595e8bc3e18f48b"
   },
   "/Users/workbook/IdeaProjects/failover/docs/how-to/recovered-payload-handler.md": {
     "mtime": 1780892827.9778392,
@@ -3015,9 +2985,9 @@
     "semantic_hash": "7082e2f32885069aa220caa02b40ad50"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/core.md": {
-    "mtime": 1781534993.3117654,
-    "ast_hash": "03ec8e11f3fed079935ec4ecd00518d6",
-    "semantic_hash": "03ec8e11f3fed079935ec4ecd00518d6"
+    "mtime": 1781618163.5663452,
+    "ast_hash": "badf87b25dc72be850913202655761d5",
+    "semantic_hash": "badf87b25dc72be850913202655761d5"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/execution-resilience.md": {
     "mtime": 1780892827.9786415,
@@ -3025,14 +2995,14 @@
     "semantic_hash": "da06b16381d95e0e2a0ac90c16df0168"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/index.md": {
-    "mtime": 1780894262.5882475,
-    "ast_hash": "045c81cc03dac97213c64c5203e6f559",
-    "semantic_hash": "045c81cc03dac97213c64c5203e6f559"
+    "mtime": 1781618163.5665193,
+    "ast_hash": "64c6659a8cd5ff3bd2bad02f1428f238",
+    "semantic_hash": "64c6659a8cd5ff3bd2bad02f1428f238"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/observability.md": {
-    "mtime": 1781535075.938423,
-    "ast_hash": "d58593f1865842d9b8630cf239ab114d",
-    "semantic_hash": "d58593f1865842d9b8630cf239ab114d"
+    "mtime": 1781618163.566692,
+    "ast_hash": "4560f193ff82fb9b6425fa9adf1ed16b",
+    "semantic_hash": "4560f193ff82fb9b6425fa9adf1ed16b"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/scheduler.md": {
     "mtime": 1780892827.9791114,
@@ -3050,9 +3020,9 @@
     "semantic_hash": "eb1d09598f4695818a5fc99a1d12a6c3"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/store-jdbc.md": {
-    "mtime": 1781527232.0664752,
-    "ast_hash": "fa14b780c6dcb3f637c9df3ed0914b8e",
-    "semantic_hash": "fa14b780c6dcb3f637c9df3ed0914b8e"
+    "mtime": 1781615697.4121306,
+    "ast_hash": "d1daa39307afd10477cdf430f225bd75",
+    "semantic_hash": "d1daa39307afd10477cdf430f225bd75"
   },
   "/Users/workbook/IdeaProjects/failover/docs/modules/store-multitenant.md": {
     "mtime": 1780892827.9797146,
@@ -3065,9 +3035,9 @@
     "semantic_hash": "4c1122ccd1a18088ff22a91b549099dc"
   },
   "/Users/workbook/IdeaProjects/failover/docs/quality/benchmarks.md": {
-    "mtime": 1781531080.384598,
-    "ast_hash": "80c41cab12336bc744ecf986fdfc12fb",
-    "semantic_hash": "80c41cab12336bc744ecf986fdfc12fb"
+    "mtime": 1781618581.32572,
+    "ast_hash": "9e45dda715dcd6627485b9682e155cac",
+    "semantic_hash": "9e45dda715dcd6627485b9682e155cac"
   },
   "/Users/workbook/IdeaProjects/failover/docs/quality/concurrency-tests.md": {
     "mtime": 1781501547.6295755,
@@ -3135,9 +3105,9 @@
     "semantic_hash": "e105eb5e52d57a7cdb8fab4fe84ca257"
   },
   "/Users/workbook/IdeaProjects/failover/docs/support/security.md": {
-    "mtime": 1781501547.6298633,
-    "ast_hash": "f1d299e4354df7fc5d5d2f3b0fe5efb1",
-    "semantic_hash": "f1d299e4354df7fc5d5d2f3b0fe5efb1"
+    "mtime": 1781581634.4557874,
+    "ast_hash": "f02ee4430fffdacb8b5e2f422969993c",
+    "semantic_hash": "f02ee4430fffdacb8b5e2f422969993c"
   },
   "/Users/workbook/IdeaProjects/failover/docs/support/support.md": {
     "mtime": 1780885582.5045974,
@@ -3145,9 +3115,9 @@
     "semantic_hash": "2fcd2b04ede19ee098fd5dbcaa7dac19"
   },
   "/Users/workbook/IdeaProjects/failover/docs/web/html/home.html": {
-    "mtime": 1780907686.3543186,
-    "ast_hash": "04495111a27f2ae8cbdd2c6b30cdada7",
-    "semantic_hash": "04495111a27f2ae8cbdd2c6b30cdada7"
+    "mtime": 1781584749.8089209,
+    "ast_hash": "7e971fe8a85f8d455a7974d42aa7f740",
+    "semantic_hash": "7e971fe8a85f8d455a7974d42aa7f740"
   },
   "/Users/workbook/IdeaProjects/failover/docs/web/html/main.html": {
     "mtime": 1780892850.437652,
@@ -3163,11 +3133,6 @@
     "mtime": 1780818694.740902,
     "ast_hash": "4229f0dc90ac692036866f1b26845de5",
     "semantic_hash": "4229f0dc90ac692036866f1b26845de5"
-  },
-  "/Users/workbook/IdeaProjects/failover/final-audit-report.md": {
-    "mtime": 1781537314.0995371,
-    "ast_hash": "9ae5fc20fdc69ad8f07f24cd95077449",
-    "semantic_hash": "9ae5fc20fdc69ad8f07f24cd95077449"
   },
   "/Users/workbook/IdeaProjects/failover/mkdocs.yml": {
     "mtime": 1781527232.6312485,
@@ -3238,5 +3203,45 @@
     "mtime": 1780866045.0127985,
     "ast_hash": "1a6fc7be6530b69116d2c145692ff952",
     "semantic_hash": "1a6fc7be6530b69116d2c145692ff952"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-core/src/main/java/com/societegenerale/failover/core/expiry/ExpiryPolicyContractVerifier.java": {
+    "mtime": 1781583208.2379289,
+    "ast_hash": "8e762b21e62bf168f2be9bd40db6dbf1",
+    "semantic_hash": "8e762b21e62bf168f2be9bd40db6dbf1"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-core/src/test/java/com/societegenerale/failover/core/expiry/ExpiryPolicyContractVerifierTest.java": {
+    "mtime": 1781583501.947404,
+    "ast_hash": "dd65a6a993d4a22c138b502553d0f3cd",
+    "semantic_hash": "dd65a6a993d4a22c138b502553d0f3cd"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-scanner/src/main/java/com/societegenerale/failover/scanner/SpringContextFailoverScanner.java": {
+    "mtime": 1781618163.56782,
+    "ast_hash": "95a4622488dcfcfb7080ad5e3d04bb3d",
+    "semantic_hash": "95a4622488dcfcfb7080ad5e3d04bb3d"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-scanner/src/main/java/com/societegenerale/failover/scanner/package-info.java": {
+    "mtime": 1781618163.567963,
+    "ast_hash": "675c1d81aabab478ad9d4daad310e826",
+    "semantic_hash": "675c1d81aabab478ad9d4daad310e826"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-scanner/src/test/java/com/societegenerale/failover/scanner/SpringContextFailoverScannerTest.java": {
+    "mtime": 1781618163.5683439,
+    "ast_hash": "ae2ef055ad8e69823e9f0f83aecb5459",
+    "semantic_hash": "ae2ef055ad8e69823e9f0f83aecb5459"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/properties/Caffeine.java": {
+    "mtime": 1781617331.3863015,
+    "ast_hash": "22cf13a143da40211f415ab112816198",
+    "semantic_hash": "22cf13a143da40211f415ab112816198"
+  },
+  "/Users/workbook/IdeaProjects/failover/failover-spring-boot-autoconfigure/src/main/java/com/societegenerale/failover/properties/Inmemory.java": {
+    "mtime": 1781615697.4140296,
+    "ast_hash": "cbc767f2ae59e05ed76a29a23ea200c4",
+    "semantic_hash": "cbc767f2ae59e05ed76a29a23ea200c4"
+  },
+  "/Users/workbook/IdeaProjects/failover/review.md": {
+    "mtime": 1781618591.1498623,
+    "ast_hash": "4806f11f0f1d5b696b79ce73b287c773",
+    "semantic_hash": "4806f11f0f1d5b696b79ce73b287c773"
   }
 }

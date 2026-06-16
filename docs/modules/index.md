@@ -21,6 +21,7 @@ flowchart TD
     RES[failover-execution-resilience]
     SCHED[failover-scheduler]
     SCAN[failover-scanner]
+    LOOKUP[failover-lookup]
     MIC[failover-observable-micrometer]
 
     STARTER --> AC
@@ -31,6 +32,7 @@ flowchart TD
     AC --> ASYNC
     AC --> SCHED
     AC --> SCAN
+    AC --> LOOKUP
     MIC --> SCAN
 ```
 
@@ -117,6 +119,7 @@ flowchart TD
     | `failover-execution-resilience` | Resilience4j circuit-breaker integration |
     | `failover-scheduler` | Expiry-cleanup + observable-report schedulers |
     | `failover-scanner` | Startup scanner for `@Failover` methods |
+    | `failover-lookup` | Spring `BeanFactory` lookups for named `KeyGenerator` / `ExpiryPolicy` / `PayloadSplitter` beans |
     | `failover-observable-micrometer` | Micrometer counters + health indicator |
 
 ---
