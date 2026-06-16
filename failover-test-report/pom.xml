@@ -78,6 +78,11 @@
         </dependency>
         <dependency>
             <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-dashboard</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
             <artifactId>failover-spring-boot-autoconfigure</artifactId>
             <version>${project.parent.version}</version>
         </dependency>

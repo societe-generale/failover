@@ -110,6 +110,8 @@
         <module>failover-scheduler</module>
         <module>failover-lookup</module>
         <module>failover-execution-resilience</module>
+        <module>failover-dashboard</module>
+        <module>failover-dashboard-spring-boot-starter</module>
         <module>failover-spring-boot-autoconfigure</module>
         <module>failover-spring-boot-starter</module>
         <module>failover-test-report</module>
