@@ -112,7 +112,7 @@
         <module>failover-execution-resilience</module>
         <module>failover-spring-boot-autoconfigure</module>
         <module>failover-spring-boot-starter</module>
-        <module>report</module>
+        <module>failover-test-report</module>
     </modules>
 
     <dependencyManagement>
