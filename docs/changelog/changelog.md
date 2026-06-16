@@ -60,6 +60,12 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Added
 
+- **`failover-dashboard`** + **`failover-dashboard-spring-boot-starter`** — an opt-in, secure-by-default
+  embedded observability dashboard. A read-only JSON API (`/failover-dashboard/api/config|metrics|health`,
+  opt-in `/metrics/series`) and a self-contained Chart.js UI over the existing `FailoverScanner` config
+  and `failover.*` meters — no new instrumentation. Shipped only via the dedicated starter; off until
+  `failover.dashboard.enabled=true`; fail-closed access gate (Spring Security role, or `allow-insecure`
+  with a loud WARN), static-only CSP, and aggregate-only data exposure (ADR 55)
 - `failover.store.caffeine.max-size` (default `10000`, same as `inmemory.max-entries`) — the Caffeine
   store can now cap its entry count and evict by Window TinyLFU once exceeded; `0` = unbounded (audit I-15)
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods
