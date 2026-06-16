@@ -23,6 +23,8 @@ flowchart TD
     SCAN[failover-scanner]
     LOOKUP[failover-lookup]
     MIC[failover-observable-micrometer]
+    DASHSTARTER[failover-dashboard-spring-boot-starter]
+    DASH[failover-dashboard]
 
     STARTER --> AC
     AC --> DOMAIN
@@ -34,7 +36,11 @@ flowchart TD
     AC --> SCAN
     AC --> LOOKUP
     MIC --> SCAN
+    DASHSTARTER --> DASH
+    DASH --> SCAN
 ```
+
+The dashboard is a separate, opt-in add-on: the default starter does **not** depend on it, and it does **not** depend on `failover-spring-boot-autoconfigure`.
 
 <div class="grid cards" markdown>
 
@@ -102,6 +108,14 @@ flowchart TD
 
     [:octicons-arrow-right-24: Observability](observability.md)
 
+-   :material-view-dashboard-outline:{ .lg .middle } **Dashboard**
+
+    ---
+
+    Opt-in, secure-by-default embedded UI over the existing config and meters — KPI cards and charts.
+
+    [:octicons-arrow-right-24: Dashboard](dashboard.md)
+
 </div>
 
 ??? note "Full module reference table"
@@ -121,6 +135,8 @@ flowchart TD
     | `failover-scanner` | Startup scanner for `@Failover` methods |
     | `failover-lookup` | Spring `BeanFactory` lookups for named `KeyGenerator` / `ExpiryPolicy` / `PayloadSplitter` beans |
     | `failover-observable-micrometer` | Micrometer counters + health indicator |
+    | `failover-dashboard` | Opt-in embedded observability UI + read-only JSON API |
+    | `failover-dashboard-spring-boot-starter` | The only artifact a consumer adds to obtain the dashboard |
 
 ---
 
