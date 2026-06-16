@@ -57,8 +57,6 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
 
     private final Map<String, ReferentialPayload<T>> store;
 
-    private final int maxEntries;
-
     /** Creates an <b>unbounded</b> store (backward-compatible default). */
     public FailoverStoreInmemory() {
         this(0);
@@ -71,8 +69,7 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
      *                   cap is exceeded the least-recently-accessed entry is evicted (LRU).
      */
     public FailoverStoreInmemory(int maxEntries) {
-        this.maxEntries = maxEntries;
-        this.store = this.maxEntries > 0 ? boundedLruMap(this.maxEntries) : new ConcurrentHashMap<>();
+        this.store = maxEntries > 0 ? boundedLruMap(maxEntries) : new ConcurrentHashMap<>();
     }
 
     /** Access-ordered {@link LinkedHashMap} that evicts the eldest (LRU) entry past {@code cap}, wrapped for thread-safety. */
