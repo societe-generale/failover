@@ -139,6 +139,22 @@ class DashboardMetricsServiceTest {
         assertThat(service.metricsSummary().perApi()).extracting(ApiKpis::name).containsExactly("a", "b");
     }
 
+    @Test
+    @DisplayName("counters missing tags are handled: no domain ⇒ domain falls back to name; no name ⇒ skipped")
+    void untaggedCountersHandledGracefully() {
+        // outcome counter for 'x' but WITHOUT a domain tag → domain falls back to the name
+        Counter.builder("failover.recovery.outcome.total")
+                .tag("name", "x").tag("outcome", "recovered")
+                .register(registry).increment();
+        // a store counter with no 'name' tag at all → ignored during name discovery
+        Counter.builder("failover.store.total").tag("stored", "true").register(registry).increment();
+
+        MetricsSummary summary = service.metricsSummary();
+
+        assertThat(summary.perApi()).extracting(ApiKpis::name).containsExactly("x");
+        assertThat(summary.perApi().get(0).domain()).isEqualTo("x");
+    }
+
     // ── health classification ─────────────────────────────────────────────────
 
     @Test

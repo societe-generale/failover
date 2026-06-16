@@ -55,6 +55,7 @@ public record DashboardProperties(
     @DefaultValue("/failover-dashboard") String basePath,
     @DefaultValue Exposure exposure,
     @DefaultValue Security security,
+    @DefaultValue History history,
     @DefaultValue Health health
 ) {
     /** Canonical, binder-targeted constructor — validates the base path fail-fast. */
@@ -71,13 +72,13 @@ public record DashboardProperties(
     /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "metrics", "health")),
-                new Security("FAILOVER_ADMIN", false), new Health(0.99, 0.90));
+                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90));
     }
 
-    /** Convenience constructor with custom health, default exposure/security. */
+    /** Convenience constructor with custom health, default exposure/security/history. */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "metrics", "health")),
-                new Security("FAILOVER_ADMIN", false), health);
+                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), health);
     }
 
     /**
@@ -113,6 +114,22 @@ public record DashboardProperties(
     public record Security(
         @DefaultValue("FAILOVER_ADMIN") String role,
         @DefaultValue("false") boolean allowInsecure
+    ) {
+    }
+
+    /**
+     * Opt-in server-side trend history (design doc §8 option B): a fixed-size in-memory ring buffer
+     * sampled on a schedule, exposed at {@code /api/metrics/series}. Process-local and lost on restart —
+     * not a TSDB. Off by default.
+     *
+     * @param enabled               enable the ring-buffer sampler + {@code /series} endpoint (default {@code false})
+     * @param samples               ring-buffer capacity, i.e. retained sample count (default {@code 120})
+     * @param sampleIntervalSeconds seconds between samples (default {@code 15})
+     */
+    public record History(
+        @DefaultValue("false") boolean enabled,
+        @DefaultValue("120") int samples,
+        @DefaultValue("15") int sampleIntervalSeconds
     ) {
     }
 

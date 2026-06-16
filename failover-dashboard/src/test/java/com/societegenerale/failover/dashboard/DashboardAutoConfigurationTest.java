@@ -165,6 +165,7 @@ class DashboardAutoConfigurationTest {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
                 new DashboardProperties.Security("FAILOVER_ADMIN", false),
+                new DashboardProperties.History(false, 120, 15),
                 new DashboardProperties.Health(0.99, 0.90));
         ResourceHandlerRegistry resources = Mockito.mock(ResourceHandlerRegistry.class);
         org.springframework.web.servlet.config.annotation.ViewControllerRegistry views =
@@ -175,6 +176,43 @@ class DashboardAutoConfigurationTest {
         cfg.addViewControllers(views);
 
         Mockito.verifyNoInteractions(resources, views);
+    }
+
+    // ── history (§8 option B, opt-in) ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("history disabled by default ⇒ no sampler or /series controller")
+    void historyAbsentByDefault() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(DashboardHistoryService.class);
+                    assertThat(ctx).doesNotHaveBean(DashboardHistoryController.class);
+                });
+    }
+
+    @Test
+    @DisplayName("history.enabled=true + MeterRegistry ⇒ sampler + /series controller registered")
+    void historyPresentWhenEnabled() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.history.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(DashboardHistoryService.class);
+                    assertThat(ctx).hasSingleBean(DashboardHistoryController.class);
+                });
+    }
+
+    @Test
+    @DisplayName("history.enabled=true but no MeterRegistry ⇒ no history beans (needs metrics)")
+    void historyAbsentWithoutRegistry() {
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.history.enabled=true")
+                .run(ctx -> assertThat(ctx).doesNotHaveBean(DashboardHistoryService.class));
     }
 
     // ── security gate (§9 gate 4) ─────────────────────────────────────────────

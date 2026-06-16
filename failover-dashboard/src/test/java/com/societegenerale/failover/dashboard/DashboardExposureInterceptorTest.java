@@ -32,6 +32,7 @@ class DashboardExposureInterceptorTest {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(true, api, include),
                 new DashboardProperties.Security("FAILOVER_ADMIN", false),
+                new DashboardProperties.History(false, 120, 15),
                 new DashboardProperties.Health(0.99, 0.90));
         return new DashboardExposureInterceptor(props);
     }

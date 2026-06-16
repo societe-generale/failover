@@ -60,6 +60,21 @@
         </dependency>
 
         <!-- TEST -->
+        <!-- End-to-end IT only: the real failover runtime (aspect + autoconfigure + inmemory store) and
+             the Micrometer publisher, so a live @Failover call moves the meters the dashboard reads.
+             TEST scope only — the production artifact stays decoupled from failover-spring-boot-autoconfigure. -->
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-spring-boot-starter</artifactId>
+            <version>${project.parent.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-observable-micrometer</artifactId>
+            <version>${project.parent.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

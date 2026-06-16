@@ -245,7 +245,11 @@ document.getElementById("refresh-interval").addEventListener("change", applyRefr
 loadConfig();
 applyRefreshInterval();
 
-// Deep-link: open the metrics view directly via #metrics (e.g. bookmark or share).
+// Deep-link: ?theme=dark|light forces the theme; #metrics opens the metrics view directly.
+const theme = new URLSearchParams(location.search).get("theme");
+if (theme === "dark" || theme === "light") {
+    document.documentElement.dataset.theme = theme;
+}
 if (location.hash === "#metrics") {
     document.querySelector('.tab[data-tab="metrics"]').click();
 }

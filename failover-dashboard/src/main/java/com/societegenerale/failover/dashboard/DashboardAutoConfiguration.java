@@ -33,6 +33,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -138,6 +139,31 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         String forward = "forward:" + properties.basePath() + "/index.html";
         registry.addViewController(properties.basePath()).setViewName(forward);
         registry.addViewController(properties.basePath() + "/").setViewName(forward);
+    }
+
+    /**
+     * Opt-in trend history (design doc §8 option B): a scheduled ring-buffer sampler and the
+     * {@code /api/metrics/series} endpoint, active only when {@code history.enabled=true} and a
+     * {@link MeterRegistry} is present.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnBean(MeterRegistry.class)
+    @ConditionalOnProperty(prefix = "failover.dashboard.history", name = "enabled", havingValue = "true")
+    @EnableScheduling
+    static class HistoryConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean
+        DashboardHistoryService dashboardHistoryService(DashboardMetricsService metricsService,
+                                                        DashboardProperties props) {
+            return new DashboardHistoryService(metricsService, props.history().samples());
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        DashboardHistoryController dashboardHistoryController(DashboardHistoryService historyService) {
+            return new DashboardHistoryController(historyService);
+        }
     }
 
     /**
