@@ -179,12 +179,15 @@ failover:
     timeout: 10s     # default; empty/null = wait indefinitely
 ```
 
+The timeout bounds the slice's underlying store work — the actual `FailoverStore.store(...)` /
+`FailoverStore.find(...)` call (including its JDBC round-trip), not just task scheduling.
+
 On timeout:
 
-- **Recover path** — the slice is treated as *not recovered* (contributes a `null` payload, exactly like a cache miss), so the rest of the result still merges. The caller is never blocked.
-- **Store path** — the timeout surfaces to the caller, where it is isolated by the execution layer (the business call still returns; the store failure is logged/metered).
+- **Recover path** — applied **per slice** (each slice future is joined with its own timeout). A timed-out slice is treated as *not recovered* (contributes a `null` payload, exactly like a cache miss), so the rest of the result still merges and the caller is never blocked.
+- **Store path** — applied to the **aggregate** completion of all slice writes (`allOf(...).orTimeout(...)`): if the batch of slice stores does not finish within the timeout, the join fails with a `TimeoutException`. That failure surfaces to the failover execution layer, which isolates it per the configured `exception-policy` (the business call still returns its live result; the store failure is logged/metered). Already-completed slice writes are **not** rolled back.
 
-The timeout is ignored when `parallel: false` (sequential calls cannot be interrupted this way).
+The timeout is ignored when `parallel: false` — sequential slices run inline on the calling thread and cannot be interrupted this way, so a hung store call blocks the caller. Keep `parallel: true` (the default) if slice stores can stall.
 
 ---
 

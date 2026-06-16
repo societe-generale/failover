@@ -94,6 +94,48 @@ successful upstream call. Native-merge dialects avoid this window entirely. See 
 
 ---
 
+## Connection Pool Tuning
+
+The JDBC store borrows a connection per operation from your application's `DataSource` pool
+(HikariCP by default). Size the pool for the store's actual concurrency, not just business queries.
+
+**How failover uses the pool**
+
+- **Scatter/gather (parallel)** — a composite of *N* entities issues up to *N* concurrent slice
+  writes/reads, each borrowing a connection at once. Peak demand ≈ `N × (concurrent failover calls)`.
+  See [Scatter / Gather](../concepts/scatter-gather.md).
+- **Async writes** (`failover.store.async=true`, default) — `store` / `delete` / `cleanByExpiry` run on
+  the `failover-async` virtual-thread executor. Virtual threads are cheap and unbounded, so the pool —
+  not the executor — is the real limit on concurrent writes.
+- **Recover (`find`)** — synchronous on the business thread, and only during an upstream failure.
+- **Cleanup scheduler** — one connection, periodically; short when the [`EXPIRE_ON` index](#table-ddl) exists.
+
+**Recommendations**
+
+```yaml title="application.yml"
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20          # ≥ peak concurrent slices; raise for wide scatter/gather composites
+      connection-timeout: 8000       # ms — keep ≤ failover.scatter.timeout so pool waits fail within the slice budget
+      leak-detection-threshold: 15000 # surface a slice that never returns a connection
+```
+
+- **Match the slice timeout.** Keep `connection-timeout` **at or below** `failover.scatter.timeout`
+  (default `10s`). Otherwise a pool-exhaustion wait outlives the slice timeout: the slice times out
+  (recover → not-recovered; store → surfaced) while a connection request is still blocked.
+- **Size for the widest composite.** If a splitter fans out to *N* slices, a single call can borrow *N*
+  connections simultaneously. Either raise `maximum-pool-size` to cover the peak, or accept that excess
+  slices queue on the pool and may hit the slice timeout under load.
+- **Isolate failover load if it competes with business queries.** Failover writes are best-effort cache
+  updates — a separate `DataSource`/pool (or a dedicated `JdbcTemplate` via a custom store bean) stops a
+  burst of slice writes from starving primary application traffic.
+- **Keep cleanup cheap.** The hourly cleanup `DELETE … WHERE EXPIRE_ON < ?` holds a connection for the
+  duration of the scan — the mandatory `EXPIRE_ON` index keeps it an index range scan, not a long full
+  scan that pins a connection.
+
+---
+
 ## Serialisation
 
 Payloads are serialised to JSON using Jackson's `ObjectMapper`. The class name is stored in `PAYLOAD_CLASS` for deserialisation. Override with a custom `PayloadColumnResolver` bean — see [Payload Column Resolver](../how-to/payload-column-resolver.md).
