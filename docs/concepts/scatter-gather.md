@@ -206,7 +206,7 @@ Failover scatter-recover: 'countries' — PARTIAL recovery, 2 of 5 slices missin
 the merged result may be incomplete (PayloadSplitter.merge owns the policy).
 ```
 
-so a partial response is never silent. The `INFO` gather line also reports the recovered/missing counts.
+so a partial response is never silent. The `INFO` gather line also reports the recovered/missing counts. A counter `failover.recovery.partial.total{name,method}` is also emitted — alert on a non-zero rate.
 
 !!! danger "Partial data can be worse than no data"
     In some domains an incomplete collection (e.g. 3 of 5 countries) is more dangerous than a clean

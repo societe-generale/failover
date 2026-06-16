@@ -31,6 +31,7 @@ Requires `micrometer-core` and `spring-boot-starter-actuator` on the classpath (
 | `failover.store.total` | Counter | `name`, `stored` |
 | `failover.recover.total` | Counter | `name`, `recovered`, `recovery_failed` |
 | `failover.recovery.outcome.total` | Counter | `name`, `domain`, `method`, `outcome` (see below) |
+| `failover.recovery.partial.total` | Counter | `name`, `method` (scatter/gather: some-but-not-all slices recovered) |
 | `failover.exception.total` | Counter | `name`, `exception_type`, `cause_type` |
 | `failover.operation.duration` | Timer | `name`, `action` |
 | `failover.store.async.failed` | Counter | `name`, `operation`, `exception_type` |
