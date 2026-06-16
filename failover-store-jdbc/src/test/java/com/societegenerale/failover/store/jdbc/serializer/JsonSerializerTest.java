@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,6 +43,17 @@ class JsonSerializerTest {
     static class SamplePayload {
         private String name;
         private int value;
+    }
+
+    /** Payload whose field types live in packages NOT on the allowlist ({@code java.time}, {@code java.math}, generic list). */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    static class NestedPayload {
+        private String name;
+        private Instant timestamp;     // java.time — not allowlisted
+        private BigDecimal amount;     // java.math — not allowlisted
+        private List<String> tags;     // generic collection
     }
 
     @Nested
@@ -296,6 +309,39 @@ class JsonSerializerTest {
             SamplePayload result = serializer.deserialize(json, clazz);
 
             assertThat(result).isEqualTo(original);
+        }
+    }
+
+    @Nested
+    @DisplayName("allowlist scope — nested/generic field types are not gated (audit I-02)")
+    class AllowlistScopeNestedTypes {
+
+        // Allowlist contains ONLY the top-level payload type — NOT java.time, java.math, or java.util.
+        private final JsonSerializer restricted =
+                new JsonSerializer(OBJECT_MAPPER, List.of(NestedPayload.class.getName()));
+
+        @Test
+        @DisplayName("a payload whose nested fields live in non-allowlisted packages round-trips — the allowlist gates only the top-level PAYLOAD_CLASS")
+        void nestedForeignAndGenericTypesAreNotGated() {
+            NestedPayload original = new NestedPayload(
+                    "acme", Instant.parse("2026-06-16T00:00:00Z"), new BigDecimal("12.34"), List.of("a", "b"));
+
+            // toClass only checks the top-level class name; deserialize reconstructs the nested
+            // Instant / BigDecimal / List<String> structurally via Jackson, with NO allowlist lookup.
+            String className = restricted.toClassName(original);
+            String json = restricted.serialize(original);
+            Class<NestedPayload> clazz = restricted.toClass(className);
+            NestedPayload result = restricted.deserialize(json, clazz);
+
+            assertThat(result).isEqualTo(original);
+        }
+
+        @Test
+        @DisplayName("the top-level class still must be allowlisted — a foreign top-level class is rejected")
+        void topLevelClassIsStillGated() {
+            assertThatThrownBy(() -> restricted.toClass("java.time.Instant"))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("allowlist");
         }
     }
 }

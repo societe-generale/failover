@@ -351,7 +351,8 @@ public class FailoverAutoConfiguration {
             FailoverProperties failoverProperties) {
         var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
         var scatterHandler = new ScatterGatherFailoverHandler<>(defaultHandler, defaultHandler, payloadSplitterLookup,
-                scatterGatherExecutorProvider.getIfAvailable(), contextPropagator, failoverProperties.getScatter().getTimeout());
+                scatterGatherExecutorProvider.getIfAvailable(), contextPropagator, failoverProperties.getScatter().getTimeout(),
+                observablePublisher);
         return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, observablePublisher, failoverExpiryExtractor);
     }
 

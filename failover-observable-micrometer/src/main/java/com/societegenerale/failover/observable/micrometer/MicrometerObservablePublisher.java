@@ -39,6 +39,8 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code failover.recovery.outcome.total} (Counter) — tags: {@code name}, {@code domain},
  *       {@code method}, {@code outcome} ({@code recovered} | {@code not_recovered} | {@code error}).
  *       Per intercepted method; the source for the failover / recovery / non-recovery rates.</li>
+ *   <li>{@code failover.recovery.partial.total} (Counter) — tags: {@code name}, {@code method}.
+ *       A scatter/gather recover where some (not all) slices were recovered.</li>
  *   <li>{@code failover.exception.total} (Counter) — tags: {@code name},
  *       {@code exception_type}, {@code cause_type}</li>
  *   <li>{@code failover.operation.duration} (Timer) — tags: {@code name}, {@code action}
@@ -104,6 +106,7 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
         switch (action) {
             case "store"   -> publishStore(name, info);
             case "recover" -> publishRecover(name, info);
+            case "recover-partial" -> publishRecoverPartial(name, info);
             case ASYNC_FAILED -> publishAsyncFailed(name, info);
             default        -> { /* unknown action — ignore */ }
         }
@@ -167,6 +170,19 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .tag("domain", info.getOrDefault(DOMAIN_KEY, name))
             .tag("method", info.getOrDefault(METHOD_KEY, UNKNOWN))
             .tag("outcome", outcome)
+            .register(registry)
+            .increment();
+    }
+
+    /**
+     * Per-method partial-recovery counter (audit I-04): a scatter/gather recover where some — but not
+     * all — slices were recovered, so the merged collection may be incomplete. Alert on a non-zero rate.
+     */
+    private void publishRecoverPartial(String name, Map<String, String> info) {
+        Counter.builder("failover.recovery.partial.total")
+            .description("Scatter/gather recoveries where some (not all) slices were recovered")
+            .tag("name", name)
+            .tag("method", info.getOrDefault(METHOD_KEY, UNKNOWN))
             .register(registry)
             .increment();
     }

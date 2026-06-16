@@ -17,6 +17,8 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.observable.Metrics;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.payload.splitter.PayloadSplitter;
 import com.societegenerale.failover.core.payload.splitter.RecoverContext;
 import lombok.AllArgsConstructor;
@@ -51,6 +53,10 @@ class PayloadGather<T, R> {
 
     private final SliceDispatcher<R> sliceDispatcher;
 
+    /** Sink for the {@code recover-partial} metric; {@code null} disables it. */
+    @Nullable
+    private final ObservablePublisher observablePublisher;
+
     @Nullable T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable cause) {
         PayloadSplitter<T, R> splitter = splitterInvoker.lookup(failover);
         RecoverContext<T> compositeCtx = RecoverContext.<T>builder().failover(failover).args(args).clazz(clazz).cause(cause).build();
@@ -68,10 +74,11 @@ class PayloadGather<T, R> {
         if (missing > 0) {
             // Partial recovery: some slices missing/expired/timed-out. The merged result may be
             // incomplete — the PayloadSplitter.merge policy decides whether to keep positional nulls,
-            // drop them, or reject the whole composite. Surfaced at warn so partial responses are
-            // never silent (audit I-04).
+            // drop them, or reject the whole composite. Surfaced at warn + metric so partial responses
+            // are never silent (audit I-04).
             log.warn("Failover scatter-recover: '{}' — PARTIAL recovery, {} of {} slices missing; the merged result may be incomplete (PayloadSplitter.merge owns the policy).",
                     failover.name(), missing, recovered.size());
+            publishPartial(failover, method, missing, recovered.size());
         }
         var finalCtx = splitterInvoker.merge(splitter, failover, recovered);
         log.info("Failover scatter-recover: gathered {} slices for '{}' ({} recovered, {} missing).",
@@ -145,5 +152,17 @@ class PayloadGather<T, R> {
                 .cause(ctx.getCause())
                 .payload(null)
                 .build();
+    }
+
+    /** Publishes a {@code recover-partial} metric event (audit I-04); no-op when no publisher is wired. */
+    private void publishPartial(Failover failover, Method method, long missing, int total) {
+        if (observablePublisher == null) {
+            return;
+        }
+        observablePublisher.publish(Metrics.of(failover.name())
+                .collect("action", "recover-partial")
+                .collect("method", method.getDeclaringClass().getSimpleName() + "#" + method.getName())
+                .collect("missing", missing)
+                .collect("total", total));
     }
 }

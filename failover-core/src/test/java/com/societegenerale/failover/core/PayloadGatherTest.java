@@ -67,6 +67,9 @@ class PayloadGatherTest {
     @Mock private FailoverHandler<String> delegateR;
     @Mock private PayloadSplitterLookup<String, String> payloadSplitterLookup;
     @Mock private PayloadSplitter<String, String> splitter;
+    @Mock private com.societegenerale.failover.core.observable.publisher.ObservablePublisher observablePublisher;
+
+    @org.mockito.Captor private org.mockito.ArgumentCaptor<com.societegenerale.failover.core.observable.Metrics> metricsCaptor;
 
     private PayloadGather<String, String> gather;
 
@@ -79,7 +82,7 @@ class PayloadGatherTest {
 
         var invoker = new SplitterInvoker<>(payloadSplitterLookup);
         var dispatcher = new SliceDispatcher<String>(null, ContextPropagator.noOp(), null);
-        gather = new PayloadGather<>(delegateR, invoker, dispatcher);
+        gather = new PayloadGather<>(delegateR, invoker, dispatcher, observablePublisher);
     }
 
     private RecoverContext<String> sliceCtx(String key) {
@@ -131,6 +134,38 @@ class PayloadGatherTest {
             given(splitter.merge(any())).willReturn(mergedCtx(null));
 
             assertThat(gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause)).isNull();
+        }
+
+        @Test
+        @DisplayName("partial recovery — publishes a recover-partial metric tagged method, missing, total (audit I-04)")
+        void partialRecoveryPublishesMetric() {
+            given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("1"), sliceCtx("2")));
+            given(delegateR.recover(failover, METHOD, List.of("1"), String.class, cause)).willReturn("A");
+            given(delegateR.recover(failover, METHOD, List.of("2"), String.class, cause)).willReturn(null);  // miss
+            given(splitter.merge(any())).willReturn(mergedCtx("A"));
+
+            gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause);
+
+            verify(observablePublisher).publish(metricsCaptor.capture());
+            java.util.Map<String, String> info = metricsCaptor.getValue().getInfo();
+            assertThat(info)
+                    .containsEntry("failover-action", "recover-partial")
+                    .containsEntry("failover-method", "List#size")
+                    .containsEntry("failover-missing", "1")
+                    .containsEntry("failover-total", "2");
+        }
+
+        @Test
+        @DisplayName("full recovery — no recover-partial metric published")
+        void fullRecoveryPublishesNoPartialMetric() {
+            given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("1"), sliceCtx("2")));
+            given(delegateR.recover(failover, METHOD, List.of("1"), String.class, cause)).willReturn("A");
+            given(delegateR.recover(failover, METHOD, List.of("2"), String.class, cause)).willReturn("B");
+            given(splitter.merge(any())).willReturn(mergedCtx("A,B"));
+
+            gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause);
+
+            verify(observablePublisher, never()).publish(any());
         }
     }
 

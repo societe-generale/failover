@@ -312,6 +312,32 @@ class MicrometerObservablePublisherTest {
         assertThat(recovered + notRecovered).isEqualTo(3.0); // failover rate
     }
 
+    // ── partial recovery ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("recover-partial — increments failover.recovery.partial.total{name, method}")
+    void recoverPartialIncrementsCounter() {
+        publisher.publish(Metrics.of("country-all")
+                .collect("action", "recover-partial")
+                .collect("method", "CountryService#findAll")
+                .collect("missing", "2")
+                .collect("total", "5"));
+
+        Counter counter = registry.get("failover.recovery.partial.total")
+            .tag("name", "country-all")
+            .tag("method", "CountryService#findAll")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("recover-partial with missing method tag — falls back to 'unknown'")
+    void recoverPartialDefaultsMethod() {
+        publisher.publish(Metrics.of("fo").collect("action", "recover-partial"));
+
+        assertThat(registry.get("failover.recovery.partial.total").tag("method", "unknown").counter().count()).isEqualTo(1.0);
+    }
+
     // ── startup/config events ─────────────────────────────────────────────────
 
     @Test

@@ -304,6 +304,22 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
             assertThat(FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "repeat-tenant")).isEqualTo("DEMO_");
         }
 
+        @Test
+        @DisplayName("malicious per-tenant table prefix is rejected when the per-tenant query resolver is built (SQL-injection guard, audit I-03)")
+        void maliciousTenantPrefixIsRejectedAtStoreBuild() {
+            FailoverProperties props = propsWithJdbcAndTenants("DEMO_", Map.of("evil", tenantConfig("x;DROP TABLE y;--")));
+
+            // resolveJdbcPrefix only concatenates — the configured prefix is not yet validated here.
+            String effectivePrefix = FailoverStoreMultiTenantAutoConfiguration.resolveJdbcPrefix(props, "evil");
+            assertThat(effectivePrefix).isEqualTo("x;DROP TABLE y;--DEMO_");
+
+            // The jdbcMultiTenantStoreFactory builds `new DefaultFailoverStoreQueryResolver(effectivePrefix, …)`
+            // for each tenant; its constructor validates the prefix and rejects injection before any SQL runs.
+            assertThatThrownBy(() -> new DefaultFailoverStoreQueryResolver(effectivePrefix, null, null, null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Invalid failover store table prefix");
+        }
+
         private TenantConfig tenantConfig(String tablePrefix) {
             var cfg = new TenantConfig();
             cfg.setTablePrefix(tablePrefix);

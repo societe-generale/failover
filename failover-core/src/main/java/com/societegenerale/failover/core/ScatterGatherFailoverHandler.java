@@ -17,6 +17,7 @@
 package com.societegenerale.failover.core;
 
 import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.payload.splitter.*;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import lombok.extern.slf4j.Slf4j;
@@ -101,12 +102,36 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
             @Nullable Executor executor,
             ContextPropagator contextPropagator,
             @Nullable Duration timeout) {
+        this(delegateT, delegateR, payloadSplitterLookup, executor, contextPropagator, timeout, null);
+    }
+
+    /**
+     * Full constructor with a partial-recovery observability sink. As the six-argument constructor,
+     * plus an {@link ObservablePublisher} the gather side uses to emit a {@code recover-partial}
+     * metric when some (but not all) slices are recovered (audit I-04). Pass {@code null} to disable it.
+     *
+     * @param delegateT             handler for composite-type operations
+     * @param delegateR             handler for slice-type operations
+     * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
+     * @param executor              executor for parallel slice dispatch; {@code null} = sequential
+     * @param contextPropagator     context propagator for executor threads
+     * @param timeout               per-slice timeout for the parallel path; {@code null} = wait indefinitely
+     * @param observablePublisher   sink for the partial-recovery metric; {@code null} = none
+     */
+    public ScatterGatherFailoverHandler(
+            FailoverHandler<T> delegateT,
+            FailoverHandler<R> delegateR,
+            PayloadSplitterLookup<T, R> payloadSplitterLookup,
+            @Nullable Executor executor,
+            ContextPropagator contextPropagator,
+            @Nullable Duration timeout,
+            @Nullable ObservablePublisher observablePublisher) {
         this.delegateT = delegateT;
         this.delegateR = delegateR;
         var splitterInvoker = new SplitterInvoker<>(payloadSplitterLookup);
         var sliceDispatcher = new SliceDispatcher<R>(executor, contextPropagator, timeout);
         this.payloadScatter = new PayloadScatter<>(delegateR, splitterInvoker, sliceDispatcher);
-        this.payloadGather = new PayloadGather<>(delegateR, splitterInvoker, sliceDispatcher);
+        this.payloadGather = new PayloadGather<>(delegateR, splitterInvoker, sliceDispatcher, observablePublisher);
     }
 
     /**

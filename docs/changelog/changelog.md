@@ -66,6 +66,9 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Micrometer counter `failover.recovery.outcome.total{name,domain,method,outcome}` — per-intercepted-method
   failover / recovery / non-recovery rates (`outcome=recovered|not_recovered|error`); recorded once per
   method call, tagged by the actual method (`SimpleClass#method`) (ADR 51)
+- Micrometer counter `failover.recovery.partial.total{name,method}` — scatter/gather recoveries where
+  some (not all) slices were recovered, plus a `WARN` log; the merged collection may be incomplete and
+  the `PayloadSplitter.merge` policy (keep positional nulls / compact / reject) decides the result (audit I-04)
 - `failover.exception-policy` property (`RETHROW`, `NEVER_THROW`, `CUSTOM`)
 - SpEL expression support for expiry (`expiryDurationExpression`, `expiryUnitExpression`)
 - `Automatic-Module-Name` in every published JAR manifest (e.g. `com.societegenerale.failover.core`,
