@@ -83,6 +83,60 @@ public class TraceEnricher<T> implements PayloadEnricher<T> {
 
 ---
 
+## Example: Encode On Store, Decode On Recover
+
+`enrichOnStore` runs **before** the payload is written and `enrichOnRecover` **after** it is read — a
+natural pair for **reversible** transformation. Encode sensitive fields on store so the failover store
+never holds plaintext at rest, then decode on recover so callers still get the **real value** back
+(unlike masking, which is lossy and cannot be reversed). See
+[Security → Sensitive data](../support/security.md#sensitive-data-pii-in-failover-stores).
+
+```java title="EncodingPayloadEnricher.java"
+@Component
+public class EncodingPayloadEnricher<T> implements PayloadEnricher<T> {
+
+    @Override
+    public ReferentialPayload<T> enrichOnStore(
+            Failover failover, Class<T> clazz, ReferentialPayload<T> payload) {
+        if (payload.getPayload() instanceof Client c) {
+            c.setAccountNumber(encode(c.getAccountNumber()));   // stored encoded, never plaintext
+        }
+        return payload;
+    }
+
+    @Override
+    public ReferentialPayload<T> enrichOnRecover(
+            Failover failover, Class<T> clazz,
+            @Nullable ReferentialPayload<T> payload, Throwable cause) {
+        if (payload != null && payload.getPayload() instanceof Client c) {
+            c.setAccountNumber(decode(c.getAccountNumber()));   // caller gets the real value back
+        }
+        if (payload != null && payload.getPayload() instanceof Referential r) {
+            r.setUpToDate(false);
+            r.setAsOf(payload.getAsOf());
+        }
+        return payload;
+    }
+
+    private static String encode(String value) {
+        return value == null ? null
+                : Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decode(String value) {
+        return value == null ? null
+                : new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+    }
+}
+```
+
+!!! warning "Base64 is encoding, not encryption"
+    Base64 only obscures the value at rest — anyone with the stored bytes can decode it. For real
+    confidentiality, replace `encode`/`decode` with authenticated encryption (e.g. AES-GCM) using a
+    key from your secrets manager. The store/recover pairing is the same; only the transform changes.
+
+---
+
 ## Next Steps
 
 - [Recovered Payload Handler](recovered-payload-handler.md) — handle null recovery result
