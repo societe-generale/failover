@@ -157,6 +157,7 @@ nav:
     - Resilience: modules/execution-resilience.md
     - Scheduler: modules/scheduler.md
     - Observability: modules/observability.md
+    - Dashboard: modules/dashboard.md
   - Quality:
     - quality/index.md
     - Dialect Integration Tests: quality/integration-tests.md

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Failover Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="bg-grid" aria-hidden="true"></div>
+
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span class="brand-name">FAILOVER</span>
+            <span class="brand-sub">dashboard</span>
+        </div>
+        <nav class="tabs" role="tablist">
+            <button class="tab active" data-tab="config" role="tab" aria-selected="true">Config</button>
+            <button class="tab" data-tab="metrics" role="tab" aria-selected="false">Metrics</button>
+            <button class="tab" data-tab="health" role="tab" aria-selected="false">Health</button>
+        </nav>
+        <div class="controls">
+            <label class="refresh">
+                <span class="live-dot" id="live-dot" aria-hidden="true"></span>
+                <span class="refresh-label">live</span>
+                <select id="refresh-interval" aria-label="Auto-refresh interval">
+                    <option value="0">off</option>
+                    <option value="5" selected>5s</option>
+                    <option value="10">10s</option>
+                    <option value="30">30s</option>
+                </select>
+            </label>
+            <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark / light theme">◐</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- ── Config view ─────────────────────────────────────────────────── -->
+        <section id="config" class="panel" role="tabpanel">
+            <div class="section-head">
+                <h2 class="section-title">Failover configuration</h2>
+                <span id="config-count" class="count"></span>
+            </div>
+            <div class="toolbar">
+                <input id="config-filter" type="search" placeholder="Filter by name, domain, store…"
+                       aria-label="Filter configuration table">
+            </div>
+            <div id="config-error" class="banner error" hidden></div>
+            <div class="table-wrap">
+                <table id="config-table" class="grid">
+                    <thead>
+                        <tr>
+                            <th data-key="name">Name</th>
+                            <th data-key="domain">Domain</th>
+                            <th data-key="expiryDuration" class="num">Expiry</th>
+                            <th data-key="expiryUnit">Unit</th>
+                            <th data-key="storeType">Store</th>
+                            <th data-key="executionType">Execution</th>
+                            <th data-key="recoverAll">Recover-All</th>
+                            <th data-key="payloadSplitter">Splitter</th>
+                            <th data-key="keyGenerator">Key Gen</th>
+                            <th data-key="expiryPolicy">Expiry Policy</th>
+                        </tr>
+                    </thead>
+                    <tbody id="config-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ── Metrics view ────────────────────────────────────────────────── -->
+        <section id="metrics" class="panel" role="tabpanel" hidden>
+            <div id="metrics-error" class="banner error" hidden></div>
+            <div id="metrics-degraded" class="banner warn" hidden>
+                Charts library not vendored — KPI cards and tables still work.
+            </div>
+
+            <div class="section-head">
+                <h2 class="section-title">Signals</h2>
+            </div>
+            <div class="kpi-grid" id="kpi-cards">
+                <div class="kpi" data-accent="overall" title="Every intercepted @Failover call (success + failover)">
+                    <span class="kpi-label">Overall calls</span><span class="kpi-value" data-kpi="overall">—</span>
+                </div>
+                <div class="kpi" data-accent="success" title="Upstream healthy → live value stored (S / Total)">
+                    <span class="kpi-label">Success</span><span class="kpi-value" data-kpi="success">—</span>
+                </div>
+                <div class="kpi" data-accent="failover" title="Upstream failed → failover flow started (F / Total)">
+                    <span class="kpi-label">Failover</span><span class="kpi-value" data-kpi="failover">—</span>
+                </div>
+                <div class="kpi" data-accent="recovery" title="Failover served a stored, non-expired value (recovered / F)">
+                    <span class="kpi-label">Recovery</span><span class="kpi-value" data-kpi="recovery">—</span>
+                </div>
+                <div class="kpi" data-accent="nonRecovery" title="Failover found nothing usable: missing/expired/error ((not+err) / F)">
+                    <span class="kpi-label">Non-Recovery</span><span class="kpi-value" data-kpi="nonRecovery">—</span>
+                </div>
+                <div class="kpi" data-accent="health" title="Caller got a usable result, live or recovered ((S + recovered) / Total)">
+                    <span class="kpi-label">Health</span><span class="kpi-value" data-kpi="health">—</span>
+                </div>
+            </div>
+
+            <div class="section-head">
+                <h2 class="section-title">Telemetry</h2>
+            </div>
+            <div class="chart-grid">
+                <figure class="card"><figcaption>Recovery vs Non-Recovery</figcaption>
+                    <canvas id="chart-recovery"></canvas></figure>
+                <figure class="card"><figcaption>Per-API · Overall / Failover / Recovery / Non-Recovery</figcaption>
+                    <canvas id="chart-perapi"></canvas></figure>
+                <figure class="card"><figcaption>Store vs Recover</figcaption>
+                    <canvas id="chart-store"></canvas></figure>
+                <figure class="card"><figcaption>Timeline · overall calls &amp; failover / recovery / non-recovery rates</figcaption>
+                    <canvas id="chart-timeline"></canvas></figure>
+            </div>
+
+            <figure class="card wide"><figcaption>Per-API actual failures (failover invocations) over time</figcaption>
+                <canvas id="chart-api-failures"></canvas></figure>
+
+            <div class="section-head">
+                <h2 class="section-title">Per-API health</h2>
+            </div>
+            <div class="table-wrap">
+                <table class="grid" id="health-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th><th>Domain</th><th class="num">Calls</th>
+                            <th class="num">Success %</th><th class="num">Failover %</th>
+                            <th class="num">Recovery %</th><th class="num">Non-Recovery %</th><th class="num">Healthy %</th>
+                            <th class="num">Recovered</th><th class="num">Not-Recovered</th><th class="num">Errors</th>
+                            <th>Health</th>
+                        </tr>
+                    </thead>
+                    <tbody id="health-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ── Health view (actuator-style failover health) ────────────────── -->
+        <section id="health" class="panel" role="tabpanel" hidden>
+            <div id="health-error" class="banner error" hidden></div>
+            <div class="health-head">
+                <span class="health-title">Failover Health</span>
+                <span id="health-status" class="status-pill">—</span>
+            </div>
+            <p class="health-sub">Mirrors the <code>/actuator/health/failover</code> contributor — overall status and the active configuration.</p>
+            <div class="table-wrap narrow">
+                <table class="grid kv">
+                    <tbody id="health-details"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <span>failover-dashboard</span>
+        <span class="dot" aria-hidden="true">·</span>
+        <span>read-only · derived from <code>FailoverScanner</code> + Micrometer <code>failover.*</code></span>
+    </footer>
+
+    <!-- Chart.js vendored as a UMD global (offline-safe, no CDN). See vendor/chart.umd.min.js. -->
+    <script src="vendor/chart.umd.min.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
