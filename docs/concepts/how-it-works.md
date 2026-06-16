@@ -211,17 +211,29 @@ recover path (and thus the handler order) is identical for both execution types.
 
 ## Store Assembly Chain
 
+The single `failoverStore` bean is assembled by `FailoverStoreAutoConfiguration` from two properties.
+`DefaultFailoverStore` (defensive copy) always wraps the raw store; `FailoverStoreAsync` is added when
+`failover.store.async=true`. This "per-tenant chain" is the whole store in single-tenant mode, and
+becomes the **per-tenant** decorator inside `MultiTenantFailoverStore` when multi-tenant is enabled —
+so in multi-tenant mode `MultiTenantFailoverStore` is the **outermost** layer and async sits *inside*
+it, per tenant (it resolves the tenant on the calling thread before any executor boundary).
+
 ```mermaid
 flowchart LR
-    A[AsyncFailoverStore] --> M[MultiTenantFailoverStore]
-    M --> B[(base store)]
+    subgraph single-tenant
+      A[FailoverStoreAsync*] --> D[DefaultFailoverStore] --> B[(raw store)]
+    end
+    subgraph multi-tenant
+      M[MultiTenantFailoverStore] -->|per tenant| A2[FailoverStoreAsync*] --> D2[DefaultFailoverStore] --> B2[(raw store)]
+    end
     B --> I[InMemoryFailoverStore]
     B --> C[CaffeineFailoverStore]
     B --> J[JdbcFailoverStore]
-
 ```
 
-`AsyncFailoverStore` offloads writes to a virtual-thread executor (active when `failover.store.async=true`). `MultiTenantFailoverStore` routes each operation to the correct tenant's base store (active when `failover.store.multitenant.enabled=true`). Both are transparent decorators.
+`*FailoverStoreAsync` is present only when `failover.store.async=true` (the default). The raw store is
+the backend chosen by `failover.store.type` (inmemory / caffeine / jdbc). See ADR 18 (central
+assembler) and ADR 54 (single-bean collapse).
 
 ---
 

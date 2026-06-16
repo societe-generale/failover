@@ -94,6 +94,14 @@ class FailoverStoreAutoConfigurationTest {
             DefaultFailoverStore<Object> defaultStore = cast(requireNonNull(async.getFailoverStore()));
             assertThat(requireNonNull(defaultStore.getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
         }
+
+        @Test
+        @DisplayName("exactly one FailoverStore bean, named 'failoverStore' (single-bean collapse)")
+        void singleFailoverStoreBeanNamedFailoverStore() {
+            assertThat(applicationContext.getBeansOfType(FailoverStore.class))
+                    .hasSize(1)
+                    .containsOnlyKeys("failoverStore");
+        }
     }
 
     @Nested
@@ -128,6 +136,14 @@ class FailoverStoreAutoConfigurationTest {
         void innermostShouldBeInmemory() {
             DefaultFailoverStore<Object> defaultStore = cast(failoverStore);
             assertThat(requireNonNull(defaultStore.getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
+        }
+
+        @Test
+        @DisplayName("exactly one FailoverStore bean, named 'failoverStore' (single-bean collapse)")
+        void singleFailoverStoreBeanNamedFailoverStore() {
+            assertThat(applicationContext.getBeansOfType(FailoverStore.class))
+                    .hasSize(1)
+                    .containsOnlyKeys("failoverStore");
         }
     }
 
@@ -207,7 +223,7 @@ class FailoverStoreAutoConfigurationTest {
         @Test
         @DisplayName("should register exactly one FailoverStore bean")
         void shouldRegisterExactlyOneFailoverStore() {
-            assertThat(applicationContext.getBeansOfType(FailoverStore.class)).hasSize(1);
+            assertThat(applicationContext.getBeansOfType(FailoverStore.class)).hasSize(1).containsOnlyKeys("failoverStore");
         }
 
         @Test
@@ -341,7 +357,7 @@ class FailoverStoreAutoConfigurationTest {
         @Test
         @DisplayName("should register exactly one FailoverStore bean")
         void shouldRegisterExactlyOneFailoverStore() {
-            assertThat(applicationContext.getBeansOfType(FailoverStore.class)).hasSize(1);
+            assertThat(applicationContext.getBeansOfType(FailoverStore.class)).hasSize(1).containsOnlyKeys("failoverStore");
         }
     }
 

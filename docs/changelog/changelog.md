@@ -31,6 +31,10 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - `ScatterGatherFailoverHandler` refactored into a thin facade over package-private collaborators
   (`PayloadScatter`, `PayloadGather`, `SliceDispatcher`, `SplitterInvoker`) — public API and behaviour
   unchanged (audit A-2, ADR 49)
+- `FailoverStoreAutoConfiguration` now assembles the `failoverStore` bean in a single method instead of
+  four `async × multitenant` `@ConditionalOnProperty` variants; behaviour unchanged, the per-tenant
+  async wrapping is now explicit, and `@ConditionalOnMissingBean(FailoverStore)` override is retained
+  (ADR 54)
 - Performance: failover metric construction made the `Metrics` helper's responsibility — keys are
   built by concatenation instead of `String.format`, with typed `collect(String, long)` /
   `collect(String, boolean)` overloads replacing per-call `toString`/ternary noise in
