@@ -104,9 +104,11 @@ function renderHealthTable(perApi, health) {
         const tr = document.createElement("tr");
         const status = statusByName[k.name] ?? "UNHEALTHY";
         tr.appendChild(cell(k.name));
+        tr.appendChild(cell(k.domain));
         tr.appendChild(cell(k.totalCalls.toLocaleString(), "num"));
         tr.appendChild(cell(pct(k.rates.successRate), "num"));
         tr.appendChild(cell(pct(k.rates.recoveryRate), "num"));
+        tr.appendChild(cell(pct(k.rates.nonRecoveryRate), "num"));
         const badge = document.createElement("td");
         const span = document.createElement("span");
         span.className = `badge ${status.toLowerCase()}`;
