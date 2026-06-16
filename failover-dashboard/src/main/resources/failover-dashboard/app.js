@@ -140,6 +140,8 @@ function renderCharts(summary) {
         labels: ["Recovered", "Not recovered + error"],
         datasets: [{ data: [o.recovered, o.notRecovered + o.errors] }],
     });
+    // single-series bars: no dataset label, so suppress the "undefined" legend entry
+    const noLegend = { plugins: { legend: { display: false } } };
     upsertChart("chart-perapi", "bar", {
         labels: summary.perApi.map(k => k.name),
         datasets: [
@@ -152,7 +154,7 @@ function renderCharts(summary) {
     upsertChart("chart-store", "bar", {
         labels: ["Store (success)", "Recover (failover)"],
         datasets: [{ data: [o.upstreamSuccess, o.failoverInvoked] }],
-    });
+    }, noLegend);
     upsertChart("chart-trend", "line", {
         labels: trend.labels,
         datasets: [
@@ -164,14 +166,15 @@ function renderCharts(summary) {
     });
 }
 
-function upsertChart(canvasId, type, data) {
+function upsertChart(canvasId, type, data, extraOptions) {
     if (charts[canvasId]) {
         charts[canvasId].data = data;
         charts[canvasId].update();
         return;
     }
     charts[canvasId] = new window.Chart(document.getElementById(canvasId), {
-        type, data, options: { responsive: true, maintainAspectRatio: false },
+        type, data,
+        options: { responsive: true, maintainAspectRatio: false, ...extraOptions },
     });
 }
 
@@ -241,3 +244,8 @@ initTheme();
 document.getElementById("refresh-interval").addEventListener("change", applyRefreshInterval);
 loadConfig();
 applyRefreshInterval();
+
+// Deep-link: open the metrics view directly via #metrics (e.g. bookmark or share).
+if (location.hash === "#metrics") {
+    document.querySelector('.tab[data-tab="metrics"]').click();
+}
