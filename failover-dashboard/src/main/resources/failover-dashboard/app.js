@@ -107,8 +107,13 @@ function renderHealthTable(perApi, health) {
         tr.appendChild(cell(k.domain));
         tr.appendChild(cell(k.totalCalls.toLocaleString(), "num"));
         tr.appendChild(cell(pct(k.rates.successRate), "num"));
+        tr.appendChild(cell(pct(k.rates.failoverRate), "num"));
         tr.appendChild(cell(pct(k.rates.recoveryRate), "num"));
         tr.appendChild(cell(pct(k.rates.nonRecoveryRate), "num"));
+        tr.appendChild(cell(pct(k.rates.healthyRate), "num"));
+        tr.appendChild(cell(k.recovered.toLocaleString(), "num"));
+        tr.appendChild(cell(k.notRecovered.toLocaleString(), "num"));
+        tr.appendChild(cell(k.errors.toLocaleString(), "num"));
         const badge = document.createElement("td");
         const span = document.createElement("span");
         span.className = `badge ${status.toLowerCase()}`;
