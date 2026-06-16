@@ -146,109 +146,68 @@ public class FailoverStoreAutoConfiguration {
         return List.copyOf(merged);
     }
 
-    // ── Single-tenant ───────────────────────────────────────────────────────────
+    // ── Store assembly ──────────────────────────────────────────────────────────
 
     /**
-     * Async store: {@code FailoverStoreAsync(DefaultFailoverStore(raw))}.
-     * Active when {@code failover.store.async=true} (default) and multitenant disabled.
+     * Assembles the single {@code failoverStore} bean from the raw {@link TenantStoreFactory} and the
+     * decorator chain, driven by two properties — see the four modes in the class Javadoc.
      *
-     * @param storeFactory        raw store factory
-     * @param failoverTaskExecutor executor for async write offloading
-     * @param observablePublisher  sink for async-failure metrics
-     * @return assembled async store chain
+     * <p>The chain is built in one place, reading top-to-bottom in invocation order:
+     * <ol>
+     *   <li>{@code perTenantChain} wraps a raw store in {@link DefaultFailoverStore} (defensive copy,
+     *       ADR 10) and, when {@code failover.store.async=true}, in {@link FailoverStoreAsync};</li>
+     *   <li>when {@code failover.store.multitenant.enabled=true}, that chain becomes the per-tenant
+     *       decorator inside an outermost {@link MultiTenantFailoverStore}; otherwise it is applied
+     *       directly to the single-tenant raw store.</li>
+     * </ol>
+     *
+     * <p>This replaces the four property-gated bean variants with one method (the
+     * {@code async × multitenant} matrix is expressed in code, not annotations), keeping the
+     * {@link ConditionalOnMissingBean} override so consumers can still replace the whole store.
+     *
+     * @param storeFactory          raw per-tenant store factory
+     * @param props                 failover properties (async, multitenant, type/strategy)
+     * @param taskExecutorProvider  lazy {@code failoverTaskExecutor}; resolved only when async
+     * @param tenantResolverProvider lazy {@link TenantResolver}; resolved only in multi-tenant mode
+     * @param observablePublisher   sink for async-failure metrics
+     * @return the assembled {@link FailoverStore} chain
      */
     @Bean("failoverStore")
     @ConditionalOnBean(TenantStoreFactory.class)
     @ConditionalOnMissingBean(FailoverStore.class)
-    @ConditionalOnProperty(prefix = "failover.store", name = "async", havingValue = "true", matchIfMissing = true)
-    @ConditionalOnProperty(prefix = "failover.store.multitenant", name = "enabled", havingValue = "false", matchIfMissing = true)
-    public FailoverStore<Object> asyncFailoverStore(
+    public FailoverStore<Object> failoverStore(
             TenantStoreFactory<Object> storeFactory,
-            @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor,
-            CompositeObservablePublisher observablePublisher) {
-        log.info("FailoverStore assembled: FailoverStoreAsync(DefaultFailoverStore(raw)) — async=true.");
-        return new FailoverStoreAsync<>(new DefaultFailoverStore<>(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID)), failoverTaskExecutor, observablePublisher);
-    }
-
-    /**
-     * Sync store: {@code DefaultFailoverStore(raw)}.
-     * Active when {@code failover.store.async=false} and multitenant disabled.
-     *
-     * @param storeFactory raw store factory
-     * @return assembled sync store chain
-     */
-    @Bean("failoverStore")
-    @ConditionalOnBean(TenantStoreFactory.class)
-    @ConditionalOnMissingBean(FailoverStore.class)
-    @ConditionalOnProperty(prefix = "failover.store", name = "async", havingValue = "false")
-    @ConditionalOnProperty(prefix = "failover.store.multitenant", name = "enabled", havingValue = "false", matchIfMissing = true)
-    public FailoverStore<Object> syncFailoverStore(TenantStoreFactory<Object> storeFactory) {
-        log.info("FailoverStore assembled: DefaultFailoverStore(raw) — async=false.");
-        return new DefaultFailoverStore<>(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID));
-    }
-
-    // ── Multi-tenant ────────────────────────────────────────────────────────────
-
-    /**
-     * Async multi-tenant store: {@code MultiTenantFailoverStore} with per-tenant
-     * {@code FailoverStoreAsync(DefaultFailoverStore(raw))} decorator.
-     * Active when {@code failover.store.multitenant.enabled=true} and {@code failover.store.async=true} (default).
-     *
-     * @param tenantResolver       resolves the current tenant ID
-     * @param rawFactory           creates a raw store per tenant
-     * @param props                failover properties for strategy and default-tenant config
-     * @param failoverTaskExecutor executor for async per-tenant write offloading
-     * @param observablePublisher  sink for async-failure metrics
-     * @return assembled multi-tenant async store
-     */
-    @Bean("failoverStore")
-    @ConditionalOnBean(TenantStoreFactory.class)
-    @ConditionalOnMissingBean(FailoverStore.class)
-    @ConditionalOnProperty(prefix = "failover.store.multitenant", name = "enabled", havingValue = "true")
-    @ConditionalOnProperty(prefix = "failover.store", name = "async", havingValue = "true", matchIfMissing = true)
-    public FailoverStore<Object> asyncMultiTenantFailoverStore(
-            TenantResolver tenantResolver,
-            TenantStoreFactory<Object> rawFactory,
             FailoverProperties props,
-            @Qualifier("failoverTaskExecutor") TaskExecutor failoverTaskExecutor,
+            @Qualifier("failoverTaskExecutor") ObjectProvider<TaskExecutor> taskExecutorProvider,
+            ObjectProvider<TenantResolver> tenantResolverProvider,
             CompositeObservablePublisher observablePublisher) {
-        MultiTenant mt = props.getStore().getMultitenant();
-        log.info("FailoverStore assembled: MultiTenantFailoverStore (async=true, store.type={}, strategy={}).",
-                 props.getStore().getType(), mt.getStrategy());
-        UnaryOperator<FailoverStore<Object>> decorator =
-                raw -> new FailoverStoreAsync<>(new DefaultFailoverStore<>(raw), failoverTaskExecutor, observablePublisher);
-        var store = new MultiTenantFailoverStore<>(tenantResolver, rawFactory, decorator, mt.getDefaultTenant());
-        store.prewarm(mt.getTenants().keySet());
-        return store;
-    }
 
-    /**
-     * Sync multi-tenant store: {@code MultiTenantFailoverStore} with per-tenant
-     * {@code DefaultFailoverStore(raw)} decorator.
-     * Active when {@code failover.store.multitenant.enabled=true} and {@code failover.store.async=false}.
-     *
-     * @param tenantResolver resolves the current tenant ID
-     * @param rawFactory     creates a raw store per tenant
-     * @param props          failover properties for strategy and default-tenant config
-     * @return assembled multi-tenant sync store
-     */
-    @Bean("failoverStore")
-    @ConditionalOnBean(TenantStoreFactory.class)
-    @ConditionalOnMissingBean(FailoverStore.class)
-    @ConditionalOnProperty(prefix = "failover.store.multitenant", name = "enabled", havingValue = "true")
-    @ConditionalOnProperty(prefix = "failover.store", name = "async", havingValue = "false")
-    public FailoverStore<Object> syncMultiTenantFailoverStore(
-            TenantResolver tenantResolver,
-            TenantStoreFactory<Object> rawFactory,
-            FailoverProperties props) {
+        boolean async = props.getStore().isAsync();
         MultiTenant mt = props.getStore().getMultitenant();
-        log.info("FailoverStore assembled: MultiTenantFailoverStore (async=false, store.type={}, strategy={}).",
-                 props.getStore().getType(), mt.getStrategy());
-        UnaryOperator<FailoverStore<Object>> decorator =
-                DefaultFailoverStore::new;
-        var store = new MultiTenantFailoverStore<>(tenantResolver, rawFactory, decorator, mt.getDefaultTenant());
-        store.prewarm(mt.getTenants().keySet());
-        return store;
+
+        // Per-tenant chain (also the entire chain in single-tenant mode):
+        //   DefaultFailoverStore(raw)            — defensive copy (ADR 10)
+        //   wrapped in FailoverStoreAsync(...)   — only when async=true
+        UnaryOperator<FailoverStore<Object>> perTenantChain = raw -> {
+            FailoverStore<Object> store = new DefaultFailoverStore<>(raw);
+            return async
+                    ? new FailoverStoreAsync<>(store, taskExecutorProvider.getObject(), observablePublisher)
+                    : store;
+        };
+
+        if (mt.isEnabled()) {
+            TenantResolver tenantResolver = tenantResolverProvider.getObject();
+            log.info("FailoverStore assembled: MultiTenantFailoverStore(per-tenant {}) — async={}, store.type={}, strategy={}.",
+                    async ? "FailoverStoreAsync(DefaultFailoverStore(raw))" : "DefaultFailoverStore(raw)",
+                    async, props.getStore().getType(), mt.getStrategy());
+            var store = new MultiTenantFailoverStore<>(tenantResolver, storeFactory, perTenantChain, mt.getDefaultTenant());
+            store.prewarm(mt.getTenants().keySet());
+            return store;
+        }
+
+        log.info("FailoverStore assembled: {} — async={}.",
+                async ? "FailoverStoreAsync(DefaultFailoverStore(raw))" : "DefaultFailoverStore(raw)", async);
+        return perTenantChain.apply(storeFactory.create(TenantStoreFactory.SINGLE_TENANT_ID));
     }
 
     // ── Store type configurations ─────────────────────────────────────────────

@@ -2539,3 +2539,61 @@ not a stretch target. Non-vacuity verified: raising a floor to 99.9% fails the b
   only in a full reactor `verify` (the `report` module is last and depends on all others).
 
 ___
+
+## ADR 54 — FailoverStore Assembly — Collapse Four Property-Gated Beans into One
+
+**Date : 16-JUN-2026**
+
+### Status
+
+Accepted — refines [ADR 18](#adr-18-failoverstoreautoconfiguration-central-assembler).
+
+### Context
+
+The store chain was assembled by **four** `@Bean("failoverStore")` variants in
+`FailoverStoreAutoConfiguration`, one per cell of the `async × multitenant` matrix, each selected by a
+pair of `@ConditionalOnProperty` annotations:
+
+| multitenant | async | bean |
+|---|---|---|
+| false | true  | `asyncFailoverStore` |
+| false | false | `syncFailoverStore` |
+| true  | true  | `asyncMultiTenantFailoverStore` |
+| true  | false | `syncMultiTenantFailoverStore` |
+
+A review (MEDIUM finding) flagged the assembly as cognitively demanding: four near-duplicate methods,
+and the real chain — async applied **per tenant, inside** `MultiTenantFailoverStore` — was easy to
+misread as "async outside multi-tenant". Two of the four variants already expressed the wrapping as a
+`UnaryOperator<FailoverStore> decorator`, so the abstraction existed but was duplicated.
+
+A fluent/builder API was considered and **rejected**: it would move Spring's declarative
+`@ConditionalOnProperty` selection into imperative code *and* add a new public API to test, document,
+and version — a net loss of Spring idiom for a four-layer chain.
+
+### Decision
+
+Collapse the four variants into a **single** `failoverStore` bean that reads the two booleans and
+builds the chain in one place, top-to-bottom in invocation order:
+
+* a `perTenantChain` `UnaryOperator` wraps a raw store in `DefaultFailoverStore` (defensive copy, ADR
+  10) and, when `async`, in `FailoverStoreAsync`;
+* when multi-tenant is enabled, that chain is the per-tenant decorator inside an outermost
+  `MultiTenantFailoverStore`; otherwise it is applied directly to the single-tenant raw store.
+
+`failoverTaskExecutor` and `TenantResolver` are injected as `ObjectProvider` and resolved only on the
+branch that needs them. `@ConditionalOnMissingBean(FailoverStore.class)` is retained, so consumers can
+still replace the whole store.
+
+### Consequences
+
+* One method instead of four; the per-tenant-async nuance is now explicit in code (and in the class
+  Javadoc matrix), addressing the finding's actual complaint.
+* The `async × multitenant` selection moves from annotations to `props` reads — the `matchIfMissing`
+  defaults (async=true, multitenant=false) are preserved as the property defaults on `Store` /
+  `MultiTenant`.
+* The four per-combo bean **names** are gone; no test depended on them (they assert the resulting
+  chain, not bean names). Verified: autoconfigure module 242 tests + 52 ITs green, including the
+  multi-tenant IT and the per-tenant-chain assertions.
+* Backend `TenantStoreFactory` registrations (inmemory/caffeine/jdbc) are unchanged.
+
+___
