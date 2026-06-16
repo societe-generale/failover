@@ -131,6 +131,9 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - `ExpiryPolicyContractVerifier` — a dependency-free harness SPI implementors can drop into a unit test
   to check a custom `ExpiryPolicy` against the contract (non-null/future `computeExpiry`, `expireOn`-driven
   `isExpired`). See [Custom Expiry Policy](../how-to/custom-expiry-policy.md#testing-your-policy)
+- Performance validation (default build): JDBC cleanup-under-write-load contention test (2400 upserts
+  interleaved with 400 `cleanByExpiry` runs, no deadlock) and a virtual-thread scatter/gather scaling test
+  (1000 blocking slices complete concurrently, no pool to size). See [Benchmarks](../quality/benchmarks.md#performance-validation)
 
 ---
 
