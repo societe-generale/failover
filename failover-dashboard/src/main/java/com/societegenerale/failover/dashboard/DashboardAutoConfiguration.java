@@ -29,6 +29,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
@@ -104,5 +105,17 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler(properties.basePath() + "/**")
                 .addResourceLocations("classpath:/failover-dashboard/");
+    }
+
+    /**
+     * Welcome mapping: a bare {@code base-path} (and its trailing-slash form) forwards to the static
+     * {@code index.html}, so {@code /failover-dashboard} opens the UI without the explicit file name.
+     * A forward (not redirect) keeps the URL clean and lets the resource handler serve the page.
+     */
+    @Override
+    public void addViewControllers(ViewControllerRegistry registry) {
+        String forward = "forward:" + properties.basePath() + "/index.html";
+        registry.addViewController(properties.basePath()).setViewName(forward);
+        registry.addViewController(properties.basePath() + "/").setViewName(forward);
     }
 }
