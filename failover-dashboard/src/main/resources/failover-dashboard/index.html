@@ -89,9 +89,12 @@
                     <canvas id="chart-perapi"></canvas></figure>
                 <figure class="card"><figcaption>Store vs Recover</figcaption>
                     <canvas id="chart-store"></canvas></figure>
-                <figure class="card"><figcaption>Trend (client-side deltas)</figcaption>
-                    <canvas id="chart-trend"></canvas></figure>
+                <figure class="card"><figcaption>Timeline — overall calls &amp; failover / recovery / non-recovery rates</figcaption>
+                    <canvas id="chart-timeline"></canvas></figure>
             </div>
+
+            <figure class="card wide"><figcaption>Per-API actual failures (failover invocations) over time</figcaption>
+                <canvas id="chart-api-failures"></canvas></figure>
 
             <table class="grid" id="health-table">
                 <caption>Per-API health</caption>

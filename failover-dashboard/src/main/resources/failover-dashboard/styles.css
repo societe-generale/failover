@@ -117,6 +117,8 @@ main { padding: 1.25rem; }
 }
 .card figcaption { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
 .card canvas { width: 100% !important; height: 240px !important; }
+.card.wide { margin-bottom: 1rem; }
+.card.wide canvas { height: 280px !important; }
 
 /* ── Metrics: health badges ── */
 .badge {

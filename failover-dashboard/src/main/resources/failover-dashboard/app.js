@@ -59,8 +59,12 @@ function configRow(r) {
 
 const TREND_MAX = 60;
 const charts = {};
-const trend = { labels: [], calls: [], failover: [], recovered: [], notRecovered: [] };
+// Timeline buffers (client-side, per poll tick): overall calls per tick + the three rates (%).
+const timeline = { labels: [], calls: [], failoverRate: [], recoveryRate: [], nonRecoveryRate: [] };
+// Per-API actual failures (failover invocations) per tick — one series per failover name.
+const apiFailures = { labels: [], series: {} };
 let lastOverall = null;
+let lastApiFailover = {};
 
 async function loadMetrics() {
     const errorEl = document.getElementById("metrics-error");
@@ -69,7 +73,7 @@ async function loadMetrics() {
         errorEl.hidden = true;
         renderKpis(summary.overall);
         renderHealthTable(summary.perApi, health);
-        pushTrend(summary.overall);
+        pushTimeline(summary);
         if (hasCharts) renderCharts(summary);
         else document.getElementById("metrics-degraded").hidden = false;
     } catch (e) {
@@ -120,18 +124,40 @@ function cell(text, cls) {
     return td;
 }
 
-function pushTrend(overall) {
-    if (lastOverall) {
-        trend.labels.push(new Date().toLocaleTimeString());
-        trend.calls.push(Math.max(0, overall.totalCalls - lastOverall.totalCalls));
-        trend.failover.push(Math.max(0, overall.failoverInvoked - lastOverall.failoverInvoked));
-        trend.recovered.push(Math.max(0, overall.recovered - lastOverall.recovered));
-        trend.notRecovered.push(Math.max(0, overall.notRecovered - lastOverall.notRecovered));
-        for (const k of ["labels", "calls", "failover", "recovered", "notRecovered"]) {
-            if (trend[k].length > TREND_MAX) trend[k].shift();
-        }
+function rateP(v) { return Number((v * 100).toFixed(2)); }
+
+function trim(obj, keys) {
+    for (const k of keys) {
+        if (obj[k].length > TREND_MAX) obj[k].shift();
     }
-    lastOverall = overall;
+}
+
+function pushTimeline(summary) {
+    const o = summary.overall;
+    if (lastOverall) {
+        const label = new Date().toLocaleTimeString();
+
+        // overall calls (delta this tick) + cumulative rates
+        timeline.labels.push(label);
+        timeline.calls.push(Math.max(0, o.totalCalls - lastOverall.totalCalls));
+        timeline.failoverRate.push(rateP(o.rates.failoverRate));
+        timeline.recoveryRate.push(rateP(o.rates.recoveryRate));
+        timeline.nonRecoveryRate.push(rateP(o.rates.nonRecoveryRate));
+        trim(timeline, ["labels", "calls", "failoverRate", "recoveryRate", "nonRecoveryRate"]);
+
+        // per-API actual failures (failover invocations) this tick
+        apiFailures.labels.push(label);
+        for (const k of summary.perApi) {
+            const prev = lastApiFailover[k.name] ?? k.failoverInvoked;
+            const arr = (apiFailures.series[k.name] ??= []);
+            while (arr.length < apiFailures.labels.length - 1) arr.unshift(0); // pad new APIs
+            arr.push(Math.max(0, k.failoverInvoked - prev));
+        }
+        trim(apiFailures, ["labels"]);
+        for (const name of Object.keys(apiFailures.series)) trim(apiFailures.series, [name]);
+    }
+    lastOverall = o;
+    lastApiFailover = Object.fromEntries(summary.perApi.map(k => [k.name, k.failoverInvoked]));
 }
 
 function renderCharts(summary) {
@@ -155,14 +181,28 @@ function renderCharts(summary) {
         labels: ["Store (success)", "Recover (failover)"],
         datasets: [{ data: [o.upstreamSuccess, o.failoverInvoked] }],
     }, noLegend);
-    upsertChart("chart-trend", "line", {
-        labels: trend.labels,
+
+    // Timeline: overall calls (count axis, right) + failover/recovery/non-recovery rates (% axis, left)
+    upsertChart("chart-timeline", "line", {
+        labels: timeline.labels,
         datasets: [
-            { label: "calls", data: trend.calls },
-            { label: "failover", data: trend.failover },
-            { label: "recovered", data: trend.recovered },
-            { label: "not-recovered", data: trend.notRecovered },
+            { label: "overall calls", data: timeline.calls, yAxisID: "count", type: "bar" },
+            { label: "failover rate %", data: timeline.failoverRate, yAxisID: "rate" },
+            { label: "recovery rate %", data: timeline.recoveryRate, yAxisID: "rate" },
+            { label: "non-recovery rate %", data: timeline.nonRecoveryRate, yAxisID: "rate" },
         ],
+    }, {
+        interaction: { mode: "index", intersect: false },
+        scales: {
+            rate: { type: "linear", position: "left", min: 0, max: 100, title: { display: true, text: "rate %" } },
+            count: { type: "linear", position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: "calls / tick" } },
+        },
+    });
+
+    // Per-API actual failures (failover invocations) over time — one line per failover
+    upsertChart("chart-api-failures", "line", {
+        labels: apiFailures.labels,
+        datasets: Object.entries(apiFailures.series).map(([name, data]) => ({ label: name, data })),
     });
 }
 
