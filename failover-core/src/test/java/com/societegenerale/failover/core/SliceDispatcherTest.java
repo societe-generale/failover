@@ -195,6 +195,65 @@ class SliceDispatcherTest {
         }
     }
 
+    @Nested
+    @DisplayName("high concurrency — virtual-thread executor (perf 5.3)")
+    class HighConcurrencyVirtualThreads {
+
+        private final Function<RecoverContext<String>, String> notRecovered = ctx -> "MISSING";
+
+        @Test
+        @DisplayName("1000 blocking recover slices on a virtual-thread-per-task executor all complete, in order, far faster than serial")
+        void manyBlockingRecoverSlicesScaleOnVirtualThreads() {
+            int slices = 1000;
+            long perSliceBlockMs = 10;           // serial cost would be ~10s; concurrent VTs collapse it
+            // Production scatter executor is an unbounded virtual-thread executor — model it exactly.
+            executor = Executors.newVirtualThreadPerTaskExecutor();
+            var dispatcher = new SliceDispatcher<String>(executor, ContextPropagator.noOp(), Duration.ofSeconds(30));
+
+            List<RecoverContext<String>> ctxs = new ArrayList<>();
+            List<String> expected = new ArrayList<>();
+            for (int i = 0; i < slices; i++) {
+                ctxs.add(recoverCtx(Integer.toString(i)));
+                expected.add(Integer.toString(i));
+            }
+
+            long startNanos = System.nanoTime();
+            List<String> result = dispatcher.dispatchRecover(ctxs, ctx -> {
+                sleep(perSliceBlockMs);          // simulate a per-slice store/find round-trip
+                return keyOf(ctx);
+            }, notRecovered);
+            long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+
+            assertThat(result).isEqualTo(expected);                      // every slice recovered, order preserved
+            // No pool sizing: all 1000 blocking tasks run concurrently, so wall time stays close to one slice,
+            // nowhere near the ~10s serial cost. Generous bound keeps it non-flaky.
+            assertThat(elapsedMs)
+                    .as("1000 × %dms slices completed concurrently, not serially", perSliceBlockMs)
+                    .isLessThan(slices * perSliceBlockMs / 4);
+        }
+
+        @Test
+        @DisplayName("1000 store slices on a virtual-thread-per-task executor all run without pool exhaustion")
+        void manyStoreSlicesRunOnVirtualThreads() {
+            int slices = 1000;
+            executor = Executors.newVirtualThreadPerTaskExecutor();
+            var dispatcher = new SliceDispatcher<String>(executor, ContextPropagator.noOp(), Duration.ofSeconds(30));
+
+            List<StoreContext<String>> ctxs = new ArrayList<>();
+            for (int i = 0; i < slices; i++) {
+                ctxs.add(storeCtx(Integer.toString(i)));
+            }
+            var executed = new java.util.concurrent.atomic.AtomicInteger();
+
+            dispatcher.dispatchStore(ctxs, ctx -> {
+                sleep(5);
+                executed.incrementAndGet();
+            });
+
+            assertThat(executed.get()).isEqualTo(slices);               // every slice dispatched and completed
+        }
+    }
+
     private static void sleep(long millis) {
         try {
             Thread.sleep(millis);
