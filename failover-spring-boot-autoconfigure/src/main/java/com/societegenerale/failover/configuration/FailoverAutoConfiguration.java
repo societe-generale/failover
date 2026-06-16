@@ -47,7 +47,7 @@ import com.societegenerale.failover.core.observable.*;
 import com.societegenerale.failover.core.observable.manifest.*;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
-import com.societegenerale.failover.observable.scanner.SpringContextFailoverScanner;
+import com.societegenerale.failover.scanner.SpringContextFailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;

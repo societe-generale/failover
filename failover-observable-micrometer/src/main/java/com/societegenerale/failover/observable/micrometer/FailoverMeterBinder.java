@@ -19,6 +19,7 @@ package com.societegenerale.failover.observable.micrometer;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.scanner.SpringContextFailoverScanner;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
@@ -43,7 +44,7 @@ import java.util.List;
  *
  * <h2>Lifecycle ordering</h2>
  * The binder implements {@link SmartInitializingSingleton} so per-failover expiry gauges are
- * registered after {@link com.societegenerale.failover.observable.scanner.SpringContextFailoverScanner}
+ * registered after {@link SpringContextFailoverScanner}
  * has completed its scan. The total-count gauge is a lazy supplier — safe to register immediately
  * in {@link #bindTo} before the scanner has finished.
  *

@@ -77,7 +77,7 @@ Add this to every module that annotates methods with `@Failover` or defines type
 ```xml
 <dependency>
     <groupId>com.societegenerale.failover</groupId>
-    <artifactId>failover-observable-scanner</artifactId>
+    <artifactId>failover-scanner</artifactId>
     <version>3.0.0</version>
 </dependency>
 ```

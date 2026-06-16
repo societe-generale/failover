@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.observable.scanner;
+package com.societegenerale.failover.scanner;
 
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.scanner.FailoverScanner;

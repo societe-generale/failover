@@ -22,7 +22,7 @@ import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
-import com.societegenerale.failover.observable.scanner.SpringContextFailoverScanner;
+import com.societegenerale.failover.scanner.SpringContextFailoverScanner;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;

@@ -20,7 +20,7 @@ flowchart TD
     MT[failover-store-multitenant]
     RES[failover-execution-resilience]
     SCHED[failover-scheduler]
-    SCAN[failover-observable-scanner]
+    SCAN[failover-scanner]
     MIC[failover-observable-micrometer]
 
     STARTER --> AC
@@ -116,7 +116,7 @@ flowchart TD
     | `failover-store-multitenant` | TABLE_PREFIX / SCHEMA per-tenant routing |
     | `failover-execution-resilience` | Resilience4j circuit-breaker integration |
     | `failover-scheduler` | Expiry-cleanup + observable-report schedulers |
-    | `failover-observable-scanner` | Startup scanner for `@Failover` methods |
+    | `failover-scanner` | Startup scanner for `@Failover` methods |
     | `failover-observable-micrometer` | Micrometer counters + health indicator |
 
 ---

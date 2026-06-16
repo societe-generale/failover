@@ -119,7 +119,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - PIT mutation testing over all of `failover-core` (`-Pmutation`), mandated at a **95% gate**
   (currently 96%, test strength 99%). See [Mutation Testing](../quality/mutation-testing.md)
 - Overall JaCoCo coverage gate — `mvn verify` fails below **95% line / 95% branch** across all modules
-  (cross-module `jacoco:check` in the `report` module; currently ~99% line / ~97% branch). Audit T-1, ADR 53
+  (cross-module `jacoco:check` in the `failover-test-report` module; currently ~99% line / ~97% branch). Audit T-1, ADR 53
 - CI: advisory `dialect-its` job and **blocking** `mutation` job; the H2 build remains the required gate
 - Circuit-breaker state-transition test (`ResilienceFailoverExecutionTest`) — recovery served from the
   store across CLOSED → OPEN (short-circuit) → HALF_OPEN (trial) (audit I-18)

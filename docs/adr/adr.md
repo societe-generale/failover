@@ -1994,6 +1994,10 @@ The change is a package move only — done inside the `3.0.0-SNAPSHOT` (pre-rele
 * No new bad module coupling: `JsonSerializer` depends only on a `Supplier`, not the scanner; only the autoconfig wires scanner → serializer, and it already depends on every module.
 * The impl module name (`failover-observable-scanner`) temporarily diverges from the interface package — a known, documented follow-up for the JPMS/split-package cleanup.
 
+### Update (2026-06-16)
+
+The deferred artifact rename is now done: the implementation module `failover-observable-scanner` is renamed to **`failover-scanner`**, and its package moved from `com.societegenerale.failover.observable.scanner` to `com.societegenerale.failover.scanner`. Module and package no longer carry the misleading `observable` segment, and the module now aligns with the `core.scanner` SPI. The single class `SpringContextFailoverScanner` is unchanged.
+
 ___
 
 ## ADR 43 — Dialect Integration Tests via Testcontainers
@@ -2537,6 +2541,12 @@ not a stretch target. Non-vacuity verified: raising a floor to 99.9% fails the b
 * The gate is aggregate (cross-module), complementing the per-`failover-core` PIT mutation gate (ADR 46).
 * Cost: the `report` module unpacks module classes and does one extra merge; negligible. The gate runs
   only in a full reactor `verify` (the `report` module is last and depends on all others).
+
+### Update (2026-06-16)
+
+The aggregator module formerly named `report` is renamed to **`failover-test-report`** (artifact and
+directory). Mechanism and gate are unchanged; the Sonar `sonar.coverage.jacoco.xmlReportPaths` and all
+docs now point at `failover-test-report/target/site/jacoco-aggregate/`.
 
 ___
 

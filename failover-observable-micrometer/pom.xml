@@ -26,7 +26,7 @@
 
         <dependency>
             <groupId>com.societegenerale.failover</groupId>
-            <artifactId>failover-observable-scanner</artifactId>
+            <artifactId>failover-scanner</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
 

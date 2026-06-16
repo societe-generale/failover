@@ -24,8 +24,8 @@ mvn verify -pl failover-spring-boot-autoconfigure -Dit.test=FailoverAppTestIT
 # Skip all tests
 mvn install -DskipTests
 
-# Aggregate coverage report (written to report/target/site/jacoco-aggregate/)
-mvn verify -pl report
+# Aggregate coverage report (written to failover-test-report/target/site/jacoco-aggregate/)
+mvn verify -pl failover-test-report
 ```
 
 Integration tests live only in `failover-spring-boot-autoconfigure/src/test` and run against a real H2 database. They use `failover.store.async=false` so writes are synchronous and assertions are deterministic.
@@ -87,12 +87,12 @@ Every core bean uses `@ConditionalOnMissingBean`. Declare your own bean to repla
 | `failover-store-multitenant` | TABLE_PREFIX / SCHEMA per-tenant routing |
 | `failover-lookup` | Spring `BeanFactory`-based lookups for named `KeyGenerator` / `ExpiryPolicy` / `PayloadSplitter` beans |
 | `failover-execution-resilience` | Resilience4j circuit-breaker wrapping upstream calls |
-| `failover-observable-scanner` | Startup scanner: walks Spring context for all `@Failover` methods |
+| `failover-scanner` | Startup scanner: walks Spring context for all `@Failover` methods |
 | `failover-observable-micrometer` | Micrometer counters + health indicator |
 | `failover-scheduler` | `ExpiryCleanupScheduler` (hourly) + `ObservableScheduler` (daily report) |
 | `failover-spring-boot-autoconfigure` | Zero-config auto-configuration; contains all integration tests |
 | `failover-spring-boot-starter` | Single POM dependency consumers add |
-| `report` | JaCoCo aggregate coverage report |
+| `failover-test-report` | JaCoCo aggregate coverage report |
 
 ## Key configuration properties
 
