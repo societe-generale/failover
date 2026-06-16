@@ -38,11 +38,24 @@
             <artifactId>spring-webmvc</artifactId>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
 
         <!-- Micrometer is the metrics source; provided so it activates only when the app already has it -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Spring Security — provided: the dashboard contributes a gate only when the consumer already
+             has it; absent ⇒ fail-closed at startup unless allow-insecure (design doc §9 gate 4). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
             <scope>provided</scope>
         </dependency>
 

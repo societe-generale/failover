@@ -20,6 +20,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
+import java.util.List;
+
 /**
  * Configuration for the embedded failover dashboard.
  *
@@ -51,6 +53,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record DashboardProperties(
     @DefaultValue("false") boolean enabled,
     @DefaultValue("/failover-dashboard") String basePath,
+    @DefaultValue Exposure exposure,
+    @DefaultValue Security security,
     @DefaultValue Health health
 ) {
     /** Canonical, binder-targeted constructor — validates the base path fail-fast. */
@@ -64,9 +68,52 @@ public record DashboardProperties(
         }
     }
 
-    /** Convenience constructor applying default health thresholds (used in tests/programmatic setup). */
+    /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
     public DashboardProperties(boolean enabled, String basePath) {
-        this(enabled, basePath, new Health(0.99, 0.90));
+        this(enabled, basePath, new Exposure(true, true, List.of("config", "metrics", "health")),
+                new Security("FAILOVER_ADMIN", false), new Health(0.99, 0.90));
+    }
+
+    /** Convenience constructor with custom health, default exposure/security. */
+    public DashboardProperties(boolean enabled, String basePath, Health health) {
+        this(enabled, basePath, new Exposure(true, true, List.of("config", "metrics", "health")),
+                new Security("FAILOVER_ADMIN", false), health);
+    }
+
+    /**
+     * What the dashboard exposes once {@code enabled=true}. Everything defaults to ON — the consumer
+     * decides only <em>enabled or not</em>; these flags exist solely to <em>narrow</em> exposure
+     * (design doc §9 gate 3). The empty/unset state means "expose everything".
+     *
+     * @param ui      serve the static HTML/JS UI under {@code base-path/**} (default {@code true})
+     * @param api     serve the JSON API under {@code base-path/api/**} (default {@code true})
+     * @param include which API endpoints are served: any of {@code config}, {@code metrics},
+     *                {@code health} (default: all three)
+     */
+    public record Exposure(
+        @DefaultValue("true") boolean ui,
+        @DefaultValue("true") boolean api,
+        @DefaultValue({"config", "metrics", "health"}) List<String> include
+    ) {
+        /** @return {@code true} if the named API endpoint is exposed. */
+        public boolean includes(String endpoint) {
+            return api && include.contains(endpoint);
+        }
+    }
+
+    /**
+     * Access-control posture for the dashboard (design doc §9 gate 4). When Spring Security is on the
+     * classpath the module gates {@code base-path/**} behind {@code role}. When Spring Security is
+     * absent the context fails fast unless {@code allowInsecure=true}, which starts with a loud WARN
+     * (trusted-network / dev only).
+     *
+     * @param role          required role for {@code base-path/**} (default {@code FAILOVER_ADMIN})
+     * @param allowInsecure start without an access gate when Spring Security is absent (default {@code false})
+     */
+    public record Security(
+        @DefaultValue("FAILOVER_ADMIN") String role,
+        @DefaultValue("false") boolean allowInsecure
+    ) {
     }
 
     /**

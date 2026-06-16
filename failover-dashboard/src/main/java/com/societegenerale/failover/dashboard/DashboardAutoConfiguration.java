@@ -23,11 +23,18 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -101,8 +108,18 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new DashboardMetricsController(metricsService);
     }
 
+    /** Enforces {@code exposure.include} narrowing and the CSP header on every {@code base-path/**} request. */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new DashboardExposureInterceptor(properties))
+                .addPathPatterns(properties.basePath() + "/**");
+    }
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        if (!properties.exposure().ui()) {
+            return; // UI exposure narrowed off — serve no static assets
+        }
         registry.addResourceHandler(properties.basePath() + "/**")
                 .addResourceLocations("classpath:/failover-dashboard/");
     }
@@ -111,11 +128,64 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * Welcome mapping: a bare {@code base-path} (and its trailing-slash form) forwards to the static
      * {@code index.html}, so {@code /failover-dashboard} opens the UI without the explicit file name.
      * A forward (not redirect) keeps the URL clean and lets the resource handler serve the page.
+     * Skipped when UI exposure is narrowed off.
      */
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {
+        if (!properties.exposure().ui()) {
+            return;
+        }
         String forward = "forward:" + properties.basePath() + "/index.html";
         registry.addViewController(properties.basePath()).setViewName(forward);
         registry.addViewController(properties.basePath() + "/").setViewName(forward);
+    }
+
+    /**
+     * Access-control gate when Spring Security IS on the classpath (design doc §9 gate 4): a
+     * {@link SecurityFilterChain} scoped to {@code base-path/**} that requires the configured role.
+     * It is {@code @ConditionalOnMissingBean} so a consumer can fully override it.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(SecurityFilterChain.class)
+    static class SecurityPresentConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+            http.securityMatcher(props.basePath() + "/**")
+                    .authorizeHttpRequests(auth -> auth.anyRequest().hasRole(props.security().role()))
+                    .httpBasic(Customizer.withDefaults())
+                    // read-only API (GET only, no state mutation) — no CSRF write surface to protect
+                    .csrf(AbstractHttpConfigurer::disable);
+            log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
+                    props.basePath(), props.security().role());
+            return http.build();
+        }
+    }
+
+    /**
+     * Fail-closed guard when Spring Security is ABSENT: the dashboard refuses to start (so internal
+     * operational data is never served anonymously) unless {@code allow-insecure=true}, which starts
+     * with a loud WARN for trusted-network / dev use only (design doc §9 gate 4).
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnMissingClass("org.springframework.security.web.SecurityFilterChain")
+    static class SecurityAbsentConfiguration {
+
+        SecurityAbsentConfiguration(DashboardProperties props) {
+            if (!props.security().allowInsecure()) {
+                throw new IllegalStateException(
+                        "Failover dashboard is enabled but Spring Security is not on the classpath, so '"
+                                + props.basePath() + "/**' would be anonymously reachable. Add "
+                                + "spring-boot-starter-security (recommended) and restrict the path to role '"
+                                + props.security().role() + "', or set failover.dashboard.security.allow-insecure=true "
+                                + "to run UNSECURED (dev / trusted-network only).");
+            }
+            log.warn("===================================================================================");
+            log.warn("Failover dashboard is running WITHOUT an access-control gate (allow-insecure=true).");
+            log.warn("'{}/**' is anonymously reachable — use only on a trusted network or in development.",
+                    props.basePath());
+            log.warn("===================================================================================");
+        }
     }
 }

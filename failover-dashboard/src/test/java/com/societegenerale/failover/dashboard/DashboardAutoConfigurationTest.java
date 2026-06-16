@@ -36,7 +36,10 @@ class DashboardAutoConfigurationTest {
 
     private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
             .withBean(FailoverScanner.class, () -> Mockito.mock(FailoverScanner.class))
-            .withConfiguration(AutoConfigurations.of(DashboardAutoConfiguration.class));
+            .withConfiguration(AutoConfigurations.of(
+                    org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
+                    org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration.class,
+                    DashboardAutoConfiguration.class));
 
     @Test
     @DisplayName("secure-by-default — enabled property unset ⇒ no dashboard bean registered")
@@ -154,6 +157,56 @@ class DashboardAutoConfigurationTest {
         new DashboardAutoConfiguration(props).addResourceHandlers(registry);
 
         Mockito.verify(registry).addResourceHandler("/failover-dashboard/**");
+    }
+
+    @Test
+    @DisplayName("exposure.ui=false ⇒ no static resource handler and no welcome forward")
+    void uiOffServesNoStatic() {
+        DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
+                new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
+                new DashboardProperties.Security("FAILOVER_ADMIN", false),
+                new DashboardProperties.Health(0.99, 0.90));
+        ResourceHandlerRegistry resources = Mockito.mock(ResourceHandlerRegistry.class);
+        org.springframework.web.servlet.config.annotation.ViewControllerRegistry views =
+                Mockito.mock(org.springframework.web.servlet.config.annotation.ViewControllerRegistry.class);
+
+        DashboardAutoConfiguration cfg = new DashboardAutoConfiguration(props);
+        cfg.addResourceHandlers(resources);
+        cfg.addViewControllers(views);
+
+        Mockito.verifyNoInteractions(resources, views);
+    }
+
+    // ── security gate (§9 gate 4) ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Spring Security present ⇒ dashboard SecurityFilterChain registered")
+    void securityChainRegisteredWhenSecurityPresent() {
+        runner.withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> assertThat(ctx).hasBean("dashboardSecurityFilterChain"));
+    }
+
+    @Test
+    @DisplayName("Spring Security absent + allow-insecure=false ⇒ fail-closed (context fails to start)")
+    void failClosedWhenSecurityAbsent() {
+        runner.withClassLoader(new org.springframework.boot.test.context.FilteredClassLoader(
+                        org.springframework.security.web.SecurityFilterChain.class))
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    @DisplayName("Spring Security absent + allow-insecure=true ⇒ starts unsecured, no gate bean")
+    void allowInsecureStartsWithoutGate() {
+        runner.withClassLoader(new org.springframework.boot.test.context.FilteredClassLoader(
+                        org.springframework.security.web.SecurityFilterChain.class))
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.security.allow-insecure=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                });
     }
 
     @Test
