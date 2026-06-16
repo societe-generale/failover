@@ -374,6 +374,66 @@ class FailoverStoreJdbcTest {
             var count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TEST_FAILOVER_STORE", Integer.class);
             assertThat(count).isEqualTo(threadCount);
         }
+
+        @Test
+        @DisplayName("high write volume interleaved with repeated cleanByExpiry runs without deadlock or lock contention (audit I-13, perf 5.2)")
+        void shouldSustainWritesWhileCleanupRunsConcurrently() throws Exception {
+            int writerThreads = 12;
+            int writesPerThread = 200;          // 2400 upserts total
+            int cleanupThreads = 4;
+            CountDownLatch startLatch = new CountDownLatch(1);
+            List<Throwable> failures = java.util.Collections.synchronizedList(new ArrayList<>());
+
+            try (ExecutorService executor = Executors.newFixedThreadPool(writerThreads + cleanupThreads)) {
+                List<Future<?>> futures = new ArrayList<>();
+
+                // Writers: continuously upsert non-expired entries across many keys.
+                for (int t = 0; t < writerThreads; t++) {
+                    final int threadId = t;
+                    futures.add(executor.submit(() -> {
+                        try {
+                            startLatch.await();
+                            for (int w = 0; w < writesPerThread; w++) {
+                                String key = "k-" + threadId + "-" + (w % 50);
+                                failoverStoreJdbc.store(new ReferentialPayload<>(NAME, key, false,
+                                        NOW, NOW.plusSeconds(3600), new Client((long) w, "C-" + threadId + "-" + w)));
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } catch (Throwable e) {
+                            failures.add(e);
+                        }
+                    }));
+                }
+                // Cleaners: hammer cleanByExpiry against the same table concurrently.
+                for (int c = 0; c < cleanupThreads; c++) {
+                    futures.add(executor.submit(() -> {
+                        try {
+                            startLatch.await();
+                            for (int r = 0; r < 100; r++) {
+                                failoverStoreJdbc.cleanByExpiry(NOW.minusSeconds(1)); // deletes nothing — exercises the indexed scan under contention
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } catch (Throwable e) {
+                            failures.add(e);
+                        }
+                    }));
+                }
+
+                startLatch.countDown();
+                for (Future<?> future : futures) {
+                    future.get();
+                }
+                executor.shutdown();
+            }
+
+            // No deadlock, no lock-contention exception surfaced from any writer or cleaner.
+            assertThat(failures).isEmpty();
+            // Cleanup cutoff was in the past, so every non-expired write survived; keys are bounded (12 × 50).
+            var count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TEST_FAILOVER_STORE", Integer.class);
+            assertThat(count).isEqualTo(writerThreads * 50);
+        }
     }
     // -------------------------------------------------------------------------
     // INSERT / UPDATE fallback (DatabaseResolver returns null → mergeEnabled=false)
