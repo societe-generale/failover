@@ -45,7 +45,7 @@ Contains all SPI interfaces and their default implementations:
 | `PayloadSplitter<T,R>` | *(none — must provide your own)* | Scatter/gather split/merge |
 | `RecoveredPayloadHandler` | *(none — null by default)* | Handle null recovery result |
 | `ContextPropagator` | `CompositeContextPropagator(noOp)` | Thread context across async slices |
-| `FailoverScanner` | `SpringContextFailoverScanner` *(in `failover-observable-scanner`)* | Discovers `@Failover` methods and their payload types |
+| `FailoverScanner` | `SpringContextFailoverScanner` *(in `failover-scanner`)* | Discovers `@Failover` methods and their payload types |
 
 All beans use `@ConditionalOnMissingBean` in auto-configuration — declare your own `@Bean` to replace any default.
 

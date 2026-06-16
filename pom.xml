@@ -54,7 +54,7 @@
         <rewrite-migrate-java.version>3.7.0</rewrite-migrate-java.version>
         <sonar.java.libraries>target/dependency/*.jar</sonar.java.libraries>
         <project.coverage.directory>${project.build.directory}/coverage-results</project.coverage.directory>
-        <sonar.coverage.jacoco.xmlReportPaths>../report/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.coverage.jacoco.xmlReportPaths>../failover-test-report/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
     <developers>
@@ -99,7 +99,7 @@
     <modules>
         <module>failover-domain</module>
         <module>failover-core</module>
-        <module>failover-observable-scanner</module>
+        <module>failover-scanner</module>
         <module>failover-observable-micrometer</module>
         <module>failover-store-inmemory</module>
         <module>failover-store-caffeine</module>

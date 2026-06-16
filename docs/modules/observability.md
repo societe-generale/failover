@@ -4,18 +4,18 @@ icon: material/chart-line
 
 # Observability
 
-Two modules provide observability: `failover-observable-scanner` discovers `@Failover` methods at startup; `failover-observable-micrometer` adds Micrometer counters and a health indicator.
+Two modules provide observability: `failover-scanner` discovers `@Failover` methods at startup; `failover-observable-micrometer` adds Micrometer counters and a health indicator.
 
 ---
 
-## failover-observable-scanner
+## failover-scanner
 
 Walks the Spring `ApplicationContext` at startup, finds all `@Failover`-annotated methods, and registers them with the `ObservablePublisher`.
 
 ```xml
 <dependency>
     <groupId>com.societegenerale.failover</groupId>
-    <artifactId>failover-observable-scanner</artifactId>
+    <artifactId>failover-scanner</artifactId>
     <version>3.0.0</version>
 </dependency>
 ```
@@ -47,7 +47,7 @@ Extends the scanner with Micrometer counters and a Spring Boot Actuator health i
 </dependency>
 ```
 
-Includes `failover-observable-scanner` transitively.
+Includes `failover-scanner` transitively.
 
 ### Micrometer Counter
 
