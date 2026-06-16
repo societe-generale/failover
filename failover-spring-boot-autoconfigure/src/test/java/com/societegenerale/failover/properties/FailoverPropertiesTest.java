@@ -53,6 +53,12 @@ class FailoverPropertiesTest {
     }
 
     @Test
+    @DisplayName("should cap the in-memory store at 10000 entries by default (audit I-10)")
+    void shouldHaveDefaultInmemoryMaxEntries() {
+        assertThat(failoverProperties.getStore().getInmemory().getMaxEntries()).isEqualTo(10_000);
+    }
+
+    @Test
     @DisplayName("should not have any value on jdbc table prefix by default")
     void shouldNotHaveAnyValueOnTablePrefixByDefault() {
         Map<String, String> result = failoverProperties.additionalInfo();

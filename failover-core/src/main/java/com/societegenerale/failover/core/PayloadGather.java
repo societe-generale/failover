@@ -81,8 +81,8 @@ class PayloadGather<T, R> {
             publishPartial(failover, method, missing, recovered.size());
         }
         var finalCtx = splitterInvoker.merge(splitter, failover, recovered);
-        log.info("Failover scatter-recover: gathered {} slices for '{}' ({} recovered, {} missing).",
-                recovered.size(), failover.name(), recovered.size() - missing, missing);
+        log.info("Failover scatter-recover: gathered {} slices for '{}' ({} missing).",
+                recovered.size(), failover.name(), missing);
         return finalCtx.getPayload();
     }
 

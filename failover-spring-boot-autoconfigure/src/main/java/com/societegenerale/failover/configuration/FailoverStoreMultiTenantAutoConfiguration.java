@@ -147,9 +147,10 @@ public class FailoverStoreMultiTenantAutoConfiguration {
     @ConditionalOnMissingBean(TenantStoreFactory.class)
     @ConditionalOnProperty(prefix = "failover.store", name = "type",
                            havingValue = "inmemory", matchIfMissing = true)
-    public TenantStoreFactory<Object> inmemoryMultiTenantStoreFactory() {
-        log.info("MultiTenant TenantStoreFactory: InMemory (one map per tenant)");
-        return tenantId -> new FailoverStoreInmemory<>();
+    public TenantStoreFactory<Object> inmemoryMultiTenantStoreFactory(FailoverProperties properties) {
+        int maxEntries = properties.getStore().getInmemory().getMaxEntries();
+        log.info("MultiTenant TenantStoreFactory: InMemory (one map per tenant, maxEntries={})", maxEntries);
+        return tenantId -> new FailoverStoreInmemory<>(maxEntries);
     }
 
     /**

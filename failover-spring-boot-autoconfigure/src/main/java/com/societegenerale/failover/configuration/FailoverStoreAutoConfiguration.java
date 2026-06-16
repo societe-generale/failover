@@ -221,9 +221,10 @@ public class FailoverStoreAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean(TenantStoreFactory.class)
-        public TenantStoreFactory<Object> inmemoryTenantStoreFactory() {
-            log.warn("FailoverStore configured to FailoverStoreInmemory. We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", (Object) StoreType.values());
-            return tenantId -> new FailoverStoreInmemory<>();
+        public TenantStoreFactory<Object> inmemoryTenantStoreFactory(FailoverProperties properties) {
+            int maxEntries = properties.getStore().getInmemory().getMaxEntries();
+            log.warn("FailoverStore configured to FailoverStoreInmemory (maxEntries={}). We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", maxEntries, (Object) StoreType.values());
+            return tenantId -> new FailoverStoreInmemory<>(maxEntries);
         }
     }
 

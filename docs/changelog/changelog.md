@@ -48,6 +48,10 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   bridges to clean `protected` method-less operations; decorators that need it thread the non-null
   method through (used for the per-method outcome metric). Zero-config users and the built-in chain
   are unaffected; only custom `FailoverHandler` implementations must migrate (audit, ADR 52)
+- **JDBC DDL now mandates an `EXPIRE_ON` index.** The expiry-cleanup scheduler deletes by
+  `EXPIRE_ON < ?`; without the index that delete is a full table scan that degrades as the table grows.
+  All documented `CREATE TABLE` snippets and test schemas gained
+  `CREATE INDEX IDX_<table>_EXPIRE_ON ON <table> (EXPIRE_ON)` (audit I-13)
 
 ### Added
 
@@ -80,6 +84,9 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   removes the row between the failed INSERT and the follow-up UPDATE. A **single bounded retry**
   re-INSERTs the now-absent row; if every attempt loses the race the write is abandoned at `warn`
   (regenerable cache). Native-merge dialects were never affected (audit A-4, ADR 47)
+- A misbehaving `RecoveredPayloadHandler` no longer breaks the failover flow — `AdvancedFailoverHandler`
+  guards the post-processing call, logs the failure at `ERROR`, and returns the raw recovered payload
+  unchanged as the fallback (audit I-06)
 
 ### Security
 
@@ -111,6 +118,9 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   store across CLOSED → OPEN (short-circuit) → HALF_OPEN (trial) (audit I-18)
 - High-cardinality multi-tenant contention test — 200 distinct tenants interleaved across threads, each
   building exactly one isolated store via `computeIfAbsent` (audit I-07)
+- `failover.store.inmemory.max-entries` (default `10000`) — the in-memory store is now size-capped and
+  evicts the least-recently-accessed entry (LRU) past the cap, preventing unbounded heap growth from
+  high-cardinality keys. Set `0` for the legacy unbounded behaviour (audit I-10)
 - `ExpiryPolicyContractVerifier` — a dependency-free harness SPI implementors can drop into a unit test
   to check a custom `ExpiryPolicy` against the contract (non-null/future `computeExpiry`, `expireOn`-driven
   `isExpired`). See [Custom Expiry Policy](../how-to/custom-expiry-policy.md#testing-your-policy)

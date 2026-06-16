@@ -159,6 +159,9 @@ CREATE TABLE FAILOVER_STORE (
     PAYLOAD_CLASS    VARCHAR(256),
     PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
 );
+
+-- Required: the cleanup scheduler deletes by `EXPIRE_ON < ?`; this index keeps it off a full table scan.
+CREATE INDEX IDX_FAILOVER_STORE_EXPIRE_ON ON FAILOVER_STORE (EXPIRE_ON);
 ```
 
 | Column | Type | Description |

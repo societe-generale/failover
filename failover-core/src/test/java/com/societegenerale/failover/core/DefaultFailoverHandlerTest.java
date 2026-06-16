@@ -138,6 +138,22 @@ class DefaultFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("not-found recover returns the enricher's result, not a hard-coded null (a default-supplying enricher is honoured)")
+    void recoverReturnsEnricherResultOnNotFoundPath() {
+        @SuppressWarnings("unchecked")
+        PayloadEnricher<ThirdParty> mockEnricher = mock(PayloadEnricher.class);
+        var sentinel = new ThirdParty(99L, "DEFAULT", 0);
+        var enriched = new ReferentialPayload<>(FAILOVER_NAME, "1", false, now, now, sentinel);
+        given(mockEnricher.enrichOnRecover(failover, ThirdParty.class, null, cause)).willReturn(enriched);
+        given(failoverStore.find(FAILOVER_NAME, "1")).willReturn(Optional.empty());
+        var handler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, mockEnricher);
+
+        ThirdParty result = handler.recover(failover, List.of(1L), ThirdParty.class, cause);
+
+        assertThat(result).isSameAs(sentinel);
+    }
+
+    @Test
     @DisplayName("should return null when referential payload is expired")
     void shouldReturnNullWhenReferentialIsExpired() {
         var thirdParty = new ThirdParty(1L, "Tata", 1);
