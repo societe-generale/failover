@@ -48,6 +48,8 @@ In-process store backed by the Caffeine cache library. Suitable for single-node 
 failover:
   store:
     type: caffeine
+    caffeine:
+      max-size: 10000  # default — same cap as inmemory.max-entries; set 0 for unbounded
 ```
 
 ```xml title="pom.xml"
@@ -59,6 +61,11 @@ failover:
 ```
 
 Caffeine handles its own eviction using the `expireOn` field from `ReferentialPayload`. Entries are evicted at their configured TTL without needing the cleanup scheduler.
+
+By default the cache is capped at `max-size: 10000` entries (the same default as the in-memory store's
+`max-entries`) — Caffeine evicts by its size-based (Window TinyLFU) policy once the cap is reached. The
+default comfortably holds typical referential datasets while bounding heap; set `max-size: 0` for an
+unbounded cache limited only by per-entry expiry.
 
 ---
 

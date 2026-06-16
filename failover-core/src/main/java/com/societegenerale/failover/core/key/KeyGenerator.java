@@ -39,6 +39,12 @@ public interface KeyGenerator {
     /**
      * Generates a raw cache key for the given failover call.
      *
+     * <p><strong>Implementation contract:</strong> Implementations must be <strong>deterministic and side-effect-free</strong>: the same
+     * {@code failover} and {@code args} must always yield the same key, and argument values identifying
+     * different entities must yield different keys (no collisions). Return a non-null, non-blank value
+     * and never mutate {@code args}. A {@code null}/empty {@code args} list is valid (e.g. a no-argument
+     * recover-all method) and must still produce a stable key.
+     *
      * @param failover annotation metadata for the intercepted method
      * @param args     resolved method arguments; may be {@code null} or empty
      * @return non-null string key representing this call

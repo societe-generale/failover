@@ -52,9 +52,16 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   `EXPIRE_ON < ?`; without the index that delete is a full table scan that degrades as the table grows.
   All documented `CREATE TABLE` snippets and test schemas gained
   `CREATE INDEX IDX_<table>_EXPIRE_ON ON <table> (EXPIRE_ON)` (audit I-13)
+- SPI Javadoc hardened with `@implSpec` contracts — `KeyGenerator` (deterministic, collision-free),
+  `ExpiryPolicy` (future/non-null `computeExpiry`, `expireOn`-driven `isExpired`), `PayloadEnricher` and
+  `RecoveredPayloadHandler` (null-payload handling). `FailoverHandler.recoverAll` is now documented as an
+  **optional operation** (JDK convention), resolving the recover-all LSP ambiguity (audit I-09, I-11)
+- Build: corrected the stale `<scm><tag>` in the parent POM (`failover_1.1.0` → `HEAD`) (audit I-14)
 
 ### Added
 
+- `failover.store.caffeine.max-size` (default `10000`, same as `inmemory.max-entries`) — the Caffeine
+  store can now cap its entry count and evict by Window TinyLFU once exceeded; `0` = unbounded (audit I-15)
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods
 - Scatter/gather: parallel slice dispatch via virtual threads (`failover.scatter.parallel`)
 - Scatter/gather: `failover.scatter.timeout` (default 10s) — bounds parallel slice joins so a hung

@@ -59,6 +59,12 @@ class FailoverPropertiesTest {
     }
 
     @Test
+    @DisplayName("should cap the caffeine store at 10000 entries by default — same as inmemory (audit I-15)")
+    void shouldHaveDefaultCaffeineMaxSize() {
+        assertThat(failoverProperties.getStore().getCaffeine().getMaxSize()).isEqualTo(10_000L);
+    }
+
+    @Test
     @DisplayName("should not have any value on jdbc table prefix by default")
     void shouldNotHaveAnyValueOnTablePrefixByDefault() {
         Map<String, String> result = failoverProperties.additionalInfo();

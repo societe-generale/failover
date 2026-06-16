@@ -32,6 +32,12 @@ public interface RecoveredPayloadHandler {
     /**
      * Handles the recovered payload after a failover recovery attempt.
      *
+     * <p><strong>Implementation contract:</strong> {@code payload} is {@code null} when nothing was recovered (store miss, expiry, or
+     * store failure); implementations must handle that case (e.g. substitute an empty result). Prefer
+     * not to throw — a thrown exception is caught by {@code AdvancedFailoverHandler}, logged at
+     * {@code ERROR}, and the raw recovered payload is returned unchanged. Returning {@code null} is
+     * permitted and propagates to the caller.
+     *
      * @param <T>     the payload type
      * @param failover annotation metadata for the failover point
      * @param args     method arguments used to look up the payload

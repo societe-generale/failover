@@ -103,7 +103,7 @@ class AbstractFailoverHandlerTest {
 
         assertThatThrownBy(() -> handler.recoverAll(failover, METHOD, ARGS, String.class, cause))
                 .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Not supported yet.");
+                .hasMessageContaining("optional operation");
     }
 
     /** Records the method-less calls so the bridges' delegation can be asserted. */

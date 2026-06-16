@@ -29,6 +29,10 @@ public interface PayloadEnricher<T> {
     /**
      * Enriches the payload before it is written to the failover store.
      *
+     * <p><strong>Implementation contract:</strong> Must return a non-null wrapper. Preserve the existing identity fields
+     * ({@code name}, {@code key}, {@code asOf}, {@code expireOn}); enrich only the business payload or
+     * its metadata. Implementations should be side-effect-free beyond the returned wrapper.
+     *
      * @param failover           annotation metadata for the failover point
      * @param clazz              expected payload type
      * @param referentialPayload the wrapper holding the payload to enrich
@@ -38,6 +42,11 @@ public interface PayloadEnricher<T> {
 
     /**
      * Enriches the payload after it has been recovered from the failover store.
+     *
+     * <p><strong>Implementation contract:</strong> {@code referentialPayload} is {@code null} when nothing was recovered (store miss or
+     * expiry); implementations must handle that case — typically by returning a wrapper whose payload
+     * is {@code null}. Must return a non-null wrapper (its {@code getPayload()} may be {@code null}).
+     * This is where recovered values are marked stale (e.g. {@code upToDate=false}, {@code asOf}).
      *
      * @param failover           annotation metadata for the failover point
      * @param clazz              expected payload type

@@ -32,6 +32,10 @@ public interface ExpiryPolicy<T> {
     /**
      * Computes the expiry instant for a payload stored under the given failover.
      *
+     * <p><strong>Implementation contract:</strong> Must return a non-null instant in the <strong>future</strong> relative to "now" — a
+     * freshly stored payload must not already be expired. The result is stored as the payload's
+     * {@code expireOn}. Verify your implementation with {@link ExpiryPolicyContractVerifier}.
+     *
      * @param failover annotation metadata containing the configured expiry duration and unit
      * @return the absolute instant after which the stored payload should be considered expired
      */
@@ -39,6 +43,10 @@ public interface ExpiryPolicy<T> {
 
     /**
      * Returns {@code true} if the stored payload has expired.
+     *
+     * <p><strong>Implementation contract:</strong> Must decide expiry from the payload's {@code expireOn} relative to the current time
+     * (consistent with {@link #computeExpiry}): an entry stored a moment ago is not expired; an entry
+     * whose {@code expireOn} is in the past is. Must be side-effect-free.
      *
      * @param failover           annotation metadata for the failover point
      * @param referentialPayload the stored payload to check

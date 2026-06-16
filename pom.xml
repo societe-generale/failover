@@ -81,8 +81,8 @@
     <scm>
         <url>https://github.com/societe-generale/failover</url>
         <connection>scm:git:git@github.com:societe-generale/failover.git</connection>
-        <developerConnection>scm:git:git@github.com:societe-generale/failover</developerConnection>
-        <tag>failover_1.1.0</tag>
+        <developerConnection>scm:git:git@github.com:societe-generale/failover.git</developerConnection>
+        <tag>HEAD</tag>
     </scm>
 
     <distributionManagement>

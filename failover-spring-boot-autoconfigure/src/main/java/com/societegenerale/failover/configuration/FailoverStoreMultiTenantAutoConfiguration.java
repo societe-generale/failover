@@ -133,9 +133,10 @@ public class FailoverStoreMultiTenantAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(TenantStoreFactory.class)
     @ConditionalOnProperty(prefix = "failover.store", name = "type", havingValue = "caffeine")
-    public TenantStoreFactory<Object> caffeineMultiTenantStoreFactory(FailoverClock failoverClock) {
-        log.info("MultiTenant TenantStoreFactory: Caffeine (one cache per tenant)");
-        return tenantId -> new FailoverStoreCaffeine<>(failoverClock);
+    public TenantStoreFactory<Object> caffeineMultiTenantStoreFactory(FailoverClock failoverClock, FailoverProperties properties) {
+        long maxSize = properties.getStore().getCaffeine().getMaxSize();
+        log.info("MultiTenant TenantStoreFactory: Caffeine (one cache per tenant, maxSize={})", maxSize);
+        return tenantId -> new FailoverStoreCaffeine<>(failoverClock, maxSize);
     }
 
     /**

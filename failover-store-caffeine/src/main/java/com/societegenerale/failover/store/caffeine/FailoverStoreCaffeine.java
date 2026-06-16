@@ -80,15 +80,30 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     private final Cache<String, ReferentialPayload<T>> cache;
 
     /**
-     * Constructs a {@code FailoverStoreCaffeine} and initialises the underlying Caffeine cache
-     * with a per-entry {@link Expiry} policy backed by the given clock.
+     * Constructs an <b>unbounded</b> {@code FailoverStoreCaffeine} (size limited only by per-entry expiry).
      *
      * @param fClock clock used to compute each entry's remaining TTL from its {@code expireOn}
      *               timestamp; must not be {@code null}
      */
     public FailoverStoreCaffeine(FailoverClock fClock) {
+        this(fClock, 0);
+    }
+
+    /**
+     * Constructs a {@code FailoverStoreCaffeine} with an optional maximum entry count.
+     *
+     * <p>When {@code maximumSize > 0}, Caffeine bounds the cache and evicts entries on a
+     * size-based (Window TinyLFU) policy once the cap is exceeded — capping heap use from
+     * high-cardinality keys. When {@code maximumSize <= 0} the cache is unbounded and limited only
+     * by per-entry expiry (audit I-15).
+     *
+     * @param fClock      clock used to compute each entry's remaining TTL from its {@code expireOn}
+     *                    timestamp; must not be {@code null}
+     * @param maximumSize maximum number of entries to retain; {@code <= 0} means unbounded
+     */
+    public FailoverStoreCaffeine(FailoverClock fClock, long maximumSize) {
         this.failoverClock = fClock;
-        this.cache = Caffeine.newBuilder()
+        var builder = Caffeine.newBuilder()
                 .expireAfter(new Expiry<String, ReferentialPayload<T>>() {
                     @Override
                     public long expireAfterCreate(@NonNull String key, @NonNull ReferentialPayload<T> value, long currentTime) {
@@ -102,8 +117,11 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
                     public long expireAfterRead(@NonNull String key, @NonNull ReferentialPayload<T> value, long currentTime, long currentDuration) {
                         return currentDuration;
                     }
-                })
-                .build();
+                });
+        if (maximumSize > 0) {
+            builder.maximumSize(maximumSize);
+        }
+        this.cache = builder.build();
     }
 
     /**
