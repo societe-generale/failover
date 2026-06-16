@@ -71,13 +71,13 @@ public record DashboardProperties(
 
     /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
     public DashboardProperties(boolean enabled, String basePath) {
-        this(enabled, basePath, new Exposure(true, true, List.of("config", "metrics", "health")),
+        this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health")),
                 new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90));
     }
 
     /** Convenience constructor with custom health, default exposure/security/history. */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
-        this(enabled, basePath, new Exposure(true, true, List.of("config", "metrics", "health")),
+        this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health")),
                 new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), health);
     }
 
@@ -88,13 +88,13 @@ public record DashboardProperties(
      *
      * @param ui      serve the static HTML/JS UI under {@code base-path/**} (default {@code true})
      * @param api     serve the JSON API under {@code base-path/api/**} (default {@code true})
-     * @param include which API endpoints are served: any of {@code config}, {@code metrics},
-     *                {@code health} (default: all three)
+     * @param include which API endpoints are served: any of {@code config}, {@code failover-health},
+     *                {@code metrics}, {@code health} (default: all of them)
      */
     public record Exposure(
         @DefaultValue("true") boolean ui,
         @DefaultValue("true") boolean api,
-        @DefaultValue({"config", "metrics", "health"}) List<String> include
+        @DefaultValue({"config", "failover-health", "metrics", "health"}) List<String> include
     ) {
         /** @return {@code true} if the named API endpoint is exposed. */
         public boolean includes(String endpoint) {

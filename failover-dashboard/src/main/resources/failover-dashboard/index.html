@@ -12,6 +12,7 @@
         <nav class="tabs" role="tablist">
             <button class="tab active" data-tab="config" role="tab" aria-selected="true">Config</button>
             <button class="tab" data-tab="metrics" role="tab" aria-selected="false">Metrics</button>
+            <button class="tab" data-tab="health" role="tab" aria-selected="false">Health</button>
         </nav>
         <label class="refresh">
             <span>auto-refresh</span>
@@ -101,6 +102,19 @@
                     </tr>
                 </thead>
                 <tbody id="health-body"></tbody>
+            </table>
+        </section>
+
+        <!-- ── Health view (actuator-style failover health) ────────────────── -->
+        <section id="health" class="panel" role="tabpanel" hidden>
+            <div id="health-error" class="banner error" hidden></div>
+            <div class="health-head">
+                <span class="health-title">Failover Health</span>
+                <span id="health-status" class="status-pill">—</span>
+            </div>
+            <p class="health-sub">Mirrors the <code>/actuator/health/failover</code> contributor — overall status and the active configuration.</p>
+            <table class="grid kv">
+                <tbody id="health-details"></tbody>
             </table>
         </section>
     </main>

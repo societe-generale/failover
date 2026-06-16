@@ -41,6 +41,7 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
 |---|---|
 | `/failover-dashboard` | the UI (bare path forwards to `index.html`) |
 | `/failover-dashboard/api/config` | every `@Failover` point + global settings |
+| `/failover-dashboard/api/failover-health` | actuator-style overall status + active configuration |
 | `/failover-dashboard/api/metrics` | global + per-API KPIs and rates |
 | `/failover-dashboard/api/health` | per-API health classification |
 | `/failover-dashboard/api/metrics/series` | trend samples (only when history is enabled) |
@@ -62,6 +63,12 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
     KPI cards, charts, and a per-API health table. Auto-refreshes on a configurable interval.
 
     ![Failover dashboard — metrics view](../web/assets/images/dashboard-metrics.png)
+
+=== "Health"
+
+    Actuator-style overall failover health — `UP` / `DOWN` plus the active configuration, mirroring the `/actuator/health/failover` contributor.
+
+    ![Failover dashboard — health view](../web/assets/images/dashboard-health.png)
 
 === "Dark mode"
 

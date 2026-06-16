@@ -61,4 +61,17 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$[0].storeType").value("jdbc"))
                 .andExpect(jsonPath("$[0].keyGenerator").value("default"));
     }
+
+    @Test
+    @DisplayName("returns the actuator-style failover health as JSON")
+    void returnsFailoverHealthJson() throws Exception {
+        when(configService.failoverHealth()).thenReturn(new com.societegenerale.failover.dashboard.dto.FailoverHealth(
+                "UP", java.util.Map.of("registered-failovers", "3", "store.type", "JDBC")));
+
+        mockMvc.perform(get("/failover-dashboard/api/failover-health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.details['store.type']").value("JDBC"))
+                .andExpect(jsonPath("$.details['registered-failovers']").value("3"));
+    }
 }

@@ -115,4 +115,35 @@ class DashboardConfigServiceTest {
 
         assertThat(entries).extracting(ConfigEntry::name).containsExactly("alpha", "zebra");
     }
+
+    @Test
+    @DisplayName("failoverHealth() is UP with registered failovers and echoes config from the environment")
+    void failoverHealthUp() {
+        when(scanner.findAllFailover()).thenReturn(List.of(annotation("alpha"), annotation("zebra")));
+        MockEnvironment env = new MockEnvironment()
+                .withProperty("failover.store.type", "JDBC")
+                .withProperty("failover.store.jdbc.table-prefix", "MYAPP_");
+
+        var health = serviceWith(env).failoverHealth();
+
+        assertThat(health.status()).isEqualTo("UP");
+        assertThat(health.details())
+                .containsEntry("registered-failovers", "2")
+                .containsEntry("enabled", "true")
+                .containsEntry("type", "BASIC")
+                .containsEntry("store.type", "JDBC")
+                .containsEntry("store.jdbc.table-prefix", "MYAPP_")
+                .containsEntry("scheduler.enabled", "true");
+    }
+
+    @Test
+    @DisplayName("failoverHealth() is DOWN when no @Failover is registered")
+    void failoverHealthDown() {
+        when(scanner.findAllFailover()).thenReturn(List.of());
+
+        var health = serviceWith(new MockEnvironment()).failoverHealth();
+
+        assertThat(health.status()).isEqualTo("DOWN");
+        assertThat(health.details()).containsEntry("registered-failovers", "0");
+    }
 }

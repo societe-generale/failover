@@ -128,6 +128,19 @@ main { padding: 1.25rem; }
 .badge.unhealthy { background: #dc2626; }
 table caption { text-align: left; color: var(--muted); font-size: 0.85rem; padding: 0.4rem 0; }
 
+/* ── Health view ── */
+.health-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
+.health-title { font-size: 1.15rem; font-weight: 600; }
+.health-sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
+.status-pill {
+    display: inline-block; padding: 0.2rem 0.8rem; border-radius: 999px;
+    font-size: 0.85rem; font-weight: 700; letter-spacing: 0.03em; color: #fff; background: var(--muted);
+}
+.status-pill.up   { background: #16a34a; }
+.status-pill.down { background: #dc2626; }
+.grid.kv { max-width: 560px; }
+.grid.kv .kv-key { color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; width: 45%; }
+
 .grid {
     width: 100%;
     border-collapse: collapse;

@@ -75,7 +75,7 @@ Only active with `failover-dashboard-spring-boot-starter` on the classpath (see 
 | `failover.dashboard.base-path` | `String` | `/failover-dashboard` | Single dedicated namespace for the UI and API. Must start with `/`, must not be `/`, and must not end with `/` — a misconfigured value fails the context fast. |
 | `failover.dashboard.exposure.ui` | `boolean` | `true` | Serve the static HTML/JS UI. Set `false` to narrow to API-only. |
 | `failover.dashboard.exposure.api` | `boolean` | `true` | Serve the JSON API. Set `false` to narrow to UI-only. |
-| `failover.dashboard.exposure.include` | `List<String>` | `[config, metrics, health]` | Which API endpoints are served. Trim to narrow; an endpoint not listed returns `404`. |
+| `failover.dashboard.exposure.include` | `List<String>` | `[config, failover-health, metrics, health]` | Which API endpoints are served. Trim to narrow; an endpoint not listed returns `404`. |
 | `failover.dashboard.security.role` | `String` | `FAILOVER_ADMIN` | Role required for `base-path/**` when Spring Security is present. |
 | `failover.dashboard.security.allow-insecure` | `boolean` | `false` | When Spring Security is absent: `false` fails the context fast (fail-closed); `true` starts unsecured with a loud `WARN` (dev / trusted-network only). |
 | `failover.dashboard.history.enabled` | `boolean` | `false` | Enable the server-side ring-buffer sampler and `/api/metrics/series` for reload-surviving trends. |

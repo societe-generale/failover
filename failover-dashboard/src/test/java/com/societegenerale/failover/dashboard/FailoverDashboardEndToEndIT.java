@@ -111,6 +111,16 @@ class FailoverDashboardEndToEndIT {
 
     @Test
     @Order(5)
+    void failoverHealthIsUpWithTheRegisteredFailover() throws Exception {
+        mockMvc.perform(get("/failover-dashboard/api/failover-health").header("Authorization", AUTH))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.details['registered-failovers']")
+                        .value(org.hamcrest.Matchers.not("0")));
+    }
+
+    @Test
+    @Order(6)
     void staticUiIsServedFromTheClasspath() throws Exception {
         mockMvc.perform(get("/failover-dashboard/index.html").header("Authorization", AUTH))
                 .andExpect(status().isOk());

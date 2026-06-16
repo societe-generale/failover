@@ -178,6 +178,28 @@ function upsertChart(canvasId, type, data, extraOptions) {
     });
 }
 
+// ── Health view (actuator-style failover health) ─────────────────────────────
+
+async function loadFailoverHealth() {
+    const errorEl = document.getElementById("health-error");
+    try {
+        const health = await fetchJson("api/failover-health");
+        errorEl.hidden = true;
+        const pill = document.getElementById("health-status");
+        pill.textContent = health.status;
+        pill.className = "status-pill " + (health.status === "UP" ? "up" : "down");
+        const body = document.getElementById("health-details");
+        body.replaceChildren(...Object.entries(health.details).map(([k, v]) => {
+            const tr = document.createElement("tr");
+            tr.appendChild(cell(k, "kv-key"));
+            tr.appendChild(cell(v === "" ? "—" : v));
+            return tr;
+        }));
+    } catch (e) {
+        showError(errorEl, `Could not load failover health: ${e.message}`);
+    }
+}
+
 // ── Shared / shell ───────────────────────────────────────────────────────────
 
 async function fetchJson(path) {
@@ -196,6 +218,7 @@ let activeTab = "config";
 
 function refreshActive() {
     if (activeTab === "config") loadConfig();
+    else if (activeTab === "health") loadFailoverHealth();
     else loadMetrics();
 }
 
@@ -250,6 +273,7 @@ const theme = new URLSearchParams(location.search).get("theme");
 if (theme === "dark" || theme === "light") {
     document.documentElement.dataset.theme = theme;
 }
-if (location.hash === "#metrics") {
-    document.querySelector('.tab[data-tab="metrics"]').click();
+const initialTab = document.querySelector(`.tab[data-tab="${location.hash.slice(1)}"]`);
+if (initialTab) {
+    initialTab.click();
 }
