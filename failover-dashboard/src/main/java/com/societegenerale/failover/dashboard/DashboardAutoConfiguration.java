@@ -32,7 +32,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -180,9 +179,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> auth.anyRequest().hasRole(props.security().role()))
-                    .httpBasic(Customizer.withDefaults())
-                    // read-only API (GET only, no state mutation) — no CSRF write surface to protect
-                    .csrf(AbstractHttpConfigurer::disable);
+                    .httpBasic(Customizer.withDefaults());
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
             return http.build();
