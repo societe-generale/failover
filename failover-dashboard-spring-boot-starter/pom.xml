@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>failover-dashboard-spring-boot-starter</artifactId>
+    <packaging>jar</packaging>
+
+    <parent>
+        <artifactId>failover</artifactId>
+        <groupId>com.societegenerale.failover</groupId>
+        <version>3.0.0-SNAPSHOT</version>
+    </parent>
+
+    <properties>
+        <automatic.module.name>com.societegenerale.failover.dashboard.starter</automatic.module.name>
+    </properties>
+
+    <!--
+      The ONLY artifact a consumer adds to obtain the dashboard (§1a rule 2).
+      Pulls in the dashboard implementation plus the web/Micrometer deps it needs.
+      The default failover-spring-boot-starter does NOT depend on this (§1a rule 1).
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-dashboard</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <!-- Ships the access-control gate active out of the box: when the dashboard is enabled it sits
+             behind a role rather than failing closed for a missing dependency (design doc §9 gate 4). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

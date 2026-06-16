@@ -2607,3 +2607,54 @@ still replace the whole store.
 * Backend `TenantStoreFactory` registrations (inmemory/caffeine/jdbc) are unchanged.
 
 ___
+
+## ADR 55 — Embedded Failover Dashboard (`failover-dashboard`)
+
+**Date : 17-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+Operators had no at-a-glance view of failover coverage or behaviour: the `@Failover` configuration was
+only visible in code, and the runtime KPIs (success / failover / recovery / non-recovery / health) lived
+only in the Micrometer meters, requiring a Prometheus/Grafana stack to read. A lightweight, batteries-
+included panel — like `springdoc-openapi` / Swagger UI — would close that gap. But shipping a UI that
+exposes internal operational data on-by-default is a security hazard.
+
+### Decision
+
+Add a self-contained `failover-dashboard` module plus a dedicated `failover-dashboard-spring-boot-starter`,
+**strictly opt-in and secure-by-default**:
+
+* **Obtain via a separate starter only** — the default `failover-spring-boot-starter` ships none of it,
+  and the dashboard does **not** depend on `failover-spring-boot-autoconfigure` (it reads global settings
+  from the `Environment`, keeping it a decoupled add-on).
+* **Off until enabled** — `failover.dashboard.enabled=false` by default (no `matchIfMissing`). Once
+  enabled, exposure defaults ON (UI + full API); the granular `exposure.*` flags only *narrow*, so the
+  consumer decides only *enabled or not*.
+* **No new instrumentation** — every KPI is derived from the existing `failover.store.total` /
+  `failover.recovery.outcome.total` / `failover.recover.total` counters via a read-only JSON API
+  (`/api/config`, `/api/metrics`, `/api/health`, opt-in `/api/metrics/series`) and a vendored,
+  CDN-free Chart.js UI served from the classpath.
+* **Fail-closed access gate** — when Spring Security is present (bundled by the starter) the module
+  contributes a `SecurityFilterChain` over `base-path/**` requiring a role; when absent the context
+  fails fast unless `allow-insecure=true` (loud WARN). A static-only CSP and data-minimisation (only
+  annotation metadata + aggregate counts, never payloads/keys/credentials) complete the posture.
+* **Servlet-first** — the JSON services are framework-agnostic; a reactive variant is a fast-follow.
+* **Graceful degradation** — no `MeterRegistry` ⇒ config view still works, metrics degrade; missing
+  Chart.js ⇒ cards/tables still render.
+
+### Consequences
+
+* Operators get an embedded, zero-config-once-enabled view; no Grafana required for an at-a-glance check.
+* Two new modules in the reactor and the coverage gate; the default footprint of a plain failover
+  consumer is unchanged (not a byte of dashboard code on the classpath without the dedicated starter).
+* The dashboard tracks meter/scanner contracts as a consumer — meter renames (e.g. ADR 51) ripple into
+  the aggregation, which is covered by `SimpleMeterRegistry` unit tests.
+* History is process-local (in-memory ring) and deliberately not a TSDB; long-term analysis still points
+  at Prometheus/Grafana.
+
+___
