@@ -91,6 +91,37 @@ public class ValidUntilExpiryPolicy implements ExpiryPolicy<Price> {
 
 ---
 
+## Testing Your Policy
+
+The library ships a dependency-free harness, `ExpiryPolicyContractVerifier`, that checks your policy
+against the contract every implementation must honour — a non-null, future `computeExpiry`, and an
+`isExpired` that actually reads the stored `expireOn`. Drop it into a unit test:
+
+```java title="EndOfDayExpiryPolicyTest.java"
+@ExtendWith(MockitoExtension.class)
+class EndOfDayExpiryPolicyTest {
+
+    @Mock Failover failover;
+
+    @Test
+    void honoursTheExpiryContract() {
+        given(failover.expiryDuration()).willReturn(1L);
+        given(failover.expiryUnit()).willReturn(ChronoUnit.HOURS);
+
+        ExpiryPolicyContractVerifier.forPolicy(new EndOfDayExpiryPolicy())
+                .withFailover(failover)
+                .withSamplePayload(new Country("FR"))
+                .verify();   // throws AssertionError on the first violation
+    }
+}
+```
+
+The harness verifies the **standard `expireOn`-based contract**. If your policy is *payload-driven*
+(it derives expiry from a field on the payload instead of `expireOn`), call `verifyComputeExpiry()`
+for the `computeExpiry` checks only, and assert your bespoke `isExpired` logic directly.
+
+---
+
 ## Next Steps
 
 - [Expiry Concepts](../concepts/expiry.md) — how expiry works end-to-end

@@ -107,6 +107,13 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Overall JaCoCo coverage gate — `mvn verify` fails below **95% line / 95% branch** across all modules
   (cross-module `jacoco:check` in the `report` module; currently ~99% line / ~97% branch). Audit T-1, ADR 53
 - CI: advisory `dialect-its` job and **blocking** `mutation` job; the H2 build remains the required gate
+- Circuit-breaker state-transition test (`ResilienceFailoverExecutionTest`) — recovery served from the
+  store across CLOSED → OPEN (short-circuit) → HALF_OPEN (trial) (audit I-18)
+- High-cardinality multi-tenant contention test — 200 distinct tenants interleaved across threads, each
+  building exactly one isolated store via `computeIfAbsent` (audit I-07)
+- `ExpiryPolicyContractVerifier` — a dependency-free harness SPI implementors can drop into a unit test
+  to check a custom `ExpiryPolicy` against the contract (non-null/future `computeExpiry`, `expireOn`-driven
+  `isExpired`). See [Custom Expiry Policy](../how-to/custom-expiry-policy.md#testing-your-policy)
 
 ---
 

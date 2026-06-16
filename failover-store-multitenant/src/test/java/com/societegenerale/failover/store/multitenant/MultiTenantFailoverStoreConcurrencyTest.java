@@ -107,6 +107,38 @@ class MultiTenantFailoverStoreConcurrencyTest {
         assertThat(factory.distinctTenants()).containsExactlyInAnyOrder(tenants);
     }
 
+    @Test
+    @DisplayName("high tenant cardinality under contention — exactly one store per tenant, no over-creation (audit I-07)")
+    void highCardinalityTenantsBuildOneStoreEachUnderContention() throws InterruptedException {
+        var factory = new CountingTenantStoreFactory();
+        ThreadLocal<String> currentTenant = new ThreadLocal<>();
+        var store = new MultiTenantFailoverStore<>(
+                currentTenant::get, factory, UnaryOperator.identity(), null);
+
+        int tenantCount = 200;
+        int writesPerTenant = 4;
+        // Interleave tenants (i % tenantCount) so each tenant is first-touched by several threads
+        // near-simultaneously — the worst case for computeIfAbsent over-creation.
+        runConcurrently(tenantCount * writesPerTenant, i -> {
+            String tenant = "tenant-" + (i % tenantCount);
+            currentTenant.set(tenant);
+            try {
+                store.store(payload("key-" + i, tenant + "-" + i));
+            } finally {
+                currentTenant.remove();
+            }
+        });
+
+        assertThat(factory.distinctTenants())
+                .as("one store per distinct tenant")
+                .hasSize(tenantCount);
+        for (int t = 0; t < tenantCount; t++) {
+            assertThat(factory.createCount("tenant-" + t))
+                    .as("exactly one store built for tenant-%d", t)
+                    .isEqualTo(1);
+        }
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────
 
     private void runConcurrently(int tasks, java.util.function.IntConsumer task) throws InterruptedException {

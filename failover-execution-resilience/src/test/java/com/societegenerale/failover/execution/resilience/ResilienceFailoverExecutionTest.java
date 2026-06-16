@@ -22,6 +22,9 @@ import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.execution.resilience.demo.Client;
 import com.societegenerale.failover.execution.resilience.demo.ClientReferentialExecutor;
 import com.societegenerale.failover.execution.resilience.demo.ClientService;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,9 +57,20 @@ class ResilienceFailoverExecutionTest {
     @Autowired
     private ClientService clientService;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
     @BeforeEach
     void setUp() {
         given(clock.now()).willReturn(NOW);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // The failoverStore is a shared singleton across the test class — clear the entry so tests
+        // are isolated regardless of execution order.
+        failoverStore.delete(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW, null));
+        circuitBreakerRegistry.circuitBreaker("client-by-id").reset();
     }
 
     @Test
@@ -164,5 +178,32 @@ class ResilienceFailoverExecutionTest {
         assertThat(recovered).isNull();
         var optionalClientReferentialPayload = failoverStore.find("client-by-id", "1");
         assertThat(optionalClientReferentialPayload).isPresent().contains(new ReferentialPayload<>("client-by-id", "1", false, NOW, NOW.plusSeconds(3600), client));
+    }
+
+    @Test
+    @DisplayName("failover recovery works across circuit-breaker states: CLOSED → OPEN → HALF_OPEN (audit I-18)")
+    void recoveryWorksAcrossCircuitBreakerStateTransitions() {
+        // The circuit breaker is named after the failover point.
+        CircuitBreaker breaker = circuitBreakerRegistry.circuitBreaker("client-by-id");
+
+        // ── CLOSED — successful call stores the entry, returns the live value ──
+        given(clientReferentialExecutor.findClientById(1L)).willReturn(client);
+        Client stored = clientService.findClientById(1L);
+        assertThat(stored.getUpToDate()).isTrue();
+        assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+
+        // ── OPEN — calls are short-circuited (CallNotPermittedException); failover still serves from the store ──
+        breaker.transitionToOpenState();
+        assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
+        Client openRecovered = clientService.findClientById(1L);
+        assertThat(openRecovered).isEqualTo(client);
+        assertThat(openRecovered.getUpToDate()).isFalse();   // served by failover, not the blocked upstream
+
+        // ── HALF_OPEN — a permitted trial call succeeds → live value returned, no failover needed ──
+        breaker.transitionToHalfOpenState();
+        assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.HALF_OPEN);
+        Client trial = clientService.findClientById(1L);
+        assertThat(trial).isEqualTo(client);
+        assertThat(trial.getUpToDate()).isTrue();            // upstream healthy on the trial
     }
 }
