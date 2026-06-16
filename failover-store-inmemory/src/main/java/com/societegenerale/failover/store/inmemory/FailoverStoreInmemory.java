@@ -81,7 +81,7 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, ReferentialPayload<T>> eldest) {
                 boolean evict = size() > cap;
-                if (evict && log.isDebugEnabled()) {
+                if (evict) {
                     log.debug("FailoverStoreInmemory at capacity ({}); evicting LRU entry '{}'", cap, eldest.getKey());
                 }
                 return evict;
