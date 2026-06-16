@@ -17,6 +17,8 @@ com.societegenerale.failover.core.propagator
 com.societegenerale.failover.core.scanner
 com.societegenerale.failover.core.store
 com.societegenerale.failover.core.util
+com.societegenerale.failover.dashboard
+com.societegenerale.failover.dashboard.dto
 com.societegenerale.failover.domain
 com.societegenerale.failover.execution.resilience
 com.societegenerale.failover.lookup
