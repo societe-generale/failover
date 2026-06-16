@@ -134,12 +134,9 @@ body[data-md-color-scheme="default"] .fo-section p { color: #475569 !important; 
 </div>
 <div class="fo-compare-panel after">
 <div class="fo-compare-header">✅ With Failover — declarative, consistent, zero boilerplate</div>
-<pre><code class="language-java">@Failover(
-    name = "country-by-code",
-    expiryDuration = 24,
-    expiryUnit = ChronoUnit.HOURS
-)
-Country findByCode(String code);</code></pre>
+<pre><code class="language-java">
+  @Failover(name = "country-by-code", expiryDuration = 24, expiryUnit = ChronoUnit.HOURS)
+  Country findByCode(String code);</code></pre>
 </div>
 </div>
 
