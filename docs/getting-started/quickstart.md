@@ -67,6 +67,9 @@ Build a failover-enabled service in 5 minutes — one dependency, one annotation
         PAYLOAD_CLASS  VARCHAR(256),
         PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
     );
+
+    -- Required: keeps the expiry-cleanup DELETE (`WHERE EXPIRE_ON < ?`) off a full table scan.
+    CREATE INDEX IDX_DEMO_FAILOVER_STORE_EXPIRE_ON ON DEMO_FAILOVER_STORE (EXPIRE_ON);
     ```
 
 ---

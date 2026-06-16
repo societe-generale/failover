@@ -21,13 +21,19 @@ Four backing stores are available. Choose based on your deployment topology and 
 
 ## InMemory
 
-`ConcurrentHashMap`-backed store. Zero dependencies. Data is lost on restart. Not suitable for production.
+In-process map store. Zero dependencies. Data is lost on restart. Not suitable for production.
 
 ```yaml title="application.yml"
 failover:
   store:
-    type: inmemory    # default — no extra config needed
+    type: inmemory      # default — no extra config needed
+    inmemory:
+      max-entries: 10000  # default — LRU eviction past this cap; 0 = unbounded
 ```
+
+The store is **size-capped by default** (`max-entries: 10000`) and evicts the least-recently-accessed
+entry once the cap is exceeded, so high-cardinality keys cannot grow the heap without bound. Set
+`max-entries: 0` for the legacy unbounded behaviour.
 
 !!! warning "Not for production"
     InMemory stores data only for the lifetime of the JVM process. Any restart loses all cached failover data, leaving the first few requests unprotected until new upstream calls succeed.
@@ -88,6 +94,9 @@ CREATE TABLE MYAPP_FAILOVER_STORE (
     PAYLOAD_CLASS  VARCHAR(256),
     PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
 );
+
+-- Required: keeps the expiry-cleanup DELETE (`WHERE EXPIRE_ON < ?`) an index scan, not a full scan.
+CREATE INDEX IDX_MYAPP_FAILOVER_STORE_EXPIRE_ON ON MYAPP_FAILOVER_STORE (EXPIRE_ON);
 ```
 
 The `PAYLOAD` column stores JSON. Adjust its size to accommodate your largest serialised payload. For very large payloads, use `CLOB` / `TEXT` instead of `VARCHAR`.

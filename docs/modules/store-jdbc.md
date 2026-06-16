@@ -51,9 +51,18 @@ CREATE TABLE MYAPP_FAILOVER_STORE (
     PAYLOAD_CLASS  VARCHAR(256),
     PRIMARY KEY (FAILOVER_NAME, FAILOVER_KEY)
 );
+
+-- Required: the cleanup scheduler runs `DELETE ... WHERE EXPIRE_ON < ?`; without this index
+-- every cleanup pass is a full table scan that worsens as the table grows.
+CREATE INDEX IDX_MYAPP_FAILOVER_STORE_EXPIRE_ON ON MYAPP_FAILOVER_STORE (EXPIRE_ON);
 ```
 
 Adjust `PAYLOAD` size to your largest serialised payload. Use `CLOB` / `TEXT` for payloads exceeding `VARCHAR` limits.
+
+!!! warning "Mandatory `EXPIRE_ON` index"
+    The expiry-cleanup scheduler (`failover.scheduler.cleanup-cron`) deletes by `EXPIRE_ON < ?`. The
+    `EXPIRE_ON` index keeps that delete an index range scan instead of a full table scan — create it on
+    every dialect. Name the index per your naming convention; only the indexed column matters.
 
 ---
 

@@ -121,6 +121,37 @@ class FailoverStoreInmemoryTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    @DisplayName("bounded store evicts the least-recently-accessed entry past maxEntries (audit I-10)")
+    void shouldEvictLeastRecentlyAccessedWhenMaxEntriesExceeded() {
+        var bounded = new FailoverStoreInmemory<ThirdParty>(2);
+        bounded.store(payload("1"));
+        bounded.store(payload("2"));
+
+        // Access "1" so "2" becomes the least-recently-used, then insert "3" → "2" is evicted.
+        assertThat(bounded.find("third-party-failover", "1")).isPresent();
+        bounded.store(payload("3"));
+
+        assertThat(bounded.find("third-party-failover", "2")).isEmpty();
+        assertThat(bounded.find("third-party-failover", "1")).isPresent();
+        assertThat(bounded.find("third-party-failover", "3")).isPresent();
+        assertThat(bounded.findAll("third-party-failover")).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("unbounded store (maxEntries <= 0) retains all entries")
+    void shouldRetainAllEntriesWhenUnbounded() {
+        var unbounded = new FailoverStoreInmemory<ThirdParty>(0);
+        for (int i = 0; i < 50; i++) {
+            unbounded.store(payload(String.valueOf(i)));
+        }
+        assertThat(unbounded.findAll("third-party-failover")).hasSize(50);
+    }
+
+    private ReferentialPayload<ThirdParty> payload(String key) {
+        return new ReferentialPayload<>("third-party-failover", key, true, NOW, NOW, new ThirdParty(Long.parseLong(key), "TATA", 5));
+    }
+
     @Data
     @AllArgsConstructor
     static class ThirdParty  {

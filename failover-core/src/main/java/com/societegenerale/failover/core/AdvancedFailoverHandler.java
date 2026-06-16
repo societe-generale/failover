@@ -94,7 +94,21 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("recovery-failure-message", recoveryFailureMsg)
                     .collect("duration-ns", System.nanoTime() - startNanos));
         }
-        return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);
+        return handleRecoveredPayload(failover, args, clazz, result, cause);
+    }
+
+    /**
+     * Post-processes the recovered payload via the {@link RecoveredPayloadHandler}, guarding against a
+     * misbehaving handler. A handler failure must not break the failover flow — it is logged at
+     * {@code ERROR} and the raw recovered payload is returned unchanged as the fallback (audit I-06).
+     */
+    private T handleRecoveredPayload(@NonNull Failover failover, List<Object> args, Class<T> clazz, T result, Throwable cause) {
+        try {
+            return recoveredPayloadHandler.handle(failover, args, clazz, result, cause);
+        } catch (Exception exception) {
+            log.error("Ignoring Failover Exception !! Exception occurred in RecoveredPayloadHandler while post-processing the recovered payload for failover '{}'. This will impact only the failover flow; the raw recovered payload is returned unchanged.", failover.name(), exception);
+            return result;
+        }
     }
 
     @Override

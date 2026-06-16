@@ -66,6 +66,9 @@ public class Store {
     private List<String> allowedPayloadClasses = new ArrayList<>();
 
     @NestedConfigurationProperty
+    private Inmemory inmemory = new Inmemory();
+
+    @NestedConfigurationProperty
     private Jdbc jdbc = new Jdbc();
 
     @NestedConfigurationProperty

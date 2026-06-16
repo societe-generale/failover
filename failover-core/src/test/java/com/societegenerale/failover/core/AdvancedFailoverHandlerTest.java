@@ -183,6 +183,19 @@ class AdvancedFailoverHandlerTest {
     }
 
     @Test
+    @DisplayName("should not propagate a RecoveredPayloadHandler failure — returns the raw recovered payload (audit I-06)")
+    void shouldReturnRawPayloadWhenRecoveredPayloadHandlerThrows() {
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        given(recoveredPayloadHandler.handle(failover, ARGS, String.class, PAYLOAD, cause))
+                .willThrow(new RuntimeException("Handler blew up"));
+
+        var result = advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+
+        assertThat(result).isEqualTo(PAYLOAD);
+        verify(recoveredPayloadHandler).handle(failover, ARGS, String.class, PAYLOAD, cause);
+    }
+
+    @Test
     @DisplayName("should capture recovery failure message in metrics when recover delegate throws exception")
     void shouldCaptureRecoveryFailureMessageInMetricsWhenRecoverDelegateThrowsException() {
         cause = new RuntimeException("Original-Exception");

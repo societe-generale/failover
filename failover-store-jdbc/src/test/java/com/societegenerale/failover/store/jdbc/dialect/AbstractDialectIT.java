@@ -76,6 +76,8 @@ abstract class AbstractDialectIT {
         jdbcTemplate = new JdbcTemplate(dataSource);
         jdbcTemplate.execute("DROP TABLE IF EXISTS FAILOVER_STORE");
         jdbcTemplate.execute(ddl());
+        // Mandatory EXPIRE_ON index — the cleanup scheduler deletes by `EXPIRE_ON < ?` (audit I-13).
+        jdbcTemplate.execute("CREATE INDEX IDX_FAILOVER_STORE_EXPIRE_ON ON FAILOVER_STORE (EXPIRE_ON)");
         serializer = new JsonSerializer(new JsonMapper());
         rowMapper = new ReferentialPayloadRowMapper<>(new VarcharPayloadColumnResolver(), serializer);
     }
