@@ -64,8 +64,18 @@ class PayloadGather<T, R> {
         // Contexts may carry null payloads — per-key cache misses (positional nulls), expired/missing
         // entries on recover-all, and timed-out slices. The PayloadSplitter owns the null policy
         // (keep positionally vs. drop/deduplicate); see PayloadSplitter#merge.
+        long missing = recovered.stream().filter(ctx -> ctx.getPayload() == null).count();
+        if (missing > 0) {
+            // Partial recovery: some slices missing/expired/timed-out. The merged result may be
+            // incomplete — the PayloadSplitter.merge policy decides whether to keep positional nulls,
+            // drop them, or reject the whole composite. Surfaced at warn so partial responses are
+            // never silent (audit I-04).
+            log.warn("Failover scatter-recover: '{}' — PARTIAL recovery, {} of {} slices missing; the merged result may be incomplete (PayloadSplitter.merge owns the policy).",
+                    failover.name(), missing, recovered.size());
+        }
         var finalCtx = splitterInvoker.merge(splitter, failover, recovered);
-        log.info("Failover scatter-recover: gathered {} slices for '{}'", recovered.size(), failover.name());
+        log.info("Failover scatter-recover: gathered {} slices for '{}' ({} recovered, {} missing).",
+                recovered.size(), failover.name(), recovered.size() - missing, missing);
         return finalCtx.getPayload();
     }
 

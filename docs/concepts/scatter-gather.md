@@ -197,6 +197,38 @@ When some slices are missing, expired, or timed out, `merge()` receives a mix of
 
 A timed-out slice is indistinguishable from a cache miss at `merge` time — both arrive as a `null` payload.
 
+### Partial recovery is logged
+
+When some (but not all) slices are missing, the gather logs a `WARN` before merging:
+
+```
+Failover scatter-recover: 'countries' — PARTIAL recovery, 2 of 5 slices missing;
+the merged result may be incomplete (PayloadSplitter.merge owns the policy).
+```
+
+so a partial response is never silent. The `INFO` gather line also reports the recovered/missing counts.
+
+!!! danger "Partial data can be worse than no data"
+    In some domains an incomplete collection (e.g. 3 of 5 countries) is more dangerous than a clean
+    failure, because the caller cannot tell it is incomplete. If your callers must not act on partial
+    data, make `merge` **reject the whole composite** when any slice is missing:
+
+    ```java
+    @Override
+    public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+        boolean anyMissing = contexts.stream().anyMatch(c -> c.getPayload() == null);
+        if (anyMissing) {
+            return RecoverContext.<List<Country>>builder()
+                    .payload(null)            // null → treated as a non-recovery by the caller / ExceptionPolicy
+                    .build();
+        }
+        // ... merge the complete set ...
+    }
+    ```
+
+    This makes partial recovery behave like a full miss (subject to your `ExceptionPolicy`), rather
+    than silently returning a short list.
+
 !!! tip "Combined with `domain`"
     When scatter/gather and domain are combined, a `findByCode("FR")` call can recover from an entry previously stored by `findByCodes("FR,DE,US")`. The domain ensures both failovers share the same `FAILOVER_NAME`, and scatter stores each code under its own key. See [Domain Grouping](domain.md).
 

@@ -34,6 +34,35 @@ You need `ContextPropagator` when:
 - Your store/recover path reads thread-local state (e.g. `TenantContext.current()`, `MDC.get("traceId")`)
 - You use `failover.scatter.parallel=true` (the default)
 
+!!! warning "Spring Security context is **not** propagated by default"
+    Parallel scatter/gather runs each slice on an **executor (virtual) thread**, and the async store
+    decorator offloads writes the same way. Anything stored in a `ThreadLocal` — most importantly
+    Spring Security's `SecurityContextHolder` (default `MODE_THREADLEDGER`/`ThreadLocal` strategy) —
+    is **silently absent** on those threads. If your `TenantResolver`, `KeyGenerator`, store, or
+    splitter reads `SecurityContextHolder.getContext()`, it will see an empty context on a scatter
+    slice and may route, key, or authorize incorrectly.
+
+    There is **no built-in `SecurityContextPropagator`** — you must provide one (or disable parallel
+    scatter). A minimal propagator capturing the security context on the calling thread:
+
+    ```java
+    @Component
+    public class SecurityContextPropagator implements ContextPropagator {
+        @Override
+        public Runnable wrap(Runnable task) {
+            SecurityContext ctx = SecurityContextHolder.getContext();   // captured on caller thread
+            return () -> {
+                SecurityContextHolder.setContext(ctx);                  // restored on executor thread
+                try { task.run(); }
+                finally { SecurityContextHolder.clearContext(); }
+            };
+        }
+    }
+    ```
+
+    Combine multiple propagators (tenant + security + MDC) with `CompositeContextPropagator`. If you
+    cannot propagate, set `failover.scatter.parallel=false` so slices run on the calling thread.
+
 ---
 
 ## Step 1 — Implement ContextPropagator

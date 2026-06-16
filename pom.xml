@@ -252,9 +252,15 @@
                 <configuration>
                     <rules>
                         <dependencyConvergence />
-                        <requireReleaseDeps />
+                        <!-- Only forbid SNAPSHOT dependencies for an actual release build; the reactor
+                             modules legitimately depend on each other via the current SNAPSHOT version. -->
+                        <requireReleaseDeps>
+                            <onlyWhenRelease>true</onlyWhenRelease>
+                        </requireReleaseDeps>
                     </rules>
-                    <fail>false</fail>
+                    <!-- Convergence violations now fail the build (was advisory) — version skew is
+                         especially harmful for a library published to consumers. -->
+                    <fail>true</fail>
                 </configuration>
                 <executions>
                     <execution>

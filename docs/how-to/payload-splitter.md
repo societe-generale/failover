@@ -91,6 +91,96 @@ List<Country> findByCodes(@RequestParam String codes);
 
 ---
 
+## Partial Recovery — Null Policy in `merge`
+
+When several keys are recovered at once (e.g. `findByCodes("FR,DE,US")`), some keys may have a stored
+entry and others may not — a **partial recovery**. Each unrecovered slice arrives at `merge` as a
+`RecoverContext` with a **`null` payload** (a cache miss, an expired entry, and a timed-out slice are
+all indistinguishable here — all `null`). The framework does **not** decide what to do with those
+nulls; **your `merge` implementation owns the policy**. There are two sensible choices, and the right
+one depends on whether the caller needs to know *which* entries are missing.
+
+### How the slices line up
+
+`splitOnRecover` returns one `RecoverContext` per key, in order; the gather recovers each independently
+and passes the **same-ordered** list to `merge` — slot *i* in `merge`'s input corresponds to key *i*
+from `splitOnRecover`. So position carries meaning: index 1 is always `"DE"`'s result, recovered or not.
+
+```
+splitOnRecover("FR,DE,US") → [ ctx(FR), ctx(DE), ctx(US) ]
+recover each slice          →   FR=hit   DE=miss   US=hit
+merge receives              → [ ctx(FR, payload=fr), ctx(DE, payload=null), ctx(US, payload=us) ]
+```
+
+### Option A — Keep `null` at the missing positions (positional)
+
+Preserve the slot so the caller can see *exactly which* keys are missing. The returned list stays the
+same length and order as the requested keys.
+
+```java
+@Override
+public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+    List<Country> recovered = contexts.stream()
+        .map(RecoverContext::getPayload)   // keep nulls — null at index i = key i not recovered
+        .toList();
+    return contexts.get(0).toBuilder()
+        .clazz((Class) List.class)
+        .payload(recovered)                // e.g. [Country(FR), null, Country(US)]
+        .build();
+}
+```
+
+Use when the caller maps results back to the requested keys by index (e.g. `codes[i] → result[i]`)
+and must distinguish "missing" from "present". The caller **must** be null-tolerant.
+
+### Option B — Drop the `null`s (compact)
+
+Return only what was recovered. The list is shorter than the requested keys; positional mapping is
+lost.
+
+```java
+@Override
+public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+    List<Country> recovered = contexts.stream()
+        .map(RecoverContext::getPayload)
+        .filter(Objects::nonNull)          // drop missing slices
+        .toList();
+    return contexts.get(0).toBuilder()
+        .clazz((Class) List.class)
+        .payload(recovered)                // e.g. [Country(FR), Country(US)]
+        .build();
+}
+```
+
+Use when the caller just wants "whatever is available" and does not correlate results to input
+positions. This is what the [Step 1 example](#step-1-implement-payloadsplitter) does.
+
+### Option C — Reject the whole composite on any miss
+
+If a partial list is unsafe (the caller cannot tell it is incomplete and might act on it), return a
+`null` payload when **any** slice is missing, so the whole recovery is treated as a non-recovery
+(subject to your [`ExceptionPolicy`](exception-policy.md)) rather than silently returning a short list:
+
+```java
+@Override
+public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+    boolean anyMissing = contexts.stream().anyMatch(c -> c.getPayload() == null);
+    if (anyMissing) {
+        return contexts.get(0).toBuilder().clazz((Class) List.class).payload(null).build();
+    }
+    List<Country> all = contexts.stream().map(RecoverContext::getPayload).toList();
+    return contexts.get(0).toBuilder().clazz((Class) List.class).payload(all).build();
+}
+```
+
+!!! note "The framework only signals partial recovery — it does not decide"
+    The gather logs a `WARN` ("PARTIAL recovery, N of M slices missing") so it is never silent, but the
+    *policy* is yours: keep positional nulls (A), compact (B), or reject (C). Pick the one that matches
+    how your callers consume the list. If **every** slice is empty, `merge` is not called at all — the
+    recovery returns `null` directly. See [Scatter/Gather — Partial Recovery Behaviour](../concepts/scatter-gather.md#partial-recovery-behaviour).
+
+---
+
 ## Parallel Dispatch
 
 By default, each slice's store/recover runs on a virtual-thread executor in parallel:

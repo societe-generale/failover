@@ -61,11 +61,22 @@ failover:
 The restriction is disabled (allow-all) only when no payload types are discovered **and** the
 property is empty.
 
+**Derivation algorithm (and its limit).** The allowlist is built from the **packages** of the payload
+types the scanner finds on `@Failover` methods (return type + collection/array element type), minus
+JDK packages (`java.*`, `javax.*`, `jakarta.*`, which are never whitelisted). It is
+**package-granular, not a deep type graph**: a payload whose *nested* field types live in a
+**different** package is not auto-allowed and must be added via `allowed-payload-classes`. If recovery
+throws a `FailoverStoreException` naming a class, add that class (or its package) to the property.
+Keep entries as narrow as possible — a package prefix widens the deserialization surface.
+
 ### SQL identifier validation
 
-`failover.store.jdbc.table-prefix` (and per-tenant prefixes) are validated at startup to contain only
-letters, digits, underscores, and dot-separated qualifiers (e.g. `SCHEMA.PREFIX_`); they are
-concatenated into SQL identifiers.
+`failover.store.jdbc.table-prefix` **and the per-tenant prefixes** (from
+`failover.store.multitenant.tenants.<id>.table-prefix`) are validated against
+`([A-Za-z0-9_]+\.)*[A-Za-z0-9_]*` when the store/query resolver is built — any value with spaces,
+quotes, `;`, `--`, or other non-identifier characters is rejected with an `IllegalArgumentException`
+before it reaches SQL. The tenant **identifier** itself is never concatenated into a table name; only
+its operator-configured prefix is. So a hostile tenant id cannot inject SQL via the table name.
 
 ### Multi-tenant isolation
 
@@ -78,6 +89,27 @@ failover:
     multitenant:
       strict: true   # reject tenants absent from the configured tenants map
 ```
+
+### Sensitive data (PII) in failover stores
+
+!!! warning "The failover store is a copy of upstream responses"
+    The framework persists whatever the protected method returns, for the configured TTL. If a
+    referential response contains **PII** (names, account numbers, addresses), that data is now copied
+    into the failover store — a **secondary data repository** that may have different access controls,
+    audit logging, encryption-at-rest, and retention than the system of record. The JDBC store writes
+    it to a database; the in-memory/Caffeine stores hold it in process memory.
+
+The library does **not** mask, encrypt, or transform payloads — that is a deliberate non-goal (it
+stores exactly what it recovers). To handle sensitive referentials:
+
+- **Encode/encrypt at the boundary.** Use a `PayloadEnricher` to encode (or encrypt) sensitive fields
+  on store and decode them on recover, so the store never holds plaintext at rest while callers still
+  get the real value back. See
+  [Custom Payload Enricher → encode/decode example](../how-to/custom-payload-enricher.md#example-encode-on-store-decode-on-recover).
+- **Constrain the TTL.** Keep `expiryDuration` as short as the use case allows so PII does not linger.
+- **Protect the JDBC store** with the same encryption-at-rest, access control, and retention policy as
+  any other PII datastore; ensure expiry cleanup actually runs (`failover.scheduler`).
+- **Prefer not failover-protecting** highly sensitive methods at all if a stale copy is unacceptable.
 
 ### JVM-fatal errors
 
