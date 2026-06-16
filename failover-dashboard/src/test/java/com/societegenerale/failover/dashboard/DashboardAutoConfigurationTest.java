@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.dashboard;
 
+import com.societegenerale.failover.core.scanner.FailoverScanner;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -34,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DashboardAutoConfigurationTest {
 
     private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
+            .withBean(FailoverScanner.class, () -> Mockito.mock(FailoverScanner.class))
             .withConfiguration(AutoConfigurations.of(DashboardAutoConfiguration.class));
 
     @Test
@@ -59,8 +61,33 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx).hasSingleBean(DashboardAutoConfiguration.class);
                     assertThat(ctx).hasSingleBean(DashboardProperties.class);
+                    assertThat(ctx).hasSingleBean(DashboardConfigService.class);
+                    assertThat(ctx).hasSingleBean(DashboardController.class);
                     assertThat(ctx.getBean(DashboardProperties.class).basePath())
                             .isEqualTo("/failover-dashboard");
+                });
+    }
+
+    @Test
+    @DisplayName("no MeterRegistry ⇒ metrics beans absent, config view still works (graceful degradation)")
+    void metricsAbsentWithoutRegistry() {
+        runner.withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(DashboardConfigService.class);
+                    assertThat(ctx).doesNotHaveBean(DashboardMetricsService.class);
+                    assertThat(ctx).doesNotHaveBean(DashboardMetricsController.class);
+                });
+    }
+
+    @Test
+    @DisplayName("MeterRegistry present ⇒ metrics service + controller registered")
+    void metricsPresentWithRegistry() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(DashboardMetricsService.class);
+                    assertThat(ctx).hasSingleBean(DashboardMetricsController.class);
                 });
     }
 
@@ -72,6 +99,50 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.base-path=/ops/failover")
                 .run(ctx -> assertThat(ctx.getBean(DashboardProperties.class).basePath())
                         .isEqualTo("/ops/failover"));
+    }
+
+    @Test
+    @DisplayName("root or trailing-slash base-path is rejected — context fails fast (cannot collide with user services)")
+    void invalidBasePathFailsFast() {
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.base-path=/")
+                .run(ctx -> assertThat(ctx).hasFailed());
+
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.base-path=failover-dashboard")
+                .run(ctx -> assertThat(ctx).hasFailed());
+
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.base-path=/failover-dashboard/")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"/", "/dash/", "dash", " ", ""})
+    @DisplayName("invalid base-path values are rejected at construction")
+    void invalidBasePathRejected(String basePath) {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> new DashboardProperties(true, basePath))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("base-path");
+    }
+
+    @Test
+    @DisplayName("null base-path is rejected at construction")
+    void nullBasePathRejected() {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> new DashboardProperties(true, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"/failover-dashboard", "/ops/failover"})
+    @DisplayName("valid dedicated, non-root base-path values are accepted")
+    void validBasePathAccepted(String basePath) {
+        assertThat(new DashboardProperties(true, basePath).basePath()).isEqualTo(basePath);
     }
 
     @Test
