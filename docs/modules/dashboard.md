@@ -70,11 +70,11 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
 
     ![Failover dashboard — health view](../web/assets/images/dashboard-health.png)
 
-=== "Dark mode"
+=== "Light mode"
 
-    Dark / light theme via the toolbar toggle (or `?theme=dark` / `?theme=light`).
+    Dark is the default "control-room" theme; a light theme is one toolbar toggle away (or `?theme=light` / `?theme=dark`).
 
-    ![Failover dashboard — metrics view, dark theme](../web/assets/images/dashboard-metrics-dark.png)
+    ![Failover dashboard — metrics view, light theme](../web/assets/images/dashboard-metrics-dark.png)
 
 ---
 

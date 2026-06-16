@@ -65,12 +65,35 @@ const timeline = { labels: [], calls: [], failoverRate: [], recoveryRate: [], no
 const apiFailures = { labels: [], series: {} };
 let lastOverall = null;
 let lastApiFailover = {};
+let lastSummary = null;
+
+// Pull live values from the active theme so charts match the console palette.
+function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function palette() {
+    return {
+        accent: cssVar("--accent"), good: cssVar("--good"), warn: cssVar("--warn"),
+        bad: cssVar("--bad"), info: cssVar("--info"), violet: cssVar("--violet"),
+    };
+}
+
+function applyChartTheme() {
+    if (!hasCharts) return;
+    const C = window.Chart;
+    C.defaults.color = cssVar("--muted");
+    C.defaults.borderColor = cssVar("--chart-grid");
+    C.defaults.font.family = cssVar("--font-mono") || "monospace";
+    C.defaults.font.size = 11;
+}
 
 async function loadMetrics() {
     const errorEl = document.getElementById("metrics-error");
     try {
         const [summary, health] = await Promise.all([fetchJson("api/metrics"), fetchJson("api/health")]);
         errorEl.hidden = true;
+        lastSummary = summary;
         renderKpis(summary.overall);
         renderHealthTable(summary.perApi, health);
         pushTimeline(summary);
@@ -168,35 +191,47 @@ function pushTimeline(summary) {
 }
 
 function renderCharts(summary) {
+    applyChartTheme();
     const o = summary.overall;
+    const p = palette();
+    const fill = hex => hex + "30";           // ~19% alpha tint from a #rrggbb value
+    const line = { tension: 0.35, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 };
+    const cycle = [p.info, p.violet, p.warn, p.good, p.bad, p.accent];
+
     upsertChart("chart-recovery", "doughnut", {
         labels: ["Recovered", "Not recovered + error"],
-        datasets: [{ data: [o.recovered, o.notRecovered + o.errors] }],
-    });
-    // single-series bars: no dataset label, so suppress the "undefined" legend entry
+        datasets: [{
+            data: [o.recovered, o.notRecovered + o.errors],
+            backgroundColor: [p.good, p.bad],
+            borderColor: cssVar("--surface"),
+            borderWidth: 2,
+        }],
+    }, { cutout: "64%" });
+
     const noLegend = { plugins: { legend: { display: false } } };
     upsertChart("chart-perapi", "bar", {
         labels: summary.perApi.map(k => k.name),
         datasets: [
-            { label: "Overall", data: summary.perApi.map(k => k.totalCalls) },
-            { label: "Failover", data: summary.perApi.map(k => k.failoverInvoked) },
-            { label: "Recovered", data: summary.perApi.map(k => k.recovered) },
-            { label: "Not recovered", data: summary.perApi.map(k => k.notRecovered + k.errors) },
+            { label: "Overall", data: summary.perApi.map(k => k.totalCalls), backgroundColor: fill(p.info), borderColor: p.info, borderWidth: 1 },
+            { label: "Failover", data: summary.perApi.map(k => k.failoverInvoked), backgroundColor: fill(p.warn), borderColor: p.warn, borderWidth: 1 },
+            { label: "Recovered", data: summary.perApi.map(k => k.recovered), backgroundColor: fill(p.good), borderColor: p.good, borderWidth: 1 },
+            { label: "Not recovered", data: summary.perApi.map(k => k.notRecovered + k.errors), backgroundColor: fill(p.bad), borderColor: p.bad, borderWidth: 1 },
         ],
-    });
+    }, { borderRadius: 4 });
+
     upsertChart("chart-store", "bar", {
         labels: ["Store (success)", "Recover (failover)"],
-        datasets: [{ data: [o.upstreamSuccess, o.failoverInvoked] }],
-    }, noLegend);
+        datasets: [{ data: [o.upstreamSuccess, o.failoverInvoked], backgroundColor: [fill(p.accent), fill(p.warn)], borderColor: [p.accent, p.warn], borderWidth: 1 }],
+    }, { ...noLegend, borderRadius: 4 });
 
     // Timeline: overall calls (count axis, right) + failover/recovery/non-recovery rates (% axis, left)
     upsertChart("chart-timeline", "line", {
         labels: timeline.labels,
         datasets: [
-            { label: "overall calls", data: timeline.calls, yAxisID: "count", type: "bar" },
-            { label: "failover rate %", data: timeline.failoverRate, yAxisID: "rate" },
-            { label: "recovery rate %", data: timeline.recoveryRate, yAxisID: "rate" },
-            { label: "non-recovery rate %", data: timeline.nonRecoveryRate, yAxisID: "rate" },
+            { label: "overall calls", data: timeline.calls, yAxisID: "count", type: "bar", backgroundColor: fill(p.accent), borderColor: p.accent, borderWidth: 1 },
+            { label: "failover rate %", data: timeline.failoverRate, yAxisID: "rate", borderColor: p.warn, backgroundColor: fill(p.warn), ...line },
+            { label: "recovery rate %", data: timeline.recoveryRate, yAxisID: "rate", borderColor: p.good, backgroundColor: fill(p.good), ...line },
+            { label: "non-recovery rate %", data: timeline.nonRecoveryRate, yAxisID: "rate", borderColor: p.bad, backgroundColor: fill(p.bad), ...line },
         ],
     }, {
         interaction: { mode: "index", intersect: false },
@@ -209,7 +244,9 @@ function renderCharts(summary) {
     // Per-API actual failures (failover invocations) over time — one line per failover
     upsertChart("chart-api-failures", "line", {
         labels: apiFailures.labels,
-        datasets: Object.entries(apiFailures.series).map(([name, data]) => ({ label: name, data })),
+        datasets: Object.entries(apiFailures.series).map(([name, data], i) => ({
+            label: name, data, borderColor: cycle[i % cycle.length], backgroundColor: fill(cycle[i % cycle.length]), ...line,
+        })),
     });
 }
 
@@ -272,6 +309,7 @@ function refreshActive() {
 function applyRefreshInterval() {
     if (refreshTimer) clearInterval(refreshTimer);
     const seconds = Number(document.getElementById("refresh-interval").value);
+    document.getElementById("live-dot").classList.toggle("paused", seconds <= 0);
     if (seconds > 0) refreshTimer = setInterval(refreshActive, seconds * 1000);
 }
 
@@ -301,10 +339,21 @@ function initConfigControls() {
     });
 }
 
+// Rebuild charts so they repaint with the active theme's palette (default config persists in buffers).
+function repaintCharts() {
+    if (!hasCharts) return;
+    for (const id of Object.keys(charts)) {
+        charts[id].destroy();
+        delete charts[id];
+    }
+    if (activeTab === "metrics" && lastSummary) renderCharts(lastSummary);
+}
+
 function initTheme() {
     document.getElementById("theme-toggle").addEventListener("click", () => {
-        document.documentElement.dataset.theme =
-            document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        const current = document.documentElement.dataset.theme || "dark";
+        document.documentElement.dataset.theme = current === "dark" ? "light" : "dark";
+        repaintCharts();
     });
 }
 
