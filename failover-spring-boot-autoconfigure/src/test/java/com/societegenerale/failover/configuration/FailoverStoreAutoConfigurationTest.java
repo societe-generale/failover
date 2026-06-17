@@ -19,6 +19,7 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.store.async.FailoverStoreAsync;
 import com.societegenerale.failover.store.caffeine.FailoverStoreCaffeine;
 import com.societegenerale.failover.store.inmemory.FailoverStoreInmemory;
@@ -74,6 +75,13 @@ class FailoverStoreAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("failoverTaskExecutor is unbounded by default (not wrapped)")
+        void taskExecutorUnboundedByDefault() {
+            assertThat(applicationContext.getBean("failoverTaskExecutor", TaskExecutor.class))
+                    .isNotInstanceOf(BoundedTaskExecutor.class);
+        }
+
+        @Test
         @DisplayName("should register TenantStoreFactory bean")
         void shouldRegisterTenantStoreFactory() {
             assertThat(applicationContext.getBeansOfType(TenantStoreFactory.class)).isNotEmpty();
@@ -101,6 +109,26 @@ class FailoverStoreAutoConfigurationTest {
             assertThat(applicationContext.getBeansOfType(FailoverStore.class))
                     .hasSize(1)
                     .containsOnlyKeys("failoverStore");
+        }
+    }
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {
+            "failover.store.async=true",
+            "failover.store.async-executor.concurrency-limit=2",
+            "failover.store.async-executor.rejection-policy=ABORT"})
+    @DisplayName("when failover.store.async-executor.concurrency-limit > 0")
+    class WhenAsyncExecutorBounded {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("failoverTaskExecutor is wrapped in a BoundedTaskExecutor")
+        void taskExecutorBounded() {
+            assertThat(applicationContext.getBean("failoverTaskExecutor", TaskExecutor.class))
+                    .isInstanceOf(BoundedTaskExecutor.class);
         }
     }
 
