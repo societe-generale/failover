@@ -141,7 +141,7 @@ public class JsonSerializer implements Serializer {
         }
         if (!isAllowed(className)) {
             throw new FailoverStoreException(
-                    "Payload class '%s' read from the failover store is not in the allowlist (auto-derived from @Failover payload packages plus failover.store.allowed-payload-classes). Refusing to load it."
+                    "Payload class '%s' read from the failover store is not in the allowlist (auto-derived from @Failover payload packages plus failover.store.jdbc.allowed-payload-classes). Refusing to load it."
                             .formatted(className));
         }
         try {
@@ -189,7 +189,7 @@ public class JsonSerializer implements Serializer {
     private void logGrantSummary(List<String> resolved) {
         if (resolved.isEmpty()) {
             log.warn("Failover deserialization allowlist is EMPTY — every payload class read back from the "
-                    + "store will be loaded (allow-all). Set failover.store.allowed-payload-classes or rely "
+                    + "store will be loaded (allow-all). Set failover.store.jdbc.allowed-payload-classes or rely "
                     + "on @Failover scanning to restrict which classes may be deserialized.");
             return;
         }
@@ -200,7 +200,7 @@ public class JsonSerializer implements Serializer {
         if (!prefixGrants.isEmpty()) {
             log.warn("Failover deserialization allowlist contains {} package-prefix grant(s): {}. A prefix grant "
                     + "permits EVERY class under that namespace to be deserialized from store data — broader than an "
-                    + "exact class name. Prefer listing exact payload class names in failover.store.allowed-payload-classes "
+                    + "exact class name. Prefer listing exact payload class names in failover.store.jdbc.allowed-payload-classes "
                     + "where possible.", prefixGrants.size(), prefixGrants);
         }
     }
