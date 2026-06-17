@@ -41,6 +41,7 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
 |---|---|
 | `/failover-dashboard` | the UI (bare path forwards to `index.html`) |
 | `/failover-dashboard/api/config` | every `@Failover` point + global settings |
+| `/failover-dashboard/api/config/settings` | effective global `failover.*` / `failover.dashboard.*` config, grouped |
 | `/failover-dashboard/api/failover-health` | actuator-style overall status + active configuration |
 | `/failover-dashboard/api/metrics` | global + per-API KPIs and rates |
 | `/failover-dashboard/api/health` | per-API health classification |
@@ -50,31 +51,97 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
 
 ---
 
-## The Two Views
+## Configuration
 
-=== "Config"
+Every `failover.dashboard.*` property in one place. **`enabled` is the only one you need** — the rest have working defaults and exist to narrow exposure, secure the gate, or turn on trend history.
 
-    Every `@Failover` point and its settings — sortable and filterable. Empty per-annotation overrides render as `default`.
+```yaml title="application.yml — full dashboard configuration (all defaults shown)"
+failover:
+  dashboard:
+    enabled: false                   # master switch (secure-by-default) — set true to map anything
+    base-path: /failover-dashboard   # single dedicated namespace for the UI + API
+    exposure:                        # defaults expose everything; set flags only to NARROW
+      ui: true                       # serve the static HTML/JS UI
+      api: true                      # serve the JSON API
+      include: [config, failover-health, metrics, health]   # which API endpoints are served
+    security:
+      role: FAILOVER_ADMIN           # role required for base-path/** when Spring Security is present
+      allow-insecure: false          # start unsecured + loud WARN when Spring Security is absent
+                                     #   (dev / trusted-network only; REFUSED under the 'prod' profile)
+    history:                         # opt-in server-side trend ring buffer (see Trend History below)
+      enabled: false                 # enable the sampler + /api/metrics/series endpoint
+      samples: 120                   # ring-buffer capacity (retained sample count)
+      sample-interval-seconds: 15    # seconds between samples
+    health:                          # healthyRate thresholds for the per-API status badge
+      degraded-threshold: 0.99       # >= ⇒ HEALTHY; below (down to unhealthy floor) ⇒ DEGRADED
+      unhealthy-threshold: 0.90      # >= ⇒ DEGRADED; below ⇒ UNHEALTHY
+```
 
-    ![Failover dashboard — config view](../web/assets/images/dashboard-config.png)
+| Property | Default | Purpose |
+|---|---|---|
+| `enabled` | `false` | Master switch. Nothing is mapped until `true`. |
+| `base-path` | `/failover-dashboard` | Dedicated namespace for UI + API. Must start with `/`, not be `/`, no trailing `/` — else the context fails fast. |
+| `exposure.ui` | `true` | Serve the static UI. `false` = API-only. |
+| `exposure.api` | `true` | Serve the JSON API. `false` = UI-only. |
+| `exposure.include` | all four | API endpoints served: `config`, `failover-health`, `metrics`, `health`. Trim to narrow; an omitted endpoint returns `404`. `/api/metrics/series` is gated together with `metrics`. |
+| `security.role` | `FAILOVER_ADMIN` | Role required for `base-path/**` when Spring Security is present. |
+| `security.allow-insecure` | `false` | When Spring Security is absent: `false` fails fast (fail-closed); `true` starts unsecured with a loud WARN. **Refused under the `prod` profile.** |
+| `history.enabled` | `false` | Turn on the server-side trend ring buffer + `/api/metrics/series`. |
+| `history.samples` | `120` | Retained sample count (ring-buffer capacity). |
+| `history.sample-interval-seconds` | `15` | Seconds between samples. |
+| `health.degraded-threshold` | `0.99` | Healthy-rate floor for `HEALTHY`. |
+| `health.unhealthy-threshold` | `0.90` | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`. |
 
-=== "Metrics"
+See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
-    KPI cards, charts, and a per-API health table. Auto-refreshes on a configurable interval.
+---
 
-    ![Failover dashboard — metrics view](../web/assets/images/dashboard-metrics.png)
+## The Views
 
-=== "Health"
+Three tabs in the UI — **Metrics**, **Health**, **Config** (Metrics is the default). Dark is the
+default "control-room" theme; a light theme is one toolbar toggle away (or `?theme=light` /
+`?theme=dark`). Each theme is shown below with all three views.
 
-    Actuator-style overall failover health — `UP` / `DOWN` plus the active configuration, mirroring the `/actuator/health/failover` contributor.
+- **Metrics** — KPI cards (incl. **async write failures** and **recover latency**), six charts in a
+  3-up grid (recovery mix; success / full-recovery / partial-recovery; per-API breakdown;
+  store-vs-recover; **store/recover latency**; **top failover-trigger exception types**), two full-width
+  charts (call/rate timeline and per-API failures over time) and a per-API health table. A loud banner
+  appears if any async store write has failed (data not persisted). Auto-refresh is selectable (`off`,
+  `10s`, `30s`, `1m`, `10m`, `1h`; default `1m`) with a manual refresh button and a "last updated" timestamp.
+- **Health** — actuator-style overall failover health (`UP` / `DOWN`) in a status hero plus the active
+  configuration as cards, mirroring the `/actuator/health/failover` contributor.
+- **Config** — every `@Failover` point (sortable, filterable; empty overrides render as `default`), and a
+  **Global configuration** panel of the effective `failover.*` / `failover.dashboard.*` settings grouped
+  (Core / Store / Scheduler / Scatter / Dashboard) with values as chips. Types, flags, crons, thresholds
+  and paths only — never credentials or connection strings (§9).
 
-    ![Failover dashboard — health view](../web/assets/images/dashboard-health.png)
+=== "Dark mode"
+
+    === "Metrics"
+
+        ![Failover dashboard — metrics view, dark theme](../web/assets/images/dashboard-metrics.png)
+
+    === "Health"
+
+        ![Failover dashboard — health view, dark theme](../web/assets/images/dashboard-health.png)
+
+    === "Config"
+
+        ![Failover dashboard — config view, dark theme](../web/assets/images/dashboard-config.png)
 
 === "Light mode"
 
-    Dark is the default "control-room" theme; a light theme is one toolbar toggle away (or `?theme=light` / `?theme=dark`).
+    === "Metrics"
 
-    ![Failover dashboard — metrics view, light theme](../web/assets/images/dashboard-metrics-dark.png)
+        ![Failover dashboard — metrics view, light theme](../web/assets/images/dashboard-metrics-light.png)
+
+    === "Health"
+
+        ![Failover dashboard — health view, light theme](../web/assets/images/dashboard-health-light.png)
+
+    === "Config"
+
+        ![Failover dashboard — config view, light theme](../web/assets/images/dashboard-config-light.png)
 
 ---
 
@@ -91,6 +158,14 @@ Every KPI is derived from counters that already exist (`failover.store.total`, `
 | Health (healthy-served) | `(S + recovered) / (S+F)` | caller got a usable result (live or recovered) |
 
 Zero denominators yield `0`, never `NaN`. Health is classified `HEALTHY` / `DEGRADED` / `UNHEALTHY` against configurable thresholds.
+
+Three further operational signals are surfaced from existing meters (still no new instrumentation):
+
+| Signal | Source meter | Why it matters |
+|---|---|---|
+| **Async write failures** | `failover.store.async.failed` | Async store writes that threw inside the executor — failover data was **not persisted**. Shown as a KPI, a red per-API table column, and a loud banner when non-zero. Alert on any increase. |
+| **Latency (mean / max)** | `failover.operation.duration` (timer) | Wall time of the store and recover paths, per API. Mean + max only — the timer has no percentile histogram, so p95/p99 are intentionally absent. |
+| **Top exception types** | `failover.exception.total` | Which upstream exception types trigger failover most — quick root-cause triage. |
 
 ---
 
@@ -111,18 +186,33 @@ http.authorizeHttpRequests(a -> a.requestMatchers("/failover-dashboard/**").hasR
 
 ## Trend History (opt-in)
 
-By default the trend chart deltas client-side (history only as long as the tab is open). For reload-surviving trends, enable the server-side ring-buffer sampler:
+By default the trend charts (the call/rate timeline and per-API failures) are buffered **client-side**, so they live only as long as the tab is open — a browser reload clears them and they rebuild from the next poll. This is by design and harmless: the cumulative KPIs, per-API counts and health table are re-derived from the server-side `failover.*` counters on every load, so **none of those numbers are lost** on reload — only the in-tab trend lines reset.
+
+For reload-surviving trends, enable the server-side ring-buffer sampler:
 
 ```yaml title="application.yml"
 failover:
   dashboard:
     history:
-      enabled: true            # default false
-      samples: 120             # ring-buffer capacity
-      sample-interval-seconds: 15
+      enabled: true            # default false — registers the sampler + /api/metrics/series
+      samples: 120             # ring-buffer capacity (retained sample count)
+      sample-interval-seconds: 15   # seconds between samples
 ```
 
-It is process-local and lost on restart — for long-term analysis, point Prometheus/Grafana at the existing meters.
+**How it works.** A scheduled sampler snapshots the global cumulative `failover.*` counters every `sample-interval-seconds` into a bounded in-memory ring of `samples` entries (oldest evicted when full). The retained window is therefore:
+
+```
+window ≈ samples × sample-interval-seconds
+       = 120 × 15s = 1800s (30 minutes) with the defaults
+```
+
+Size it for the span you want visible: e.g. `samples: 240, sample-interval-seconds: 15` ≈ 1 hour; `samples: 120, sample-interval-seconds: 60` ≈ 2 hours at coarser resolution. The buffer is a fixed memory cost (`samples` small records), independent of traffic.
+
+**The `/api/metrics/series` endpoint.** Returns the retained samples (global cumulative totals per timestamp) in chronological order. It accepts an optional `windowSec` query param — only samples within that many seconds of now are returned; `windowSec=0` returns all retained (the UI uses `0` on load). The endpoint is registered **only** when `history.enabled=true`, and is gated by the `metrics` exposure flag (`exposure.include`) and the same access gate as the rest of the dashboard.
+
+**UI behaviour.** When enabled, the metrics view **hydrates the call/rate timeline from `/api/metrics/series` on load**, so a browser reload keeps its trend instead of starting blank; live polling then continues seamlessly from the last sample. The chart deltas consecutive cumulative samples (calls per interval) and derives the failover / recovery / non-recovery rates. (The per-API failures chart remains live-only — `/series` carries global totals, not per-API.) With history disabled the endpoint is absent and the UI silently falls back to the client-side buffer.
+
+It is process-local and lost on restart — deliberately **not** a TSDB. For long-term, cross-restart analysis, point Prometheus/Grafana at the existing `failover.*` meters.
 
 ---
 
