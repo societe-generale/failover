@@ -154,7 +154,14 @@ public class DashboardMetricsService {
     private List<ExceptionStat> topExceptions(int limit) {
         Map<String, Long> byType = new LinkedHashMap<>();
         for (Counter c : registry.find(EXCEPTION_TOTAL).counters()) {
-            String type = c.getId().getTag("exception_type");
+            // The aspect wraps every upstream throwable in a framework ExecutionException, so
+            // 'exception_type' is always that wrapper. The real upstream exception is the innermost
+            // cause ('final_cause_type'); 'cause_type' is the first-level cause. Both are "none" when
+            // absent. Prefer the innermost cause, then the first-level cause, then the wrapper.
+            String type = firstPresent(
+                    c.getId().getTag("final_cause_type"),
+                    c.getId().getTag("cause_type"),
+                    c.getId().getTag("exception_type"));
             if (type != null) {
                 byType.merge(type, (long) c.count(), Long::sum);
             }
@@ -164,6 +171,16 @@ public class DashboardMetricsService {
                 .limit(limit)
                 .map(e -> new ExceptionStat(e.getKey(), e.getValue()))
                 .toList();
+    }
+
+    /** First tag value that is present and not the {@code "none"} sentinel; {@code null} if none qualify. */
+    private static String firstPresent(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank() && !"none".equals(v)) {
+                return v;
+            }
+        }
+        return null;
     }
 
     private static double round2(double v) {
