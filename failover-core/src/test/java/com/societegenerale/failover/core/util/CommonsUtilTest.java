@@ -20,12 +20,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("CommonsUtil — type-specific null/empty checks")
 class CommonsUtilTest {
@@ -170,6 +172,16 @@ class CommonsUtilTest {
         }
 
         @Test
+        @DisplayName("finalRootCauseOf stops on a self-referential cause chain without looping")
+        void selfReferentialCause() {
+            RuntimeException selfCausing = new RuntimeException("loop") {
+                @Override public synchronized Throwable getCause() { return this; }
+            };
+            assertThat(CommonsUtil.finalRootCauseOf(new RuntimeException("wrap", selfCausing)))
+                    .isSameAs(selfCausing);
+        }
+
+        @Test
         @DisplayName("canonicalTypeOf is null-safe and returns the canonical class name")
         void canonicalType() {
             assertThat(CommonsUtil.canonicalTypeOf(null)).isNull();
@@ -193,6 +205,13 @@ class CommonsUtilTest {
         @DisplayName("formats as SimpleClassName#methodName")
         void formatsMethodId() throws NoSuchMethodException {
             assertThat(CommonsUtil.methodId(String.class.getMethod("toString"))).isEqualTo("String#toString");
+        }
+
+        @Test
+        @DisplayName("rejects a null method")
+        void rejectsNullMethod() {
+            assertThatThrownBy(() -> CommonsUtil.methodId(null))
+                    .isInstanceOf(NullPointerException.class);
         }
     }
 }

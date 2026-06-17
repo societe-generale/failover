@@ -241,6 +241,20 @@ class DashboardMetricsServiceTest {
     }
 
     @Test
+    @DisplayName("top exceptions skip counters with no usable exception tag (absent or blank)")
+    void topExceptionsSkipWhenNoUsableTag() {
+        // No exception_type / cause_type / final_cause_type tags at all → nothing to report.
+        Counter.builder("failover.exception.total").tag("name", "x")
+                .register(registry).increment(4);
+        // All exception tags present but blank → still nothing usable.
+        Counter.builder("failover.exception.total").tag("name", "y")
+                .tag("exception_type", "").tag("cause_type", "").tag("final_cause_type", "")
+                .register(registry).increment(2);
+
+        assertThat(service.metricsSummary().topExceptions()).isEmpty();
+    }
+
+    @Test
     @DisplayName("no timers / async / exceptions ⇒ zero latency, zero failures, empty exception list")
     void zeroWhenMetersAbsent() {
         store("svc", true, 10);
