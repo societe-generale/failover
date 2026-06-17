@@ -205,6 +205,72 @@ class DashboardMetricsServiceTest {
     }
 
     @Test
+    @DisplayName("top exceptions report the innermost cause, not the aspect's ExecutionException wrapper")
+    void topExceptionsUnwrapAspectWrapper() {
+        // The aspect wraps every upstream throwable, so exception_type is always the wrapper. The real
+        // exception is the innermost cause (final_cause_type); the dashboard must surface that, ahead of
+        // the first-level cause_type and the wrapper.
+        Counter.builder("failover.exception.total")
+                .tag("name", "country")
+                .tag("exception_type", "com.societegenerale.failover.aspect.ExecutionException")
+                .tag("cause_type", "java.lang.IllegalStateException")
+                .tag("final_cause_type", "java.net.SocketTimeoutException")
+                .register(registry).increment(5);
+
+        MetricsSummary s = service.metricsSummary();
+
+        assertThat(s.topExceptions()).extracting(ExceptionStat::type)
+                .containsExactly("java.net.SocketTimeoutException");
+        assertThat(s.topExceptions().get(0).count()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("top exceptions fall back to first-level cause, then wrapper, when inner tags are 'none'")
+    void topExceptionsFallBackWhenNoFinalCause() {
+        Counter.builder("failover.exception.total")
+                .tag("name", "a").tag("exception_type", "Wrapper")
+                .tag("cause_type", "java.io.IOException").tag("final_cause_type", "none")
+                .register(registry).increment(3);
+        Counter.builder("failover.exception.total")
+                .tag("name", "b").tag("exception_type", "java.lang.RuntimeException")
+                .tag("cause_type", "none").tag("final_cause_type", "none")
+                .register(registry).increment(2);
+
+        assertThat(service.metricsSummary().topExceptions()).extracting(ExceptionStat::type)
+                .containsExactly("java.io.IOException", "java.lang.RuntimeException");
+    }
+
+    @Test
+    @DisplayName("top exceptions skip counters with no usable exception tag (absent or blank)")
+    void topExceptionsSkipWhenNoUsableTag() {
+        // No exception_type / cause_type / final_cause_type tags at all → nothing to report.
+        Counter.builder("failover.exception.total").tag("name", "x")
+                .register(registry).increment(4);
+        // All exception tags present but blank → still nothing usable.
+        Counter.builder("failover.exception.total").tag("name", "y")
+                .tag("exception_type", "").tag("cause_type", "").tag("final_cause_type", "")
+                .register(registry).increment(2);
+
+        assertThat(service.metricsSummary().topExceptions()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("per-API latency isolates each name, skipping timers tagged with a different name")
+    void latencyIsolatedPerName() {
+        outcome("a", "a", "recovered", 1);
+        outcome("b", "b", "recovered", 1);
+        duration("a", "recover", 10.0, 1);
+        duration("b", "recover", 50.0, 1);
+
+        var perApi = service.metricsSummary().perApi();
+        var a = perApi.stream().filter(k -> k.name().equals("a")).findFirst().orElseThrow();
+        var b = perApi.stream().filter(k -> k.name().equals("b")).findFirst().orElseThrow();
+
+        assertThat(a.latency().recoverMeanMs()).isEqualTo(10.0, within(0.5));
+        assertThat(b.latency().recoverMeanMs()).isEqualTo(50.0, within(0.5));
+    }
+
+    @Test
     @DisplayName("no timers / async / exceptions ⇒ zero latency, zero failures, empty exception list")
     void zeroWhenMetersAbsent() {
         store("svc", true, 10);
