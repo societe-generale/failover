@@ -467,19 +467,21 @@ class FailoverStoreAutoConfigurationTest {
     }
 
     @Nested
-    @DisplayName("mergeAllowedPayloadClasses — auto-derived scanner packages + configured entries")
+    @DisplayName("mergeAllowedPayloadClasses — auto-derived exact class names + configured entries (audit I-02)")
     class MergeAllowedPayloadClasses {
 
         @Test
-        @DisplayName("adds the packages of scanner-discovered payload types to the configured entries")
-        void mergesScannerPackagesWithConfigured() {
+        @DisplayName("adds the EXACT class name of scanner-discovered payload types to the configured entries")
+        void mergesScannerExactNamesWithConfigured() {
             FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
             doReturn(Set.of(SampleType.class)).when(scanner).findAllPayloadTypes();
 
             var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(
                     java.util.List.of("com.acme.extra"), scanner);
 
-            assertThat(merged).contains("com.acme.extra", SampleType.class.getPackageName());
+            // exact FQCN, not the package prefix — narrower deserialization grant (I-02)
+            assertThat(merged).contains("com.acme.extra", SampleType.class.getName());
+            assertThat(merged).doesNotContain(SampleType.class.getPackageName());
         }
 
         @Test
@@ -500,13 +502,13 @@ class FailoverStoreAutoConfigurationTest {
             doReturn(Set.of(
                     javax.sql.DataSource.class,                  // javax.sql
                     jakarta.annotation.PostConstruct.class,      // jakarta.annotation
-                    SampleType.class))                           // a real app package — kept
+                    SampleType.class))                           // a real app type — kept
                 .when(scanner).findAllPayloadTypes();
 
             var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(java.util.List.of(), scanner);
 
             assertThat(merged)
-                    .containsExactly(SampleType.class.getPackageName())
+                    .containsExactly(SampleType.class.getName())
                     .doesNotContain("javax.sql", "jakarta.annotation");
         }
 
@@ -519,8 +521,8 @@ class FailoverStoreAutoConfigurationTest {
         }
 
         @Test
-        @DisplayName("skips a default-package payload type (empty package name) without adding an empty prefix")
-        void skipsDefaultPackageType() throws ClassNotFoundException {
+        @DisplayName("adds a default-package payload type by its (dot-free) exact class name, never an empty prefix")
+        void addsDefaultPackageTypeByExactName() throws ClassNotFoundException {
             Class<?> defaultPackageType = Class.forName("DefaultPackagePayloadType");
             assertThat(defaultPackageType.getPackageName()).isEmpty();   // sanity: default (unnamed) package
             FailoverScanner scanner = org.mockito.Mockito.mock(FailoverScanner.class);
@@ -528,7 +530,8 @@ class FailoverStoreAutoConfigurationTest {
 
             var merged = FailoverStoreAutoConfiguration.mergeAllowedPayloadClasses(java.util.List.of(), scanner);
 
-            assertThat(merged).isEmpty();
+            assertThat(merged).containsExactly("DefaultPackagePayloadType");
+            assertThat(merged).doesNotContain(""); // never an empty (match-everything) prefix
         }
     }
 
