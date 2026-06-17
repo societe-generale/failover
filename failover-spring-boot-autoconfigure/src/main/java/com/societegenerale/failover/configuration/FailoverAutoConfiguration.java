@@ -363,9 +363,12 @@ public class FailoverAutoConfiguration {
             @Qualifier("scatterGatherExecutor") ObjectProvider<TaskExecutor> scatterGatherExecutorProvider,
             FailoverProperties failoverProperties) {
         var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
-        var scatterHandler = new ScatterGatherFailoverHandler<>(defaultHandler, defaultHandler, payloadSplitterLookup,
-                scatterGatherExecutorProvider.getIfAvailable(), contextPropagator, failoverProperties.getScatter().getTimeout(),
-                observablePublisher);
+        var scatterHandler = ScatterGatherFailoverHandler.builder(defaultHandler, defaultHandler, payloadSplitterLookup)
+                .executor(scatterGatherExecutorProvider.getIfAvailable())
+                .contextPropagator(contextPropagator)
+                .timeout(failoverProperties.getScatter().getTimeout())
+                .observablePublisher(observablePublisher)
+                .build();
         return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, observablePublisher, failoverExpiryExtractor);
     }
 
