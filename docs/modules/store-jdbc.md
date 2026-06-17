@@ -28,9 +28,9 @@ Requires a `DataSource` bean in the Spring context. Spring Boot's auto-configure
 failover:
   store:
     type: jdbc
-    allowed-payload-classes: []   # deserialization allowlist (additive; see Serialisation)
     jdbc:
       table-prefix: MYAPP_        # → table MYAPP_FAILOVER_STORE
+      allowed-payload-classes: [] # deserialization allowlist (additive; see Serialisation)
 ```
 
 `table-prefix` is validated at startup to contain only letters, digits, underscores, and
@@ -149,7 +149,7 @@ elsewhere) from instantiating arbitrary classes, loading is restricted to an all
 
 - Auto-derived from the packages of every discovered `@Failover` payload type (return types and
   collection/array element types) — no configuration needed.
-- Extend with `failover.store.allowed-payload-classes` (exact class names or package prefixes) only
+- Extend with `failover.store.jdbc.allowed-payload-classes` (exact class names or package prefixes) only
   for classes the scanner cannot infer, e.g. a scatter slice type in a different package than its
   composite.
 
