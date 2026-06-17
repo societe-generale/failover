@@ -63,6 +63,19 @@ class DashboardControllerTest {
     }
 
     @Test
+    @DisplayName("returns grouped global settings as JSON at /config/settings")
+    void returnsSettingsJson() throws Exception {
+        when(configService.globalSettings()).thenReturn(java.util.Map.of(
+                "Core", java.util.Map.of("failover.enabled", "true", "failover.type", "basic"),
+                "Dashboard", java.util.Map.of("failover.dashboard.history.enabled", "true")));
+
+        mockMvc.perform(get("/failover-dashboard/api/config/settings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.Core['failover.type']").value("basic"))
+                .andExpect(jsonPath("$.Dashboard['failover.dashboard.history.enabled']").value("true"));
+    }
+
+    @Test
     @DisplayName("returns the actuator-style failover health as JSON")
     void returnsFailoverHealthJson() throws Exception {
         when(configService.failoverHealth()).thenReturn(new com.societegenerale.failover.dashboard.dto.FailoverHealth(

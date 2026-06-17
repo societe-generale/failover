@@ -77,6 +77,15 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   `failover.dashboard.enabled=true`; fail-closed access gate (Spring Security role, or `allow-insecure`
   with a loud WARN — `allow-insecure` refused outright under the `prod` profile), static-only CSP, and
   aggregate-only data exposure (ADR 55)
+- Dashboard observability + UX enhancements (all over existing meters — still no new instrumentation):
+  surfaced three previously-unshown signals — **async write failures** (`failover.store.async.failed`, as a
+  KPI, a red per-API column and a loud banner), **store/recover latency** mean/max
+  (`failover.operation.duration`) and **top failover-trigger exception types** (`failover.exception.total`);
+  added a **Global configuration** panel (`/api/config/settings`) showing effective `failover.*` /
+  `failover.dashboard.*`; a **Success / Full / Partial recovery** chart; a 3-up chart grid plus full-width
+  timeline that **hydrates from `/api/metrics/series`** on load when history is enabled; selectable
+  auto-refresh (`off`/`10s`/`30s`/`1m`/`10m`/`1h`, default `1m`) with a manual refresh + last-updated; and a
+  documentation help link. Tab order Metrics / Health / Config
 - `failover.store.caffeine.max-size` (default `10000`, same as `inmemory.max-entries`) — the Caffeine
   store can now cap its entry count and evict by Window TinyLFU once exceeded; `0` = unbounded (audit I-15)
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods

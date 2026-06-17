@@ -16,19 +16,19 @@
 
 package com.societegenerale.failover.dashboard.dto;
 
-import java.util.List;
-
 /**
- * The {@code /api/metrics} response: the global aggregate plus per-API KPIs and a capture timestamp.
+ * Wall-time latency of the failover store and recover paths, in milliseconds, derived from the
+ * {@code failover.operation.duration} timer. Only mean and max are exposed — the timer carries no
+ * percentile histogram, so p95/p99 are intentionally absent.
  *
- * @param overall       aggregate KPIs across every failover point
- * @param perApi        per-failover KPIs, sorted by name
- * @param topExceptions most frequent root exception types triggering failover (descending by count)
- * @param timestamp     epoch millis when the snapshot was taken
+ * @param storeMeanMs   mean store-path latency (ms)
+ * @param storeMaxMs    max store-path latency (ms)
+ * @param recoverMeanMs mean recover-path latency (ms)
+ * @param recoverMaxMs  max recover-path latency (ms)
  */
-public record MetricsSummary(
-        ApiKpis overall,
-        List<ApiKpis> perApi,
-        List<ExceptionStat> topExceptions,
-        long timestamp) {
+public record Latency(
+        double storeMeanMs,
+        double storeMaxMs,
+        double recoverMeanMs,
+        double recoverMaxMs) {
 }

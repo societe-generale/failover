@@ -98,7 +98,21 @@ class FailoverDashboardEndToEndIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.overall.totalCalls").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
                 .andExpect(jsonPath("$.overall.upstreamSuccess").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
-                .andExpect(jsonPath("$.overall.recovered").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+                .andExpect(jsonPath("$.overall.recovered").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                // derived operational signals are present (async failures, latency, top exceptions)
+                .andExpect(jsonPath("$.overall.asyncFailed").exists())
+                .andExpect(jsonPath("$.overall.latency.recoverMeanMs").exists())
+                .andExpect(jsonPath("$.topExceptions").isArray());
+    }
+
+    @Test
+    @Order(7)
+    void settingsApiReturnsGroupedGlobalConfig() throws Exception {
+        mockMvc.perform(get("/failover-dashboard/api/config/settings").header("Authorization", AUTH))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.Core['failover.type']").exists())
+                .andExpect(jsonPath("$.Store['failover.store.type']").exists())
+                .andExpect(jsonPath("$.Dashboard['failover.dashboard.enabled']").value("true"));
     }
 
     @Test
