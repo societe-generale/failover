@@ -64,4 +64,13 @@ class StoreTest {
         store.setAsync(false);
         assertThat(store.isAsync()).isFalse();
     }
+
+    @Test
+    @DisplayName("asyncExecutor defaults to unbounded (limit 0) with DISCARD rejection policy")
+    void asyncExecutorDefaults() {
+        assertThat(store.getAsyncExecutor()).isNotNull();
+        assertThat(store.getAsyncExecutor().getConcurrencyLimit()).isZero();
+        assertThat(store.getAsyncExecutor().getRejectionPolicy())
+                .isEqualTo(com.societegenerale.failover.store.async.RejectionPolicy.DISCARD);
+    }
 }

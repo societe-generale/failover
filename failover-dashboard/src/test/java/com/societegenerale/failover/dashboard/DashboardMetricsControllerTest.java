@@ -18,6 +18,8 @@ package com.societegenerale.failover.dashboard;
 
 import com.societegenerale.failover.dashboard.dto.ApiHealth;
 import com.societegenerale.failover.dashboard.dto.ApiKpis;
+import com.societegenerale.failover.dashboard.dto.ExceptionStat;
+import com.societegenerale.failover.dashboard.dto.Latency;
 import com.societegenerale.failover.dashboard.dto.MetricsSummary;
 import com.societegenerale.failover.dashboard.dto.Rates;
 import org.junit.jupiter.api.DisplayName;
@@ -54,14 +56,20 @@ class DashboardMetricsControllerTest {
     @DisplayName("GET /api/metrics returns the summary JSON")
     void metricsJson() throws Exception {
         Rates rates = new Rates(0.9, 0.1, 0.8, 0.2, 0.98);
-        ApiKpis kpis = new ApiKpis("country", "geo", 100, 90, 10, 8, 1, 1, 0, rates);
-        when(metricsService.metricsSummary()).thenReturn(new MetricsSummary(kpis, List.of(kpis), 123L));
+        Latency latency = new Latency(1.5, 4.0, 2.2, 9.0);
+        ApiKpis kpis = new ApiKpis("country", "geo", 100, 90, 10, 8, 1, 1, 0, 2, latency, rates);
+        when(metricsService.metricsSummary()).thenReturn(new MetricsSummary(
+                kpis, List.of(kpis), List.of(new ExceptionStat("java.net.SocketTimeoutException", 7)), 123L));
 
         mockMvc.perform(get("/failover-dashboard/api/metrics"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.overall.totalCalls").value(100))
+                .andExpect(jsonPath("$.overall.asyncFailed").value(2))
                 .andExpect(jsonPath("$.perApi[0].name").value("country"))
-                .andExpect(jsonPath("$.perApi[0].rates.healthyRate").value(0.98));
+                .andExpect(jsonPath("$.perApi[0].latency.recoverMaxMs").value(9.0))
+                .andExpect(jsonPath("$.perApi[0].rates.healthyRate").value(0.98))
+                .andExpect(jsonPath("$.topExceptions[0].type").value("java.net.SocketTimeoutException"))
+                .andExpect(jsonPath("$.topExceptions[0].count").value(7));
     }
 
     @Test
