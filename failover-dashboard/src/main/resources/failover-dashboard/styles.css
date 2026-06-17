@@ -227,6 +227,53 @@ body {
     transform: rotate(180deg);
 }
 
+.icon-btn {
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 8px;
+    width: 2.1rem;
+    height: 2.1rem;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.icon-btn:hover {
+    border-color: var(--accent);
+    transform: rotate(180deg);
+}
+
+/* Help link reuses the icon-button frame but shows the failover logo and does not spin on hover. */
+.help-btn:hover {
+    transform: none;
+    box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.help-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: block;
+}
+
+.brand-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    display: block;
+}
+
+.last-updated {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    min-width: 4.5rem;
+}
+
 /* ── Layout ── */
 main {
     padding: 1.6rem clamp(1rem, 3vw, 2.25rem);
@@ -378,6 +425,14 @@ main {
     --kpi-accent: var(--violet);
 }
 
+.kpi[data-accent="async"] {
+    --kpi-accent: var(--bad);
+}
+
+.kpi[data-accent="latency"] {
+    --kpi-accent: var(--accent-2);
+}
+
 .kpi-label {
     color: var(--faint);
     font-family: var(--font-mono);
@@ -398,8 +453,12 @@ main {
 /* ── Cards / charts ── */
 .chart-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1rem;
+}
+
+@media (max-width: 1000px) {
+    .chart-grid { grid-template-columns: 1fr; }
 }
 
 .card {
@@ -437,6 +496,116 @@ main {
 
 .card.wide canvas {
     height: 270px !important;
+}
+
+/* ── Global settings (Config view) ── */
+.settings-groups {
+    columns: 320px;
+    column-gap: 1rem;
+}
+
+.settings-card {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0 1.1rem 0.55rem;
+    box-shadow: var(--shadow);
+    transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.settings-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+}
+
+.settings-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.9rem 0 0.7rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.25rem;
+}
+
+.settings-card-title {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text);
+}
+
+.settings-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 10px currentcolor;
+}
+
+.settings-dot[data-group="Store"]     { background: var(--good);   color: var(--good); }
+.settings-dot[data-group="Scheduler"] { background: var(--warn);   color: var(--warn); }
+.settings-dot[data-group="Scatter"]   { background: var(--violet); color: var(--violet); }
+.settings-dot[data-group="Dashboard"] { background: var(--info);   color: var(--info); }
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.44rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.settings-row:last-child {
+    border-bottom: none;
+}
+
+.settings-key {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-val {
+    flex: none;
+    max-width: 55%;
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    font-weight: 600;
+    padding: 0.16rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-val.on {
+    color: var(--good);
+    background: color-mix(in srgb, var(--good) 13%, transparent);
+    border-color: color-mix(in srgb, var(--good) 34%, transparent);
+}
+
+.settings-val.off,
+.settings-val.empty {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+/* Emphasise a non-zero async-failure count in the per-API table. */
+.grid td.bad {
+    color: var(--bad);
+    font-weight: 700;
 }
 
 /* ── Tables ── */
@@ -563,14 +732,59 @@ main {
 }
 
 /* ── Health view ── */
-.health-head {
+.health-hero {
     display: flex;
     align-items: center;
-    gap: 0.9rem;
-    margin-bottom: 0.3rem;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+    background:
+        radial-gradient(420px 140px at 0% 0%, var(--accent-soft), transparent 70%),
+        var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--muted);
+    border-radius: 14px;
+    padding: 1.25rem 1.4rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
 }
 
-.health-title {
+.health-hero.up { border-left-color: var(--good); }
+.health-hero.down { border-left-color: var(--bad); }
+
+.health-hero-icon {
+    display: grid;
+    place-items: center;
+    width: 2.7rem;
+    height: 2.7rem;
+    border-radius: 50%;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+
+.health-hero.up .health-hero-icon {
+    color: var(--good);
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    border-color: color-mix(in srgb, var(--good) 40%, transparent);
+    box-shadow: 0 0 18px -4px var(--good);
+}
+
+.health-hero.down .health-hero-icon {
+    color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 16%, transparent);
+    border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+    box-shadow: 0 0 18px -4px var(--bad);
+}
+
+.health-hero-main {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.health-hero-label {
     font-family: var(--font-mono);
     font-size: 1.2rem;
     font-weight: 600;
@@ -580,7 +794,46 @@ main {
 .health-sub {
     color: var(--muted);
     font-size: 0.86rem;
-    margin: 0 0 1.2rem;
+    margin: 0;
+    width: 100%;
+}
+
+.health-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.85rem;
+}
+
+.health-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 0.85rem 1rem;
+    box-shadow: var(--shadow);
+    transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.health-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+}
+
+.health-card-key {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.health-card-val {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--text);
+    word-break: break-word;
 }
 
 .health-sub code,

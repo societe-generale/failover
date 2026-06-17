@@ -11,14 +11,14 @@
 
     <header class="topbar">
         <div class="brand">
-            <span class="brand-mark" aria-hidden="true"></span>
+            <img src="logo.svg" class="brand-logo" alt="" aria-hidden="true">
             <span class="brand-name">FAILOVER</span>
             <span class="brand-sub">dashboard</span>
         </div>
         <nav class="tabs" role="tablist">
-            <button class="tab active" data-tab="config" role="tab" aria-selected="true">Config</button>
-            <button class="tab" data-tab="metrics" role="tab" aria-selected="false">Metrics</button>
+            <button class="tab active" data-tab="metrics" role="tab" aria-selected="true">Metrics</button>
             <button class="tab" data-tab="health" role="tab" aria-selected="false">Health</button>
+            <button class="tab" data-tab="config" role="tab" aria-selected="false">Config</button>
         </nav>
         <div class="controls">
             <label class="refresh">
@@ -26,18 +26,28 @@
                 <span class="refresh-label">live</span>
                 <select id="refresh-interval" aria-label="Auto-refresh interval">
                     <option value="0">off</option>
-                    <option value="5" selected>5s</option>
                     <option value="10">10s</option>
                     <option value="30">30s</option>
+                    <option value="60" selected>1m</option>
+                    <option value="600">10m</option>
+                    <option value="3600">1h</option>
                 </select>
             </label>
+            <button id="refresh-now" class="icon-btn" type="button" aria-label="Refresh now" title="Refresh now">⟳</button>
+            <span id="last-updated" class="last-updated" aria-live="polite" title="Last updated">—</span>
             <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark / light theme">◐</button>
+            <a id="help-link" class="icon-btn help-btn"
+               href="https://societe-generale.github.io/failover/modules/dashboard/"
+               target="_blank" rel="noopener noreferrer"
+               aria-label="Open documentation in a new tab" title="Documentation">
+                <img src="logo.svg" class="help-icon" alt="" aria-hidden="true">
+            </a>
         </div>
     </header>
 
     <main>
         <!-- ── Config view ─────────────────────────────────────────────────── -->
-        <section id="config" class="panel" role="tabpanel">
+        <section id="config" class="panel" role="tabpanel" hidden>
             <div class="section-head">
                 <h2 class="section-title">Failover configuration</h2>
                 <span id="config-count" class="count"></span>
@@ -66,14 +76,22 @@
                     <tbody id="config-body"></tbody>
                 </table>
             </div>
+
+            <div class="section-head">
+                <h2 class="section-title">Global configuration</h2>
+                <span class="count">effective <code>failover.*</code> &amp; <code>failover.dashboard.*</code></span>
+            </div>
+            <div id="settings-error" class="banner error" hidden></div>
+            <div class="settings-groups" id="settings-groups"></div>
         </section>
 
         <!-- ── Metrics view ────────────────────────────────────────────────── -->
-        <section id="metrics" class="panel" role="tabpanel" hidden>
+        <section id="metrics" class="panel" role="tabpanel">
             <div id="metrics-error" class="banner error" hidden></div>
             <div id="metrics-degraded" class="banner warn" hidden>
                 Charts library not vendored — KPI cards and tables still work.
             </div>
+            <div id="async-banner" class="banner error" hidden></div>
 
             <div class="section-head">
                 <h2 class="section-title">Signals</h2>
@@ -97,24 +115,13 @@
                 <div class="kpi" data-accent="health" title="Caller got a usable result, live or recovered ((S + recovered) / Total)">
                     <span class="kpi-label">Health</span><span class="kpi-value" data-kpi="health">—</span>
                 </div>
+                <div class="kpi" data-accent="async" title="Async store writes that failed inside the executor — failover data not persisted (alert on any increase)">
+                    <span class="kpi-label">Async failures</span><span class="kpi-value" data-kpi="async">—</span>
+                </div>
+                <div class="kpi" data-accent="latency" title="Mean recover-path latency across all failover points (ms)">
+                    <span class="kpi-label">Recover latency</span><span class="kpi-value" data-kpi="latency">—</span>
+                </div>
             </div>
-
-            <div class="section-head">
-                <h2 class="section-title">Telemetry</h2>
-            </div>
-            <div class="chart-grid">
-                <figure class="card"><figcaption>Recovery vs Non-Recovery</figcaption>
-                    <canvas id="chart-recovery"></canvas></figure>
-                <figure class="card"><figcaption>Per-API · Overall / Failover / Recovery / Non-Recovery</figcaption>
-                    <canvas id="chart-perapi"></canvas></figure>
-                <figure class="card"><figcaption>Store vs Recover</figcaption>
-                    <canvas id="chart-store"></canvas></figure>
-                <figure class="card"><figcaption>Timeline · overall calls &amp; failover / recovery / non-recovery rates</figcaption>
-                    <canvas id="chart-timeline"></canvas></figure>
-            </div>
-
-            <figure class="card wide"><figcaption>Per-API actual failures (failover invocations) over time</figcaption>
-                <canvas id="chart-api-failures"></canvas></figure>
 
             <div class="section-head">
                 <h2 class="section-title">Per-API health</h2>
@@ -127,27 +134,54 @@
                             <th class="num">Success %</th><th class="num">Failover %</th>
                             <th class="num">Recovery %</th><th class="num">Non-Recovery %</th><th class="num">Healthy %</th>
                             <th class="num">Recovered</th><th class="num">Not-Recovered</th><th class="num">Errors</th>
+                            <th class="num">Async-Fail</th><th class="num">Recover ms</th>
                             <th>Health</th>
                         </tr>
                     </thead>
                     <tbody id="health-body"></tbody>
                 </table>
             </div>
+
+            <div class="section-head">
+                <h2 class="section-title">Metrics</h2>
+            </div>
+            <div class="chart-grid">
+                <figure class="card"><figcaption>Recovery vs Non-Recovery</figcaption>
+                    <canvas id="chart-recovery"></canvas></figure>
+                <figure class="card"><figcaption>Success / Full Recovery / Partial Recovery</figcaption>
+                    <canvas id="chart-outcome-mix"></canvas></figure>
+                <figure class="card"><figcaption>Per-API · Overall / Failover / Recovery / Non-Recovery</figcaption>
+                    <canvas id="chart-perapi"></canvas></figure>
+                <figure class="card"><figcaption>Store vs Recover</figcaption>
+                    <canvas id="chart-store"></canvas></figure>
+                <figure class="card"><figcaption>Latency · store vs recover (mean ms)</figcaption>
+                    <canvas id="chart-latency"></canvas></figure>
+                <figure class="card"><figcaption>Failover triggers · top exception types</figcaption>
+                    <canvas id="chart-exceptions"></canvas></figure>
+            </div>
+
+            <figure class="card wide"><figcaption>Timeline · overall calls &amp; failover / recovery / non-recovery rates</figcaption>
+                <canvas id="chart-timeline"></canvas></figure>
+
+            <figure class="card wide"><figcaption>Per-API actual failures (failover invocations) over time</figcaption>
+                <canvas id="chart-api-failures"></canvas></figure>
         </section>
 
         <!-- ── Health view (actuator-style failover health) ────────────────── -->
         <section id="health" class="panel" role="tabpanel" hidden>
             <div id="health-error" class="banner error" hidden></div>
-            <div class="health-head">
-                <span class="health-title">Failover Health</span>
-                <span id="health-status" class="status-pill">—</span>
+            <div class="health-hero" id="health-hero">
+                <div class="health-hero-icon" id="health-hero-icon" aria-hidden="true">●</div>
+                <div class="health-hero-main">
+                    <span class="health-hero-label">Failover Health</span>
+                    <span id="health-status" class="status-pill">—</span>
+                </div>
+                <p class="health-sub">Mirrors the <code>/actuator/health/failover</code> contributor — overall status and the active configuration.</p>
             </div>
-            <p class="health-sub">Mirrors the <code>/actuator/health/failover</code> contributor — overall status and the active configuration.</p>
-            <div class="table-wrap narrow">
-                <table class="grid kv">
-                    <tbody id="health-details"></tbody>
-                </table>
+            <div class="section-head">
+                <h2 class="section-title">Active configuration</h2>
             </div>
+            <div class="health-cards" id="health-details"></div>
         </section>
     </main>
 
