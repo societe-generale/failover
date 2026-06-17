@@ -47,6 +47,14 @@ import java.util.List;
  * <p>P0/P1 scope: master switch, {@code basePath}, config view. Exposure, security, history and
  * health-threshold properties land in later phases.
  *
+ * @param enabled  master switch — when {@code false} (default) nothing is mapped or served; set
+ *                 {@code true} to enable the dashboard
+ * @param basePath dedicated, non-root prefix for every dashboard surface (UI + JSON API); must start
+ *                 with {@code '/'}, not be {@code '/'}, and not end with {@code '/'} (default {@code /failover-dashboard})
+ * @param exposure narrows what is served once enabled (UI, API, which endpoints)
+ * @param security access-control posture (required role, or {@code allow-insecure} escape hatch)
+ * @param history  opt-in in-memory trend history exposed at {@code /api/metrics/series}
+ * @param health   health-classification thresholds on the recovery rate
  * @author Anand Manissery
  */
 @ConfigurationProperties(prefix = "failover.dashboard")
