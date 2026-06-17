@@ -82,6 +82,7 @@ class AdvancedFailoverHandlerTest {
         advancedFailoverHandler = new AdvancedFailoverHandler<>(failoverHandler, recoveredPayloadHandler, observablePublisher, new BasicFailoverExpiryExtractor());
 
         lenient().when(failover.name()).thenReturn(FAILOVER_NAME);
+        lenient().when(failover.domain()).thenReturn("");
         lenient().when(failover.expiryDuration()).thenReturn(1L);
         lenient().when(failover.expiryUnit()).thenReturn(MINUTES);
     }
@@ -124,6 +125,20 @@ class AdvancedFailoverHandlerTest {
                 .containsEntry("failover-exception-message", "Dummy-Exception")
                 .containsEntry("failover-exception-cause-message", "Root-Cause")
                 .containsEntry("failover-is-recovered", "true");
+    }
+
+    @Test
+    @DisplayName("final cause is the innermost cause; cause is the first-level cause")
+    void shouldReportInnermostFinalCause() {
+        cause = new RuntimeException("L1",
+                new IllegalStateException("L2", new java.net.SocketTimeoutException("L3")));
+        given(failoverHandler.recover(failover, METHOD, ARGS, String.class, cause)).willReturn(PAYLOAD);
+        advancedFailoverHandler.recover(failover, METHOD, ARGS, String.class, cause);
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-exception-type", "java.lang.RuntimeException")
+                .containsEntry("failover-exception-cause-type", "java.lang.IllegalStateException")
+                .containsEntry("failover-exception-final-cause-type", "java.net.SocketTimeoutException")
+                .containsEntry("failover-exception-final-cause-message", "L3");
     }
 
 
