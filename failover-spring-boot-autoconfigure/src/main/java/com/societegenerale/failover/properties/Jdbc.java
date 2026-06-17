@@ -31,4 +31,36 @@ public class Jdbc {
      * Default is empty
      */
     private String tablePrefix = "";
+
+    /**
+     * Payload-at-rest encryption for the JDBC store. JDBC-only: other store types never persist a
+     * payload string, so this lives under {@code failover.store.jdbc.encryption} rather than the
+     * generic store namespace.
+     */
+    private Encryption encryption = new Encryption();
+
+    /**
+     * Encryption settings for the {@code PAYLOAD} column.
+     *
+     * <p>{@code enabled} gates the <b>write</b> side only: new rows are encrypted as
+     * {@code ENC(<cipher>:<ciphertext>)}. Reads always honour the {@code ENC(...)} marker regardless,
+     * so existing encrypted rows stay readable when encryption is toggled off, and plaintext rows
+     * stay readable when it is toggled on.
+     */
+    @Data
+    public static class Encryption {
+
+        /**
+         * Whether new writes are encrypted. Default {@code false} (write plaintext). Reads decrypt
+         * any {@code ENC(...)} row regardless of this flag.
+         */
+        private boolean enabled = false;
+
+        /**
+         * Id of the registered {@code PayloadCipher} to encrypt new writes with. Defaults to
+         * {@code "b64"} (the built-in Base64 encoder — encoding only, not real encryption). Declare a
+         * {@code PayloadCipher} bean with a real algorithm and set this to its id for actual protection.
+         */
+        private String cipher = "b64";
+    }
 }
