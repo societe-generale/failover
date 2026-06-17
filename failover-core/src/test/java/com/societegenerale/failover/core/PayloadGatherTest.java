@@ -156,6 +156,19 @@ class PayloadGatherTest {
         }
 
         @Test
+        @DisplayName("all slices missing — full non-recovery, no recover-partial metric (not partial)")
+        void allSlicesMissingPublishesNoPartialMetric() {
+            given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("1"), sliceCtx("2")));
+            given(delegateR.recover(failover, METHOD, List.of("1"), String.class, cause)).willReturn(null);  // miss
+            given(delegateR.recover(failover, METHOD, List.of("2"), String.class, cause)).willReturn(null);  // miss
+            given(splitter.merge(any())).willReturn(mergedCtx(null));
+
+            gather.recover(failover, METHOD, COMPOSITE_ARGS, String.class, cause);
+
+            verify(observablePublisher, never()).publish(any());
+        }
+
+        @Test
         @DisplayName("full recovery — no recover-partial metric published")
         void fullRecoveryPublishesNoPartialMetric() {
             given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("1"), sliceCtx("2")));
@@ -202,6 +215,36 @@ class PayloadGatherTest {
             assertThat(recovered).isEqualTo("A");
             verify(delegateR).recoverAll(any(), any(), any(), any(), any());
             verify(delegateR, never()).recover(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("partial recovery (some entries null) — publishes a recover-partial metric")
+        void partialRecoverAllPublishesMetric() {
+            given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("template")));
+            given(delegateR.recoverAll(failover, METHOD, List.of("template"), String.class, cause))
+                    .willReturn(java.util.Arrays.asList("A", null));  // one entry missing
+            given(splitter.merge(any())).willReturn(mergedCtx("A"));
+
+            gather.recover(failover, METHOD, List.of(), String.class, cause);
+
+            verify(observablePublisher).publish(metricsCaptor.capture());
+            assertThat(metricsCaptor.getValue().getInfo())
+                    .containsEntry("failover-action", "recover-partial")
+                    .containsEntry("failover-missing", "1")
+                    .containsEntry("failover-total", "2");
+        }
+
+        @Test
+        @DisplayName("all entries missing — full non-recovery, no recover-partial metric")
+        void allMissingRecoverAllPublishesNoPartialMetric() {
+            given(splitter.splitOnRecover(any())).willReturn(List.of(sliceCtx("template")));
+            given(delegateR.recoverAll(failover, METHOD, List.of("template"), String.class, cause))
+                    .willReturn(java.util.Arrays.asList(null, null));  // every entry missing
+            given(splitter.merge(any())).willReturn(mergedCtx(null));
+
+            gather.recover(failover, METHOD, List.of(), String.class, cause);
+
+            verify(observablePublisher, never()).publish(any());
         }
 
         @Test
