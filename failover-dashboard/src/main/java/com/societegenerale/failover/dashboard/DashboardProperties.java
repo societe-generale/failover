@@ -106,10 +106,12 @@ public record DashboardProperties(
      * Access-control posture for the dashboard (design doc §9 gate 4). When Spring Security is on the
      * classpath the module gates {@code base-path/**} behind {@code role}. When Spring Security is
      * absent the context fails fast unless {@code allowInsecure=true}, which starts with a loud WARN
-     * (trusted-network / dev only).
+     * (trusted-network / dev only). {@code allowInsecure=true} is rejected outright when the
+     * {@code prod} profile is active — production must add Spring Security (I-14).
      *
      * @param role          required role for {@code base-path/**} (default {@code FAILOVER_ADMIN})
-     * @param allowInsecure start without an access gate when Spring Security is absent (default {@code false})
+     * @param allowInsecure start without an access gate when Spring Security is absent (default {@code false});
+     *                      ignored/refused under the {@code prod} profile
      */
     public record Security(
         @DefaultValue("FAILOVER_ADMIN") String role,
