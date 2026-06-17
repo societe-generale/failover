@@ -111,6 +111,10 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - A misbehaving `RecoveredPayloadHandler` no longer breaks the failover flow — `AdvancedFailoverHandler`
   guards the post-processing call, logs the failure at `ERROR`, and returns the raw recovered payload
   unchanged as the fallback (audit I-06)
+- Scatter/gather no longer reports an all-missing recovery as *partial*. The `recover-partial` metric
+  (audit I-04) now fires only for genuine partial recovery (`0 < missing < total`); when every slice is
+  missing it is full non-recovery — logged as such, no partial metric, and surfaced upstream as
+  `is-recovered=false`
 
 ### Security
 

@@ -84,16 +84,21 @@ public class BoundedTaskExecutor implements TaskExecutor {
     }
 
     private void reject(Runnable task) {
-        switch (rejectionPolicy) {
-            case DISCARD -> log.warn("Failover async executor '{}' is saturated (concurrency limit reached) — discarding "
-                    + "task. Stored data is a regenerable cache; raise the concurrency-limit if this recurs.", name);
-            case CALLER_RUNS -> {
+        // Switch expression over the enum is compiler-checked exhaustive: a new RejectionPolicy
+        // constant will not compile until it is handled here — no runtime default branch needed.
+        Runnable rejection = switch (rejectionPolicy) {
+            case DISCARD -> () -> log.warn("Failover async executor '{}' is saturated (concurrency limit reached) — "
+                    + "discarding task. Stored data is a regenerable cache; raise the concurrency-limit if this recurs.", name);
+            case CALLER_RUNS -> () -> {
                 log.warn("Failover async executor '{}' is saturated — running the task on the calling thread "
                         + "(back-pressure).", name);
                 task.run();
-            }
-            case ABORT -> throw new RejectedExecutionException(
-                    "Failover async executor '" + name + "' is saturated (concurrency limit reached).");
-        }
+            };
+            case ABORT -> () -> {
+                throw new RejectedExecutionException(
+                        "Failover async executor '" + name + "' is saturated (concurrency limit reached).");
+            };
+        };
+        rejection.run();
     }
 }

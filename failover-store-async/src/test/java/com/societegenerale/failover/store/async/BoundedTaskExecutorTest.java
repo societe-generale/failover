@@ -105,6 +105,21 @@ class BoundedTaskExecutorTest {
     }
 
     @Test
+    @DisplayName("delegate refusing a task releases the permit and propagates the exception")
+    void releasesPermitWhenDelegateRefuses() {
+        TaskExecutor refusing = task -> {
+            throw new RejectedExecutionException("delegate full");
+        };
+        var executor = new BoundedTaskExecutor(refusing, 1, RejectionPolicy.ABORT, "x");
+
+        assertThatThrownBy(() -> executor.execute(() -> { }))
+                .isInstanceOf(RejectedExecutionException.class);
+        // permit was released, so the next submit reaches the delegate again (not silently blocked/dropped)
+        assertThatThrownBy(() -> executor.execute(() -> { }))
+                .isInstanceOf(RejectedExecutionException.class);
+    }
+
+    @Test
     @DisplayName("permit is released once a task completes — capacity is reusable")
     void releasesPermitAfterCompletion() throws InterruptedException {
         var executor = new BoundedTaskExecutor(delegate, 1, RejectionPolicy.ABORT, "x");
