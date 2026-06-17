@@ -255,6 +255,22 @@ class DashboardMetricsServiceTest {
     }
 
     @Test
+    @DisplayName("per-API latency isolates each name, skipping timers tagged with a different name")
+    void latencyIsolatedPerName() {
+        outcome("a", "a", "recovered", 1);
+        outcome("b", "b", "recovered", 1);
+        duration("a", "recover", 10.0, 1);
+        duration("b", "recover", 50.0, 1);
+
+        var perApi = service.metricsSummary().perApi();
+        var a = perApi.stream().filter(k -> k.name().equals("a")).findFirst().orElseThrow();
+        var b = perApi.stream().filter(k -> k.name().equals("b")).findFirst().orElseThrow();
+
+        assertThat(a.latency().recoverMeanMs()).isEqualTo(10.0, within(0.5));
+        assertThat(b.latency().recoverMeanMs()).isEqualTo(50.0, within(0.5));
+    }
+
+    @Test
     @DisplayName("no timers / async / exceptions ⇒ zero latency, zero failures, empty exception list")
     void zeroWhenMetersAbsent() {
         store("svc", true, 10);
