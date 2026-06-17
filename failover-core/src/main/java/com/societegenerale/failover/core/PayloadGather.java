@@ -71,14 +71,21 @@ class PayloadGather<T, R> {
         // entries on recover-all, and timed-out slices. The PayloadSplitter owns the null policy
         // (keep positionally vs. drop/deduplicate); see PayloadSplitter#merge.
         long missing = recovered.stream().filter(ctx -> ctx.getPayload() == null).count();
-        if (missing > 0) {
-            // Partial recovery: some slices missing/expired/timed-out. The merged result may be
-            // incomplete — the PayloadSplitter.merge policy decides whether to keep positional nulls,
-            // drop them, or reject the whole composite. Surfaced at warn + metric so partial responses
-            // are never silent (audit I-04).
+        int total = recovered.size();
+        if (missing > 0 && missing < total) {
+            // Partial recovery: some — but not all — slices missing/expired/timed-out. The merged
+            // result may be incomplete — the PayloadSplitter.merge policy decides whether to keep
+            // positional nulls, drop them, or reject the whole composite. Surfaced at warn + metric so
+            // partial responses are never silent (audit I-04).
             log.warn("Failover scatter-recover: '{}' — PARTIAL recovery, {} of {} slices missing; the merged result may be incomplete (PayloadSplitter.merge owns the policy).",
-                    failover.name(), missing, recovered.size());
-            publishPartial(failover, method, missing, recovered.size());
+                    failover.name(), missing, total);
+            publishPartial(failover, method, missing, total);
+        } else if (missing == total) {
+            // Every slice missing — this is full non-recovery, not partial. No recover-partial metric is
+            // published; the all-null/empty merged composite is reported as not-recovered upstream by
+            // AdvancedFailoverHandler (is-recovered=false).
+            log.warn("Failover scatter-recover: '{}' — all {} slices missing; nothing recovered.",
+                    failover.name(), total);
         }
         var finalCtx = splitterInvoker.merge(splitter, failover, recovered);
         log.info("Failover scatter-recover: gathered {} slices for '{}' ({} missing).",
