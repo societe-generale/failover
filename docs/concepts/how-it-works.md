@@ -188,8 +188,12 @@ The order above is wired in `FailoverAutoConfiguration` (every bean is `@Conditi
 
 ```java
 var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
-var scatterHandler = new ScatterGatherFailoverHandler<>(defaultHandler, defaultHandler, payloadSplitterLookup,
-        scatterGatherExecutor, contextPropagator, scatterTimeout);
+var scatterHandler = ScatterGatherFailoverHandler.builder(defaultHandler, defaultHandler, payloadSplitterLookup)
+        .executor(scatterGatherExecutor)
+        .contextPropagator(contextPropagator)
+        .timeout(scatterTimeout)
+        .observablePublisher(observablePublisher)
+        .build();
 return new AdvancedFailoverHandler<>(scatterHandler, recoveredPayloadHandler, observablePublisher, failoverExpiryExtractor);
 ```
 

@@ -15,52 +15,33 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Upgraded to Spring Boot 4.x and Spring Cloud 2025.x
 - Upgraded to Java 21 — virtual threads used for async store executor and scatter/gather executor
 - Key generation now produces fixed-length MD5/UUID-based keys to prevent VARCHAR(256) overflow
-- `FailoverScanner` SPI moved from `core.observable.scanner` to `core.scanner` — it is now a neutral
-  shared component (consumed by both observability reporting and store deserialization safety)
-- **Breaking — split packages eliminated (audit A-1).** Store implementations moved out of the shared
-  `com.societegenerale.failover.store` package into per-backend subpackages:
-  `FailoverStoreInmemory` → `…store.inmemory`, `FailoverStoreCaffeine` → `…store.caffeine`,
-  `FailoverStoreJdbc` (and its `serializer`/`mapper`/`resolver` packages) → `…store.jdbc.*`,
-  `FailoverStoreAsync` → `…store.async`. The `failover-lookup` `BeanFactory*` beans moved out of
-  `failover-core`'s `key`/`expiry`/`payload.splitter` packages into `com.societegenerale.failover.lookup`.
-  No two JARs share a package any more. Consumers referencing these classes by fully-qualified name
-  (custom configuration, explicit imports) must update their imports; zero-config users are unaffected
-- `DefaultFailoverHandler` store/recover logging: the lifecycle event stays at `INFO` (referential
-  name only); the full `ReferentialPayload` body moved to `DEBUG` — no full-payload serialisation on
-  the hot `INFO` path (audit Q-4, ADR 48)
+- `FailoverScanner` SPI moved from `core.observable.scanner` to `core.scanner` — now a neutral shared
+  component (consumed by both observability reporting and store deserialization safety)
+- Split packages eliminated — store implementations moved into per-backend subpackages
+  (`…store.inmemory`, `…store.caffeine`, `…store.jdbc.*`, `…store.async`) and the `failover-lookup`
+  `BeanFactory*` beans into `…lookup`, so no two JARs share a package (audit A-1)
+- `DefaultFailoverHandler` logging: lifecycle event stays at `INFO` (name only); the full
+  `ReferentialPayload` body moved to `DEBUG` — no full-payload serialisation on the hot path (audit Q-4, ADR 48)
 - `ScatterGatherFailoverHandler` refactored into a thin facade over package-private collaborators
-  (`PayloadScatter`, `PayloadGather`, `SliceDispatcher`, `SplitterInvoker`) — public API and behaviour
-  unchanged (audit A-2, ADR 49)
-- `FailoverStoreAutoConfiguration` now assembles the `failoverStore` bean in a single method instead of
-  four `async × multitenant` `@ConditionalOnProperty` variants; behaviour unchanged, the per-tenant
-  async wrapping is now explicit, and `@ConditionalOnMissingBean(FailoverStore)` override is retained
-  (ADR 54)
-- Performance: failover metric construction made the `Metrics` helper's responsibility — keys are
-  built by concatenation instead of `String.format`, with typed `collect(String, long)` /
-  `collect(String, boolean)` overloads replacing per-call `toString`/ternary noise in
-  `AdvancedFailoverHandler`. ≈ 3.6× faster recover-bag build (JMH `744 → 204 ns/op`); behaviour
-  unchanged (audit A-3/Q-2, ADR 50). Profile-gated JMH harness added — `mvn -pl failover-core
-  -Pbenchmark test-compile exec:exec`
-
-- **Breaking — `FailoverHandler` SPI is now method-aware.** `store` / `recover` / `recoverAll` carry
-  the intercepted `@NonNull Method` (one method-aware operation each; the old method-less signatures
-  are gone). Handlers that don't need the method extend the new `AbstractFailoverHandler`, which
-  bridges to clean `protected` method-less operations; decorators that need it thread the non-null
-  method through (used for the per-method outcome metric). Zero-config users and the built-in chain
-  are unaffected; only custom `FailoverHandler` implementations must migrate (audit, ADR 52)
-- **JDBC DDL now mandates an `EXPIRE_ON` index.** The expiry-cleanup scheduler deletes by
-  `EXPIRE_ON < ?`; without the index that delete is a full table scan that degrades as the table grows.
-  All documented `CREATE TABLE` snippets and test schemas gained
-  `CREATE INDEX IDX_<table>_EXPIRE_ON ON <table> (EXPIRE_ON)` (audit I-13)
-- SPI Javadoc hardened with `@implSpec` contracts — `KeyGenerator` (deterministic, collision-free),
-  `ExpiryPolicy` (future/non-null `computeExpiry`, `expireOn`-driven `isExpired`), `PayloadEnricher` and
-  `RecoveredPayloadHandler` (null-payload handling). `FailoverHandler.recoverAll` is now documented as an
-  **optional operation** (JDK convention), resolving the recover-all LSP ambiguity (audit I-09, I-11)
+  (`PayloadScatter`, `PayloadGather`, `SliceDispatcher`, `SplitterInvoker`) — behaviour unchanged (audit A-2, ADR 49)
+- `ScatterGatherFailoverHandler` is now built via `ScatterGatherFailoverHandler.builder(...)` (optional
+  `.executor` / `.contextPropagator` / `.timeout` / `.observablePublisher`) instead of overloaded
+  constructors (audit A-2)
+- `FailoverStoreAutoConfiguration` assembles the `failoverStore` bean in a single method instead of four
+  `async × multitenant` `@ConditionalOnProperty` variants; behaviour unchanged (ADR 54)
+- Failover metric construction moved to the `Metrics` helper — keys built by concatenation instead of
+  `String.format` (typed `collect` overloads). ≈ 3.6× faster recover-bag build (JMH `744 → 204 ns/op`);
+  profile-gated JMH harness added (audit A-3/Q-2, ADR 50)
+- `FailoverHandler` SPI is now method-aware — `store` / `recover` / `recoverAll` carry the intercepted
+  `@NonNull Method`. Handlers that don't need it extend the new `AbstractFailoverHandler`; the built-in
+  chain and zero-config users are unaffected, only custom implementations migrate (ADR 52)
+- JDBC DDL now mandates an `EXPIRE_ON` index — the expiry-cleanup delete (`EXPIRE_ON < ?`) was a full
+  table scan without it. All `CREATE TABLE` snippets and test schemas gained the index (audit I-13)
+- SPI Javadoc hardened with `@implSpec` contracts (`KeyGenerator`, `ExpiryPolicy`, `PayloadEnricher`,
+  `RecoveredPayloadHandler`); `FailoverHandler.recoverAll` documented as an optional operation (audit I-09, I-11)
 - Build: corrected the stale `<scm><tag>` in the parent POM (`failover_1.1.0` → `HEAD`) (audit I-14)
-- **Breaking — deserialization allowlist moved to the JDBC namespace.** `failover.store.allowed-payload-classes`
-  is now `failover.store.jdbc.allowed-payload-classes`: the allowlist only ever applied to the serializing
-  JDBC store (in-memory/Caffeine hold live objects and never deserialize), so it belongs under the
-  store-type namespace alongside `jdbc.encryption`. Consumers setting the old key must rename it
+- Deserialization allowlist moved to the JDBC namespace — `failover.store.allowed-payload-classes` is now
+  `failover.store.jdbc.allowed-payload-classes` (it only ever applied to the serializing JDBC store)
 
 ### Added
 
