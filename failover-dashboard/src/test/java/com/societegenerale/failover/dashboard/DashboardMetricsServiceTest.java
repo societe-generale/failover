@@ -18,11 +18,15 @@ package com.societegenerale.failover.dashboard;
 
 import com.societegenerale.failover.dashboard.dto.ApiHealth;
 import com.societegenerale.failover.dashboard.dto.ApiKpis;
+import com.societegenerale.failover.dashboard.dto.ExceptionStat;
 import com.societegenerale.failover.dashboard.dto.MetricsSummary;
 import com.societegenerale.failover.dashboard.dto.Rates;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,6 +63,25 @@ class DashboardMetricsServiceTest {
     private void partial(String name, int times) {
         Counter.builder("failover.recovery.partial.total")
                 .tag("name", name).tag("method", "m")
+                .register(registry).increment(times);
+    }
+
+    private void asyncFailed(String name, int times) {
+        Counter.builder("failover.store.async.failed")
+                .tag("name", name).tag("operation", "store").tag("exception_type", "java.lang.RuntimeException")
+                .register(registry).increment(times);
+    }
+
+    private void duration(String name, String action, double ms, int samples) {
+        Timer t = Timer.builder("failover.operation.duration").tag("name", name).tag("action", action).register(registry);
+        for (int i = 0; i < samples; i++) {
+            t.record((long) (ms * 1_000_000), TimeUnit.NANOSECONDS);
+        }
+    }
+
+    private void exception(String name, String type, int times) {
+        Counter.builder("failover.exception.total")
+                .tag("name", name).tag("exception_type", type).tag("cause_type", "none")
                 .register(registry).increment(times);
     }
 
@@ -153,6 +176,46 @@ class DashboardMetricsServiceTest {
 
         assertThat(summary.perApi()).extracting(ApiKpis::name).containsExactly("x");
         assertThat(summary.perApi().get(0).domain()).isEqualTo("x");
+    }
+
+    // ── async failures, latency, top exceptions ───────────────────────────────
+
+    @Test
+    @DisplayName("surfaces async failures, store/recover latency (ms) and top exception types")
+    void surfacesAsyncLatencyAndExceptions() {
+        store("country", true, 100);
+        asyncFailed("country", 4);
+        duration("country", "store", 2.0, 3);    // mean 2ms
+        duration("country", "recover", 5.0, 2);  // mean 5ms, max 5ms
+        exception("country", "java.net.SocketTimeoutException", 7);
+        exception("country", "java.net.ConnectException", 3);
+
+        MetricsSummary s = service.metricsSummary();
+        ApiKpis k = s.perApi().get(0);
+
+        assertThat(k.asyncFailed()).isEqualTo(4);
+        assertThat(k.latency().storeMeanMs()).isEqualTo(2.0, within(0.5));
+        assertThat(k.latency().recoverMeanMs()).isEqualTo(5.0, within(0.5));
+        assertThat(k.latency().recoverMaxMs()).isGreaterThanOrEqualTo(5.0);
+
+        assertThat(s.overall().asyncFailed()).isEqualTo(4);
+        assertThat(s.topExceptions()).extracting(ExceptionStat::type)
+                .containsExactly("java.net.SocketTimeoutException", "java.net.ConnectException");
+        assertThat(s.topExceptions().get(0).count()).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("no timers / async / exceptions ⇒ zero latency, zero failures, empty exception list")
+    void zeroWhenMetersAbsent() {
+        store("svc", true, 10);
+
+        MetricsSummary s = service.metricsSummary();
+        ApiKpis k = s.perApi().get(0);
+
+        assertThat(k.asyncFailed()).isZero();
+        assertThat(k.latency().storeMeanMs()).isZero();
+        assertThat(k.latency().recoverMeanMs()).isZero();
+        assertThat(s.topExceptions()).isEmpty();
     }
 
     // ── health classification ─────────────────────────────────────────────────

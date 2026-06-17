@@ -146,4 +146,30 @@ class DashboardConfigServiceTest {
         assertThat(health.status()).isEqualTo("DOWN");
         assertThat(health.details()).containsEntry("registered-failovers", "0");
     }
+
+    @Test
+    @DisplayName("globalSettings() groups effective config, applying defaults and environment overrides")
+    void globalSettingsGroupsAndOverrides() {
+        MockEnvironment env = new MockEnvironment()
+                .withProperty("failover.type", "resilience")                              // override
+                .withProperty("failover.store.async-executor.concurrency-limit", "256")   // override
+                .withProperty("failover.dashboard.history.enabled", "true");             // override
+
+        var settings = serviceWith(env).globalSettings();
+
+        assertThat(settings).containsOnlyKeys("Core", "Store", "Scheduler", "Scatter", "Dashboard");
+        assertThat(settings.get("Core"))
+                .containsEntry("failover.enabled", "true")           // default applied
+                .containsEntry("failover.type", "resilience");       // override honoured
+        assertThat(settings.get("Store"))
+                .containsEntry("failover.store.type", "inmemory")    // default applied
+                .containsEntry("failover.store.async-executor.concurrency-limit", "256")
+                .containsEntry("failover.store.async-executor.rejection-policy", "DISCARD");
+        assertThat(settings.get("Scatter"))
+                .containsEntry("failover.scatter.parallel", "true")
+                .containsEntry("failover.scatter.rejection-policy", "DISCARD");
+        assertThat(settings.get("Dashboard"))
+                .containsEntry("failover.dashboard.history.enabled", "true")
+                .containsEntry("failover.dashboard.security.role", "FAILOVER_ADMIN");
+    }
 }

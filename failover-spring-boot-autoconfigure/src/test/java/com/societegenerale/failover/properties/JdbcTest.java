@@ -37,4 +37,20 @@ class JdbcTest {
         jdbc.setTablePrefix("DEMO_");
         assertThat(jdbc.getTablePrefix()).isEqualTo("DEMO_");
     }
+
+    @Test
+    @DisplayName("allowedPayloadClasses defaults to empty and is settable (moved from store level)")
+    void allowedPayloadClasses() {
+        assertThat(jdbc.getAllowedPayloadClasses()).isEmpty();
+        jdbc.setAllowedPayloadClasses(java.util.List.of("com.acme.referential", "com.acme.Currency"));
+        assertThat(jdbc.getAllowedPayloadClasses()).containsExactly("com.acme.referential", "com.acme.Currency");
+    }
+
+    @Test
+    @DisplayName("encryption defaults: disabled with the b64 cipher")
+    void encryptionDefaults() {
+        assertThat(jdbc.getEncryption()).isNotNull();
+        assertThat(jdbc.getEncryption().isEnabled()).isFalse();
+        assertThat(jdbc.getEncryption().getCipher()).isEqualTo("b64");
+    }
 }

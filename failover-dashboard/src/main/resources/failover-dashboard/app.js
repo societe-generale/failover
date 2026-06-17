@@ -19,6 +19,8 @@ async function loadConfig() {
         configState.rows = await fetchJson("api/config");
         errorEl.hidden = true;
         renderConfig();
+        loadSettings();
+        markUpdated();
     } catch (e) {
         showError(errorEl, `Could not load configuration: ${e.message}`);
     }
@@ -55,6 +57,70 @@ function configRow(r) {
     return tr;
 }
 
+// ── Global settings (Config view) ─────────────────────────────────────────────
+
+// Prefix stripped from each key to produce a short, readable label within its group card.
+const SETTINGS_PREFIX = {
+    Core: "failover.", Store: "failover.store.", Scheduler: "failover.scheduler.",
+    Scatter: "failover.scatter.", Dashboard: "failover.dashboard.",
+};
+
+async function loadSettings() {
+    const errorEl = document.getElementById("settings-error");
+    try {
+        const groups = await fetchJson("api/config/settings");
+        errorEl.hidden = true;
+        document.getElementById("settings-groups").replaceChildren(
+            ...Object.entries(groups).map(([title, entries]) => settingsCard(title, entries)));
+    } catch (e) {
+        showError(errorEl, `Could not load settings: ${e.message}`);
+    }
+}
+
+function settingsCard(title, entries) {
+    const card = document.createElement("div");
+    card.className = "settings-card";
+
+    const head = document.createElement("div");
+    head.className = "settings-card-head";
+    const dot = document.createElement("span");
+    dot.className = "settings-dot";
+    dot.dataset.group = title;
+    const h = document.createElement("span");
+    h.className = "settings-card-title";
+    h.textContent = title;
+    head.append(dot, h);
+    card.appendChild(head);
+
+    const prefix = SETTINGS_PREFIX[title] ?? "failover.";
+    for (const [key, value] of Object.entries(entries)) {
+        const row = document.createElement("div");
+        row.className = "settings-row";
+        row.title = key; // full property key on hover
+
+        const label = document.createElement("span");
+        label.className = "settings-key";
+        label.textContent = key.startsWith(prefix) ? key.slice(prefix.length) : key.replace(/^failover\./, "");
+
+        row.append(label, settingsValue(value));
+        card.appendChild(row);
+    }
+    return card;
+}
+
+function settingsValue(value) {
+    const v = document.createElement("span");
+    const empty = value === "" || value == null;
+    const text = empty ? "—" : String(value);
+    let kind = "neutral";
+    if (text === "true") kind = "on";
+    else if (text === "false") kind = "off";
+    else if (empty) kind = "empty";
+    v.className = `settings-val ${kind}`;
+    v.textContent = text;
+    return v;
+}
+
 // ── Metrics view ─────────────────────────────────────────────────────────────
 
 const TREND_MAX = 60;
@@ -66,6 +132,7 @@ const apiFailures = { labels: [], series: {} };
 let lastOverall = null;
 let lastApiFailover = {};
 let lastSummary = null;
+let timelineHydrated = false;
 
 // Pull live values from the active theme so charts match the console palette.
 function cssVar(name) {
@@ -95,10 +162,13 @@ async function loadMetrics() {
         errorEl.hidden = true;
         lastSummary = summary;
         renderKpis(summary.overall);
+        renderAsyncBanner(summary.overall);
         renderHealthTable(summary.perApi, health);
+        await hydrateTimeline();
         pushTimeline(summary);
         if (hasCharts) renderCharts(summary);
         else document.getElementById("metrics-degraded").hidden = false;
+        markUpdated();
     } catch (e) {
         showError(errorEl, `Could not load metrics: ${e.message}`);
     }
@@ -114,10 +184,24 @@ function renderKpis(overall) {
     setKpi("recovery", pct(r.recoveryRate));
     setKpi("nonRecovery", pct(r.nonRecoveryRate));
     setKpi("health", pct(r.healthyRate));
+    setKpi("async", overall.asyncFailed.toLocaleString());
+    setKpi("latency", `${overall.latency.recoverMeanMs} ms`);
 }
 
 function setKpi(key, value) {
     document.querySelector(`[data-kpi="${key}"]`).textContent = value;
+}
+
+/** Loud banner when any async store write has failed — that data was silently not persisted. */
+function renderAsyncBanner(overall) {
+    const el = document.getElementById("async-banner");
+    if (overall.asyncFailed > 0) {
+        el.textContent = `⚠ ${overall.asyncFailed.toLocaleString()} async store write(s) failed inside the executor — `
+            + `failover data was NOT persisted. Inspect logs and the failover.store.async.failed counter.`;
+        el.hidden = false;
+    } else {
+        el.hidden = true;
+    }
 }
 
 function renderHealthTable(perApi, health) {
@@ -137,6 +221,8 @@ function renderHealthTable(perApi, health) {
         tr.appendChild(cell(k.recovered.toLocaleString(), "num"));
         tr.appendChild(cell(k.notRecovered.toLocaleString(), "num"));
         tr.appendChild(cell(k.errors.toLocaleString(), "num"));
+        tr.appendChild(cell(k.asyncFailed.toLocaleString(), k.asyncFailed > 0 ? "num bad" : "num"));
+        tr.appendChild(cell(`${k.latency.recoverMeanMs}`, "num"));
         const badge = document.createElement("td");
         const span = document.createElement("span");
         span.className = `badge ${status.toLowerCase()}`;
@@ -159,6 +245,31 @@ function rateP(v) { return Number((v * 100).toFixed(2)); }
 function trim(obj, keys) {
     for (const k of keys) {
         if (obj[k].length > TREND_MAX) obj[k].shift();
+    }
+}
+
+// Pre-fill the timeline chart from the server-side ring buffer (api/metrics/series) so a browser reload
+// keeps its trend instead of starting blank. Runs at most once; a no-op (silently) when history is
+// disabled (the /series endpoint is absent → fetch fails) or fewer than two samples are retained.
+async function hydrateTimeline() {
+    if (timelineHydrated) return;
+    timelineHydrated = true; // attempt only once, regardless of outcome
+    try {
+        const points = await fetchJson("api/metrics/series?windowSec=0"); // 0 = all retained
+        if (!Array.isArray(points) || points.length < 2) return;
+        for (let i = 1; i < points.length; i++) {
+            const p = points[i];
+            timeline.labels.push(new Date(p.timestamp).toLocaleTimeString());
+            timeline.calls.push(Math.max(0, p.calls - points[i - 1].calls));
+            timeline.failoverRate.push(p.calls ? rateP(p.failover / p.calls) : 0);
+            timeline.recoveryRate.push(p.failover ? rateP(p.recovered / p.failover) : 0);
+            timeline.nonRecoveryRate.push(p.failover ? rateP((p.failover - p.recovered) / p.failover) : 0);
+        }
+        trim(timeline, ["labels", "calls", "failoverRate", "recoveryRate", "nonRecoveryRate"]);
+        // Seed the delta baseline from the last sample so the first live tick continues seamlessly.
+        lastOverall = { totalCalls: points[points.length - 1].calls };
+    } catch {
+        // history disabled or unavailable — the client-side buffer fills in from live polls instead
     }
 }
 
@@ -224,6 +335,36 @@ function renderCharts(summary) {
         datasets: [{ data: [o.upstreamSuccess, o.failoverInvoked], backgroundColor: [fill(p.accent), fill(p.warn)], borderColor: [p.accent, p.warn], borderWidth: 1 }],
     }, { ...noLegend, borderRadius: 4 });
 
+    // Latency — per-API store vs recover mean (ms)
+    upsertChart("chart-latency", "bar", {
+        labels: summary.perApi.map(k => k.name),
+        datasets: [
+            { label: "store mean", data: summary.perApi.map(k => k.latency.storeMeanMs), backgroundColor: fill(p.accent), borderColor: p.accent, borderWidth: 1 },
+            { label: "recover mean", data: summary.perApi.map(k => k.latency.recoverMeanMs), backgroundColor: fill(p.info), borderColor: p.info, borderWidth: 1 },
+        ],
+    }, { borderRadius: 4, scales: { y: { beginAtZero: true, title: { display: true, text: "ms" } } } });
+
+    // Failover triggers — top exception types (horizontal bar; class simple-name on the axis, FQN in tooltip)
+    const exShort = t => t.split(".").pop();
+    upsertChart("chart-exceptions", "bar", {
+        labels: summary.topExceptions.map(e => exShort(e.type)),
+        datasets: [{ label: "occurrences", data: summary.topExceptions.map(e => e.count), backgroundColor: fill(p.bad), borderColor: p.bad, borderWidth: 1 }],
+    }, {
+        ...noLegend, indexAxis: "y", borderRadius: 4,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => summary.topExceptions[items[0].dataIndex].type } } },
+    });
+
+    // Success / Full recovery / Partial recovery. "recovered" includes partials, so full = recovered − partial.
+    const fullRecovery = Math.max(0, o.recovered - o.partial);
+    upsertChart("chart-outcome-mix", "bar", {
+        labels: ["Success", "Full recovery", "Partial recovery"],
+        datasets: [{
+            data: [o.upstreamSuccess, fullRecovery, o.partial],
+            backgroundColor: [fill(p.good), fill(p.info), fill(p.warn)],
+            borderColor: [p.good, p.info, p.warn], borderWidth: 1,
+        }],
+    }, { ...noLegend, borderRadius: 4 });
+
     // Timeline: overall calls (count axis, right) + failover/recovery/non-recovery rates (% axis, left)
     upsertChart("chart-timeline", "line", {
         labels: timeline.labels,
@@ -269,19 +410,37 @@ async function loadFailoverHealth() {
     try {
         const health = await fetchJson("api/failover-health");
         errorEl.hidden = true;
+        const up = health.status === "UP";
+
         const pill = document.getElementById("health-status");
         pill.textContent = health.status;
-        pill.className = "status-pill " + (health.status === "UP" ? "up" : "down");
-        const body = document.getElementById("health-details");
-        body.replaceChildren(...Object.entries(health.details).map(([k, v]) => {
-            const tr = document.createElement("tr");
-            tr.appendChild(cell(k, "kv-key"));
-            tr.appendChild(cell(v === "" ? "—" : v));
-            return tr;
-        }));
+        pill.className = "status-pill " + (up ? "up" : "down");
+
+        const hero = document.getElementById("health-hero");
+        hero.classList.toggle("up", up);
+        hero.classList.toggle("down", !up);
+        document.getElementById("health-hero-icon").textContent = up ? "✓" : "✕";
+
+        const grid = document.getElementById("health-details");
+        grid.replaceChildren(...Object.entries(health.details).map(([k, v]) => healthCard(k, v === "" ? "—" : v)));
+        markUpdated();
     } catch (e) {
         showError(errorEl, `Could not load failover health: ${e.message}`);
     }
+}
+
+/** One config detail rendered as a labelled card for the Health view. */
+function healthCard(key, value) {
+    const card = document.createElement("div");
+    card.className = "health-card";
+    const k = document.createElement("span");
+    k.className = "health-card-key";
+    k.textContent = key;
+    const v = document.createElement("span");
+    v.className = "health-card-val";
+    v.textContent = value;
+    card.append(k, v);
+    return card;
 }
 
 // ── Shared / shell ───────────────────────────────────────────────────────────
@@ -297,8 +456,14 @@ function showError(el, message) {
     el.hidden = false;
 }
 
+/** Stamps the "last updated" indicator with the current time; called after every successful load. */
+function markUpdated() {
+    const el = document.getElementById("last-updated");
+    if (el) el.textContent = new Date().toLocaleTimeString();
+}
+
 let refreshTimer = null;
-let activeTab = "config";
+let activeTab = "metrics";
 
 function refreshActive() {
     if (activeTab === "config") loadConfig();
@@ -361,7 +526,8 @@ initTabs();
 initConfigControls();
 initTheme();
 document.getElementById("refresh-interval").addEventListener("change", applyRefreshInterval);
-loadConfig();
+document.getElementById("refresh-now").addEventListener("click", refreshActive);
+refreshActive();
 applyRefreshInterval();
 
 // Deep-link: ?theme=dark|light forces the theme; #metrics opens the metrics view directly.
