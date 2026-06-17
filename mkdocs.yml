@@ -165,6 +165,7 @@ nav:
     - Architecture Tests: quality/architecture-tests.md
     - Mutation Testing: quality/mutation-testing.md
     - Micro-Benchmarks: quality/benchmarks.md
+    - Software Bill of Materials: quality/sbom.md
   - Reference:
     - reference/index.md
     - '@Failover Annotation': reference/annotation.md

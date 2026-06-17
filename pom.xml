@@ -49,6 +49,14 @@
              reactor builds don't run PIT on modules with no matching target classes (which would
              fail with "No mutations found" under failWhenNoMutations=true). -->
         <pitest.skip>true</pitest.skip>
+        <!-- CycloneDX SBOM: emitted per module at `package` and attached to each published artifact. -->
+        <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
+        <!-- OWASP Dependency-Check (SCA / CVE gate). Profile-gated `-Pdependency-check`; runs in CI only. -->
+        <dependency-check.version>12.1.0</dependency-check.version>
+        <!-- Fail the build on any dependency with a CVSS score at or above this (7.0 = HIGH/CRITICAL). -->
+        <dependency-check.failBuildOnCVSS>7</dependency-check.failBuildOnCVSS>
+        <!-- NVD API key; empty by default. CI overrides via -Dnvd.api.key=$NVD_API_KEY. -->
+        <nvd.api.key></nvd.api.key>
         <rewrite-maven-plugin.version>6.39.0</rewrite-maven-plugin.version>
         <rewrite-spring.version>6.30.4</rewrite-spring.version>
         <rewrite-migrate-java.version>3.7.0</rewrite-migrate-java.version>
@@ -247,6 +255,43 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <!--
+              CycloneDX SBOM (Software Bill of Materials), finding I-17.
+              `makeBom` runs once per module at `package` and attaches the SBOM as a secondary
+              artifact (classifier 'cyclonedx'), so every published JAR ships with the exact
+              dependency manifest of what it contains. This lets downstream consumers (and SG
+              security/compliance) answer "am I affected by CVE X?" without decompiling the JAR,
+              and satisfies SBOM obligations (US EO 14028, EU CRA). Complements the build-time
+              CVE gate: the SBOM is the durable artifact re-scanned against CVEs found AFTER release.
+            -->
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>${cyclonedx-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>make-sbom</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeBom</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <projectType>library</projectType>
+                    <schemaVersion>1.6</schemaVersion>
+                    <outputFormat>json</outputFormat>
+                    <outputName>${project.artifactId}-${project.version}-cyclonedx</outputName>
+                    <!-- Include the full transitive graph so the SBOM is complete for consumers. -->
+                    <includeBomSerialNumber>true</includeBomSerialNumber>
+                    <includeCompileScope>true</includeCompileScope>
+                    <includeProvidedScope>true</includeProvidedScope>
+                    <includeRuntimeScope>true</includeRuntimeScope>
+                    <!-- Test-only deps never ship to consumers; exclude them from the shipped SBOM. -->
+                    <includeTestScope>false</includeTestScope>
+                    <includeSystemScope>false</includeSystemScope>
+                </configuration>
             </plugin>
             <plugin>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -516,6 +561,57 @@
                                 <param>XML</param>
                             </outputFormats>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          Software Composition Analysis (SCA) / CVE gate (finding I-01). Profile-gated so the default
+          developer build stays fast; the CI `dependency-check` job runs `-Pdependency-check verify`
+          and the build FAILS when any dependency carries a CVE at or above CVSS
+          ${dependency-check.failBuildOnCVSS}.
+
+          Notes:
+            * Runs on the aggregator and scans the whole reactor (aggregate goal), so one report
+              covers all modules.
+            * False positives are curbed with dependency-check-suppressions.xml at the repo root.
+            * The NVD API needs a (free) key to avoid harsh rate-limiting; CI passes it via
+              NVD_API_KEY -> -Dnvd.api.key. Without a key the plugin still runs, just slower.
+        -->
+        <profile>
+            <id>dependency-check</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <version>${dependency-check.version}</version>
+                        <configuration>
+                            <!-- Fail the build on HIGH/CRITICAL (CVSS >= 7). -->
+                            <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+                            <!-- Test-only dependencies never ship to consumers; exclude them. -->
+                            <skipTestScope>true</skipTestScope>
+                            <suppressionFiles>
+                                <suppressionFile>${maven.multiModuleProjectDirectory}/dependency-check-suppressions.xml</suppressionFile>
+                            </suppressionFiles>
+                            <formats>
+                                <format>HTML</format>
+                                <format>SARIF</format>
+                            </formats>
+                            <!-- NVD API key (optional but strongly recommended) avoids rate-limiting. -->
+                            <nvdApiKey>${nvd.api.key}</nvdApiKey>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>owasp-dependency-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <!-- aggregate: scan the whole reactor from the root module. -->
+                                    <goal>aggregate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
