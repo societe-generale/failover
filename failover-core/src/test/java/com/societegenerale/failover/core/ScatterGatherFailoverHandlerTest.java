@@ -100,7 +100,7 @@ class ScatterGatherFailoverHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup);
+        handler = ScatterGatherFailoverHandler.builder(delegateT, delegateR, payloadSplitterLookup).build();
         given(failover.name()).willReturn(FAILOVER_NAME);
         given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
         doReturn(thirdPartyPayloadSplitter).when(payloadSplitterLookup).lookup(SPLITTER_NAME);
@@ -276,7 +276,7 @@ class ScatterGatherFailoverHandlerTest {
         @SuppressWarnings({"unchecked", "rawtypes"})
         void shouldNotCleanBothDelegatesWhenSameInstance() {
             FailoverHandler sameDelegate = mock(FailoverHandler.class);
-            var h = new ScatterGatherFailoverHandler<>(sameDelegate, sameDelegate, payloadSplitterLookup);
+            var h = ScatterGatherFailoverHandler.builder(sameDelegate, sameDelegate, payloadSplitterLookup).build();
             h.clean();
             verify(sameDelegate).clean();
         }
@@ -490,7 +490,8 @@ class ScatterGatherFailoverHandlerTest {
                 propagatorCallCount.incrementAndGet();
                 return task;
             };
-            parallelHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, countingPropagator);
+            parallelHandler = ScatterGatherFailoverHandler.builder(delegateT, delegateR, payloadSplitterLookup)
+                    .executor(executorService).contextPropagator(countingPropagator).build();
             given(failover.payloadSplitter()).willReturn(SPLITTER_NAME);
         }
 
@@ -588,7 +589,8 @@ class ScatterGatherFailoverHandlerTest {
                 propagatorCallCount.incrementAndGet();
                 return task;
             };
-            parallelHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, countingPropagator);
+            parallelHandler = ScatterGatherFailoverHandler.builder(delegateT, delegateR, payloadSplitterLookup)
+                    .executor(executorService).contextPropagator(countingPropagator).build();
         }
 
         @AfterEach
@@ -639,7 +641,8 @@ class ScatterGatherFailoverHandlerTest {
                     try { task.run(); } finally { ctx.remove(); }
                 };
             };
-            var capturingHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup, executorService, capturingPropagator);
+            var capturingHandler = ScatterGatherFailoverHandler.builder(delegateT, delegateR, payloadSplitterLookup)
+                    .executor(executorService).contextPropagator(capturingPropagator).build();
 
             doAnswer(invocation -> { seenOnExecutorThread.add(ctx.get()); return null; })
                     .when(delegateR).store(any(), any(), any(), any());
@@ -672,8 +675,8 @@ class ScatterGatherFailoverHandlerTest {
         @BeforeEach
         void setUp() {
             executorService = Executors.newFixedThreadPool(4);
-            timeoutHandler = new ScatterGatherFailoverHandler<>(delegateT, delegateR, payloadSplitterLookup,
-                    executorService, ContextPropagator.noOp(), Duration.ofMillis(150));
+            timeoutHandler = ScatterGatherFailoverHandler.builder(delegateT, delegateR, payloadSplitterLookup)
+                    .executor(executorService).contextPropagator(ContextPropagator.noOp()).timeout(Duration.ofMillis(150)).build();
         }
 
         @AfterEach
