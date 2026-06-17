@@ -16,14 +16,18 @@
 
 package com.societegenerale.failover.core.util;
 
+import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 
+import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Small null-and-emptiness helpers shared across the failover core.
+ * Small shared helpers across the failover core: null/emptiness checks, exception-chain inspection
+ * ({@link #finalRootCauseOf}, {@link #canonicalTypeOf}, {@link #messageOf}) and method identity
+ * ({@link #methodId}).
  *
  * <p>"Empty" is defined per type, which matters for scatter/gather where a recovered slice may be a
  * collection, a map, or an array:
@@ -72,5 +76,37 @@ public class CommonsUtil {
             case Object[] a -> a.length == 0;
             default -> false;
         };
+    }
+
+    /**
+     * Innermost cause of {@code throwable}. The aspect wraps every upstream failure (often several
+     * layers deep), so the real root cause is the deepest link in the chain. Returns {@code null} when
+     * {@code throwable} has no cause. Guards against a self-referential cause chain.
+     */
+    public static Throwable finalRootCauseOf(Throwable throwable) {
+        Throwable root = throwable == null ? null : throwable.getCause();
+        if (root == null) {
+            return null;
+        }
+        Throwable next;
+        while ((next = root.getCause()) != null && next != root) {
+            root = next;
+        }
+        return root;
+    }
+
+    /** Null-safe canonical class name; returns {@code null} for a {@code null} throwable. */
+    public static String canonicalTypeOf(Throwable throwable) {
+        return throwable == null ? null : throwable.getClass().getCanonicalName();
+    }
+
+    /** Null-safe throwable message; returns {@code null} for a {@code null} throwable. */
+    public static String messageOf(Throwable throwable) {
+        return throwable == null ? null : throwable.getMessage();
+    }
+
+    /** Intercepted method identity as {@code SimpleClassName#methodName}. */
+    public static String methodId(@NonNull Method method) {
+        return method.getDeclaringClass().getSimpleName() + "#" + method.getName();
     }
 }

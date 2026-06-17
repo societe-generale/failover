@@ -21,6 +21,8 @@ import com.societegenerale.failover.domain.Metadata;
 import com.societegenerale.failover.domain.Referential;
 import com.societegenerale.failover.domain.ReferentialAware;
 
+import static com.societegenerale.failover.core.util.CommonsUtil.*;
+
 /**
  * Default {@link PayloadEnricher} that propagates failover metadata ({@code upToDate}, {@code asOf},
  * exception info) into payloads that implement {@link com.societegenerale.failover.domain.Referential}
@@ -48,6 +50,7 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
 
     private void enrichPayloadInfo(Failover failover, Class<T> clazz, ReferentialPayload<T> referentialPayload, T payload, Throwable cause) {
         if(payload !=null) {
+            var finalRootCause = finalRootCauseOf(cause);
             if (Referential.class.isAssignableFrom(payload.getClass())) {
                 var referential = (Referential) payload;
                 referential.setUpToDate(referentialPayload.isUpToDate());
@@ -55,8 +58,10 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
                 if(cause != null) {
                     var metadata = referential.getMetadata();
                     metadata
-                            .withInfo("exception-name",  cause.getClass().getName())
-                            .withInfo("cause", cause.getMessage());
+                            .withInfo("exception-name",  canonicalTypeOf(cause))
+                            .withInfo("cause", messageOf(cause))
+                            .withInfo("final-root-cause-name", canonicalTypeOf(finalRootCause))
+                            .withInfo("final-root-cause", messageOf(finalRootCause));
                     populateAdditionalInfoOnMetadata(failover, clazz, referentialPayload, payload, cause, metadata);
                     referential.setMetadata(metadata);
                 }
@@ -68,8 +73,10 @@ public class DefaultPayloadEnricher<T> implements PayloadEnricher<T> {
                 if(cause != null) {
                     var metadata = new Metadata();
                     metadata
-                            .withInfo("exception-name",  cause.getClass().getName())
-                            .withInfo("cause", cause.getMessage());
+                            .withInfo("exception-name",  canonicalTypeOf(cause))
+                            .withInfo("cause", messageOf(cause))
+                            .withInfo("final-root-cause-name", canonicalTypeOf(finalRootCause))
+                            .withInfo("final-root-cause", messageOf(finalRootCause));
                     populateAdditionalInfoOnMetadata(failover, clazz, referentialPayload, payload, cause, metadata);
                     referentialAwarePayload.setMetadata(metadata);
                 }

@@ -30,12 +30,23 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class EncryptingSerializerTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final Serializer delegate = new JsonSerializer(OBJECT_MAPPER);
     private final Base64PayloadCipher b64 = new Base64PayloadCipher();
+
+    /** Cipher with the given id; encrypt/decrypt are identity (id validation is the point under test). */
+    private static PayloadCipher cipherWithId(String id) {
+        return new PayloadCipher() {
+            @Override public String id() { return id; }
+            @Override public String encrypt(String p) { return p; }
+            @Override public String decrypt(String c) { return c; }
+        };
+    }
 
     @Data @AllArgsConstructor @NoArgsConstructor
     static class Sample { private String name; private int value; }
@@ -139,6 +150,28 @@ class EncryptingSerializerTest {
         void nullStored() {
             assertThat(new EncryptingSerializer(delegate, List.of(b64), b64).deserialize(null, Sample.class)).isNull();
         }
+
+        @Test
+        @DisplayName("a value starting with ENC( but not ending with ) is treated as plaintext (passed through unchanged)")
+        void enclosurePrefixWithoutSuffixIsPlaintext() {
+            Serializer mockDelegate = mock(Serializer.class);
+            Serializer enc = new EncryptingSerializer(mockDelegate, List.of(b64), b64);
+
+            enc.deserialize("ENC(b64:abc", Sample.class); // no closing ')'
+
+            verify(mockDelegate).deserialize("ENC(b64:abc", Sample.class); // not decrypted, handed through as-is
+        }
+
+        @Test
+        @DisplayName("a long malformed envelope is truncated in the error message")
+        void longMalformedEnvelopeIsTruncated() {
+            Serializer enc = new EncryptingSerializer(delegate, List.of(b64), b64);
+            String longBody = "x".repeat(100); // no ':' separator, well over the 64-char truncation limit
+            assertThatThrownBy(() -> enc.deserialize("ENC(" + longBody + ")", Sample.class))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("Malformed")
+                    .hasMessageContaining("…"); // ellipsis proves the truncation branch ran
+        }
     }
 
     @Nested
@@ -170,6 +203,30 @@ class EncryptingSerializerTest {
                 @Override public String decrypt(String c) { return c; }
             };
             assertThatThrownBy(() -> new EncryptingSerializer(delegate, List.of(bad), null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Invalid PayloadCipher id");
+        }
+
+        @Test
+        @DisplayName("rejects a null id")
+        void idNull() {
+            assertThatThrownBy(() -> new EncryptingSerializer(delegate, List.of(cipherWithId(null)), null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Invalid PayloadCipher id");
+        }
+
+        @Test
+        @DisplayName("rejects a blank id")
+        void idBlank() {
+            assertThatThrownBy(() -> new EncryptingSerializer(delegate, List.of(cipherWithId("   ")), null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Invalid PayloadCipher id");
+        }
+
+        @Test
+        @DisplayName("rejects an id containing the reserved ')' character")
+        void idWithClosingParen() {
+            assertThatThrownBy(() -> new EncryptingSerializer(delegate, List.of(cipherWithId("a)b")), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Invalid PayloadCipher id");
         }
