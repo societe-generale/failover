@@ -136,6 +136,38 @@ class MicrometerObservablePublisherTest {
         assertThat(counter.count()).isEqualTo(1.0);
     }
 
+    @Test
+    @DisplayName("recover event — final_cause_type tag carries the innermost cause")
+    void shouldTagFinalCauseType() {
+        publisher.publish(Metrics.of("my-failover")
+            .collect("action", "recover")
+            .collect("exception-type", "com.societegenerale.failover.aspect.ExecutionException")
+            .collect("exception-cause-type", "java.lang.IllegalStateException")
+            .collect("exception-final-cause-type", "java.net.SocketTimeoutException")
+            .collect("is-recovered", "false")
+            .collect("is-recovery-failed", "false")
+            .collect("recovery-failure-message", ""));
+
+        Counter counter = registry.get("failover.exception.total")
+            .tag("exception_type", "com.societegenerale.failover.aspect.ExecutionException")
+            .tag("cause_type", "java.lang.IllegalStateException")
+            .tag("final_cause_type", "java.net.SocketTimeoutException")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("recover event with blank final cause — final_cause_type defaults to 'none'")
+    void shouldDefaultFinalCauseTypeToNoneWhenBlank() {
+        publisher.publish(recoverMetrics("my-failover", "false", "false",
+            "java.lang.RuntimeException", "java.io.IOException"));
+
+        Counter counter = registry.get("failover.exception.total")
+            .tag("final_cause_type", "none")
+            .counter();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
     // ── timing ───────────────────────────────────────────────────────────────
 
     @Test
