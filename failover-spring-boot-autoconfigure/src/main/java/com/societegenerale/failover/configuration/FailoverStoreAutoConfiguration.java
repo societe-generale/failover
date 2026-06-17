@@ -122,25 +122,38 @@ public class FailoverStoreAutoConfiguration {
     }
 
     /**
-     * Merges the operator-configured payload-class allowlist with the packages of scanner-discovered
-     * payload types. JDK packages ({@code java.*}, {@code javax.*}, {@code jakarta.*}) are never added —
-     * whitelisting them would re-open the deserialization-gadget surface this control closes.
+     * Merges the operator-configured payload-class allowlist with the scanner-discovered payload types.
+     *
+     * <p><b>Exact class names, not package prefixes (audit I-02).</b> Each discovered {@code @Failover}
+     * payload type is added by its <em>exact</em> fully-qualified class name, granting deserialization
+     * rights to precisely that type rather than to every class sharing its package. This shrinks the
+     * deserialization-gadget surface: a malicious class that merely lives in the same package as a real
+     * payload is no longer implicitly trusted.
+     *
+     * <p>JDK / platform packages ({@code java.*}, {@code javax.*}, {@code jakarta.*}) are never added —
+     * whitelisting them would re-open the very gadget surface this control closes.
+     *
+     * <p>Operators may still configure broader <em>package-prefix</em> grants explicitly via
+     * {@code failover.store.allowed-payload-classes} (needed for polymorphic payloads whose stored
+     * runtime subtype differs from the declared return type the scanner sees). Those broad grants are
+     * logged with a WARN at resolution time (see {@code JsonSerializer}).
      *
      * @param configured operator entries from {@code failover.store.allowed-payload-classes}
+     *                   (exact class names or package prefixes)
      * @param scanner    the failover scanner, or {@code null} if unavailable
-     * @return the merged allowlist (exact names + package prefixes); empty means allow-all
+     * @return the merged allowlist (exact class names from the scanner + operator entries); empty means allow-all
      */
     static List<String> mergeAllowedPayloadClasses(List<String> configured, @Nullable FailoverScanner scanner) {
         Set<String> merged = new LinkedHashSet<>(configured);
         if (scanner != null) {
             for (Class<?> payloadType : scanner.findAllPayloadTypes()) {
                 String packageName = payloadType.getPackageName();
-                if (!packageName.isEmpty()
-                        && !packageName.startsWith("java.")
-                        && !packageName.startsWith("javax.")
-                        && !packageName.startsWith("jakarta.")) {
-                    merged.add(packageName);
+                if (packageName.startsWith("java.")
+                        || packageName.startsWith("javax.")
+                        || packageName.startsWith("jakarta.")) {
+                    continue; // never whitelist JDK / platform types — gadget surface
                 }
+                merged.add(payloadType.getName()); // exact FQCN, not the package prefix (I-02)
             }
         }
         return List.copyOf(merged);
@@ -276,10 +289,10 @@ public class FailoverStoreAutoConfiguration {
          * unless a {@link Serializer} bean is already present.
          *
          * <p>The deserialization allowlist is resolved lazily (after the scanner has run) by merging
-         * two sources: the packages of every {@code @Failover} payload type discovered by
-         * {@link FailoverScanner} (secure by default, zero config) and any explicit entries in
-         * {@code failover.store.allowed-payload-classes}. If both are empty the restriction is
-         * disabled (allow-all) for backward compatibility.
+         * two sources: the exact class name of every {@code @Failover} payload type discovered by
+         * {@link FailoverScanner} (secure by default, zero config — audit I-02) and any explicit
+         * entries in {@code failover.store.allowed-payload-classes}. If both are empty the restriction
+         * is disabled (allow-all) for backward compatibility.
          */
         @Bean
         @ConditionalOnMissingBean
