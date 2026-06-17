@@ -351,7 +351,10 @@ function renderCharts(summary) {
         datasets: [{ label: "occurrences", data: summary.topExceptions.map(e => e.count), backgroundColor: fill(p.bad), borderColor: p.bad, borderWidth: 1 }],
     }, {
         ...noLegend, indexAxis: "y", borderRadius: 4,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => summary.topExceptions[items[0].dataIndex].type } } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+            title: items => summary.topExceptions[items[0].dataIndex].type,
+            label: item => `${item.formattedValue} occurrences`,
+        } } },
     });
 
     // Success / Full recovery / Partial recovery. "recovered" includes partials, so full = recovered − partial.
@@ -388,6 +391,8 @@ function renderCharts(summary) {
         datasets: Object.entries(apiFailures.series).map(([name, data], i) => ({
             label: name, data, borderColor: cycle[i % cycle.length], backgroundColor: fill(cycle[i % cycle.length]), ...line,
         })),
+    }, {
+        interaction: { mode: "index", intersect: false },
     });
 }
 
