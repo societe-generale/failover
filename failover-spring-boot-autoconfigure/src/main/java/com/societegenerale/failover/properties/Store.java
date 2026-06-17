@@ -47,6 +47,13 @@ public class Store {
      */
     private boolean async = true;
 
+    /**
+     * Back-pressure settings for the async store executor (bound to {@code failover.store.async-executor.*}).
+     * Only relevant when {@link #async} is {@code true}. Unbounded by default.
+     */
+    @NestedConfigurationProperty
+    private AsyncExecutor asyncExecutor = new AsyncExecutor();
+
     @NestedConfigurationProperty
     private Inmemory inmemory = new Inmemory();
 

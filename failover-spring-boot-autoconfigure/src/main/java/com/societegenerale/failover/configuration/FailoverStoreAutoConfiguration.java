@@ -26,6 +26,7 @@ import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.Jdbc;
 import com.societegenerale.failover.properties.MultiTenant;
 import com.societegenerale.failover.properties.StoreType;
+import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.store.async.FailoverStoreAsync;
 import com.societegenerale.failover.store.caffeine.FailoverStoreCaffeine;
 import com.societegenerale.failover.store.inmemory.FailoverStoreInmemory;
@@ -113,15 +114,27 @@ public class FailoverStoreAutoConfiguration {
      * <p>Applications can override by declaring a bean named {@code failoverTaskExecutor}.
      * Uses virtual threads when available (JDK 21+), otherwise platform threads.
      *
-     * @return virtual-thread {@link SimpleAsyncTaskExecutor} named {@code failover-async-*}
+     * <p>Unbounded by default. When {@code failover.store.async-executor.concurrency-limit > 0} the
+     * virtual-thread executor is wrapped in a {@link BoundedTaskExecutor} that caps concurrently
+     * in-flight writes and applies the configured {@code rejection-policy} on overload (audit R-2);
+     * accepted tasks still run on virtual threads.
+     *
+     * @return virtual-thread {@link SimpleAsyncTaskExecutor} (optionally bounded) named {@code failover-async-*}
      */
     @Bean("failoverTaskExecutor")
     @ConditionalOnBean(TenantStoreFactory.class)
     @ConditionalOnMissingBean(name = "failoverTaskExecutor")
     @ConditionalOnProperty(prefix = "failover.store", name = "async", havingValue = "true", matchIfMissing = true)
-    public TaskExecutor failoverTaskExecutor() {
+    public TaskExecutor failoverTaskExecutor(FailoverProperties properties) {
         var executor = new SimpleAsyncTaskExecutor("failover-async-");
         executor.setVirtualThreads(true);
+        var asyncExecutor = properties.getStore().getAsyncExecutor();
+        if (asyncExecutor.getConcurrencyLimit() > 0) {
+            log.info("Failover async store executor bounded: concurrencyLimit={}, rejectionPolicy={}.",
+                    asyncExecutor.getConcurrencyLimit(), asyncExecutor.getRejectionPolicy());
+            return new BoundedTaskExecutor(executor, asyncExecutor.getConcurrencyLimit(),
+                    asyncExecutor.getRejectionPolicy(), "failover-async");
+        }
         return executor;
     }
 
