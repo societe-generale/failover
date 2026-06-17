@@ -34,12 +34,6 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
         </dependency>
-        <!-- Ships the access-control gate active out of the box: when the dashboard is enabled it sits
-             behind a role rather than failing closed for a missing dependency (design doc §9 gate 4). -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
     </dependencies>
 
 </project>
