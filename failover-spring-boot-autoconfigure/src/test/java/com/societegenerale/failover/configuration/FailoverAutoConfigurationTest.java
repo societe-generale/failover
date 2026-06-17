@@ -54,6 +54,7 @@ import io.micrometer.tracing.Tracer;
 import org.jspecify.annotations.NonNull;
 import org.mockito.Mockito;
 import org.springframework.core.task.TaskExecutor;
+import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -435,10 +436,39 @@ class FailoverAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("scatterGatherExecutor is unbounded by default (not wrapped)")
+        void scatterGatherExecutorUnboundedByDefault() {
+            assertThat(applicationContext.getBean("scatterGatherExecutor", TaskExecutor.class))
+                    .isNotInstanceOf(BoundedTaskExecutor.class);
+        }
+
+        @Test
         @DisplayName("contextPropagator is still MdcContextPropagator — parallel mode does not change propagator")
         void contextPropagatorUnchangedWhenParallelEnabled() {
             ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
             assertThat(propagator).isInstanceOf(MdcContextPropagator.class);
+        }
+    }
+
+    // ── failover.scatter.concurrency-limit > 0 ──────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {
+            "failover.scatter.parallel=true",
+            "failover.scatter.concurrency-limit=4",
+            "failover.scatter.rejection-policy=DISCARD"})
+    @DisplayName("when failover.scatter.concurrency-limit > 0")
+    class WhenScatterExecutorBounded {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("scatterGatherExecutor is wrapped in a BoundedTaskExecutor")
+        void scatterGatherExecutorBounded() {
+            assertThat(applicationContext.getBean("scatterGatherExecutor", TaskExecutor.class))
+                    .isInstanceOf(BoundedTaskExecutor.class);
         }
     }
 

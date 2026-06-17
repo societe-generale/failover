@@ -64,6 +64,12 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Added
 
+- Async executor back-pressure guard (audit R-2). The async store executor and the scatter/gather
+  executor can now be bounded: `failover.store.async-executor.concurrency-limit` /
+  `failover.scatter.concurrency-limit` cap concurrently in-flight tasks, with a
+  `*.rejection-policy` (`DISCARD` default / `CALLER_RUNS` / `ABORT`) applied on overload. Bound via a
+  `BoundedTaskExecutor` decorator that keeps accepted tasks on virtual threads — no thread-pool swap.
+  Unbounded by default (`limit=0`), so existing behaviour is unchanged until configured
 - **`failover-dashboard`** + **`failover-dashboard-spring-boot-starter`** — an opt-in, secure-by-default
   embedded observability dashboard. A read-only JSON API (`/failover-dashboard/api/config|metrics|health`,
   opt-in `/metrics/series`) and a self-contained Chart.js UI over the existing `FailoverScanner` config
