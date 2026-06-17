@@ -82,88 +82,106 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
 
     private final PayloadGather<T, R> payloadGather;
 
-    /**
-     * Full constructor — use when parallel scatter, context propagator and/or a slice timeout is required.
-     *
-     * @param delegateT            handler for composite-type operations
-     * @param delegateR            handler for slice-type operations
-     * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
-     * @param executor             executor for parallel slice dispatch; {@code null} = sequential
-     * @param contextPropagator    context propagator for executor threads; use {@link ContextPropagator#noOp()} when not needed
-     * @param timeout              per-slice timeout for the parallel path; {@code null} = wait indefinitely.
-     *                             On timeout a recover slice is treated as not recovered (no data) rather than
-     *                             hanging the business thread; a store slice surfaces the timeout to the caller
-     *                             (already isolated by {@code BasicFailoverExecution}). Ignored on the sequential path.
-     */
-    public ScatterGatherFailoverHandler(
-            FailoverHandler<T> delegateT,
-            FailoverHandler<R> delegateR,
-            PayloadSplitterLookup<T, R> payloadSplitterLookup,
-            @Nullable Executor executor,
-            ContextPropagator contextPropagator,
-            @Nullable Duration timeout) {
-        this(delegateT, delegateR, payloadSplitterLookup, executor, contextPropagator, timeout, null);
+    private ScatterGatherFailoverHandler(Builder<T, R> builder) {
+        this.delegateT = builder.delegateT;
+        this.delegateR = builder.delegateR;
+        var splitterInvoker = new SplitterInvoker<>(builder.payloadSplitterLookup);
+        var sliceDispatcher = new SliceDispatcher<R>(builder.executor, builder.contextPropagator, builder.timeout);
+        this.payloadScatter = new PayloadScatter<>(builder.delegateR, splitterInvoker, sliceDispatcher);
+        this.payloadGather = new PayloadGather<>(builder.delegateR, splitterInvoker, sliceDispatcher, builder.observablePublisher);
     }
 
     /**
-     * Full constructor with a partial-recovery observability sink. As the six-argument constructor,
-     * plus an {@link ObservablePublisher} the gather side uses to emit a {@code recover-partial}
-     * metric when some (but not all) slices are recovered (audit I-04). Pass {@code null} to disable it.
+     * Creates a builder seeded with the three required collaborators.
      *
      * @param delegateT             handler for composite-type operations
      * @param delegateR             handler for slice-type operations
      * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
-     * @param executor              executor for parallel slice dispatch; {@code null} = sequential
-     * @param contextPropagator     context propagator for executor threads
-     * @param timeout               per-slice timeout for the parallel path; {@code null} = wait indefinitely
-     * @param observablePublisher   sink for the partial-recovery metric; {@code null} = none
+     * @param <T>                   composite payload type
+     * @param <R>                   slice payload type
+     * @return a new {@link Builder}
      */
-    public ScatterGatherFailoverHandler(
-            FailoverHandler<T> delegateT,
-            FailoverHandler<R> delegateR,
-            PayloadSplitterLookup<T, R> payloadSplitterLookup,
-            @Nullable Executor executor,
-            ContextPropagator contextPropagator,
-            @Nullable Duration timeout,
-            @Nullable ObservablePublisher observablePublisher) {
-        this.delegateT = delegateT;
-        this.delegateR = delegateR;
-        var splitterInvoker = new SplitterInvoker<>(payloadSplitterLookup);
-        var sliceDispatcher = new SliceDispatcher<R>(executor, contextPropagator, timeout);
-        this.payloadScatter = new PayloadScatter<>(delegateR, splitterInvoker, sliceDispatcher);
-        this.payloadGather = new PayloadGather<>(delegateR, splitterInvoker, sliceDispatcher, observablePublisher);
-    }
-
-    /**
-     * Parallel constructor without an explicit timeout (waits indefinitely). Retained for backward compatibility.
-     *
-     * @param delegateT            handler for composite-type operations
-     * @param delegateR            handler for slice-type operations
-     * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
-     * @param executor             executor for parallel slice dispatch; {@code null} = sequential
-     * @param contextPropagator    context propagator for executor threads; use {@link ContextPropagator#noOp()} when not needed
-     */
-    public ScatterGatherFailoverHandler(
-            FailoverHandler<T> delegateT,
-            FailoverHandler<R> delegateR,
-            PayloadSplitterLookup<T, R> payloadSplitterLookup,
-            @Nullable Executor executor,
-            ContextPropagator contextPropagator) {
-        this(delegateT, delegateR, payloadSplitterLookup, executor, contextPropagator, null);
-    }
-
-    /**
-     * Sequential constructor — no executor, no context propagator. Backward-compatible default.
-     *
-     * @param delegateT             handler for composite-type operations
-     * @param delegateR             handler for slice-type operations
-     * @param payloadSplitterLookup lookup for the named {@link PayloadSplitter}
-     */
-    public ScatterGatherFailoverHandler(
+    public static <T, R> Builder<T, R> builder(
             FailoverHandler<T> delegateT,
             FailoverHandler<R> delegateR,
             PayloadSplitterLookup<T, R> payloadSplitterLookup) {
-        this(delegateT, delegateR, payloadSplitterLookup, null, ContextPropagator.noOp(), null);
+        return new Builder<>(delegateT, delegateR, payloadSplitterLookup);
+    }
+
+    /**
+     * Builder for {@link ScatterGatherFailoverHandler}. The three constructor collaborators
+     * ({@code delegateT}, {@code delegateR}, {@code payloadSplitterLookup}) are required; the
+     * remaining options default to sequential dispatch with the no-op {@link ContextPropagator},
+     * no slice timeout and no partial-recovery sink.
+     *
+     * @param <T> composite payload type
+     * @param <R> slice payload type
+     */
+    public static final class Builder<T, R> {
+
+        private final FailoverHandler<T> delegateT;
+        private final FailoverHandler<R> delegateR;
+        private final PayloadSplitterLookup<T, R> payloadSplitterLookup;
+        private @Nullable Executor executor;
+        private ContextPropagator contextPropagator = ContextPropagator.noOp();
+        private @Nullable Duration timeout;
+        private @Nullable ObservablePublisher observablePublisher;
+
+        private Builder(
+                FailoverHandler<T> delegateT,
+                FailoverHandler<R> delegateR,
+                PayloadSplitterLookup<T, R> payloadSplitterLookup) {
+            this.delegateT = delegateT;
+            this.delegateR = delegateR;
+            this.payloadSplitterLookup = payloadSplitterLookup;
+        }
+
+        /**
+         * @param executor executor for parallel slice dispatch; {@code null} = sequential (default)
+         * @return this builder
+         */
+        public Builder<T, R> executor(@Nullable Executor executor) {
+            this.executor = executor;
+            return this;
+        }
+
+        /**
+         * @param contextPropagator context propagator for executor threads; defaults to {@link ContextPropagator#noOp()}
+         * @return this builder
+         */
+        public Builder<T, R> contextPropagator(ContextPropagator contextPropagator) {
+            this.contextPropagator = contextPropagator;
+            return this;
+        }
+
+        /**
+         * @param timeout per-slice timeout for the parallel path; {@code null} = wait indefinitely (default).
+         *                On timeout a recover slice is treated as not recovered (no data) rather than hanging
+         *                the business thread; a store slice surfaces the timeout to the caller. Ignored on the
+         *                sequential path.
+         * @return this builder
+         */
+        public Builder<T, R> timeout(@Nullable Duration timeout) {
+            this.timeout = timeout;
+            return this;
+        }
+
+        /**
+         * @param observablePublisher sink the gather side uses to emit a {@code recover-partial} metric when
+         *                            some (but not all) slices are recovered (audit I-04); {@code null} = none (default)
+         * @return this builder
+         */
+        public Builder<T, R> observablePublisher(@Nullable ObservablePublisher observablePublisher) {
+            this.observablePublisher = observablePublisher;
+            return this;
+        }
+
+        /**
+         * @return a new {@link ScatterGatherFailoverHandler} configured from this builder
+         */
+        public ScatterGatherFailoverHandler<T, R> build() {
+            return new ScatterGatherFailoverHandler<>(this);
+        }
     }
 
     /**
