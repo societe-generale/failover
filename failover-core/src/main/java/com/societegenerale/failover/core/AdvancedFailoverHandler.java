@@ -29,7 +29,8 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static com.societegenerale.failover.core.observable.Metrics.of;
-import static com.societegenerale.failover.core.util.CommonsUtil.isNotNullOrEmpty;
+import static com.societegenerale.failover.core.util.CommonsUtil.*;
+import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
 
 /**
  * {@link FailoverHandler} decorator that publishes metrics on every store/recover operation
@@ -82,14 +83,17 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
             recoveryFailureMsg = exception.getMessage();
             log.error("Ignoring Failover Exception !! Exception occurred while trying to 'recover' the payload for failover. This will impact only the failover flow. However a 'null' payload will be handled by RecoveredPayloadHandler and returned.", exception);
         } finally {
-            Throwable rootCause = cause.getCause();
+            Throwable rootCause = cause.getCause();        // first-level cause
+            Throwable finalCause = finalRootCauseOf(cause);      // innermost cause (== rootCause when single level)
             observablePublisher.publish(baseMetrics(failover, method, "recover")
                     .collect("expiry-duration", failoverExpiryExtractor.expiryDuration(failover))
                     .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
                     .collect("exception-type", cause.getClass().getCanonicalName())
                     .collect("exception-cause-type", canonicalTypeOf(rootCause))
+                    .collect("exception-final-cause-type", canonicalTypeOf(finalCause))
                     .collect("exception-message", cause.getMessage())
                     .collect("exception-cause-message", messageOf(rootCause))
+                    .collect("exception-final-cause-message", messageOf(finalCause))
                     .collect("is-recovered", isNotNullOrEmpty(result))
                     .collect("is-recovery-failed", recoveryFailureMsg != null)
                     .collect("recovery-failure-message", recoveryFailureMsg)
@@ -121,28 +125,7 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
     private Metrics baseMetrics(@NonNull Failover failover, @NonNull Method method, String action) {
         return of(failover.name())
                 .collect("action", action)
-                .collect("domain", domainOf(failover))
+                .collect("domain", effectiveName(failover))
                 .collect("method", methodId(method));
-    }
-
-    /** Failover domain, falling back to the failover {@code name} when no explicit domain is set. */
-    private static String domainOf(Failover failover) {
-        String domain = failover.domain();
-        return (domain == null || domain.isBlank()) ? failover.name() : domain;
-    }
-
-    /** Intercepted method identity as {@code SimpleClassName#methodName}. */
-    private static String methodId(@NonNull Method method) {
-        return method.getDeclaringClass().getSimpleName() + "#" + method.getName();
-    }
-
-    /** Null-safe canonical class name; {@code null} is coerced to {@code ""} by {@link com.societegenerale.failover.core.observable.Metrics#collect}. */
-    private static String canonicalTypeOf(Throwable throwable) {
-        return throwable == null ? null : throwable.getClass().getCanonicalName();
-    }
-
-    /** Null-safe message; {@code null} is coerced to {@code ""} by {@link com.societegenerale.failover.core.observable.Metrics#collect}. */
-    private static String messageOf(Throwable throwable) {
-        return throwable == null ? null : throwable.getMessage();
     }
 }

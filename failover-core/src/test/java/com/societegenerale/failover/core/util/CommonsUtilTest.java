@@ -20,12 +20,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("CommonsUtil — type-specific null/empty checks")
 class CommonsUtilTest {
@@ -134,6 +136,82 @@ class CommonsUtilTest {
             assertThat(CommonsUtil.isNotNullOrEmpty(Map.of("k", "v"))).isTrue();
             assertThat(CommonsUtil.isNotNullOrEmpty(new Object[]{"x"})).isTrue();
             assertThat(CommonsUtil.isNotNullOrEmpty("data")).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("exception-chain inspection")
+    class ExceptionChain {
+
+        @Test
+        @DisplayName("finalRootCauseOf returns null for null input")
+        void nullInput() {
+            assertThat(CommonsUtil.finalRootCauseOf(null)).isNull();
+        }
+
+        @Test
+        @DisplayName("finalRootCauseOf returns null when the throwable has no cause")
+        void noCause() {
+            assertThat(CommonsUtil.finalRootCauseOf(new RuntimeException("x"))).isNull();
+        }
+
+        @Test
+        @DisplayName("finalRootCauseOf returns the single cause for a one-level chain")
+        void singleLevel() {
+            IllegalStateException cause = new IllegalStateException("root");
+            assertThat(CommonsUtil.finalRootCauseOf(new RuntimeException("wrap", cause))).isSameAs(cause);
+        }
+
+        @Test
+        @DisplayName("finalRootCauseOf returns the innermost cause for a deep chain")
+        void deepChain() {
+            var innermost = new java.net.SocketTimeoutException("timeout");
+            var mid = new IllegalStateException("mid", innermost);
+            var top = new RuntimeException("top", mid);
+            assertThat(CommonsUtil.finalRootCauseOf(top)).isSameAs(innermost);
+        }
+
+        @Test
+        @DisplayName("finalRootCauseOf stops on a self-referential cause chain without looping")
+        void selfReferentialCause() {
+            RuntimeException selfCausing = new RuntimeException("loop") {
+                @Override public synchronized Throwable getCause() { return this; }
+            };
+            assertThat(CommonsUtil.finalRootCauseOf(new RuntimeException("wrap", selfCausing)))
+                    .isSameAs(selfCausing);
+        }
+
+        @Test
+        @DisplayName("canonicalTypeOf is null-safe and returns the canonical class name")
+        void canonicalType() {
+            assertThat(CommonsUtil.canonicalTypeOf(null)).isNull();
+            assertThat(CommonsUtil.canonicalTypeOf(new java.net.SocketTimeoutException()))
+                    .isEqualTo("java.net.SocketTimeoutException");
+        }
+
+        @Test
+        @DisplayName("messageOf is null-safe and returns the throwable message")
+        void message() {
+            assertThat(CommonsUtil.messageOf(null)).isNull();
+            assertThat(CommonsUtil.messageOf(new RuntimeException("boom"))).isEqualTo("boom");
+        }
+    }
+
+    @Nested
+    @DisplayName("methodId")
+    class MethodIdentity {
+
+        @Test
+        @DisplayName("formats as SimpleClassName#methodName")
+        void formatsMethodId() throws NoSuchMethodException {
+            assertThat(CommonsUtil.methodId(String.class.getMethod("toString"))).isEqualTo("String#toString");
+        }
+
+        @Test
+        @DisplayName("rejects a null method")
+        void rejectsNullMethod() {
+            assertThatThrownBy(() -> CommonsUtil.methodId(null))
+                    .isInstanceOf(NullPointerException.class);
         }
     }
 }

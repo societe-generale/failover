@@ -33,6 +33,7 @@ public final class FailoverNameResolver {
 
     /**
      * Returns {@code failover.domain()} when non-blank, otherwise {@code failover.name()}.
+     * {@code domain()} is an annotation attribute defaulting to {@code ""}, so it is never {@code null}.
      *
      * @param failover the annotation instance
      * @return effective name used as {@code FAILOVER_NAME} in the store and as UUID key prefix
