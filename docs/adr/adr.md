@@ -2728,3 +2728,68 @@ applied **only** in the JDBC store assembly.
   sense of security.
 
 ___
+
+## ADR 57 — Async Executor Back-pressure (bounded concurrency + rejection policy)
+
+**Date : 17-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The async store executor (`failoverTaskExecutor`) and the scatter/gather executor (`scatterGatherExecutor`)
+are both virtual-thread `SimpleAsyncTaskExecutor`s with **no bound** and **no rejection policy** (audit R-2).
+Every submitted task spawns a virtual thread immediately.
+
+Failure storms are exactly when the async store fires hardest: upstream down ⇒ every `@Failover` call
+fails ⇒ every call enqueues an async `store`/`delete`/`cleanByExpiry`. With no ceiling, unbounded tasks
+pile up, each potentially holding a pooled JDBC connection — exhausting the connection pool and the heap,
+so background cache writes can starve the application's real traffic. The same unbounded fan-out applies
+to scatter slices across many concurrent calls.
+
+Constraints and forces:
+
+* Virtual threads must be preserved — a `ThreadPoolTaskExecutor` (the "natural" bounded-queue option)
+  would swap them for a platform pool, losing the JDK 21 benefit the executors were built on.
+* `SimpleAsyncTaskExecutor` has no real queue + rejection policy: its only native overflow is
+  `concurrencyLimit`, which **blocks** the caller. We want a choice of overflow behaviour, including
+  non-blocking drop.
+* Stored data is a regenerable cache, so under saturation dropping a write is acceptable — often
+  preferable to back-pressuring the business thread.
+* The change must be backward compatible: existing deployments must behave identically until opted in.
+
+### Decision
+
+Introduce a `BoundedTaskExecutor` decorator (in `failover-store-async`) and make both executors optionally
+bounded.
+
+* **Admission guard, not a pool.** `BoundedTaskExecutor` wraps a delegate `TaskExecutor` with a
+  `Semaphore(limit)`; accepted tasks run on the **delegate**, so the virtual-thread
+  `SimpleAsyncTaskExecutor` keeps running tasks on virtual threads. The decorator adds a counter, never
+  its own threads. The permit is released in a `finally` around the task, and also if the delegate refuses
+  the task, so permits never leak.
+* **Rejection policy on overload.** When at the limit: `DISCARD` (drop + `WARN`, non-blocking),
+  `CALLER_RUNS` (run on the calling thread — back-pressure, not a virtual thread), or `ABORT` (throw
+  `RejectedExecutionException`).
+* **Opt-in, unbounded by default.** `failover.store.async-executor.concurrency-limit` /
+  `failover.scatter.concurrency-limit` default to `0` = unbounded (current behaviour). Only a positive
+  value wraps the executor. Default policy is `DISCARD` (regenerable cache).
+* **Namespace.** Async-store knobs under `failover.store.async-executor.*` (sibling of the `async` boolean,
+  which cannot also be a nested object); scatter knobs under `failover.scatter.*` alongside `parallel` /
+  `timeout`.
+
+### Consequences
+
+* Operators can cap the blast radius of a failure storm with one property; the default keeps existing
+  behaviour unchanged.
+* `DISCARD` under saturation loses a regenerable write (logged at `WARN`) — the deliberate trade to keep
+  async non-blocking. `CALLER_RUNS` is available for teams that must never lose a write, at the cost of
+  caller latency and giving up the virtual thread for that task.
+* Virtual threads are retained on the normal path regardless of policy — the bound is admission control,
+  not a thread-model change.
+* A bound that is too low silently discards/blocks under normal load; the startup log records the effective
+  limit and policy so a misconfiguration is visible.
+
+___

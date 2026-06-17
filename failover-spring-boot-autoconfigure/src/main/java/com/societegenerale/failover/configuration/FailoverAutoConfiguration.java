@@ -52,6 +52,7 @@ import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
+import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ObservableScheduler;
 import lombok.extern.slf4j.Slf4j;
@@ -259,14 +260,26 @@ public class FailoverAutoConfiguration {
      *
      * <p>Override by declaring a bean named {@code scatterGatherExecutor}.
      *
-     * @return virtual-thread {@link SimpleAsyncTaskExecutor} named {@code failover-scatter-*}
+     * <p>Unbounded by default. When {@code failover.scatter.concurrency-limit > 0} the virtual-thread
+     * executor is wrapped in a {@link BoundedTaskExecutor} that caps concurrent slice fan-out and
+     * applies the configured {@code rejection-policy} on overload (audit R-2); accepted slices still
+     * run on virtual threads.
+     *
+     * @return virtual-thread {@link SimpleAsyncTaskExecutor} (optionally bounded) named {@code failover-scatter-*}
      */
     @ConditionalOnMissingBean(name = "scatterGatherExecutor")
     @ConditionalOnProperty(prefix = "failover.scatter", name = "parallel", havingValue = "true")
     @Bean(name = "scatterGatherExecutor")
-    public TaskExecutor scatterGatherExecutor() {
+    public TaskExecutor scatterGatherExecutor(FailoverProperties properties) {
         var executor = new SimpleAsyncTaskExecutor("failover-scatter-");
         executor.setVirtualThreads(true);
+        var scatter = properties.getScatter();
+        if (scatter.getConcurrencyLimit() > 0) {
+            log.info("ScatterGather executor bounded: concurrencyLimit={}, rejectionPolicy={} (virtual threads).",
+                    scatter.getConcurrencyLimit(), scatter.getRejectionPolicy());
+            return new BoundedTaskExecutor(executor, scatter.getConcurrencyLimit(),
+                    scatter.getRejectionPolicy(), "failover-scatter");
+        }
         log.info("ScatterGather executor configured with virtual threads (failover.scatter.parallel=true).");
         return executor;
     }

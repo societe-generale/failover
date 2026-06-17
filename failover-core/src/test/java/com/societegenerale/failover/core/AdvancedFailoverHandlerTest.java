@@ -406,6 +406,55 @@ class AdvancedFailoverHandlerTest {
                 .containsEntry("failover-method", "List#size");
     }
 
+    // ── is-recovered reflects emptiness of the recovered payload (CommonsUtil.isNotNullOrEmpty) ──────
+
+    @Test
+    @DisplayName("empty collection recovered ⇒ is-recovered=false")
+    void emptyCollectionRecoveredIsNotRecovered() {
+        assertIsRecoveredFor(List.of(), "false");
+    }
+
+    @Test
+    @DisplayName("collection of only nulls recovered ⇒ is-recovered=false")
+    void allNullCollectionRecoveredIsNotRecovered() {
+        assertIsRecoveredFor(java.util.Arrays.asList(null, null), "false");
+    }
+
+    @Test
+    @DisplayName("empty array recovered ⇒ is-recovered=false")
+    void emptyArrayRecoveredIsNotRecovered() {
+        assertIsRecoveredFor(new Object[0], "false");
+    }
+
+    @Test
+    @DisplayName("empty map recovered ⇒ is-recovered=false")
+    void emptyMapRecoveredIsNotRecovered() {
+        assertIsRecoveredFor(java.util.Map.of(), "false");
+    }
+
+    @Test
+    @DisplayName("non-empty collection recovered ⇒ is-recovered=true")
+    void nonEmptyCollectionRecoveredIsRecovered() {
+        assertIsRecoveredFor(List.of("data"), "true");
+    }
+
+    /**
+     * Recovers a payload of an arbitrary container type and asserts the published {@code is-recovered}
+     * flag. Uses an {@code Object}-typed handler because the shared mocks are {@code String}-typed.
+     */
+    @SuppressWarnings("unchecked")
+    private void assertIsRecoveredFor(Object recovered, String expectedIsRecovered) {
+        FailoverHandler<Object> objectHandler = org.mockito.Mockito.mock(FailoverHandler.class);
+        AdvancedFailoverHandler<Object> handler = new AdvancedFailoverHandler<>(
+                objectHandler, recoveredPayloadHandler, observablePublisher, new BasicFailoverExpiryExtractor());
+        given(objectHandler.recover(failover, METHOD, ARGS, Object.class, cause)).willReturn(recovered);
+
+        handler.recover(failover, METHOD, ARGS, Object.class, cause);
+
+        assertThat(observablePublisher.getMetrics().getInfo())
+                .containsEntry("failover-is-recovered", expectedIsRecovered);
+    }
+
     interface SampleService {
         List<String> findAll();
     }

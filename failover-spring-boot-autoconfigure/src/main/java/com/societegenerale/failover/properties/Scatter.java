@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.properties;
 
+import com.societegenerale.failover.store.async.RejectionPolicy;
 import lombok.Data;
 
 import java.time.Duration;
@@ -51,4 +52,18 @@ public class Scatter {
      * <p>Default {@code 10s}. Set to {@code null}/empty to wait indefinitely (legacy behaviour).
      */
     private Duration timeout = Duration.ofSeconds(10);
+
+    /**
+     * Max concurrently in-flight scatter slices across all parallel dispatches (audit R-2). {@code 0}
+     * (or negative) = unbounded (default, current behaviour). A positive value caps slice fan-out,
+     * still running accepted slices on virtual threads.
+     */
+    private int concurrencyLimit = 0;
+
+    /**
+     * What to do when a slice is submitted while at the {@link #concurrencyLimit}. Only consulted when
+     * the limit is positive. Default {@link RejectionPolicy#DISCARD} — a discarded recover slice yields
+     * no data (treated as not recovered), which the gather step already tolerates.
+     */
+    private RejectionPolicy rejectionPolicy = RejectionPolicy.DISCARD;
 }
