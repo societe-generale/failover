@@ -17,6 +17,7 @@
 package com.societegenerale.failover.store.async;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.core.task.TaskExecutor;
 
 import java.util.concurrent.RejectedExecutionException;
@@ -62,7 +63,7 @@ public class BoundedTaskExecutor implements TaskExecutor {
     }
 
     @Override
-    public void execute(Runnable task) {
+    public void execute(@NonNull Runnable task) {
         if (!permits.tryAcquire()) {
             reject(task);
             return;
