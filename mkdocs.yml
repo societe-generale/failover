@@ -128,6 +128,7 @@ nav:
     - Key Generation: concepts/key-generation.md
     - Scatter / Gather: concepts/scatter-gather.md
     - Domain Grouping: concepts/domain.md
+    - Payload Encryption: concepts/payload-encryption.md
   - Configuration:
     - configuration/index.md
     - Properties Reference: configuration/properties-reference.md
@@ -144,6 +145,7 @@ nav:
     - Payload Splitter: how-to/payload-splitter.md
     - Context Propagation: how-to/context-propagation.md
     - Payload Column Resolver: how-to/payload-column-resolver.md
+    - Payload Encryption: how-to/payload-encryption.md
     - Database Resolver: how-to/database-resolver.md
     - Failover Store Query Resolver: how-to/failover-store-query-resolver.md
     - Observability: how-to/observability.md

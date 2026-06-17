@@ -17,6 +17,7 @@
 package com.societegenerale.failover.store.jdbc.serializer;
 
 import com.societegenerale.failover.core.store.FailoverStoreException;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.ObjectMapper;
 
@@ -47,6 +48,7 @@ import static java.lang.Class.forName;
  * @author Anand Manissery
  * @see Serializer
  */
+@Slf4j
 public class JsonSerializer implements Serializer {
 
     private final ObjectMapper objectMapper;
@@ -170,9 +172,46 @@ public class JsonSerializer implements Serializer {
                     List<String> supplied = allowedPayloadClassesSupplier.get();
                     resolved = supplied == null ? List.of() : List.copyOf(supplied);
                     resolvedAllowedPayloadClasses = resolved;
+                    logGrantSummary(resolved); // emit the audit summary exactly once, on first resolution
                 }
             }
         }
         return resolved;
+    }
+
+    /**
+     * Logs the effective deserialization allowlist once it is resolved (audit I-02). An empty list is a
+     * fail-open allow-all and is surfaced at WARN; package-prefix grants are broader than exact class
+     * names (they trust every class under the namespace read back from store data) and are also flagged
+     * at WARN so an over-broad grant is visible and auditable rather than silent. Purely observational —
+     * never alters the allowlist or fails resolution.
+     */
+    private void logGrantSummary(List<String> resolved) {
+        if (resolved.isEmpty()) {
+            log.warn("Failover deserialization allowlist is EMPTY — every payload class read back from the "
+                    + "store will be loaded (allow-all). Set failover.store.allowed-payload-classes or rely "
+                    + "on @Failover scanning to restrict which classes may be deserialized.");
+            return;
+        }
+        List<String> prefixGrants = resolved.stream().filter(entry -> !isLoadableClass(entry)).toList();
+        long exactGrants = resolved.size() - prefixGrants.size();
+        log.info("Failover deserialization allowlist resolved: {} exact class grant(s), {} package-prefix grant(s).",
+                exactGrants, prefixGrants.size());
+        if (!prefixGrants.isEmpty()) {
+            log.warn("Failover deserialization allowlist contains {} package-prefix grant(s): {}. A prefix grant "
+                    + "permits EVERY class under that namespace to be deserialized from store data — broader than an "
+                    + "exact class name. Prefer listing exact payload class names in failover.store.allowed-payload-classes "
+                    + "where possible.", prefixGrants.size(), prefixGrants);
+        }
+    }
+
+    /** True when {@code name} resolves to a loadable class (an exact-class grant); false marks a package-prefix grant. */
+    private boolean isLoadableClass(String name) {
+        try {
+            Class.forName(name, false, getClass().getClassLoader());
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 }
