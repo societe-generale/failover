@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -170,6 +171,20 @@ class SpringContextFailoverScannerTest {
         assertThat(scanner.findAllPayloadTypes()).isEmpty();
     }
 
+    @Test
+    @DisplayName("payload-type resolution skips Void, raw and non-Class collection elements; domained failover passes the mismatch filter")
+    void shouldHandleEdgeReturnTypes() {
+        when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[]{"edge"});
+        doReturn(EdgeReturns.class).when(applicationContext).getType("edge");
+
+        scanner.afterSingletonsInstantiated();
+
+        // boxedVoid → skipped (Void); rawList/nested/bi → element unresolvable, skipped; domained → String
+        assertThat(scanner.findAllPayloadTypes()).containsExactly(String.class);
+        assertThat(scanner.findAllFailover()).extracting(Failover::name)
+                .contains("boxed-void", "raw-collection", "nested-generic", "bi-collection", "domained");
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     static class ConcreteReferential {
@@ -215,5 +230,26 @@ class SpringContextFailoverScannerTest {
 
     static class PlainBean {
         public String noAnnotation() { return null; }
+    }
+
+    /** Collection with two type parameters — exercises the {@code args.length == 1} guard. */
+    interface BiCollection<A, B> extends Collection<A> { }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static class EdgeReturns {
+        @Failover(name = "boxed-void")
+        public Void boxedVoid() { return null; }                    // returnType == Void.class
+
+        @Failover(name = "raw-collection")
+        public List rawList() { return null; }                      // generic return is not a ParameterizedType
+
+        @Failover(name = "nested-generic")
+        public List<List<String>> nested() { return null; }         // element arg is not a Class
+
+        @Failover(name = "bi-collection")
+        public BiCollection<String, Integer> bi() { return null; }  // two type args → length != 1
+
+        @Failover(name = "domained", domain = "country")
+        public String domained() { return null; }                   // non-blank domain → passes the filter
     }
 }
