@@ -18,13 +18,19 @@ package com.societegenerale.failover.dashboard;
 
 import com.societegenerale.failover.dashboard.dto.ApiHealth;
 import com.societegenerale.failover.dashboard.dto.ApiKpis;
+import com.societegenerale.failover.dashboard.dto.ExceptionStat;
+import com.societegenerale.failover.dashboard.dto.Latency;
 import com.societegenerale.failover.dashboard.dto.MetricsSummary;
 import com.societegenerale.failover.dashboard.dto.Rates;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Aggregates the existing {@code failover.*} Micrometer counters into the dashboard KPIs and health
@@ -43,6 +49,12 @@ public class DashboardMetricsService {
     private static final String STORE_TOTAL = "failover.store.total";
     private static final String OUTCOME_TOTAL = "failover.recovery.outcome.total";
     private static final String PARTIAL_TOTAL = "failover.recovery.partial.total";
+    private static final String ASYNC_FAILED_TOTAL = "failover.store.async.failed";
+    private static final String DURATION = "failover.operation.duration";
+    private static final String EXCEPTION_TOTAL = "failover.exception.total";
+
+    /** How many top exception types {@link #metricsSummary()} returns. */
+    private static final int TOP_EXCEPTIONS = 8;
 
     private final MeterRegistry registry;
     private final DashboardProperties properties;
@@ -59,7 +71,7 @@ public class DashboardMetricsService {
         List<ApiKpis> perApi = discoveredNames().stream()
                 .map(this::kpisFor)
                 .toList();
-        return new MetricsSummary(overall(perApi), perApi, System.currentTimeMillis());
+        return new MetricsSummary(overall(perApi), perApi, topExceptions(TOP_EXCEPTIONS), System.currentTimeMillis());
     }
 
     /**
@@ -79,8 +91,9 @@ public class DashboardMetricsService {
         long notRecovered = (long) sum(OUTCOME_TOTAL, "name", name, "outcome", "not_recovered");
         long errors = (long) sum(OUTCOME_TOTAL, "name", name, "outcome", "error");
         long partial = (long) sum(PARTIAL_TOTAL, "name", name, null, null);
+        long asyncFailed = (long) sum(ASYNC_FAILED_TOTAL, "name", name, null, null);
         String domain = domainFor(name);
-        return buildKpis(name, domain, success, recovered, notRecovered, errors, partial);
+        return buildKpis(name, domain, success, recovered, notRecovered, errors, partial, asyncFailed, latencyFor(name));
     }
 
     private ApiKpis overall(List<ApiKpis> perApi) {
@@ -89,11 +102,12 @@ public class DashboardMetricsService {
         long notRecovered = perApi.stream().mapToLong(ApiKpis::notRecovered).sum();
         long errors = perApi.stream().mapToLong(ApiKpis::errors).sum();
         long partial = perApi.stream().mapToLong(ApiKpis::partial).sum();
-        return buildKpis(OVERALL, OVERALL, success, recovered, notRecovered, errors, partial);
+        long asyncFailed = perApi.stream().mapToLong(ApiKpis::asyncFailed).sum();
+        return buildKpis(OVERALL, OVERALL, success, recovered, notRecovered, errors, partial, asyncFailed, latencyFor(null));
     }
 
-    private ApiKpis buildKpis(String name, String domain, long success,
-                              long recovered, long notRecovered, long errors, long partial) {
+    private ApiKpis buildKpis(String name, String domain, long success, long recovered, long notRecovered,
+                              long errors, long partial, long asyncFailed, Latency latency) {
         long failover = recovered + notRecovered + errors;
         long total = success + failover;
         Rates rates = new Rates(
@@ -102,7 +116,58 @@ public class DashboardMetricsService {
                 ratio(recovered, failover),
                 ratio(notRecovered + errors, failover),
                 ratio(success + recovered, total));
-        return new ApiKpis(name, domain, total, success, failover, recovered, notRecovered, errors, partial, rates);
+        return new ApiKpis(name, domain, total, success, failover, recovered, notRecovered, errors,
+                partial, asyncFailed, latency, rates);
+    }
+
+    /** Mean/max store and recover latency (ms) for {@code name}, or across all names when {@code name} is null. */
+    private Latency latencyFor(String name) {
+        double[] store = timerStats(name, "store");
+        double[] recover = timerStats(name, "recover");
+        return new Latency(store[0], store[1], recover[0], recover[1]);
+    }
+
+    /**
+     * Aggregates the {@code failover.operation.duration} timers matching {@code action} (and {@code name}
+     * unless null) into {@code [meanMs, maxMs]}. Mean is total-time / count across matched timers.
+     */
+    private double[] timerStats(String name, String action) {
+        long count = 0;
+        double totalMs = 0;
+        double maxMs = 0;
+        for (Timer t : registry.find(DURATION).timers()) {
+            if (name != null && !name.equals(t.getId().getTag("name"))) {
+                continue;
+            }
+            if (!action.equals(t.getId().getTag("action"))) {
+                continue;
+            }
+            count += t.count();
+            totalMs += t.totalTime(TimeUnit.MILLISECONDS);
+            maxMs = Math.max(maxMs, t.max(TimeUnit.MILLISECONDS));
+        }
+        double mean = count == 0 ? 0.0 : totalMs / count;
+        return new double[]{round2(mean), round2(maxMs)};
+    }
+
+    /** Top {@code limit} root exception types triggering failover, summed across all failover points. */
+    private List<ExceptionStat> topExceptions(int limit) {
+        Map<String, Long> byType = new LinkedHashMap<>();
+        for (Counter c : registry.find(EXCEPTION_TOTAL).counters()) {
+            String type = c.getId().getTag("exception_type");
+            if (type != null) {
+                byType.merge(type, (long) c.count(), Long::sum);
+            }
+        }
+        return byType.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(limit)
+                .map(e -> new ExceptionStat(e.getKey(), e.getValue()))
+                .toList();
+    }
+
+    private static double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
     }
 
     private ApiHealth classify(String name, double healthyRate) {

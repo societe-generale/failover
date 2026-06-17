@@ -86,6 +86,71 @@ public class DashboardConfigService {
         return new FailoverHealth(registered == 0 ? "DOWN" : "UP", details);
     }
 
+    /**
+     * Effective global configuration for the framework and the dashboard, grouped for display
+     * ({@code Core}, {@code Store}, {@code Scheduler}, {@code Scatter}, {@code Dashboard}). Each value is
+     * read from the {@link Environment} with the framework default applied when unset.
+     *
+     * <p>Only types, flags, crons, thresholds and paths are exposed — never connection strings,
+     * credentials, or payload data (design doc §9). Insertion order is preserved for a stable, YAML-like
+     * reading order.
+     *
+     * @return ordered map of {@code group → (property key → effective value)}
+     */
+    public Map<String, Map<String, String>> globalSettings() {
+        Map<String, Map<String, String>> groups = new LinkedHashMap<>();
+        groups.put("Core", group(
+                "failover.enabled", "true",
+                "failover.type", "basic",
+                "failover.exception-policy", "rethrow"));
+        groups.put("Store", group(
+                "failover.store.type", "inmemory",
+                "failover.store.async", "true",
+                "failover.store.async-executor.concurrency-limit", "0",
+                "failover.store.async-executor.rejection-policy", "DISCARD",
+                "failover.store.inmemory.max-entries", "10000",
+                "failover.store.caffeine.max-size", "10000",
+                "failover.store.jdbc.table-prefix", "",
+                "failover.store.jdbc.encryption.enabled", "false",
+                "failover.store.jdbc.encryption.cipher", "b64",
+                "failover.store.multitenant.enabled", "false",
+                "failover.store.multitenant.strategy", "TABLE_PREFIX",
+                "failover.store.multitenant.default-tenant", "",
+                "failover.store.multitenant.strict", "false"));
+        groups.put("Scheduler", group(
+                "failover.scheduler.enabled", "true",
+                "failover.scheduler.report-cron", "0 0 0 * * *",
+                "failover.scheduler.cleanup-cron", "0 0 * * * *"));
+        groups.put("Scatter", group(
+                "failover.scatter.parallel", "true",
+                "failover.scatter.timeout", "10s",
+                "failover.scatter.concurrency-limit", "0",
+                "failover.scatter.rejection-policy", "DISCARD"));
+        groups.put("Dashboard", group(
+                "failover.dashboard.enabled", "false",
+                "failover.dashboard.base-path", "/failover-dashboard",
+                "failover.dashboard.exposure.ui", "true",
+                "failover.dashboard.exposure.api", "true",
+                "failover.dashboard.exposure.include", "config, failover-health, metrics, health",
+                "failover.dashboard.security.role", "FAILOVER_ADMIN",
+                "failover.dashboard.security.allow-insecure", "false",
+                "failover.dashboard.history.enabled", "false",
+                "failover.dashboard.history.samples", "120",
+                "failover.dashboard.history.sample-interval-seconds", "15",
+                "failover.dashboard.health.degraded-threshold", "0.99",
+                "failover.dashboard.health.unhealthy-threshold", "0.90"));
+        return groups;
+    }
+
+    /** Builds an ordered {@code key → effective value} map from {@code (key, default)} pairs. */
+    private Map<String, String> group(String... keyDefaultPairs) {
+        Map<String, String> entries = new LinkedHashMap<>();
+        for (int i = 0; i < keyDefaultPairs.length; i += 2) {
+            entries.put(keyDefaultPairs[i], environment.getProperty(keyDefaultPairs[i], keyDefaultPairs[i + 1]));
+        }
+        return entries;
+    }
+
     private ConfigEntry toEntry(Failover f, String storeType, String executionType,
                                 String exceptionPolicy, boolean asyncStore) {
         return new ConfigEntry(
