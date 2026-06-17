@@ -35,4 +35,5 @@ com.societegenerale.failover.store.jdbc
 com.societegenerale.failover.store.jdbc.mapper
 com.societegenerale.failover.store.jdbc.resolver
 com.societegenerale.failover.store.jdbc.serializer
+com.societegenerale.failover.store.jdbc.serializer.cipher
 com.societegenerale.failover.store.multitenant
