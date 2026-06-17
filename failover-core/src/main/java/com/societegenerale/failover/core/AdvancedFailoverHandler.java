@@ -19,8 +19,8 @@ package com.societegenerale.failover.core;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.Metrics;
-import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
+import com.societegenerale.failover.core.payload.RecoveredPayloadHandler;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
@@ -29,6 +29,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static com.societegenerale.failover.core.observable.Metrics.of;
+import static com.societegenerale.failover.core.util.CommonsUtil.isNotNullOrEmpty;
 
 /**
  * {@link FailoverHandler} decorator that publishes metrics on every store/recover operation
@@ -64,7 +65,7 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
             observablePublisher.publish(baseMetrics(failover, method, "store")
                     .collect("expiry-duration", failoverExpiryExtractor.expiryDuration(failover))
                     .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
-                    .collect("is-stored", result != null)
+                    .collect("is-stored", isNotNullOrEmpty(result))
                     .collect("duration-ns", System.nanoTime() - startNanos));
         }
         return result;
@@ -89,7 +90,7 @@ public class AdvancedFailoverHandler<T> implements FailoverHandler<T> {
                     .collect("exception-cause-type", canonicalTypeOf(rootCause))
                     .collect("exception-message", cause.getMessage())
                     .collect("exception-cause-message", messageOf(rootCause))
-                    .collect("is-recovered", result != null)
+                    .collect("is-recovered", isNotNullOrEmpty(result))
                     .collect("is-recovery-failed", recoveryFailureMsg != null)
                     .collect("recovery-failure-message", recoveryFailureMsg)
                     .collect("duration-ns", System.nanoTime() - startNanos));

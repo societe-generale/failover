@@ -56,6 +56,31 @@ Set `async: false` to make all operations synchronous. Required when:
 
 ---
 
+## Bounding the Executor (back-pressure)
+
+By default the executor is **unbounded** — every submitted write spawns a virtual thread immediately. Under a failure storm (upstream down ⇒ every failed call enqueues an async write) this can spawn unbounded tasks, each potentially holding a pooled JDBC connection, exhausting the pool and the heap.
+
+Set a positive `concurrency-limit` to cap the number of concurrently in-flight writes. Accepted tasks still run on virtual threads — the bound is a `BoundedTaskExecutor` admission guard, not a thread-pool swap. When the limit is reached, `rejection-policy` decides what happens:
+
+```yaml title="application.yml"
+failover:
+  store:
+    async: true
+    async-executor:
+      concurrency-limit: 256       # 0 (default) = unbounded
+      rejection-policy: discard    # discard | caller_runs | abort
+```
+
+| Policy | Behaviour at the limit |
+|---|---|
+| `discard` (default) | Drop the write, log a `WARN`. Non-blocking; stored data is regenerable cache. |
+| `caller_runs` | Run the write on the calling thread (back-pressure). Never loses data, but **does not** use a virtual thread and adds latency to the caller. |
+| `abort` | Throw `RejectedExecutionException`. |
+
+The scatter/gather executor has the same knobs under `failover.scatter.concurrency-limit` / `failover.scatter.rejection-policy`.
+
+---
+
 ## Failure Visibility
 
 Because writes run on a background thread, a failure inside the executor (e.g. DB down, connection
