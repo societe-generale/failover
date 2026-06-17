@@ -30,6 +30,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -190,12 +191,16 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * Fail-closed guard when Spring Security is ABSENT: the dashboard refuses to start (so internal
      * operational data is never served anonymously) unless {@code allow-insecure=true}, which starts
      * with a loud WARN for trusted-network / dev use only (design doc §9 gate 4).
+     *
+     * <p>The {@code allow-insecure} escape hatch is rejected outright when the {@code prod} profile is
+     * active: it exists for dev / trusted-network use, and silently disabling the access gate in
+     * production must never be possible (I-14). Production must add Spring Security.
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnMissingClass("org.springframework.security.web.SecurityFilterChain")
     static class SecurityAbsentConfiguration {
 
-        SecurityAbsentConfiguration(DashboardProperties props) {
+        SecurityAbsentConfiguration(DashboardProperties props, Environment environment) {
             if (!props.security().allowInsecure()) {
                 throw new IllegalStateException(
                         "Failover dashboard is enabled but Spring Security is not on the classpath, so '"
@@ -203,6 +208,14 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                                 + "spring-boot-starter-security (recommended) and restrict the path to role '"
                                 + props.security().role() + "', or set failover.dashboard.security.allow-insecure=true "
                                 + "to run UNSECURED (dev / trusted-network only).");
+            }
+            if (environment.acceptsProfiles(Profiles.of("prod"))) {
+                throw new IllegalStateException(
+                        "Failover dashboard has failover.dashboard.security.allow-insecure=true while the 'prod' "
+                                + "profile is active. The insecure escape hatch is for dev / trusted-network use only "
+                                + "and must never disable the access gate in production. Add spring-boot-starter-security "
+                                + "and restrict '" + props.basePath() + "/**' to role '" + props.security().role()
+                                + "', or remove allow-insecure / the 'prod' profile.");
             }
             log.warn("===================================================================================");
             log.warn("Failover dashboard is running WITHOUT an access-control gate (allow-insecure=true).");

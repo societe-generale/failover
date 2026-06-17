@@ -57,6 +57,10 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   `RecoveredPayloadHandler` (null-payload handling). `FailoverHandler.recoverAll` is now documented as an
   **optional operation** (JDK convention), resolving the recover-all LSP ambiguity (audit I-09, I-11)
 - Build: corrected the stale `<scm><tag>` in the parent POM (`failover_1.1.0` → `HEAD`) (audit I-14)
+- **Breaking — deserialization allowlist moved to the JDBC namespace.** `failover.store.allowed-payload-classes`
+  is now `failover.store.jdbc.allowed-payload-classes`: the allowlist only ever applied to the serializing
+  JDBC store (in-memory/Caffeine hold live objects and never deserialize), so it belongs under the
+  store-type namespace alongside `jdbc.encryption`. Consumers setting the old key must rename it
 
 ### Added
 
@@ -65,7 +69,8 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   opt-in `/metrics/series`) and a self-contained Chart.js UI over the existing `FailoverScanner` config
   and `failover.*` meters — no new instrumentation. Shipped only via the dedicated starter; off until
   `failover.dashboard.enabled=true`; fail-closed access gate (Spring Security role, or `allow-insecure`
-  with a loud WARN), static-only CSP, and aggregate-only data exposure (ADR 55)
+  with a loud WARN — `allow-insecure` refused outright under the `prod` profile), static-only CSP, and
+  aggregate-only data exposure (ADR 55)
 - `failover.store.caffeine.max-size` (default `10000`, same as `inmemory.max-entries`) — the Caffeine
   store can now cap its entry count and evict by Window TinyLFU once exceeded; `0` = unbounded (audit I-15)
 - Scatter/gather: `PayloadSplitter<T, R>` for per-entity storage of collection-returning methods
@@ -105,7 +110,7 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 - Deserialization allowlist for stored payload classes — `JsonSerializer.toClass` rejects unknown
   classes (`FailoverStoreException`). Auto-populated from the packages of discovered `@Failover`
-  payload types (secure by default); `failover.store.allowed-payload-classes` is an additive override
+  payload types (secure by default); `failover.store.jdbc.allowed-payload-classes` is an additive override
 - `failover.store.jdbc.table-prefix` validated against an identifier pattern at startup
 - `Error` (e.g. `OutOfMemoryError`) now propagates unwrapped through the aspect — recovery never runs
   on a failing JVM

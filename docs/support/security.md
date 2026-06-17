@@ -51,11 +51,12 @@ types), so only your own referential classes are ever materialized.
 ```yaml
 failover:
   store:
-    # Additive override — only for payload classes the scanner cannot infer
-    # (e.g. a scatter slice type in a different package than its composite).
-    allowed-payload-classes:
-      - com.acme.referential          # package prefix
-      - com.acme.special.Currency     # exact class
+    jdbc:
+      # Additive override — only for payload classes the scanner cannot infer
+      # (e.g. a scatter slice type in a different package than its composite).
+      allowed-payload-classes:
+        - com.acme.referential          # package prefix
+        - com.acme.special.Currency     # exact class
 ```
 
 The restriction is disabled (allow-all) only when no payload types are discovered **and** the
@@ -65,7 +66,7 @@ property is empty.
 types the scanner finds on `@Failover` methods (return type + collection/array element type), minus
 JDK packages (`java.*`, `javax.*`, `jakarta.*`, which are never whitelisted). It is
 **package-granular, not a deep type graph**: a payload whose *nested* field types live in a
-**different** package is not auto-allowed and must be added via `allowed-payload-classes`. If recovery
+**different** package is not auto-allowed and must be added via `failover.store.jdbc.allowed-payload-classes`. If recovery
 throws a `FailoverStoreException` naming a class, add that class (or its package) to the property.
 Keep entries as narrow as possible — a package prefix widens the deserialization surface.
 
