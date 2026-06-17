@@ -248,6 +248,33 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("Spring Security absent + allow-insecure=true + 'prod' profile ⇒ fail-closed (I-14)")
+    void allowInsecureRefusedUnderProdProfile() {
+        runner.withClassLoader(new org.springframework.boot.test.context.FilteredClassLoader(
+                        org.springframework.security.web.SecurityFilterChain.class))
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.security.allow-insecure=true",
+                        "spring.profiles.active=prod")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    @DisplayName("Spring Security absent + allow-insecure=true + non-prod profile ⇒ starts unsecured")
+    void allowInsecureAllowedOffProdProfile() {
+        runner.withClassLoader(new org.springframework.boot.test.context.FilteredClassLoader(
+                        org.springframework.security.web.SecurityFilterChain.class))
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.security.allow-insecure=true",
+                        "spring.profiles.active=dev")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                });
+    }
+
+    @Test
     @DisplayName("addViewControllers forwards bare base-path (and trailing slash) to index.html")
     void registersWelcomeForward() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard");

@@ -138,11 +138,11 @@ public class FailoverStoreAutoConfiguration {
      * whitelisting them would re-open the very gadget surface this control closes.
      *
      * <p>Operators may still configure broader <em>package-prefix</em> grants explicitly via
-     * {@code failover.store.allowed-payload-classes} (needed for polymorphic payloads whose stored
+     * {@code failover.store.jdbc.allowed-payload-classes} (needed for polymorphic payloads whose stored
      * runtime subtype differs from the declared return type the scanner sees). Those broad grants are
      * logged with a WARN at resolution time (see {@code JsonSerializer}).
      *
-     * @param configured operator entries from {@code failover.store.allowed-payload-classes}
+     * @param configured operator entries from {@code failover.store.jdbc.allowed-payload-classes}
      *                   (exact class names or package prefixes)
      * @param scanner    the failover scanner, or {@code null} if unavailable
      * @return the merged allowlist (exact class names from the scanner + operator entries); empty means allow-all
@@ -308,7 +308,7 @@ public class FailoverStoreAutoConfiguration {
          * <p>The deserialization allowlist is resolved lazily (after the scanner has run) by merging
          * two sources: the exact class name of every {@code @Failover} payload type discovered by
          * {@link FailoverScanner} (secure by default, zero config — audit I-02) and any explicit
-         * entries in {@code failover.store.allowed-payload-classes}. If both are empty the restriction
+         * entries in {@code failover.store.jdbc.allowed-payload-classes}. If both are empty the restriction
          * is disabled (allow-all) for backward compatibility.
          *
          * <p>All {@link PayloadCipher} beans (the built-in {@code b64} plus any the application
@@ -323,7 +323,7 @@ public class FailoverStoreAutoConfiguration {
                                      FailoverProperties failoverProperties,
                                      ObjectProvider<FailoverScanner> failoverScannerProvider,
                                      ObjectProvider<PayloadCipher> payloadCipherProvider) {
-            List<String> configured = failoverProperties.getStore().getAllowedPayloadClasses();
+            List<String> configured = failoverProperties.getStore().getJdbc().getAllowedPayloadClasses();
             Serializer jsonSerializer = new JsonSerializer(objectMapper,
                     () -> mergeAllowedPayloadClasses(configured, failoverScannerProvider.getIfAvailable()));
 
