@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Read-only JSON API for the dashboard. All endpoints are {@code GET} — the dashboard never mutates
@@ -50,6 +51,15 @@ public class DashboardController {
     @GetMapping("/config")
     public List<ConfigEntry> config() {
         return configService.configEntries();
+    }
+
+    /**
+     * Effective global {@code failover.*} / {@code failover.dashboard.*} settings, grouped for display.
+     * Path lives under {@code /config} so the exposure interceptor gates it with the {@code config} view.
+     */
+    @GetMapping("/config/settings")
+    public Map<String, Map<String, String>> settings() {
+        return configService.globalSettings();
     }
 
     @GetMapping("/failover-health")

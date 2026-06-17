@@ -30,6 +30,8 @@ package com.societegenerale.failover.dashboard.dto;
  * @param notRecovered    {@code failover.recovery.outcome.total{outcome=not_recovered}}
  * @param errors          {@code failover.recovery.outcome.total{outcome=error}}
  * @param partial         {@code failover.recovery.partial.total}
+ * @param asyncFailed     {@code failover.store.async.failed} — async writes that failed in the executor
+ * @param latency         store / recover path latency (ms), from {@code failover.operation.duration}
  * @param rates           derived rate KPIs
  */
 public record ApiKpis(
@@ -42,5 +44,7 @@ public record ApiKpis(
         long notRecovered,
         long errors,
         long partial,
+        long asyncFailed,
+        Latency latency,
         Rates rates) {
 }

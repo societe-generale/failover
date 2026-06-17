@@ -96,4 +96,24 @@ class DashboardExposureInterceptorTest {
                 "/failover-dashboard/api/metrics/series", res);
         assertThat(proceed).isTrue();
     }
+
+    @Test
+    @DisplayName("config/settings is gated by the 'config' endpoint (passes when config included)")
+    void settingsGatedWithConfigIncluded() throws Exception {
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        boolean proceed = preHandle(interceptor(true, List.of("config")),
+                "/failover-dashboard/api/config/settings", res);
+        assertThat(proceed).isTrue();
+        assertThat(res.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+    }
+
+    @Test
+    @DisplayName("config/settings is blocked when 'config' is narrowed out")
+    void settingsBlockedWhenConfigExcluded() throws Exception {
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        boolean proceed = preHandle(interceptor(true, List.of("metrics")),
+                "/failover-dashboard/api/config/settings", res);
+        assertThat(proceed).isFalse();
+        assertThat(res.getStatus()).isEqualTo(HttpServletResponse.SC_NOT_FOUND);
+    }
 }
