@@ -205,6 +205,42 @@ class DashboardMetricsServiceTest {
     }
 
     @Test
+    @DisplayName("top exceptions report the innermost cause, not the aspect's ExecutionException wrapper")
+    void topExceptionsUnwrapAspectWrapper() {
+        // The aspect wraps every upstream throwable, so exception_type is always the wrapper. The real
+        // exception is the innermost cause (final_cause_type); the dashboard must surface that, ahead of
+        // the first-level cause_type and the wrapper.
+        Counter.builder("failover.exception.total")
+                .tag("name", "country")
+                .tag("exception_type", "com.societegenerale.failover.aspect.ExecutionException")
+                .tag("cause_type", "java.lang.IllegalStateException")
+                .tag("final_cause_type", "java.net.SocketTimeoutException")
+                .register(registry).increment(5);
+
+        MetricsSummary s = service.metricsSummary();
+
+        assertThat(s.topExceptions()).extracting(ExceptionStat::type)
+                .containsExactly("java.net.SocketTimeoutException");
+        assertThat(s.topExceptions().get(0).count()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("top exceptions fall back to first-level cause, then wrapper, when inner tags are 'none'")
+    void topExceptionsFallBackWhenNoFinalCause() {
+        Counter.builder("failover.exception.total")
+                .tag("name", "a").tag("exception_type", "Wrapper")
+                .tag("cause_type", "java.io.IOException").tag("final_cause_type", "none")
+                .register(registry).increment(3);
+        Counter.builder("failover.exception.total")
+                .tag("name", "b").tag("exception_type", "java.lang.RuntimeException")
+                .tag("cause_type", "none").tag("final_cause_type", "none")
+                .register(registry).increment(2);
+
+        assertThat(service.metricsSummary().topExceptions()).extracting(ExceptionStat::type)
+                .containsExactly("java.io.IOException", "java.lang.RuntimeException");
+    }
+
+    @Test
     @DisplayName("no timers / async / exceptions ⇒ zero latency, zero failures, empty exception list")
     void zeroWhenMetersAbsent() {
         store("svc", true, 10);

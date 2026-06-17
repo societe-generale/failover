@@ -478,4 +478,69 @@ class DefaultPayloadEnricherTest {
             assertThat(tp.getMetadata().getInfo()).containsEntry("custom-tag", "applied");
         }
     }
+
+    /**
+     * Pins that recovery metadata records both the immediate cause ({@code exception-name}/{@code cause})
+     * and the innermost {@code final-root-cause-name}/{@code final-root-cause} — the aspect wraps the real
+     * upstream failure several layers deep, so the deepest link is the meaningful one.
+     */
+    @Nested
+    @DisplayName("recovery metadata records the final (innermost) root cause")
+    class FinalRootCauseMetadata {
+
+        /** RuntimeException → IllegalStateException → SocketTimeoutException (innermost). */
+        private Throwable nestedCause() {
+            var innermost = new java.net.SocketTimeoutException("read timed out");
+            var mid = new IllegalStateException("circuit open", innermost);
+            return new RuntimeException("upstream failed", mid);
+        }
+
+        @Test
+        @DisplayName("Referential: exception-* is the outer wrapper, final-root-cause-* the innermost cause")
+        void referentialDeepChain() {
+            var enricher = new DefaultPayloadEnricher<ReferentialThirdParty>();
+            var tp = new ReferentialThirdParty(1L, "TATA", 5);
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, nestedCause());
+
+            assertThat(tp.getMetadata().getInfo())
+                    .containsEntry("exception-name", RuntimeException.class.getName())
+                    .containsEntry("cause", "upstream failed")
+                    .containsEntry("final-root-cause-name", java.net.SocketTimeoutException.class.getName())
+                    .containsEntry("final-root-cause", "read timed out");
+        }
+
+        @Test
+        @DisplayName("ReferentialAware: exception-* is the outer wrapper, final-root-cause-* the innermost cause")
+        void referentialAwareDeepChain() {
+            var enricher = new DefaultPayloadEnricher<ReferentialAwareThirdParty>();
+            var tp = new ReferentialAwareThirdParty(1L, "TATA", 5);
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialAwareThirdParty.class, rp, nestedCause());
+
+            assertThat(tp.getMetadata().getInfo())
+                    .containsEntry("exception-name", RuntimeException.class.getName())
+                    .containsEntry("cause", "upstream failed")
+                    .containsEntry("final-root-cause-name", java.net.SocketTimeoutException.class.getName())
+                    .containsEntry("final-root-cause", "read timed out");
+        }
+
+        @Test
+        @DisplayName("flat cause (no nested cause): final-root-cause entries are recorded as null")
+        void flatCauseHasNullFinalRootCause() {
+            var enricher = new DefaultPayloadEnricher<ReferentialThirdParty>();
+            var tp = new ReferentialThirdParty(1L, "TATA", 5);
+            var rp = new ReferentialPayload<>(FAILOVER_NAME, FAILOVER_KEY, false, now, now, tp);
+
+            enricher.enrichOnRecover(FAILOVER, ReferentialThirdParty.class, rp, new RuntimeException("flat"));
+
+            assertThat(tp.getMetadata().getInfo())
+                    .containsEntry("exception-name", RuntimeException.class.getName())
+                    .containsEntry("cause", "flat")
+                    .containsEntry("final-root-cause-name", null)
+                    .containsEntry("final-root-cause", null);
+        }
+    }
 }

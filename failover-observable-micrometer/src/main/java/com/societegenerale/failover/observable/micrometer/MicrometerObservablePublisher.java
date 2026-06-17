@@ -42,7 +42,8 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code failover.recovery.partial.total} (Counter) — tags: {@code name}, {@code method}.
  *       A scatter/gather recover where some (not all) slices were recovered.</li>
  *   <li>{@code failover.exception.total} (Counter) — tags: {@code name},
- *       {@code exception_type}, {@code cause_type}</li>
+ *       {@code exception_type} (the aspect's wrapper), {@code cause_type} (first-level cause),
+ *       {@code final_cause_type} (innermost / actual cause)</li>
  *   <li>{@code failover.operation.duration} (Timer) — tags: {@code name}, {@code action}
  *       — only when the {@code Metrics} bag carries a {@code failover-duration-ns} key</li>
  *   <li>{@code failover.store.async.failed} (Counter) — tags: {@code name}, {@code operation},
@@ -52,7 +53,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <h2>Tag cardinality</h2>
  * Boolean tags ({@code stored}, {@code recovered}, {@code recovery_failed}) have cardinality 2.
- * {@code exception_type} and {@code cause_type} use class canonical names and are expected to be
+ * {@code exception_type}, {@code cause_type} and {@code final_cause_type} use class canonical names and are expected to be
  * low-cardinality in practice. Exception messages are intentionally <em>never</em> used as tags.
  *
  * <h2>Event discrimination</h2>
@@ -71,8 +72,9 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
     static final String STORED_KEY       = "failover-is-stored";
     static final String RECOVERED_KEY    = "failover-is-recovered";
     static final String RECOVERY_FAIL    = "failover-is-recovery-failed";
-    static final String EX_TYPE_KEY      = "failover-exception-type";
-    static final String CAUSE_TYPE_KEY   = "failover-exception-cause-type";
+    static final String EX_TYPE_KEY         = "failover-exception-type";
+    static final String CAUSE_TYPE_KEY      = "failover-exception-cause-type";
+    static final String FINAL_CAUSE_TYPE_KEY = "failover-exception-final-cause-type";
     static final String DURATION_NS_KEY  = "failover-duration-ns";
     static final String ASYNC_OP_KEY     = "failover-async-operation";
     static final String ASYNC_FAILED     = "store-async-failed";
@@ -125,16 +127,20 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
 
     private void publishRecover(String name, Map<String, String> info) {
         String recovered   = info.getOrDefault(RECOVERED_KEY, "false");
-        String recovFailed = info.getOrDefault(RECOVERY_FAIL, "false");
+        String recoveryFailed = info.getOrDefault(RECOVERY_FAIL, "false");
         String exType      = info.getOrDefault(EX_TYPE_KEY, "unknown");
         String causeType   = info.getOrDefault(CAUSE_TYPE_KEY, "");
         if (causeType.isBlank()) causeType = "none";
+        String finalCauseType = info.getOrDefault(FINAL_CAUSE_TYPE_KEY, "");
+        if (finalCauseType.isBlank()) {
+            finalCauseType = "none";
+        }
 
         Counter.builder("failover.recover.total")
             .description("Total failover recovery attempts")
             .tag("name", name)
             .tag("recovered", recovered)
-            .tag("recovery_failed", recovFailed)
+            .tag("recovery_failed", recoveryFailed)
             .register(registry)
             .increment();
 
@@ -143,10 +149,11 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .tag("name", name)
             .tag("exception_type", exType)
             .tag("cause_type", causeType)
+            .tag("final_cause_type", finalCauseType)
             .register(registry)
             .increment();
 
-        publishRecoveryOutcome(name, info, recovered, recovFailed);
+        publishRecoveryOutcome(name, info, recovered, recoveryFailed);
     }
 
     /**
