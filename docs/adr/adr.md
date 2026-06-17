@@ -1837,7 +1837,7 @@ Restrict `JsonSerializer.toClass` to an allowlist; reject unknown names with `Fa
 The allowlist is **secure by default, zero config**, sourced from two places and merged:
 
 1. **Auto-derived** — `FailoverScanner.findAllPayloadTypes()` exposes every `@Failover` payload type (method return type, or the element/component type for `Collection`/array returns). The autoconfig adds each type's **package** as an allowed prefix. JDK packages (`java.*`, `javax.*`, `jakarta.*`) are never added — whitelisting them would re-open the gadget surface.
-2. **Operator override** — `failover.store.allowed-payload-classes` (exact class names or package prefixes), additive, for classes the scanner cannot infer (e.g. a scatter slice type in a different package than its composite).
+2. **Operator override** — `failover.store.jdbc.allowed-payload-classes` (exact class names or package prefixes), additive, for classes the scanner cannot infer (e.g. a scatter slice type in a different package than its composite).
 
 Package **prefixes** (not exact classes) are used so that scatter slice types sharing a package with their composite are covered without configuration. The allowlist is resolved lazily and memoized on first `toClass` — necessary because the scanner (`SmartInitializingSingleton`) completes after the serializer bean is built.
 
@@ -1848,7 +1848,7 @@ Allow-all is retained only when the resolved allowlist is empty (no payload type
 * Out of the box, only the application's own referential packages can be materialized from the store — no configuration required.
 * A poisoned `PAYLOAD_CLASS` value naming an unlisted class is rejected before instantiation.
 * `ClassNotFoundException` (payload class renamed/removed between deployments) now surfaces as a `FailoverStoreException` with a remediation hint instead of an opaque sneaky-thrown checked exception.
-* Operators with split-package slice types must add a prefix to `failover.store.allowed-payload-classes`; this is the documented escape hatch.
+* Operators with split-package slice types must add a prefix to `failover.store.jdbc.allowed-payload-classes`; this is the documented escape hatch.
 * Applies to serializing stores (JDBC); in-memory/Caffeine hold live objects and are unaffected.
 
 ___
@@ -2641,8 +2641,10 @@ Add a self-contained `failover-dashboard` module plus a dedicated `failover-dash
   CDN-free Chart.js UI served from the classpath.
 * **Fail-closed access gate** — when Spring Security is present (bundled by the starter) the module
   contributes a `SecurityFilterChain` over `base-path/**` requiring a role; when absent the context
-  fails fast unless `allow-insecure=true` (loud WARN). A static-only CSP and data-minimisation (only
-  annotation metadata + aggregate counts, never payloads/keys/credentials) complete the posture.
+  fails fast unless `allow-insecure=true` (loud WARN); `allow-insecure` is refused outright under the
+  `prod` profile, so it can never silently disable the gate in production. A static-only CSP and
+  data-minimisation (only annotation metadata + aggregate counts, never payloads/keys/credentials)
+  complete the posture.
 * **Servlet-first** — the JSON services are framework-agnostic; a reactive variant is a fast-follow.
 * **Graceful degradation** — no `MeterRegistry` ⇒ config view still works, metrics degrade; missing
   Chart.js ⇒ cards/tables still render.

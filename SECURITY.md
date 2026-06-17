@@ -30,7 +30,7 @@ Once a fix is released, we will credit reporters who wish to be named in the adv
 - The JDBC store deserializes payloads using the class name stored in the `PAYLOAD_CLASS`
   column. Loading is restricted by an allowlist that is **secure by default**: the framework
   auto-allows the packages of every discovered `@Failover` payload type, so only your own
-  referential classes are ever materialized. Add `failover.store.allowed-payload-classes`
+  referential classes are ever materialized. Add `failover.store.jdbc.allowed-payload-classes`
   (exact class names or package prefixes) only for payload classes the scanner cannot infer
   (e.g. a scatter slice type in a different package than its composite). The restriction is
   disabled (allow-all) only when no payload types are discovered and the property is empty.

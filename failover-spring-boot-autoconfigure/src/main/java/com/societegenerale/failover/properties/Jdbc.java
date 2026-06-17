@@ -18,6 +18,9 @@ package com.societegenerale.failover.properties;
 
 import lombok.Data;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * JDBC store configuration properties.
  *
@@ -31,6 +34,22 @@ public class Jdbc {
      * Default is empty
      */
     private String tablePrefix = "";
+
+    /**
+     * Allowlist of payload classes that may be materialized when deserializing rows from the JDBC
+     * store. JDBC-only: in-memory/Caffeine hold live objects and never deserialize, so this lives
+     * under {@code failover.store.jdbc} rather than the generic store namespace.
+     * Entries are exact fully-qualified class names or package prefixes (e.g. {@code "com.acme.referential"}).
+     *
+     * <p>This is an <em>additive</em> override: the framework already auto-allows the packages of every
+     * discovered {@code @Failover} payload type (return type and collection/array element types) so the
+     * common case needs no configuration and is secure by default. Add entries here only for payload
+     * classes the scanner cannot infer (e.g. a slice type in a different package than its composite).
+     *
+     * <p>If both this list is empty <em>and</em> the scanner discovers no payload types, the restriction
+     * is disabled (allow-all) to preserve backward compatibility.
+     */
+    private List<String> allowedPayloadClasses = new ArrayList<>();
 
     /**
      * Payload-at-rest encryption for the JDBC store. JDBC-only: other store types never persist a
