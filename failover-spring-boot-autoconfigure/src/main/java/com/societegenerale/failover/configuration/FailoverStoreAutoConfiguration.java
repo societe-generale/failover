@@ -23,6 +23,7 @@ import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.DefaultFailoverStore;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.FailoverProperties;
+import com.societegenerale.failover.properties.Jdbc;
 import com.societegenerale.failover.properties.MultiTenant;
 import com.societegenerale.failover.properties.StoreType;
 import com.societegenerale.failover.store.async.FailoverStoreAsync;
@@ -41,6 +42,9 @@ import com.societegenerale.failover.store.jdbc.resolver.PayloadColumnResolver;
 import com.societegenerale.failover.store.jdbc.resolver.VarcharPayloadColumnResolver;
 import com.societegenerale.failover.store.jdbc.serializer.JsonSerializer;
 import com.societegenerale.failover.store.jdbc.serializer.Serializer;
+import com.societegenerale.failover.store.jdbc.serializer.cipher.Base64PayloadCipher;
+import com.societegenerale.failover.store.jdbc.serializer.cipher.EncryptingSerializer;
+import com.societegenerale.failover.store.jdbc.serializer.cipher.PayloadCipher;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -122,25 +126,38 @@ public class FailoverStoreAutoConfiguration {
     }
 
     /**
-     * Merges the operator-configured payload-class allowlist with the packages of scanner-discovered
-     * payload types. JDK packages ({@code java.*}, {@code javax.*}, {@code jakarta.*}) are never added —
-     * whitelisting them would re-open the deserialization-gadget surface this control closes.
+     * Merges the operator-configured payload-class allowlist with the scanner-discovered payload types.
+     *
+     * <p><b>Exact class names, not package prefixes (audit I-02).</b> Each discovered {@code @Failover}
+     * payload type is added by its <em>exact</em> fully-qualified class name, granting deserialization
+     * rights to precisely that type rather than to every class sharing its package. This shrinks the
+     * deserialization-gadget surface: a malicious class that merely lives in the same package as a real
+     * payload is no longer implicitly trusted.
+     *
+     * <p>JDK / platform packages ({@code java.*}, {@code javax.*}, {@code jakarta.*}) are never added —
+     * whitelisting them would re-open the very gadget surface this control closes.
+     *
+     * <p>Operators may still configure broader <em>package-prefix</em> grants explicitly via
+     * {@code failover.store.allowed-payload-classes} (needed for polymorphic payloads whose stored
+     * runtime subtype differs from the declared return type the scanner sees). Those broad grants are
+     * logged with a WARN at resolution time (see {@code JsonSerializer}).
      *
      * @param configured operator entries from {@code failover.store.allowed-payload-classes}
+     *                   (exact class names or package prefixes)
      * @param scanner    the failover scanner, or {@code null} if unavailable
-     * @return the merged allowlist (exact names + package prefixes); empty means allow-all
+     * @return the merged allowlist (exact class names from the scanner + operator entries); empty means allow-all
      */
     static List<String> mergeAllowedPayloadClasses(List<String> configured, @Nullable FailoverScanner scanner) {
         Set<String> merged = new LinkedHashSet<>(configured);
         if (scanner != null) {
             for (Class<?> payloadType : scanner.findAllPayloadTypes()) {
                 String packageName = payloadType.getPackageName();
-                if (!packageName.isEmpty()
-                        && !packageName.startsWith("java.")
-                        && !packageName.startsWith("javax.")
-                        && !packageName.startsWith("jakarta.")) {
-                    merged.add(packageName);
+                if (packageName.startsWith("java.")
+                        || packageName.startsWith("javax.")
+                        || packageName.startsWith("jakarta.")) {
+                    continue; // never whitelist JDK / platform types — gadget surface
                 }
+                merged.add(payloadType.getName()); // exact FQCN, not the package prefix (I-02)
             }
         }
         return List.copyOf(merged);
@@ -272,23 +289,75 @@ public class FailoverStoreAutoConfiguration {
         }
 
         /**
+         * Built-in {@link Base64PayloadCipher} (id {@code "b64"}). Registered unless the application
+         * already declares its own {@code Base64PayloadCipher}, so the {@code b64} envelope is always
+         * decryptable for reads. <b>Encoding only — not encryption.</b> Declare a {@link PayloadCipher}
+         * bean with a real algorithm for actual confidentiality.
+         */
+        @Bean
+        @ConditionalOnMissingBean(Base64PayloadCipher.class)
+        public Base64PayloadCipher base64PayloadCipher() {
+            return new Base64PayloadCipher();
+        }
+
+        /**
          * Registers a {@link JsonSerializer} backed by the application's {@link ObjectMapper}
-         * unless a {@link Serializer} bean is already present.
+         * unless a {@link Serializer} bean is already present, wrapped in an
+         * {@link EncryptingSerializer} so {@code PAYLOAD} values can be encrypted at rest.
          *
          * <p>The deserialization allowlist is resolved lazily (after the scanner has run) by merging
-         * two sources: the packages of every {@code @Failover} payload type discovered by
-         * {@link FailoverScanner} (secure by default, zero config) and any explicit entries in
-         * {@code failover.store.allowed-payload-classes}. If both are empty the restriction is
-         * disabled (allow-all) for backward compatibility.
+         * two sources: the exact class name of every {@code @Failover} payload type discovered by
+         * {@link FailoverScanner} (secure by default, zero config — audit I-02) and any explicit
+         * entries in {@code failover.store.allowed-payload-classes}. If both are empty the restriction
+         * is disabled (allow-all) for backward compatibility.
+         *
+         * <p>All {@link PayloadCipher} beans (the built-in {@code b64} plus any the application
+         * declares) are registered for <b>reads</b>, so a store may hold a mix of plaintext and
+         * differently-enciphered rows. Writes are encrypted only when
+         * {@code failover.store.jdbc.encryption.enabled=true}, using the cipher whose id matches
+         * {@code failover.store.jdbc.encryption.cipher}.
          */
         @Bean
         @ConditionalOnMissingBean
         public Serializer serializer(ObjectMapper objectMapper,
                                      FailoverProperties failoverProperties,
-                                     ObjectProvider<FailoverScanner> failoverScannerProvider) {
+                                     ObjectProvider<FailoverScanner> failoverScannerProvider,
+                                     ObjectProvider<PayloadCipher> payloadCipherProvider) {
             List<String> configured = failoverProperties.getStore().getAllowedPayloadClasses();
-            return new JsonSerializer(objectMapper,
+            Serializer jsonSerializer = new JsonSerializer(objectMapper,
                     () -> mergeAllowedPayloadClasses(configured, failoverScannerProvider.getIfAvailable()));
+
+            List<PayloadCipher> ciphers = payloadCipherProvider.orderedStream().toList();
+            Jdbc.Encryption encryption = failoverProperties.getStore().getJdbc().getEncryption();
+            PayloadCipher writeCipher = resolveWriteCipher(ciphers, encryption);
+            return new EncryptingSerializer(jsonSerializer, ciphers, writeCipher);
+        }
+
+        /**
+         * Resolves the active write cipher when encryption is enabled, or {@code null} (write plaintext)
+         * when disabled. Fails fast if the configured cipher id is not among the registered ciphers, and
+         * WARNs loudly when the active cipher is the encode-only Base64 default.
+         */
+        private PayloadCipher resolveWriteCipher(List<PayloadCipher> ciphers, Jdbc.Encryption encryption) {
+            if (!encryption.isEnabled()) {
+                log.info("Failover JDBC payload encryption is DISABLED (writes are plaintext); {} cipher(s) registered for reads: {}.",
+                        ciphers.size(), ciphers.stream().map(PayloadCipher::id).toList());
+                return null;
+            }
+            PayloadCipher writeCipher = ciphers.stream()
+                    .filter(c -> c.id().equals(encryption.getCipher()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "failover.store.jdbc.encryption.enabled=true but no PayloadCipher bean has id '"
+                                    + encryption.getCipher() + "'. Registered ids: " + ciphers.stream().map(PayloadCipher::id).toList()
+                                    + ". Declare a PayloadCipher bean with that id, or correct failover.store.jdbc.encryption.cipher."));
+            if (writeCipher instanceof Base64PayloadCipher) {
+                log.warn("Failover JDBC payload encryption is ENABLED with the Base64 cipher ('{}') — this is ENCODING, NOT ENCRYPTION, and provides no confidentiality. "
+                        + "Declare a PayloadCipher bean with a real algorithm (e.g. AES-GCM) and set failover.store.jdbc.encryption.cipher to its id.", Base64PayloadCipher.ID);
+            } else {
+                log.info("Failover JDBC payload encryption is ENABLED; new writes use cipher '{}'.", writeCipher.id());
+            }
+            return writeCipher;
         }
 
         /**
