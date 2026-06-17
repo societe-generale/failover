@@ -344,4 +344,68 @@ class JsonSerializerTest {
                     .hasMessageContaining("allowlist");
         }
     }
+
+    @Nested
+    @DisplayName("allowlist grant logging (audit I-02)")
+    class GrantLogging {
+
+        private ch.qos.logback.classic.Logger logger;
+        private ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender;
+
+        @org.junit.jupiter.api.BeforeEach
+        void attachAppender() {
+            logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(JsonSerializer.class);
+            appender = new ch.qos.logback.core.read.ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+        }
+
+        @org.junit.jupiter.api.AfterEach
+        void detachAppender() {
+            logger.detachAppender(appender);
+        }
+
+        private List<String> warnings() {
+            return appender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                    .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                    .toList();
+        }
+
+        @Test
+        @DisplayName("WARNs once, naming the broad grant, when the allowlist contains a package-prefix entry")
+        void warnsOnPackagePrefixGrant() {
+            // "com.societegenerale.failover" is a package prefix (not a loadable class); the POJO name is exact
+            JsonSerializer serializer = new JsonSerializer(OBJECT_MAPPER,
+                    List.of(SamplePayload.class.getName(), "com.societegenerale.failover"));
+
+            serializer.toClass(SamplePayload.class.getName()); // triggers lazy allowlist resolution
+
+            assertThat(warnings())
+                    .anySatisfy(msg -> assertThat(msg)
+                            .contains("package-prefix grant")
+                            .contains("com.societegenerale.failover"));
+        }
+
+        @Test
+        @DisplayName("does NOT WARN when every allowlist entry is an exact, loadable class name")
+        void noWarnWhenAllExactClasses() {
+            JsonSerializer serializer = new JsonSerializer(OBJECT_MAPPER,
+                    List.of(SamplePayload.class.getName(), "java.lang.String"));
+
+            serializer.toClass(SamplePayload.class.getName());
+
+            assertThat(warnings()).noneMatch(msg -> msg.contains("package-prefix grant"));
+        }
+
+        @Test
+        @DisplayName("WARNs that the allowlist is allow-all (fail-open) when it resolves empty")
+        void warnsOnEmptyAllowAll() {
+            JsonSerializer serializer = new JsonSerializer(OBJECT_MAPPER, List.of());
+
+            serializer.toClass("java.lang.Runtime"); // allow-all path
+
+            assertThat(warnings()).anySatisfy(msg -> assertThat(msg).contains("EMPTY").contains("allow-all"));
+        }
+    }
 }
