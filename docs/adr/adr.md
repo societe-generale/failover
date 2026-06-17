@@ -2658,3 +2658,71 @@ Add a self-contained `failover-dashboard` module plus a dedicated `failover-dash
   at Prometheus/Grafana.
 
 ___
+
+## ADR 56 — Payload-at-rest Encryption for the JDBC Store
+
+**Date : 17-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The JDBC store persists each referential payload as a serialized JSON string in the `PAYLOAD` column.
+For deployments where that referential data is sensitive, storing it as readable JSON at rest is a
+data-protection concern. We want an opt-in way to encrypt the payload column, with a sensible default
+and a clean extension point for real cryptography, **without** changing the rest of the failover flow
+or affecting the other store types.
+
+Constraints and forces:
+
+* Only the JDBC store serializes payloads to a string — in-memory and Caffeine stores hold live
+  objects, so encryption is meaningless there. Configuration must not imply otherwise.
+* The deserialization allowlist (ADR 37 / audit I-02) gates class loading on `PAYLOAD_CLASS`; encryption
+  must not break that.
+* Enabling/disabling encryption, or rotating algorithms, must not strand existing rows — the store is a
+  cache that is continuously written and expired.
+* Most teams have no crypto requirement; the default footprint and behaviour must be unchanged unless
+  the feature is explicitly turned on.
+
+### Decision
+
+Introduce a `PayloadCipher` SPI and an `EncryptingSerializer` decorator over the existing `Serializer`,
+applied **only** in the JDBC store assembly.
+
+* **Envelope.** Encrypted values are wrapped as `ENC(<cipherId>:<ciphertext>)`. The id makes every row
+  self-describing: reads pick the decryptor from the envelope, not from configuration, so a single store
+  may hold a mix of plaintext, `ENC(b64:…)` and `ENC(aesgcm:…)` rows. `ENC(` is a safe reserved prefix
+  because plaintext JSON never starts with it.
+* **Registry + active write cipher.** All `PayloadCipher` beans are indexed by `id()` for **reads**; the
+  one named by `failover.store.jdbc.encryption.cipher` is the **active write cipher**. Reads dispatch by
+  id; an unknown id throws `FailoverStoreException`.
+* **Write switch only.** `failover.store.jdbc.encryption.enabled` (default `false`) gates writes; reads
+  always honour the `ENC(...)` marker. Disabled ⇒ bare plaintext writes. This makes enable/disable and
+  rotation non-breaking.
+* **Configuration namespace.** Under `failover.store.jdbc.encryption.*` — never the generic
+  `failover.store.*` — because the feature is JDBC-only.
+* **`PAYLOAD_CLASS` stays plaintext.** Only the data column is encrypted; the allowlist keeps gating on
+  the real class name, and decryption happens before `toClass`.
+* **Default `Base64PayloadCipher` (id `b64`).** Zero-dependency default and SPI example. It is encoding,
+  **not** encryption; the auto-configuration logs a loud `WARN` when it is the active write cipher. The
+  id exists so a cipher mismatch fails loudly instead of a Base64 decoder silently producing garbage.
+* **Real crypto via a bean.** A user declares a `PayloadCipher` bean (AES-GCM, KMS/Jasypt, …) and points
+  `cipher` at its id. The built-in `b64` remains registered for reads unless overridden, easing rotation.
+
+### Consequences
+
+* Opt-in and backward compatible: with `enabled=false` (default) writes stay plaintext and existing
+  behaviour is unchanged.
+* Algorithm/key rotation is a rolling operation: add the new cipher bean, switch `cipher`, let old rows
+  expire, then drop the old bean. A row naming an unregistered cipher fails its recovery and is reclaimed
+  on expiry — acceptable for a cache.
+* Ciphertext expands the stored value (Base64 ≈ +33 %; AES + IV + Base64 more); consumers must size the
+  `PAYLOAD` column accordingly. Documented.
+* Encryption protects data at rest only — not transport, not a substitute for DB/disk encryption or
+  access control. It is defense in depth, and key management is the cipher implementation's concern.
+* The default `b64` cipher must be clearly marked non-secure in docs and at runtime to avoid a false
+  sense of security.
+
+___
