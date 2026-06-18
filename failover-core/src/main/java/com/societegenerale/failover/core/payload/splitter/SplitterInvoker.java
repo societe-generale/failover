@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core;
+package com.societegenerale.failover.core.payload.splitter;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.payload.splitter.*;
+import com.societegenerale.failover.core.ScatterGatherFailoverHandler;
 import lombok.AllArgsConstructor;
 
 import java.util.List;
@@ -36,11 +36,11 @@ import java.util.List;
  * @author Anand Manissery
  */
 @AllArgsConstructor
-class SplitterInvoker<T, R> {
+public class SplitterInvoker<T, R> {
 
     private final PayloadSplitterLookup<T, R> payloadSplitterLookup;
 
-    PayloadSplitter<T, R> lookup(Failover failover) {
+    public PayloadSplitter<T, R> lookup(Failover failover) {
         PayloadSplitter<T, R> splitter = payloadSplitterLookup.lookup(failover.payloadSplitter());
         if (splitter == null) {
             throw new PayloadSplitterNotFoundException(
@@ -50,7 +50,7 @@ class SplitterInvoker<T, R> {
         return splitter;
     }
 
-    List<StoreContext<R>> splitOnStore(PayloadSplitter<T, R> splitter, Failover failover, StoreContext<T> ctx) {
+    public List<StoreContext<R>> splitOnStore(PayloadSplitter<T, R> splitter, Failover failover, StoreContext<T> ctx) {
         try {
             return splitter.splitOnStore(ctx);
         } catch (Exception e) {
@@ -58,7 +58,7 @@ class SplitterInvoker<T, R> {
         }
     }
 
-    List<RecoverContext<R>> splitOnRecover(PayloadSplitter<T, R> splitter, Failover failover, RecoverContext<T> ctx) {
+    public List<RecoverContext<R>> splitOnRecover(PayloadSplitter<T, R> splitter, Failover failover, RecoverContext<T> ctx) {
         try {
             return splitter.splitOnRecover(ctx);
         } catch (Exception e) {
@@ -66,7 +66,7 @@ class SplitterInvoker<T, R> {
         }
     }
 
-    RecoverContext<T> merge(PayloadSplitter<T, R> splitter, Failover failover, List<RecoverContext<R>> contexts) {
+    public RecoverContext<T> merge(PayloadSplitter<T, R> splitter, Failover failover, List<RecoverContext<R>> contexts) {
         try {
             return splitter.merge(contexts);
         } catch (Exception e) {

@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core;
+package com.societegenerale.failover.core.payload.splitter;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.payload.splitter.RecoverContext;
-import com.societegenerale.failover.core.payload.splitter.StoreContext;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

@@ -32,6 +32,12 @@
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Web stack: provided so the dashboard activates only in an app that already serves MVC -->
         <dependency>
             <groupId>org.springframework</groupId>

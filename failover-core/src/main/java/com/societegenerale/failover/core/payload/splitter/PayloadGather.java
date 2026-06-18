@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core;
+package com.societegenerale.failover.core.payload.splitter;
 
 import com.societegenerale.failover.annotations.Failover;
+import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.ScatterGatherFailoverHandler;
 import com.societegenerale.failover.core.observable.Metrics;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
-import com.societegenerale.failover.core.payload.splitter.PayloadSplitter;
-import com.societegenerale.failover.core.payload.splitter.RecoverContext;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
@@ -45,7 +45,7 @@ import java.util.List;
  */
 @Slf4j
 @AllArgsConstructor
-class PayloadGather<T, R> {
+public class PayloadGather<T, R> {
 
     private final FailoverHandler<R> delegateR;
 
@@ -57,7 +57,7 @@ class PayloadGather<T, R> {
     @Nullable
     private final ObservablePublisher observablePublisher;
 
-    @Nullable T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable cause) {
+    public @Nullable T recover(@NonNull Failover failover, @NonNull Method method, List<Object> args, Class<T> clazz, Throwable cause) {
         PayloadSplitter<T, R> splitter = splitterInvoker.lookup(failover);
         RecoverContext<T> compositeCtx = RecoverContext.<T>builder().failover(failover).args(args).clazz(clazz).cause(cause).build();
         List<RecoverContext<R>> recovered = shouldRecoverAll(failover, args)

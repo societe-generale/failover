@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core;
+package com.societegenerale.failover.core.payload.splitter;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.payload.splitter.*;
+import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.ScatterGatherFailoverHandler;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

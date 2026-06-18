@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core;
+package com.societegenerale.failover.core.payload.splitter;
 
-import com.societegenerale.failover.core.payload.splitter.RecoverContext;
-import com.societegenerale.failover.core.payload.splitter.StoreContext;
+import com.societegenerale.failover.core.ScatterGatherFailoverHandler;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +50,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  */
 @Slf4j
 @AllArgsConstructor
-class SliceDispatcher<R> {
+public class SliceDispatcher<R> {
 
     /** Non-null enables parallel dispatch; null means sequential (default). */
     @Nullable
@@ -68,7 +67,7 @@ class SliceDispatcher<R> {
      * {@code runAsync}, joins with {@code allOf} and applies {@link #timeout}; any slice failure
      * propagates to the caller. Sequential path runs the slices in order.
      */
-    void dispatchStore(List<StoreContext<R>> slices, Consumer<StoreContext<R>> action) {
+    public void dispatchStore(List<StoreContext<R>> slices, Consumer<StoreContext<R>> action) {
         if (executor == null) {
             slices.forEach(action);
             return;
@@ -85,7 +84,7 @@ class SliceDispatcher<R> {
      * slice yields {@code onTimeout.apply(slice)} (the not-recovered fallback) instead of hanging
      * the caller, while any other failure propagates. Sequential path maps the slices in order.
      */
-    <X> List<X> dispatchRecover(List<RecoverContext<R>> slices, Function<RecoverContext<R>, X> mapper, Function<RecoverContext<R>, X> onTimeout) {
+    public <X> List<X> dispatchRecover(List<RecoverContext<R>> slices, Function<RecoverContext<R>, X> mapper, Function<RecoverContext<R>, X> onTimeout) {
         if (executor == null) {
             return slices.stream().map(mapper).toList();
         }

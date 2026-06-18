@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.core;
+package com.societegenerale.failover.core.payload.splitter;
 
 import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.payload.splitter.PayloadSplitter;
-import com.societegenerale.failover.core.payload.splitter.StoreContext;
+import com.societegenerale.failover.core.FailoverHandler;
+import com.societegenerale.failover.core.ScatterGatherFailoverHandler;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
@@ -40,7 +40,7 @@ import java.util.List;
  */
 @Slf4j
 @AllArgsConstructor
-class PayloadScatter<T, R> {
+public class PayloadScatter<T, R> {
 
     private final FailoverHandler<R> delegateR;
 
@@ -48,7 +48,7 @@ class PayloadScatter<T, R> {
 
     private final SliceDispatcher<R> sliceDispatcher;
 
-    T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload) {
+    public T store(@NonNull Failover failover, @NonNull Method method, List<Object> args, T payload) {
         PayloadSplitter<T, R> splitter = splitterInvoker.lookup(failover);
         StoreContext<T> compositeCtx = StoreContext.<T>builder().failover(failover).args(args).payload(payload).build();
         List<StoreContext<R>> slices = splitterInvoker.splitOnStore(splitter, failover, compositeCtx);

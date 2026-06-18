@@ -50,10 +50,10 @@ import java.util.concurrent.Executor;
  * <p>This class is a thin facade: it owns the pass-through decision and delegates the actual work
  * to focused, package-private collaborators (audit A-2):
  * <ul>
- *   <li>{@link PayloadScatter} — the store/scatter side;</li>
- *   <li>{@link PayloadGather} — the recover/gather side;</li>
- *   <li>{@link SliceDispatcher} — parallel-vs-sequential slice dispatch and per-slice timeout;</li>
- *   <li>{@link SplitterInvoker} — splitter lookup and user-exception-wrapping invocation.</li>
+ *   <li>{@link com.societegenerale.failover.core.payload.splitter.PayloadScatter} — the store/scatter side;</li>
+ *   <li>{@link com.societegenerale.failover.core.payload.splitter.PayloadGather} — the recover/gather side;</li>
+ *   <li>{@link com.societegenerale.failover.core.payload.splitter.SliceDispatcher} — parallel-vs-sequential slice dispatch and per-slice timeout;</li>
+ *   <li>{@link com.societegenerale.failover.core.payload.splitter.SplitterInvoker} — splitter lookup and user-exception-wrapping invocation.</li>
  * </ul>
  *
  * <h2>Parallel scatter</h2>
