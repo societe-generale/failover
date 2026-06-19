@@ -319,14 +319,28 @@ async function hydrateTimeline() {
         if (!Array.isArray(pts) || pts.length < 2) return;
         for (let i = 1; i < pts.length; i++) {
             const a = pts[i - 1], b = pts[i];
-            timeline.labels.push(new Date(b.timestamp).toLocaleTimeString());
+            const label = new Date(b.timestamp).toLocaleTimeString();
+            timeline.labels.push(label);
             timeline.calls.push(Math.max(0, b.calls - a.calls));
             timeline.succ.push(b.calls ? +((b.store - a.store) / Math.max(1, b.calls - a.calls) * 100).toFixed(1) : 0);
             timeline.fail.push(b.calls ? +(b.failover / b.calls * 100).toFixed(1) : 0);
             timeline.rec.push(b.failover ? +(b.recovered / b.failover * 100).toFixed(1) : 0);
+
+            // per-API failover-trend, rebuilt server-side so it survives a reload
+            const fa = b.failoverByApi || {}, fp = a.failoverByApi || {};
+            apiTrend.labels.push(label);
+            for (const name of Object.keys(fa)) {
+                const arr = (apiTrend.series[name] ??= []);
+                while (arr.length < apiTrend.labels.length - 1) arr.unshift(0);
+                arr.push(Math.max(0, (fa[name] ?? 0) - (fp[name] ?? 0)));
+            }
         }
         trim(timeline, ['labels', 'calls', 'succ', 'fail', 'rec']);
-        lastTotal = pts[pts.length - 1].calls;
+        trim(apiTrend, ['labels']);
+        Object.keys(apiTrend.series).forEach(name => { if (apiTrend.series[name].length > TREND_MAX) apiTrend.series[name].shift(); });
+        const last = pts[pts.length - 1];
+        lastTotal = last.calls;
+        lastApiFailover = { ...(last.failoverByApi || {}) };  // continue live deltas seamlessly
     } catch { /* history disabled — live polls fill the buffer instead */ }
 }
 

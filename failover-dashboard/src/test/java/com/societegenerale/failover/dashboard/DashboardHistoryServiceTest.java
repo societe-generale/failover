@@ -38,6 +38,12 @@ class DashboardHistoryServiceTest {
                 .register(registry).increment(times);
     }
 
+    private void outcome(String name, String outcome, int times) {
+        Counter.builder("failover.recovery.outcome.total")
+                .tag("name", name).tag("domain", "geo").tag("method", "m").tag("outcome", outcome)
+                .register(registry).increment(times);
+    }
+
     @Test
     @DisplayName("sample() snapshots the current global counters into the ring")
     void sampleSnapshots() {
@@ -50,6 +56,33 @@ class DashboardHistoryServiceTest {
         assertThat(series).hasSize(1);
         assertThat(series.get(0).calls()).isEqualTo(10);
         assertThat(series.get(0).store()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("sample() captures per-API cumulative failover counts in failoverByApi")
+    void sampleCapturesPerApiFailover() {
+        outcome("alpha", "recovered", 5);
+        outcome("alpha", "not_recovered", 1);   // alpha failoverInvoked = 6
+        outcome("beta", "recovered", 2);         // beta  failoverInvoked = 2
+        DashboardHistoryService history = new DashboardHistoryService(metrics, 120);
+
+        history.sample();
+
+        SeriesPoint point = history.series(0).get(0);
+        assertThat(point.failoverByApi())
+                .containsEntry("alpha", 6L)
+                .containsEntry("beta", 2L);
+        assertThat(point.failover()).isEqualTo(8);   // overall = sum of per-API
+    }
+
+    @Test
+    @DisplayName("sample() yields an empty failoverByApi when no failover point is registered")
+    void sampleEmptyFailoverByApi() {
+        DashboardHistoryService history = new DashboardHistoryService(metrics, 120);
+
+        history.sample();
+
+        assertThat(history.series(0).get(0).failoverByApi()).isEmpty();
     }
 
     @Test
