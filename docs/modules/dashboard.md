@@ -96,30 +96,62 @@ See the [Properties Reference](../configuration/properties-reference.md#dashboar
 
 ---
 
+## The Toolbar
+
+Every view shares the top bar:
+
+- **Status chip** — overall live status (`Healthy` / `Degraded` / `Unhealthy`), derived from the worst per-API health.
+- **Tabs** — `Overview`, `Per-API`, `Health`, `Config` (Overview is the default; the open tab is kept in the URL hash, e.g. `#per-api`).
+- **Auto-refresh** — selectable cadence: `off`, `10s`, `30s`, `1m`, `10m`, `1h` (default `30s`).
+- **Refresh now** (`⟳`) — reload immediately, independent of the cadence.
+- **Last-updated** — timestamp of the last successful load.
+- **Theme toggle** (`◐`) — switch dark / light (or force it with `?theme=dark` / `?theme=light`).
+- **Docs** — the failover icon opens this documentation in a new tab.
+
+All controls carry hover tooltips. Dark is the default "control-room" theme; both themes are shown for each view below.
+
+---
+
 ## The Views
 
-Three tabs in the UI — **Metrics**, **Health**, **Config** (Metrics is the default). Dark is the
-default "control-room" theme; a light theme is one toolbar toggle away (or `?theme=light` /
-`?theme=dark`). Each theme is shown below with all three views.
+### Overview
 
-- **Metrics** — KPI cards (incl. **async write failures** and **recover latency**), six charts in a
-  3-up grid (recovery mix; success / full-recovery / partial-recovery; per-API breakdown;
-  store-vs-recover; **store/recover latency**; **top failover-trigger exception types**), two full-width
-  charts (call/rate timeline and per-API failures over time) and a per-API health table. A loud banner
-  appears if any async store write has failed (data not persisted). Auto-refresh is selectable (`off`,
-  `10s`, `30s`, `1m`, `10m`, `1h`; default `1m`) with a manual refresh button and a "last updated" timestamp.
-- **Health** — actuator-style overall failover health (`UP` / `DOWN`) in a status hero plus the active
-  configuration as cards, mirroring the `/actuator/health/failover` contributor.
-- **Config** — every `@Failover` point (sortable, filterable; empty overrides render as `default`), and a
-  **Global configuration** panel of the effective `failover.*` / `failover.dashboard.*` settings grouped
-  (Core / Store / Scheduler / Scatter / Dashboard) with values as chips. Types, flags, crons, thresholds
-  and paths only — never credentials or connection strings (§9).
+The at-a-glance health and KPI surface.
+
+- **Health banner** — a closable, colour-coded summary shown on each load: *all APIs healthy* (green), *N need attention* (amber, names listed), or *N unhealthy — action needed* (red).
+- **Signals — row 1 (health):** a large **Overall API Health** gauge (the `(success + recovered) / total` healthy-served rate) beside a grid of **per-API health cards**, sorted **worst-first** so a struggling API surfaces top-left. Each card shows its health %, status, calls and failover %.
+- **Signals — row 2 (metrics):** one card per KPI — **Overall calls**, **Success rate**, **Failover rate**, **Recovery rate**, **Non-recovery rate** (each rate shows the underlying count too), **Persistence failures** (async store writes that were lost — alert on any non-zero), and **Recover latency** (mean recover-path ms).
+- **Charts:** *Did the caller get a result?* (live value / recovered / hard failure), *When failover fired, did it recover?* (full / partial / nothing usable — partial = scatter-gather slices), *Successful vs Recovered*, a full-width **Trend** (calls per tick + success / failover / recovery rate over time), *Why did upstream fail?* (top exception types), and *Latency — store vs recover* per API.
+
+### Per-API
+
+Drill-down per failover point.
+
+- **Per-API health table** — sortable (click any header): calls, healthy-rate bar, success / failover / recovery %, errors, an inline **failover-trend sparkline**, and a `HEALTHY` / `DEGRADED` / `UNHEALTHY` badge.
+- **Failover trend — all APIs** — one line per failover point, failover invocations per tick.
+- **Per-API breakdown** — grouped bars: overall vs failover vs recovered vs not-recovered.
+
+### Health
+
+Actuator-style subsystem health, mirroring the `/actuator/health/failover` contributor.
+
+- **Status hero** — `UP` (at least one `@Failover` registered) or `DOWN` (none discovered — a misconfiguration signal).
+- **Active configuration** — the global config rendered as small stat cards (registered failovers, type, store type, async, exception policy, scheduler…). Types and flags only — never credentials or connection strings (§9).
+
+### Config
+
+- **Failover configuration** — a sortable, filterable table of every `@Failover` point: name, domain, expiry, store, execution, recover-all, splitter, key generator, expiry policy. Empty per-annotation overrides render as `default`.
+- **Global settings** — the effective `failover.*` / `failover.dashboard.*` settings grouped into panels (Core / Store / Scatter / Scheduler / Dashboard). Types, flags, crons, thresholds and paths only.
 
 === "Dark mode"
 
-    === "Metrics"
+    === "Overview"
 
-        ![Failover dashboard — metrics view, dark theme](../web/assets/images/dashboard-metrics.png)
+        ![Failover dashboard — overview, dark theme](../web/assets/images/dashboard-overview.png)
+
+    === "Per-API"
+
+        ![Failover dashboard — per-API view, dark theme](../web/assets/images/dashboard-perapi.png)
 
     === "Health"
 
@@ -131,9 +163,13 @@ default "control-room" theme; a light theme is one toolbar toggle away (or `?the
 
 === "Light mode"
 
-    === "Metrics"
+    === "Overview"
 
-        ![Failover dashboard — metrics view, light theme](../web/assets/images/dashboard-metrics-light.png)
+        ![Failover dashboard — overview, light theme](../web/assets/images/dashboard-overview-light.png)
+
+    === "Per-API"
+
+        ![Failover dashboard — per-API view, light theme](../web/assets/images/dashboard-perapi-light.png)
 
     === "Health"
 
@@ -210,7 +246,7 @@ Size it for the span you want visible: e.g. `samples: 240, sample-interval-secon
 
 **The `/api/metrics/series` endpoint.** Returns the retained samples (global cumulative totals per timestamp) in chronological order. It accepts an optional `windowSec` query param — only samples within that many seconds of now are returned; `windowSec=0` returns all retained (the UI uses `0` on load). The endpoint is registered **only** when `history.enabled=true`, and is gated by the `metrics` exposure flag (`exposure.include`) and the same access gate as the rest of the dashboard.
 
-**UI behaviour.** When enabled, the metrics view **hydrates the call/rate timeline from `/api/metrics/series` on load**, so a browser reload keeps its trend instead of starting blank; live polling then continues seamlessly from the last sample. The chart deltas consecutive cumulative samples (calls per interval) and derives the failover / recovery / non-recovery rates. (The per-API failures chart remains live-only — `/series` carries global totals, not per-API.) With history disabled the endpoint is absent and the UI silently falls back to the client-side buffer.
+**UI behaviour.** When enabled, the Overview **hydrates the call/rate timeline from `/api/metrics/series` on load**, so a browser reload keeps its trend instead of starting blank; live polling then continues seamlessly from the last sample. The chart deltas consecutive cumulative samples (calls per interval) and derives the failover / recovery / non-recovery rates. (The per-API failures chart remains live-only — `/series` carries global totals, not per-API.) With history disabled the endpoint is absent and the UI silently falls back to the client-side buffer.
 
 It is process-local and lost on restart — deliberately **not** a TSDB. For long-term, cross-restart analysis, point Prometheus/Grafana at the existing `failover.*` meters.
 
@@ -218,7 +254,7 @@ It is process-local and lost on restart — deliberately **not** a TSDB. For lon
 
 ## Graceful Degradation
 
-If Micrometer is not on the classpath, the **config view still works**; the metrics view shows a friendly "metrics unavailable" banner. If the Chart.js asset is missing, KPI cards and tables still render and a notice replaces the charts.
+If Micrometer is not on the classpath, the **Config and Health views still work**; the Overview / Per-API views show a friendly "metrics unavailable" notice. If the Chart.js asset is missing, KPI cards and tables still render and a notice replaces the charts.
 
 ---
 
