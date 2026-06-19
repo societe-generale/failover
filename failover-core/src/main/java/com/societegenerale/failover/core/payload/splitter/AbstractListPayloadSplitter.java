@@ -8,19 +8,19 @@ import java.util.List;
  * payload that is a {@code List<T>} of slices of type {@code T}.
  *
  * <p>Fixes {@code T = List<T>} and {@code R = T} and supplies working defaults for three of the four
- * hooks, so the minimum a subclass must provide is {@link #payloadArgs(Object, StoreContext)} — the
+ * hooks, so the minimum a subclass must provide is {@link #keyArgsForSlice(Object, StoreContext)} — the
  * slice key. The supplied defaults are:
  * <ul>
- *   <li>{@link #doSplitPayloadOnStore(List)} — identity: each list element is one slice.</li>
- *   <li>{@link #doSplitCompositeArgsOnRecover(List, RecoverContext)} — a single arg-group
+ *   <li>{@link #splitIntoSlices(List)} — identity: each list element is one slice.</li>
+ *   <li>{@link #keyArgsToRecover(List, RecoverContext)} — a single arg-group
  *       ({@code List.of(args)}), which is correct <b>only for the {@code findAll()} / no-id-args
  *       case</b>. Every id-based scenario must override it.</li>
- *   <li>{@link #doMergePayloadAndArgs(List, List)} — returns the recovered slices as-is (nulls kept
+ *   <li>{@link #mergeSlices(List, List)} — returns the recovered slices as-is (nulls kept
  *       positionally) and flattens the per-slice arg-groups into one aggregate arg list. Override to
  *       deduplicate, drop nulls, or reject partial recoveries.</li>
  * </ul>
  *
- * <p><b>When to override {@link #doSplitCompositeArgsOnRecover}:</b>
+ * <p><b>When to override {@link #keyArgsToRecover}:</b>
  * <table class="striped">
  *   <caption>Method shape &rarr; what to override</caption>
  *   <thead><tr><th>Method</th><th>Override needed</th></tr></thead>
@@ -51,10 +51,10 @@ public abstract class AbstractListPayloadSplitter<T> extends AbstractPayloadSpli
 
     /**
      * Derives the store-key args for a single slice. The only mandatory hook — typically
-     * {@code List.of(payload.getId())}. See {@link AbstractPayloadSplitter#payloadArgs}.
+     * {@code List.of(payload.getId())}. See {@link AbstractPayloadSplitter#keyArgsForSlice}.
      */
     @Override
-    protected abstract List<Object> payloadArgs(T payload, StoreContext<List<T>> context);
+    protected abstract List<Object> keyArgsForSlice(T payload, StoreContext<List<T>> context);
 
     /**
      * {@inheritDoc}
@@ -63,7 +63,7 @@ public abstract class AbstractListPayloadSplitter<T> extends AbstractPayloadSpli
      * stored slice.
      */
     @Override
-    protected List<T> doSplitPayloadOnStore(List<T> payloads) {
+    protected List<T> splitIntoSlices(List<T> payloads) {
         return payloads;
     }
 
@@ -77,7 +77,7 @@ public abstract class AbstractListPayloadSplitter<T> extends AbstractPayloadSpli
      * {@code List<List<Object>>}.
      */
     @Override
-    protected List<List<Object>> doSplitCompositeArgsOnRecover(List<Object> args, RecoverContext<List<T>> context) {
+    protected List<List<Object>> keyArgsToRecover(List<Object> args, RecoverContext<List<T>> context) {
         return List.of(args); // only for findAll() use case where there is no args passed. all other use case please override and provide the ids as a List<List<Object>>
     }
 
@@ -87,10 +87,10 @@ public abstract class AbstractListPayloadSplitter<T> extends AbstractPayloadSpli
      * <p>Default merge: returns the recovered slices as the composite list (nulls kept positionally)
      * and flattens the per-slice arg-groups into a single aggregate arg list. Override to deduplicate,
      * drop null slices, or reject partial recoveries — see the null-policy discussion on
-     * {@link AbstractPayloadSplitter#doMergePayloadAndArgs}.
+     * {@link AbstractPayloadSplitter#mergeSlices}.
      */
     @Override
-    protected MergeResult<List<T>> doMergePayloadAndArgs(List<T> payloads, List<List<Object>> args) {
+    protected MergeResult<List<T>> mergeSlices(List<T> payloads, List<List<Object>> args) {
         return MergeResult.<List<T>>builder().payload(payloads).args(args.stream().flatMap(Collection::stream).toList()).build();
     }
 }
