@@ -20,19 +20,19 @@ import java.util.List;
  *   <thead><tr><th>Public operation</th><th>Delegates to</th><th>Purpose</th></tr></thead>
  *   <tbody>
  *     <tr><td>{@link #splitOnStore(StoreContext)}</td>
- *         <td>{@link #doSplitPayloadOnStore(Object)} then {@link #payloadArgs(Object, StoreContext)} per slice</td>
+ *         <td>{@link #splitIntoSlices(Object)} then {@link #keyArgsForSlice(Object, StoreContext)} per slice</td>
  *         <td>Break the composite payload into slices and derive each slice's key args.</td></tr>
  *     <tr><td>{@link #splitOnRecover(RecoverContext)}</td>
- *         <td>{@link #doSplitCompositeArgsOnRecover(List, RecoverContext)}</td>
+ *         <td>{@link #keyArgsToRecover(List, RecoverContext)}</td>
  *         <td>Turn the aggregate method args into one arg-group (hence one {@code recoverAll}/{@code find} call) per slice.</td></tr>
  *     <tr><td>{@link #merge(List)}</td>
- *         <td>{@link #doMergePayloadAndArgs(List, List)}</td>
+ *         <td>{@link #mergeSlices(List, List)}</td>
  *         <td>Re-assemble the recovered slices into the composite payload and aggregate args.</td></tr>
  *   </tbody>
  * </table>
  *
- * <p><b>Slice-key contract.</b> The args produced by {@link #payloadArgs} on the store path and the
- * args produced by {@link #doSplitCompositeArgsOnRecover} on the recover path must derive the
+ * <p><b>Slice-key contract.</b> The args produced by {@link #keyArgsForSlice} on the store path and the
+ * args produced by {@link #keyArgsToRecover} on the recover path must derive the
  * <em>same store key</em> for the same entity. If they diverge, a slice is stored under one key and
  * looked up under another, so recovery silently returns nothing.
  *
@@ -59,16 +59,16 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
     /**
      * {@inheritDoc}
      *
-     * <p>Template: splits the composite payload via {@link #doSplitPayloadOnStore(Object)}, then for
+     * <p>Template: splits the composite payload via {@link #splitIntoSlices(Object)}, then for
      * each slice builds a {@link StoreContext} whose args come from
-     * {@link #payloadArgs(Object, StoreContext)}. The original {@link com.societegenerale.failover.annotations.Failover}
+     * {@link #keyArgsForSlice(Object, StoreContext)}. The original {@link com.societegenerale.failover.annotations.Failover}
      * is carried through unchanged so every slice stores under the same domain/expiry config.
      */
     @Override
     public List<StoreContext<R>> splitOnStore(StoreContext<T> context) {
-        return doSplitPayloadOnStore(context.getPayload()).stream().map(payload -> StoreContext.<R>builder()
+        return splitIntoSlices(context.getPayload()).stream().map(payload -> StoreContext.<R>builder()
                 .failover(context.getFailover())
-                .args(payloadArgs(payload, context))
+                .args(keyArgsForSlice(payload, context))
                 .payload(payload)
                 .build())
             .toList();
@@ -78,13 +78,13 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
      * {@inheritDoc}
      *
      * <p>Template: turns the aggregate method args into one arg-group per slice via
-     * {@link #doSplitCompositeArgsOnRecover(List, RecoverContext)}, then builds one
+     * {@link #keyArgsToRecover(List, RecoverContext)}, then builds one
      * {@link RecoverContext} per group. Each context is stamped with the slice type {@code R} (so the
      * delegate recovers the correct type) and carries the original failover and cause through.
      */
     @Override
     public List<RecoverContext<R>> splitOnRecover(RecoverContext<T> context) {
-        List<List<Object>> compositeArgs = doSplitCompositeArgsOnRecover(context.getArgs(), context);
+        List<List<Object>> compositeArgs = keyArgsToRecover(context.getArgs(), context);
         return compositeArgs.stream().map(args -> RecoverContext.<R>builder()
                 .failover(context.getFailover())
                 .args(args)
@@ -98,13 +98,13 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
      * {@inheritDoc}
      *
      * <p>Template: collects the recovered payload and args of every slice (preserving order), hands
-     * them to {@link #doMergePayloadAndArgs(List, List)}, and wraps the resulting {@link MergeResult}
+     * them to {@link #mergeSlices(List, List)}, and wraps the resulting {@link MergeResult}
      * in a composite {@link RecoverContext} stamped with the composite type {@code T}. The failover
      * and cause are taken from the first slice.
      *
      * <p>Slice payloads may be {@code null} (cache miss / expired / timed-out slice). The null policy
      * — keep positionally, drop, or reject the whole composite — belongs to
-     * {@link #doMergePayloadAndArgs(List, List)}, not here. The framework only short-circuits to
+     * {@link #mergeSlices(List, List)}, not here. The framework only short-circuits to
      * {@code null} when the slice list is empty, in which case this method is not called.
      *
      * @param recoverContexts per-slice contexts after each slice's payload has been recovered; never
@@ -118,7 +118,7 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
             payloads.add(ctx.getPayload());
             args.add(ctx.getArgs());
         });
-        var mergeResult = doMergePayloadAndArgs(payloads, args);
+        var mergeResult = mergeSlices(payloads, args);
         return RecoverContext.<T>builder()
                 .failover(recoverContexts.getFirst().getFailover())
                 .payload(mergeResult.getPayload())
@@ -133,32 +133,32 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
      *
      * <p>The returned list is fed to the configured {@code KeyGenerator}, so it must produce the same
      * key that a direct single-entity call would (e.g. {@code List.of(payload.getId())}). It must
-     * also match what {@link #doSplitCompositeArgsOnRecover(List, RecoverContext)} produces per slice
+     * also match what {@link #keyArgsToRecover(List, RecoverContext)} produces per slice
      * on the recover path, otherwise stored and recovered keys diverge.
      *
      * @param payload the individual slice being stored
      * @param context the composite store context (full payload + original method args)
      * @return key args identifying {@code payload}; typically a single-element list of the entity id
      */
-    protected abstract List<Object> payloadArgs(R payload, StoreContext<T> context);
+    protected abstract List<Object> keyArgsForSlice(R payload, StoreContext<T> context);
 
     /**
      * Breaks the composite payload into individual slices on the <b>store</b> path.
      *
      * <p>One {@link StoreContext} is built per returned slice. For a {@code List<R>} composite this is
      * the identity (each element is a slice) — see
-     * {@link AbstractListPayloadSplitter#doSplitPayloadOnStore(List)}.
+     * {@link AbstractListPayloadSplitter#splitIntoSlices(List)}.
      *
      * @param payload the composite payload returned by the annotated method
      * @return the slices to store individually, in order
      */
-    protected abstract List<R> doSplitPayloadOnStore(T payload);
+    protected abstract List<R> splitIntoSlices(T payload);
 
     /**
      * Splits the aggregate method args into one arg-group per slice on the <b>recover</b> path.
      *
      * <p>Each returned {@code List<Object>} drives exactly one recover/find call on the slice delegate
-     * and must derive the same key {@link #payloadArgs(Object, StoreContext)} produced when storing.
+     * and must derive the same key {@link #keyArgsForSlice(Object, StoreContext)} produced when storing.
      *
      * <p>Shapes by scenario (assuming the slice key is the entity id):
      * <ul>
@@ -175,7 +175,7 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
      * @param context the composite recover context (failover, args, cause)
      * @return one arg-group per slice to recover; an empty list suppresses recovery
      */
-    protected abstract List<List<Object>> doSplitCompositeArgsOnRecover(List<Object> args, RecoverContext<T>  context);
+    protected abstract List<List<Object>> keyArgsToRecover(List<Object> args, RecoverContext<T>  context);
 
     /**
      * Re-assembles the recovered slices into the composite payload on the <b>recover</b> path.
@@ -189,6 +189,6 @@ public abstract class AbstractPayloadSplitter<T, R> implements PayloadSplitter<T
      * @param args     the per-slice arg-groups in the same order as {@code payloads}
      * @return the merged composite payload plus aggregated args, wrapped in a {@link MergeResult}
      */
-    protected abstract MergeResult<T> doMergePayloadAndArgs(List<R> payloads, List<List<Object>> args);
+    protected abstract MergeResult<T> mergeSlices(List<R> payloads, List<List<Object>> args);
 
 }

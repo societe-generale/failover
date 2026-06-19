@@ -128,7 +128,7 @@ public interface PayloadSplitter<T, R> {
 
 !!! note "Prefer the base classes over the raw interface"
     For a `List<T>` composite, extend `AbstractListPayloadSplitter<T>` and implement only
-    `payloadArgs` (the slice key); for id-based methods also override `doSplitCompositeArgsOnRecover`.
+    `keyArgsForSlice` (the slice key); for id-based methods also override `keyArgsToRecover`.
     For a non-`List` composite (a wrapper object) extend `AbstractPayloadSplitter<T, R>`. Both supply
     the `splitOnStore` / `splitOnRecover` / `merge` plumbing so you only write the domain-specific
     hooks. Implement `PayloadSplitter` directly only when you need full control. See the
