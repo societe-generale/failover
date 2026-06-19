@@ -18,14 +18,370 @@ public interface PayloadSplitter<T, R> {
 }
 ```
 
-| Type | Meaning |
-|---|---|
-| `T` | Composite type — what the annotated method returns (`List<Country>`) |
-| `R` | Slice type — what is stored per entity (`Country`) |
+| Type | Meaning                                                              |
+|------|----------------------------------------------------------------------|
+| `T`  | Composite type — what the annotated method returns (`List<Country>`) |
+| `R`  | Slice type — what is stored per entity (`Country`)                   |
 
 ---
 
-## Step 1 — Implement PayloadSplitter
+## Two ways to implement
+
+| Approach                                                  | Use when                                                                                                                                                |
+|-----------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Extend `AbstractListPayloadSplitter<T>`** (recommended) | Method returns `List<T>`. You implement only `payloadArgs` (the slice key); for id-based methods also override `doSplitCompositeArgsOnRecover`.         |
+| **Extend `AbstractPayloadSplitter<T, R>`**                | Composite is not a `List` (e.g. a wrapper object holding the collection). You control the store split and merge but still skip the context plumbing.    |
+| **Implement `PayloadSplitter<T, R>` directly**            | You need full control of `splitOnStore` / `splitOnRecover` / `merge` — see [Implementing the Interface Directly](#implementing-the-interface-directly). |
+
+---
+
+## Base Classes — `AbstractListPayloadSplitter` / `AbstractPayloadSplitter`
+
+`AbstractListPayloadSplitter<T>` collapses a full splitter down to the one thing that differs per use
+case: **the slice key**. It fixes `T = List<T>`, `R = T` and supplies working defaults:
+
+```java
+public abstract class AbstractListPayloadSplitter<T>
+        extends AbstractPayloadSplitter<List<T>, T> { ... }
+```
+
+| Hook                                       | Default                                             | Override when                          |
+|--------------------------------------------|-----------------------------------------------------|----------------------------------------|
+| `payloadArgs(slice, ctx)`                  | **abstract**                                        | always — the slice key                 |
+| `doSplitPayloadOnStore(list)`              | identity — each element is a slice                  | almost never                           |
+| `doSplitCompositeArgsOnRecover(args, ctx)` | single group `List.of(args)` — **`findAll()` only** | every id-based method                  |
+| `doMergePayloadAndArgs(payloads, args)`    | slices as-is (nulls kept), args flattened           | to dedup / drop nulls / reject partial |
+
+`merge` returns the merged result via a small [`MergeResult<T>`](../reference/javadocs.md) value object
+(`payload` + aggregated `args`).
+
+!!! warning "The slice-key contract"
+    Args from `payloadArgs` (store) and from `doSplitCompositeArgsOnRecover` (recover) **must derive
+    the same store key for the same entity**. If they diverge, a slice is stored under one key and
+    looked up under another, so recovery silently returns nothing.
+
+The entity used in every example below — slice key is always the id:
+
+```java
+@Data
+@EqualsAndHashCode(callSuper = true)
+@AllArgsConstructor
+public class ThirdParty extends Referential {
+    private Long id;
+    private String name;
+    private int score;
+}
+```
+
+### Scenario 1 — `findAll()` with zero args
+
+No args to split. The default `doSplitCompositeArgsOnRecover` returns a single placeholder group, so
+the delegate recovers **all** slices by name. Implement **only** `payloadArgs`.
+
+```java title="ThirdPartyListSplitter.java"
+@Component("thirdPartyListSplitter")
+public class ThirdPartyListSplitter extends AbstractListPayloadSplitter<ThirdParty> {
+
+    public ThirdPartyListSplitter() {
+        super(ThirdParty.class);
+    }
+
+    @Override
+    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+        return List.of(payload.getId());   // slice key = id
+    }
+}
+```
+
+```java
+@Failover(
+    name = "all-third-parties",
+    domain = "third-party",
+    payloadSplitter = "thirdPartyListSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<ThirdParty> findAll();
+```
+
+No `recoverAll = true` needed — empty args take the recover-all path automatically.
+
+### Scenario 2 — `findAllByIdsIn(List<Long> ids)`
+
+`args.get(0)` is the `List<Long>`. Override `doSplitCompositeArgsOnRecover` to emit **one group per
+id** so each id recovers independently (true partial recovery).
+
+```java title="ThirdPartyByIdsSplitter.java"
+@Component("thirdPartyByIdsSplitter")
+public class ThirdPartyByIdsSplitter extends AbstractListPayloadSplitter<ThirdParty> {
+
+    public ThirdPartyByIdsSplitter() {
+        super(ThirdParty.class);
+    }
+
+    @Override
+    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+        return List.of(payload.getId());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+            List<Object> args, RecoverContext<List<ThirdParty>> context) {
+        List<Long> ids = (List<Long>) args.get(0);
+        return ids.stream()
+                .map(id -> List.<Object>of(id))   // one group per id → key matches payloadArgs
+                .toList();
+    }
+}
+```
+
+```java
+@Failover(
+    name = "third-parties-by-ids",
+    domain = "third-party",
+    payloadSplitter = "thirdPartyByIdsSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<ThirdParty> findAllByIdsIn(List<Long> ids);
+```
+
+Recovering `[1, 2, 3]` issues three independent lookups; if id `2` is missing, the default merge keeps
+a `null` at that position (override `doMergePayloadAndArgs` to drop it — see [Overriding the merge](#overriding-the-merge-with-the-base-classes)).
+
+### Scenario 3 — `findAllByIdsInAndActiveAndRegion(List<Long> ids, Boolean active, String region)`
+
+Same as Scenario 2 plus filter args. `active` / `region` are **filters, not entity identity** — keep
+the slice key as the id and **ignore** the filters on recover.
+
+```java title="ThirdPartyByIdsAndFiltersSplitter.java"
+@Component("thirdPartyByIdsAndFiltersSplitter")
+public class ThirdPartyByIdsAndFiltersSplitter extends AbstractListPayloadSplitter<ThirdParty> {
+
+    public ThirdPartyByIdsAndFiltersSplitter() {
+        super(ThirdParty.class);
+    }
+
+    @Override
+    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+        return List.of(payload.getId());   // key = id only; filters are NOT part of the key
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+            List<Object> args, RecoverContext<List<ThirdParty>> context) {
+        List<Long> ids = (List<Long>) args.get(0);   // args.get(1)=active, args.get(2)=region ignored
+        return ids.stream()
+                .map(id -> List.<Object>of(id))
+                .toList();
+    }
+}
+```
+
+```java
+@Failover(
+    name = "third-parties-by-ids-filtered",
+    domain = "third-party",
+    payloadSplitter = "thirdPartyByIdsAndFiltersSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<ThirdParty> findAllByIdsInAndActiveAndRegion(List<Long> ids, Boolean active, String region);
+```
+
+!!! tip "Why drop the filters from the key?"
+    Keying by id only lets this method share store entries with `findAll()` and `findAllByIdsIn` under
+    `domain = "third-party"`. Keying by `id + active + region` would store the same entity under many
+    keys and recovery from a different filter combination would miss. Include a filter in the key only
+    if it genuinely produces a *different stored value* for the same id.
+
+### Scenario 4 — `findAllByStringIdsIn(String commaSeparatedIds)`
+
+`args.get(0)` is a CSV like `"1,2,3"`. Split it, then emit one group per id parsed to the type the key
+generator expects (`Long`, matching `payload.getId()`).
+
+```java title="ThirdPartyByStringIdsSplitter.java"
+@Component("thirdPartyByStringIdsSplitter")
+public class ThirdPartyByStringIdsSplitter extends AbstractListPayloadSplitter<ThirdParty> {
+
+    public ThirdPartyByStringIdsSplitter() {
+        super(ThirdParty.class);
+    }
+
+    @Override
+    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+        return List.of(payload.getId());
+    }
+
+    @Override
+    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+            List<Object> args, RecoverContext<List<ThirdParty>> context) {
+        String csv = (String) args.get(0);
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .map(Long::valueOf)               // parse to Long so the key matches payloadArgs
+                .map(id -> List.<Object>of(id))
+                .toList();
+    }
+}
+```
+
+```java
+@Failover(
+    name = "third-parties-by-string-ids",
+    domain = "third-party",
+    payloadSplitter = "thirdPartyByStringIdsSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<ThirdParty> findAllByStringIdsIn(String commaSeparatedIds);
+```
+
+!!! warning "Parse the CSV to the stored key type"
+    On store the key is `List.of(payload.getId())` — a `Long`. Leaving CSV tokens as `String`
+    (`List.of("1")`) makes the recover key differ from the stored key. Parse to `Long`.
+
+### Scenario 5 — `findAllByStringIdsInAndActiveAndRegion(String commaSeparatedIds, Boolean active, String region)`
+
+CSV ids plus filters: combine Scenario 4 (split the CSV) with Scenario 3 (ignore the filters).
+
+```java title="ThirdPartyByStringIdsAndFiltersSplitter.java"
+@Component("thirdPartyByStringIdsAndFiltersSplitter")
+public class ThirdPartyByStringIdsAndFiltersSplitter extends AbstractListPayloadSplitter<ThirdParty> {
+
+    public ThirdPartyByStringIdsAndFiltersSplitter() {
+        super(ThirdParty.class);
+    }
+
+    @Override
+    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+        return List.of(payload.getId());
+    }
+
+    @Override
+    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+            List<Object> args, RecoverContext<List<ThirdParty>> context) {
+        String csv = (String) args.get(0);          // args.get(1)=active, args.get(2)=region ignored
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .map(Long::valueOf)
+                .map(id -> List.<Object>of(id))
+                .toList();
+    }
+}
+```
+
+```java
+@Failover(
+    name = "third-parties-by-string-ids-filtered",
+    domain = "third-party",
+    payloadSplitter = "thirdPartyByStringIdsAndFiltersSplitter",
+    expiryDuration = 24,
+    expiryUnit = ChronoUnit.HOURS
+)
+List<ThirdParty> findAllByStringIdsInAndActiveAndRegion(
+        String commaSeparatedIds, Boolean active, String region);
+```
+
+### Cheat sheet
+
+| Scenario | Method                                        | Override `doSplitCompositeArgsOnRecover`? | Recover-key source                        |
+|----------|-----------------------------------------------|-------------------------------------------|-------------------------------------------|
+| 1        | `findAll()`                                   | No (default single group)                 | — (recover all by name)                   |
+| 2        | `findAllByIdsIn(List<Long>)`                  | Yes                                       | `args.get(0)` (the id list)               |
+| 3        | `findAllByIdsInAndActiveAndRegion(...)`       | Yes                                       | `args.get(0)`; filters ignored            |
+| 4        | `findAllByStringIdsIn(String)`                | Yes                                       | CSV `args.get(0)` parsed to `Long`        |
+| 5        | `findAllByStringIdsInAndActiveAndRegion(...)` | Yes                                       | CSV `args.get(0)` parsed; filters ignored |
+
+In all five `payloadArgs` is identical (`List.of(payload.getId())`) and all share
+`domain = "third-party"`, so a successful call on any of them populates the store entries the others
+recover from.
+
+### `AbstractPayloadSplitter` — non-`List` composite
+
+When the method returns a wrapper (not a bare `List`), extend `AbstractPayloadSplitter<T, R>` and
+implement all four hooks — including `doSplitPayloadOnStore` to pull the collection out of the wrapper
+and `doMergePayloadAndArgs` to put it back.
+
+```java title="ThirdPartiesResult.java"
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class ThirdPartiesResult extends Referential {
+    private List<ThirdParty> thirdParties;
+}
+```
+
+```java title="ThirdPartiesResultSplitter.java"
+@Component("thirdPartiesResultSplitter")
+public class ThirdPartiesResultSplitter
+        extends AbstractPayloadSplitter<ThirdPartiesResult, ThirdParty> {
+
+    public ThirdPartiesResultSplitter() {
+        super(ThirdPartiesResult.class, ThirdParty.class);
+    }
+
+    @Override
+    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<ThirdPartiesResult> ctx) {
+        return List.of(payload.getId());
+    }
+
+    @Override
+    protected List<ThirdParty> doSplitPayloadOnStore(ThirdPartiesResult payload) {
+        return payload.getThirdParties();           // unwrap the collection
+    }
+
+    @Override
+    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+            List<Object> args, RecoverContext<ThirdPartiesResult> ctx) {
+        return List.of(args);                        // findAll-style; override per scenario as above
+    }
+
+    @Override
+    protected MergeResult<ThirdPartiesResult> doMergePayloadAndArgs(
+            List<ThirdParty> payloads, List<List<Object>> args) {
+        var result = new ThirdPartiesResult();
+        result.setThirdParties(payloads.stream().filter(Objects::nonNull).toList());  // re-wrap
+        return MergeResult.<ThirdPartiesResult>builder()
+                .payload(result)
+                .args(args.stream().flatMap(Collection::stream).toList())
+                .build();
+    }
+}
+```
+
+### Overriding the merge with the base classes
+
+The default `doMergePayloadAndArgs` keeps slice payloads as-is, including `null`s for missing slices.
+To drop missing slices, deduplicate, or reject a partial recovery, override it and return a
+`MergeResult`:
+
+```java
+@Override
+protected MergeResult<List<ThirdParty>> doMergePayloadAndArgs(
+        List<ThirdParty> payloads, List<List<Object>> args) {
+    List<ThirdParty> recovered = payloads.stream()
+            .filter(Objects::nonNull)          // drop missing slices
+            .toList();
+    return MergeResult.<List<ThirdParty>>builder()
+            .payload(recovered)
+            .args(args.stream().flatMap(Collection::stream).toList())
+            .build();
+}
+```
+
+The trade-offs (keep positional nulls vs. compact vs. reject-on-any-miss) are the same as for the raw
+interface — see [Partial Recovery — Null Policy](#partial-recovery-null-policy-in-merge).
+
+---
+
+## Implementing the Interface Directly
+
+When you need full control — or the composite/key shape does not fit the base classes — implement
+`PayloadSplitter<T, R>` yourself. The example below uses a `Country` keyed by string `code`.
+
+### Step 1 — Implement PayloadSplitter
 
 ```java title="CountrySplitter.java"
 @Component("countrySplitter")
@@ -76,7 +432,7 @@ The `args` list in each split `StoreContext` must produce the same key as a dire
 
 ---
 
-## Step 2 — Wire to the Annotation
+### Step 2 — Wire to the Annotation
 
 ```java
 @Failover(
@@ -312,23 +668,24 @@ A successful `findByIds("FR,DE,US")` stores three slices. On failure, `findAll()
 
 ---
 
-## Handling PayloadSplitterExecutionException
+## Splitter failures stay inside the failover boundary
 
-Any exception thrown inside `splitOnStore`, `splitOnRecover`, or `merge` is wrapped in `PayloadSplitterExecutionException` with full context. Catch it at the service layer when you need to react to splitter bugs without crashing the caller:
+You do **not** need to catch anything. Any exception thrown inside `splitOnStore`,
+`splitOnRecover`, or `merge` is wrapped in `PayloadSplitterExecutionException` and handled entirely
+within the failover boundary — it never propagates to the caller of the annotated method:
 
-```java
-try {
-    return countryService.findAll();
-} catch (PayloadSplitterExecutionException ex) {
-    log.error("Splitter '{}' failed in '{}' for failover '{}': {}",
-        ex.getCause().getClass().getSimpleName(),
-        // parse from ex.getMessage() or subclass with structured fields
-        ex.getMessage(), ex);
-    return Collections.emptyList();
-}
-```
+- **On store** (success path): the exception is caught and logged at `ERROR`
+  (`"Ignoring Failover Exception !! ... 'store' ..."`); the real business result is returned unchanged.
+  A splitter bug never breaks a working upstream call.
+- **On recover/merge** (failure path): the exception is caught and logged at `ERROR`
+  (`"Ignoring Failover Exception !! ... 'recover' ..."`); recovery yields `null`, which is then passed
+  to your [`RecoveredPayloadHandler`](recovered-payload-handler.md) and finally to the
+  [`ExceptionPolicy`](exception-policy.md) — exactly as a normal "nothing recovered" outcome.
 
-The message includes: splitter name, operation (`splitOnStore` / `splitOnRecover` / `merge`), failover name, expiry config, domain, and the original cause message — sufficient to diagnose the failure without a debugger.
+The wrapped exception carries full diagnostic context — splitter name, operation
+(`splitOnStore` / `splitOnRecover` / `merge`), failover name, expiry config, domain, and the original
+cause — so a splitter bug is visible in the logs and metrics without a debugger. The end user does not
+write any try/catch around it.
 
 ---
 
