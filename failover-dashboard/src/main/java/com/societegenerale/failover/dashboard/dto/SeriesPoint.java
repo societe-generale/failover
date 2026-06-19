@@ -16,18 +16,24 @@
 
 package com.societegenerale.failover.dashboard.dto;
 
+import java.util.Map;
+
 /**
- * One sample of the global cumulative counters, captured by the server-side history sampler
+ * One sample of the cumulative counters, captured by the server-side history sampler
  * (design doc §4.2 / §8 option B). Values are the totals at {@code timestamp}; the trend chart deltas
  * consecutive points. Reload-surviving (process-local) trend without depending on the open browser tab.
  *
- * @param timestamp    epoch millis when the sample was taken
- * @param calls        {@code overall.totalCalls}
- * @param failover     {@code overall.failoverInvoked}
- * @param recovered    {@code overall.recovered}
- * @param notRecovered {@code overall.notRecovered}
- * @param store        {@code overall.upstreamSuccess} (values stored after an upstream success)
- * @param recover      {@code overall.failoverInvoked} (recover-path invocations)
+ * <p>{@code failoverByApi} carries the per-failover-point cumulative {@code failoverInvoked} totals so the
+ * dashboard's per-API failover-trend chart also survives a reload (not just the global timeline).
+ *
+ * @param timestamp     epoch millis when the sample was taken
+ * @param calls         {@code overall.totalCalls}
+ * @param failover      {@code overall.failoverInvoked}
+ * @param recovered     {@code overall.recovered}
+ * @param notRecovered  {@code overall.notRecovered}
+ * @param store         {@code overall.upstreamSuccess} (values stored after an upstream success)
+ * @param recover       {@code overall.failoverInvoked} (recover-path invocations)
+ * @param failoverByApi per-API cumulative {@code failoverInvoked}, keyed by failover name
  */
 public record SeriesPoint(
         long timestamp,
@@ -36,5 +42,6 @@ public record SeriesPoint(
         long recovered,
         long notRecovered,
         long store,
-        long recover) {
+        long recover,
+        Map<String, Long> failoverByApi) {
 }
