@@ -27,7 +27,7 @@ let lastSummary = null;
 let statusByName = {};          // name → HEALTHY|DEGRADED|UNHEALTHY (from api/health)
 let configRows = [];
 let settingsGroups = null;
-let bannerShown = false;
+let bannerDismissed = false;
 let activeView = 'overview';
 
 // client-side trend buffers (filled live; the overall line can be pre-seeded from api/metrics/series)
@@ -38,8 +38,12 @@ let lastTotal = null;
 let lastApiFailover = {};
 let timelineHydrated = false;
 
-function statusFor(name, healthyRate) {
-    return statusByName[name] || classify(healthyRate);
+// Effective health for a failover point. With no calls yet there is nothing wrong, so it is HEALTHY
+// at 100% — never UNHEALTHY (a 0/0 healthyRate from the server would otherwise classify as UNHEALTHY).
+function effRate(k) { return k.totalCalls > 0 ? k.rates.healthyRate : 1; }
+function effStatus(k) {
+    if (k.totalCalls === 0) return 'HEALTHY';
+    return statusByName[k.name] || classify(k.rates.healthyRate);
 }
 
 // ── KPI cards (Signals) ────────────────────────────────────────────────────────
@@ -53,22 +57,25 @@ function kpiCard(k) {
 }
 
 function kpiCards(o, perApi) {
-    const r = o.rates, status = classify(r.healthyRate);
+    const r = o.rates;
+    const hasCalls = o.totalCalls > 0;
+    const oRate = hasCalls ? r.healthyRate : 1;     // no calls yet ⇒ nothing wrong ⇒ 100% healthy
+    const status = classify(oRate);
     const hardFail = o.notRecovered + o.errors;
     const usable = o.upstreamSuccess + o.recovered;
 
     // Row 1 — overall health + a per-API health card per failover point, worst-first.
-    const apis = [...perApi].sort((a, b) => a.rates.healthyRate - b.rates.healthyRate);
-    const worst = apis.filter(k => statusFor(k.name, k.rates.healthyRate) !== 'HEALTHY').length;
+    const apis = [...perApi].sort((a, b) => effRate(a) - effRate(b));
+    const worst = apis.filter(k => effStatus(k) !== 'HEALTHY').length;
     const overall = `<div class="health-overall">
         <div class="top"><span class="lbl">Overall API Health</span>
             <span class="badge ${status.toLowerCase()}">${status}</span></div>
-        <div class="gauge-lg"><canvas id="g_health"></canvas><div class="gv">${pct(r.healthyRate)}</div></div>
-        <div class="note">${n(usable)} of ${n(o.totalCalls)} calls usable<br>${
+        <div class="gauge-lg"><canvas id="g_health"></canvas><div class="gv">${hasCalls ? pct(oRate) : '—'}</div></div>
+        <div class="note">${hasCalls ? `${n(usable)} of ${n(o.totalCalls)} calls usable` : 'no calls yet'}<br>${
             worst > 0 ? `<b style="color:var(--bad)">${worst} need attention</b>` : 'all APIs healthy'}</div>
     </div>`;
     const apiCards = apis.map(k => {
-        const st = statusFor(k.name, k.rates.healthyRate), h = (k.rates.healthyRate * 100).toFixed(1);
+        const st = effStatus(k), h = (effRate(k) * 100).toFixed(1);
         return `<div class="api-hcard ${st.toLowerCase()}" title="${k.name} · ${k.domain}">
             <div class="nm">${k.name}</div><div class="dm">${k.domain}</div>
             <div class="mid"><span class="hpct">${h}%</span><span class="st">${st}</span></div>
@@ -90,9 +97,12 @@ function kpiCards(o, perApi) {
         { c: 'latency', lbl: 'Recover latency', ic: '◷', val: ms(o.latency.recoverMeanMs), sub: 'mean recover-path time' },
     ];
 
+    // Rebuilding #kpis replaces the <canvas id="g_health"> node, orphaning the old chart instance —
+    // destroy it first so the gauge re-attaches to the fresh canvas (otherwise the ring vanishes).
+    if (charts.g_health) { charts.g_health.destroy(); delete charts.g_health; }
     document.getElementById('kpis').innerHTML =
         healthStrip + `<div class="kpis row2">${row2.map(kpiCard).join('')}</div>`;
-    gauge(r.healthyRate);
+    gauge(oRate);
 }
 
 function gauge(v) {
@@ -167,7 +177,7 @@ function apiTrendChart() {
         labels: apiTrend.labels,
         datasets: Object.entries(apiTrend.series).map(([name, data], i) => ({
             label: name, data, borderColor: cycle[i % cycle.length], backgroundColor: tint(cycle[i % cycle.length], '18'),
-            tension: .4, borderWidth: 2, pointRadius: 0, fill: false,
+            tension: .4, borderWidth: 2, pointRadius: 2, pointHoverRadius: 4, fill: false,
         })),
     }, {
         interaction: { mode: 'index', intersect: false },
@@ -207,8 +217,8 @@ function apiTable(perApi) {
     });
     const p = P();
     document.getElementById('apibody').innerHTML = rows.map(k => {
-        const st = statusFor(k.name, k.rates.healthyRate);
-        const hp = (k.rates.healthyRate * 100).toFixed(1);
+        const st = effStatus(k);
+        const hp = (effRate(k) * 100).toFixed(1);
         const col = st === 'HEALTHY' ? p.good : st === 'DEGRADED' ? p.warn : p.bad;
         return `<tr>
             <td class="name-cell">${k.name}<small>${k.domain}</small></td>
@@ -330,6 +340,12 @@ function pushTick(o, perApi) {
         timeline.rec.push(+(o.rates.recoveryRate * 100).toFixed(1));
         trim(timeline, ['labels', 'calls', 'succ', 'fail', 'rec']);
 
+        // Seed one leading zero baseline so the line is visible from the very first sample
+        // (there is no per-API history endpoint to hydrate from, unlike the overall timeline).
+        if (apiTrend.labels.length === 0) {
+            apiTrend.labels.push('');
+            for (const k of perApi) (apiTrend.series[k.name] ??= []).push(0);
+        }
         apiTrend.labels.push(label);
         for (const k of perApi) {
             const prev = lastApiFailover[k.name] ?? k.failoverInvoked;
@@ -345,20 +361,19 @@ function pushTick(o, perApi) {
 }
 
 // ── Status chip + banner ──────────────────────────────────────────────────────────
-function statusBar() {
-    const vals = Object.values(statusByName);
-    const st = vals.includes('UNHEALTHY') ? 'down' : vals.includes('DEGRADED') ? 'degraded' : 'up';
+function statusBar(perApi) {
+    const sts = perApi.map(effStatus);
+    const st = sts.includes('UNHEALTHY') ? 'down' : sts.includes('DEGRADED') ? 'degraded' : 'up';
     const chip = document.getElementById('statuschip');
     chip.className = 'statuschip' + (st === 'up' ? '' : ' ' + st);
     document.getElementById('statustext').textContent =
         st === 'up' ? 'Healthy' : st === 'degraded' ? 'Degraded' : 'Unhealthy';
 }
 
-// Health summary banner — rendered once per page load, user-closable.
-function showBanner(health, perApi) {
-    const stOf = k => statusFor(k.name, k.rates.healthyRate);
-    const bad = perApi.filter(k => stOf(k) === 'UNHEALTHY');
-    const deg = perApi.filter(k => stOf(k) === 'DEGRADED');
+// Health summary banner — re-rendered on every load (so it tracks live health), user-closable.
+function showBanner(perApi) {
+    const bad = perApi.filter(k => effStatus(k) === 'UNHEALTHY');
+    const deg = perApi.filter(k => effStatus(k) === 'DEGRADED');
     let kind, icon, title, sub;
     if (bad.length) {
         kind = 'bad'; icon = '✕'; title = `${bad.length} API${bad.length > 1 ? 's' : ''} unhealthy — action needed`;
@@ -377,7 +392,10 @@ function showBanner(health, perApi) {
             <span class="ib-time">${new Date().toLocaleTimeString()}</span>
             <button class="ib-x" aria-label="Dismiss">×</button>
         </div>`;
-    document.querySelector('.ib-x').onclick = () => { document.getElementById('banner-slot').innerHTML = ''; };
+    document.querySelector('.ib-x').onclick = () => {
+        bannerDismissed = true;
+        document.getElementById('banner-slot').innerHTML = '';
+    };
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────────
@@ -387,13 +405,13 @@ async function loadMetrics() {
         lastSummary = summary;
         statusByName = Object.fromEntries((health || []).map(h => [h.name, h.status]));
         clearNotice();
-        statusBar();
+        statusBar(summary.perApi);
         await hydrateTimeline();
         pushTick(summary.overall, summary.perApi);
         kpiCards(summary.overall, summary.perApi);
         if (activeView === 'overview') overviewCharts(summary);
         if (activeView === 'apis') { apiTable(summary.perApi); apiTrendChart(); perApiChart(summary.perApi); }
-        if (!bannerShown) { showBanner(health, summary.perApi); bannerShown = true; }
+        if (!bannerDismissed) showBanner(summary.perApi);
         markUpdated();
     } catch (e) {
         showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
