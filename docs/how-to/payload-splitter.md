@@ -29,7 +29,7 @@ public interface PayloadSplitter<T, R> {
 
 | Approach                                                  | Use when                                                                                                                                                |
 |-----------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Extend `AbstractListPayloadSplitter<T>`** (recommended) | Method returns `List<T>`. You implement only `payloadArgs` (the slice key); for id-based methods also override `doSplitCompositeArgsOnRecover`.         |
+| **Extend `AbstractListPayloadSplitter<T>`** (recommended) | Method returns `List<T>`. You implement only `keyArgsForSlice` (the slice key); for id-based methods also override `keyArgsToRecover`.         |
 | **Extend `AbstractPayloadSplitter<T, R>`**                | Composite is not a `List` (e.g. a wrapper object holding the collection). You control the store split and merge but still skip the context plumbing.    |
 | **Implement `PayloadSplitter<T, R>` directly**            | You need full control of `splitOnStore` / `splitOnRecover` / `merge` — see [Implementing the Interface Directly](#implementing-the-interface-directly). |
 
@@ -47,16 +47,16 @@ public abstract class AbstractListPayloadSplitter<T>
 
 | Hook                                       | Default                                             | Override when                          |
 |--------------------------------------------|-----------------------------------------------------|----------------------------------------|
-| `payloadArgs(slice, ctx)`                  | **abstract**                                        | always — the slice key                 |
-| `doSplitPayloadOnStore(list)`              | identity — each element is a slice                  | almost never                           |
-| `doSplitCompositeArgsOnRecover(args, ctx)` | single group `List.of(args)` — **`findAll()` only** | every id-based method                  |
-| `doMergePayloadAndArgs(payloads, args)`    | slices as-is (nulls kept), args flattened           | to dedup / drop nulls / reject partial |
+| `keyArgsForSlice(slice, ctx)`                  | **abstract**                                        | always — the slice key                 |
+| `splitIntoSlices(list)`              | identity — each element is a slice                  | almost never                           |
+| `keyArgsToRecover(args, ctx)` | single group `List.of(args)` — **`findAll()` only** | every id-based method                  |
+| `mergeSlices(payloads, args)`    | slices as-is (nulls kept), args flattened           | to dedup / drop nulls / reject partial |
 
 `merge` returns the merged result via a small [`MergeResult<T>`](../reference/javadocs.md) value object
 (`payload` + aggregated `args`).
 
 !!! warning "The slice-key contract"
-    Args from `payloadArgs` (store) and from `doSplitCompositeArgsOnRecover` (recover) **must derive
+    Args from `keyArgsForSlice` (store) and from `keyArgsToRecover` (recover) **must derive
     the same store key for the same entity**. If they diverge, a slice is stored under one key and
     looked up under another, so recovery silently returns nothing.
 
@@ -75,8 +75,8 @@ public class ThirdParty extends Referential {
 
 ### Scenario 1 — `findAll()` with zero args
 
-No args to split. The default `doSplitCompositeArgsOnRecover` returns a single placeholder group, so
-the delegate recovers **all** slices by name. Implement **only** `payloadArgs`.
+No args to split. The default `keyArgsToRecover` returns a single placeholder group, so
+the delegate recovers **all** slices by name. Implement **only** `keyArgsForSlice`.
 
 ```java title="ThirdPartyListSplitter.java"
 @Component("thirdPartyListSplitter")
@@ -87,7 +87,7 @@ public class ThirdPartyListSplitter extends AbstractListPayloadSplitter<ThirdPar
     }
 
     @Override
-    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+    protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
         return List.of(payload.getId());   // slice key = id
     }
 }
@@ -106,9 +106,17 @@ List<ThirdParty> findAll();
 
 No `recoverAll = true` needed — empty args take the recover-all path automatically.
 
+!!! warning "Read args defensively"
+    `keyArgsToRecover` runs on the recovery path. Never blindly call `args.get(0)` or cast
+    it — that throws `IndexOutOfBoundsException` on empty args and `NullPointerException` /
+    `ClassCastException` on a null or unexpected arg, and the splitter then fails for *every* recovery.
+    Instead guard with the `instanceof` pattern (handles null and wrong type in one check) and **return
+    an empty list when there is nothing to recover** — the framework treats that as "no slices",
+    logs a warning, and skips recovery rather than throwing. The examples below follow this idiom.
+
 ### Scenario 2 — `findAllByIdsIn(List<Long> ids)`
 
-`args.get(0)` is the `List<Long>`. Override `doSplitCompositeArgsOnRecover` to emit **one group per
+`args.get(0)` is the `List<Long>`. Override `keyArgsToRecover` to emit **one group per
 id** so each id recovers independently (true partial recovery).
 
 ```java title="ThirdPartyByIdsSplitter.java"
@@ -120,17 +128,20 @@ public class ThirdPartyByIdsSplitter extends AbstractListPayloadSplitter<ThirdPa
     }
 
     @Override
-    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+    protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
         return List.of(payload.getId());
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+    protected List<List<Object>> keyArgsToRecover(
             List<Object> args, RecoverContext<List<ThirdParty>> context) {
-        List<Long> ids = (List<Long>) args.get(0);
+        // guard: empty args, null arg, or wrong type → nothing to recover (no throw)
+        if (args.isEmpty() || !(args.get(0) instanceof List<?> ids) || ids.isEmpty()) {
+            return List.of();
+        }
         return ids.stream()
-                .map(id -> List.<Object>of(id))   // one group per id → key matches payloadArgs
+                .filter(Objects::nonNull)              // skip null ids
+                .map(id -> List.<Object>of(id))        // one group per id → key matches keyArgsForSlice
                 .toList();
     }
 }
@@ -148,7 +159,7 @@ List<ThirdParty> findAllByIdsIn(List<Long> ids);
 ```
 
 Recovering `[1, 2, 3]` issues three independent lookups; if id `2` is missing, the default merge keeps
-a `null` at that position (override `doMergePayloadAndArgs` to drop it — see [Overriding the merge](#overriding-the-merge-with-the-base-classes)).
+a `null` at that position (override `mergeSlices` to drop it — see [Overriding the merge](#overriding-the-merge-with-the-base-classes)).
 
 ### Scenario 3 — `findAllByIdsInAndActiveAndRegion(List<Long> ids, Boolean active, String region)`
 
@@ -164,16 +175,19 @@ public class ThirdPartyByIdsAndFiltersSplitter extends AbstractListPayloadSplitt
     }
 
     @Override
-    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+    protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
         return List.of(payload.getId());   // key = id only; filters are NOT part of the key
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+    protected List<List<Object>> keyArgsToRecover(
             List<Object> args, RecoverContext<List<ThirdParty>> context) {
-        List<Long> ids = (List<Long>) args.get(0);   // args.get(1)=active, args.get(2)=region ignored
+        // args.get(1)=active, args.get(2)=region are filters — ignored for the key
+        if (args.isEmpty() || !(args.get(0) instanceof List<?> ids) || ids.isEmpty()) {
+            return List.of();
+        }
         return ids.stream()
+                .filter(Objects::nonNull)
                 .map(id -> List.<Object>of(id))
                 .toList();
     }
@@ -211,17 +225,21 @@ public class ThirdPartyByStringIdsSplitter extends AbstractListPayloadSplitter<T
     }
 
     @Override
-    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+    protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
         return List.of(payload.getId());
     }
 
     @Override
-    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+    protected List<List<Object>> keyArgsToRecover(
             List<Object> args, RecoverContext<List<ThirdParty>> context) {
-        String csv = (String) args.get(0);
+        // guard: empty args, null arg, wrong type, or blank CSV → nothing to recover
+        if (args.isEmpty() || !(args.get(0) instanceof String csv) || csv.isBlank()) {
+            return List.of();
+        }
         return Arrays.stream(csv.split(","))
                 .map(String::trim)
-                .map(Long::valueOf)               // parse to Long so the key matches payloadArgs
+                .filter(token -> !token.isEmpty())    // skip empty tokens ("1,,2")
+                .map(Long::valueOf)                   // parse to Long so the key matches keyArgsForSlice
                 .map(id -> List.<Object>of(id))
                 .toList();
     }
@@ -241,7 +259,11 @@ List<ThirdParty> findAllByStringIdsIn(String commaSeparatedIds);
 
 !!! warning "Parse the CSV to the stored key type"
     On store the key is `List.of(payload.getId())` — a `Long`. Leaving CSV tokens as `String`
-    (`List.of("1")`) makes the recover key differ from the stored key. Parse to `Long`.
+    (`List.of("1")`) makes the recover key differ from the stored key. Parse to `Long`. A malformed
+    token makes `Long::valueOf` throw `NumberFormatException`; that propagates as a
+    `PayloadSplitterExecutionException` which the failover boundary catches and logs (recovery yields
+    nothing — the caller is never crashed). If you prefer to skip bad tokens instead, parse leniently
+    (e.g. filter on a `\\d+` regex before `Long::valueOf`).
 
 ### Scenario 5 — `findAllByStringIdsInAndActiveAndRegion(String commaSeparatedIds, Boolean active, String region)`
 
@@ -256,16 +278,20 @@ public class ThirdPartyByStringIdsAndFiltersSplitter extends AbstractListPayload
     }
 
     @Override
-    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+    protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
         return List.of(payload.getId());
     }
 
     @Override
-    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+    protected List<List<Object>> keyArgsToRecover(
             List<Object> args, RecoverContext<List<ThirdParty>> context) {
-        String csv = (String) args.get(0);          // args.get(1)=active, args.get(2)=region ignored
+        // args.get(1)=active, args.get(2)=region are filters — ignored for the key
+        if (args.isEmpty() || !(args.get(0) instanceof String csv) || csv.isBlank()) {
+            return List.of();
+        }
         return Arrays.stream(csv.split(","))
                 .map(String::trim)
+                .filter(token -> !token.isEmpty())
                 .map(Long::valueOf)
                 .map(id -> List.<Object>of(id))
                 .toList();
@@ -287,7 +313,7 @@ List<ThirdParty> findAllByStringIdsInAndActiveAndRegion(
 
 ### Cheat sheet
 
-| Scenario | Method                                        | Override `doSplitCompositeArgsOnRecover`? | Recover-key source                        |
+| Scenario | Method                                        | Override `keyArgsToRecover`? | Recover-key source                        |
 |----------|-----------------------------------------------|-------------------------------------------|-------------------------------------------|
 | 1        | `findAll()`                                   | No (default single group)                 | — (recover all by name)                   |
 | 2        | `findAllByIdsIn(List<Long>)`                  | Yes                                       | `args.get(0)` (the id list)               |
@@ -295,15 +321,15 @@ List<ThirdParty> findAllByStringIdsInAndActiveAndRegion(
 | 4        | `findAllByStringIdsIn(String)`                | Yes                                       | CSV `args.get(0)` parsed to `Long`        |
 | 5        | `findAllByStringIdsInAndActiveAndRegion(...)` | Yes                                       | CSV `args.get(0)` parsed; filters ignored |
 
-In all five `payloadArgs` is identical (`List.of(payload.getId())`) and all share
+In all five `keyArgsForSlice` is identical (`List.of(payload.getId())`) and all share
 `domain = "third-party"`, so a successful call on any of them populates the store entries the others
 recover from.
 
 ### `AbstractPayloadSplitter` — non-`List` composite
 
 When the method returns a wrapper (not a bare `List`), extend `AbstractPayloadSplitter<T, R>` and
-implement all four hooks — including `doSplitPayloadOnStore` to pull the collection out of the wrapper
-and `doMergePayloadAndArgs` to put it back.
+implement all four hooks — including `splitIntoSlices` to pull the collection out of the wrapper
+and `mergeSlices` to put it back.
 
 ```java title="ThirdPartiesResult.java"
 @Data
@@ -323,23 +349,27 @@ public class ThirdPartiesResultSplitter
     }
 
     @Override
-    protected List<Object> payloadArgs(ThirdParty payload, StoreContext<ThirdPartiesResult> ctx) {
+    protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<ThirdPartiesResult> ctx) {
         return List.of(payload.getId());
     }
 
     @Override
-    protected List<ThirdParty> doSplitPayloadOnStore(ThirdPartiesResult payload) {
-        return payload.getThirdParties();           // unwrap the collection
+    protected List<ThirdParty> splitIntoSlices(ThirdPartiesResult payload) {
+        // unwrap the collection; tolerate a null wrapper or null inner list
+        if (payload == null || payload.getThirdParties() == null) {
+            return List.of();
+        }
+        return payload.getThirdParties().stream().filter(Objects::nonNull).toList();
     }
 
     @Override
-    protected List<List<Object>> doSplitCompositeArgsOnRecover(
+    protected List<List<Object>> keyArgsToRecover(
             List<Object> args, RecoverContext<ThirdPartiesResult> ctx) {
         return List.of(args);                        // findAll-style; override per scenario as above
     }
 
     @Override
-    protected MergeResult<ThirdPartiesResult> doMergePayloadAndArgs(
+    protected MergeResult<ThirdPartiesResult> mergeSlices(
             List<ThirdParty> payloads, List<List<Object>> args) {
         var result = new ThirdPartiesResult();
         result.setThirdParties(payloads.stream().filter(Objects::nonNull).toList());  // re-wrap
@@ -353,13 +383,13 @@ public class ThirdPartiesResultSplitter
 
 ### Overriding the merge with the base classes
 
-The default `doMergePayloadAndArgs` keeps slice payloads as-is, including `null`s for missing slices.
+The default `mergeSlices` keeps slice payloads as-is, including `null`s for missing slices.
 To drop missing slices, deduplicate, or reject a partial recovery, override it and return a
 `MergeResult`:
 
 ```java
 @Override
-protected MergeResult<List<ThirdParty>> doMergePayloadAndArgs(
+protected MergeResult<List<ThirdParty>> mergeSlices(
         List<ThirdParty> payloads, List<List<Object>> args) {
     List<ThirdParty> recovered = payloads.stream()
             .filter(Objects::nonNull)          // drop missing slices
@@ -389,25 +419,35 @@ public class CountrySplitter implements PayloadSplitter<List<Country>, Country> 
 
     @Override
     public List<StoreContext<Country>> splitOnStore(StoreContext<List<Country>> ctx) {
-        String[] codes = ((String) ctx.getArgs().get(0)).split(",");
         List<Country> countries = ctx.getPayload();
-
-        return IntStream.range(0, countries.size())
-            .mapToObj(i -> StoreContext.<Country>builder()
+        if (countries == null || countries.isEmpty()) {
+            return List.of();
+        }
+        // Derive the key from each ENTITY, never by zipping with the input CSV by index:
+        // the result may be a different size or order than the requested codes.
+        return countries.stream()
+            .filter(Objects::nonNull)
+            .map(country -> StoreContext.<Country>builder()
                 .failover(ctx.getFailover())
-                .args(List.of(codes[i].trim()))  // single-code args → key derivation
-                .payload(countries.get(i))
+                .args(List.of(country.getCode()))   // single-code args → key derivation
+                .payload(country)
                 .build())
             .toList();
     }
 
     @Override
     public List<RecoverContext<Country>> splitOnRecover(RecoverContext<List<Country>> ctx) {
-        String csv = (String) ctx.getArgs().get(0);
+        List<Object> args = ctx.getArgs();
+        // guard: empty args, null arg, wrong type, or blank CSV → nothing to recover (no throw)
+        if (args.isEmpty() || !(args.get(0) instanceof String csv) || csv.isBlank()) {
+            return List.of();
+        }
         return Arrays.stream(csv.split(","))
+            .map(String::trim)
+            .filter(code -> !code.isEmpty())
             .map(code -> RecoverContext.<Country>builder()
                 .failover(ctx.getFailover())
-                .args(List.of(code.trim()))
+                .args(List.of(code))
                 .clazz(Country.class)
                 .cause(ctx.getCause())
                 .build())
@@ -416,6 +456,13 @@ public class CountrySplitter implements PayloadSplitter<List<Country>, Country> 
 
     @Override
     public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> contexts) {
+        // The framework never calls merge with an empty list, but guard anyway.
+        if (contexts.isEmpty()) {
+            return RecoverContext.<List<Country>>builder()
+                .clazz((Class) List.class)
+                .payload(List.of())
+                .build();
+        }
         List<Country> recovered = contexts.stream()
             .map(RecoverContext::getPayload)
             .filter(Objects::nonNull)
@@ -428,7 +475,10 @@ public class CountrySplitter implements PayloadSplitter<List<Country>, Country> 
 }
 ```
 
-The `args` list in each split `StoreContext` must produce the same key as a direct `findByCode("FR")` call so that domain sharing works correctly.
+The `args` list in each split `StoreContext` must produce the same key as a direct `findByCode("FR")`
+call so that domain sharing works correctly. Deriving it from `country.getCode()` (not the positional
+CSV token) keeps store and recover keys aligned even when the upstream returns fewer, extra, or
+reordered entries.
 
 ---
 
@@ -564,7 +614,12 @@ public class CountryAllSplitter implements PayloadSplitter<List<Country>, Countr
     // Store path: identical to CountrySplitter — split the result into per-entity slices
     @Override
     public List<StoreContext<Country>> splitOnStore(StoreContext<List<Country>> ctx) {
-        return ctx.getPayload().stream()
+        List<Country> countries = ctx.getPayload();
+        if (countries == null || countries.isEmpty()) {
+            return List.of();
+        }
+        return countries.stream()
+            .filter(Objects::nonNull)
             .map(country -> StoreContext.<Country>builder()
                 .failover(ctx.getFailover())
                 .args(List.of(country.getCode()))   // entity-identity key
