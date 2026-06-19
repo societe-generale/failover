@@ -75,6 +75,12 @@ public interface PayloadSplitter<T, R> {
 | `T` | The composite type — what the annotated method returns |
 | `R` | The slice type — what is stored per individual entity |
 
+!!! tip "Base classes do the plumbing"
+    The example below implements the interface directly to show the full flow. In practice extend
+    `AbstractListPayloadSplitter<T>` (for a `List<T>` result) or `AbstractPayloadSplitter<T, R>` (for a
+    wrapper) and implement only the domain hooks — see the
+    [Payload Splitter How-to](../how-to/payload-splitter.md#base-classes-abstractlistpayloadsplitter-abstractpayloadsplitter).
+
 ### StoreContext Fields
 
 | Field | Type | Description |
