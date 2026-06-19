@@ -17,13 +17,16 @@
 package com.societegenerale.failover.dashboard;
 
 import com.societegenerale.failover.dashboard.dto.ApiKpis;
+import com.societegenerale.failover.dashboard.dto.MetricsSummary;
 import com.societegenerale.failover.dashboard.dto.SeriesPoint;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -55,7 +58,12 @@ public class DashboardHistoryService {
             fixedRateString = "${failover.dashboard.history.sample-interval-seconds:15}",
             timeUnit = TimeUnit.SECONDS)
     public void sample() {
-        ApiKpis overall = metricsService.metricsSummary().overall();
+        MetricsSummary summary = metricsService.metricsSummary();
+        ApiKpis overall = summary.overall();
+        Map<String, Long> failoverByApi = new LinkedHashMap<>();
+        for (ApiKpis api : summary.perApi()) {
+            failoverByApi.put(api.name(), api.failoverInvoked());
+        }
         SeriesPoint point = new SeriesPoint(
                 System.currentTimeMillis(),
                 overall.totalCalls(),
@@ -63,7 +71,8 @@ public class DashboardHistoryService {
                 overall.recovered(),
                 overall.notRecovered(),
                 overall.upstreamSuccess(),
-                overall.failoverInvoked());
+                overall.failoverInvoked(),
+                failoverByApi);
         synchronized (ring) {
             if (ring.size() >= capacity) {
                 ring.removeFirst();

@@ -52,11 +52,12 @@ class DashboardHistoryControllerTest {
     @DisplayName("GET /series returns the points and honours the windowSec param")
     void seriesJson() throws Exception {
         when(historyService.series(eq(120L)))
-                .thenReturn(List.of(new SeriesPoint(1000L, 50, 5, 4, 1, 45, 5)));
+                .thenReturn(List.of(new SeriesPoint(1000L, 50, 5, 4, 1, 45, 5, java.util.Map.of("svc", 5L))));
 
         mockMvc.perform(get("/failover-dashboard/api/metrics/series").param("windowSec", "120"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].calls").value(50))
-                .andExpect(jsonPath("$[0].store").value(45));
+                .andExpect(jsonPath("$[0].store").value(45))
+                .andExpect(jsonPath("$[0].failoverByApi.svc").value(5));
     }
 }
