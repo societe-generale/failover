@@ -31,7 +31,7 @@ class AbstractListPayloadSplitterTest {
     private static final Class<List<ThirdParty>> LIST_CLASS = (Class<List<ThirdParty>>) (Class<?>) List.class;
 
     // ════════════════════════════════════════════════════════════════════════
-    // Store path — shared by every scenario (payloadArgs = id, identity split)
+    // Store path — shared by every scenario (keyArgsForSlice = id, identity split)
     // ════════════════════════════════════════════════════════════════════════
     @Nested
     @DisplayName("splitOnStore — shared store path")
@@ -64,7 +64,7 @@ class AbstractListPayloadSplitterTest {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Scenario 1 — findAll() with zero args (default doSplitCompositeArgsOnRecover)
+    // Scenario 1 — findAll() with zero args (default keyArgsToRecover)
     // ════════════════════════════════════════════════════════════════════════
     @Nested
     @DisplayName("Scenario 1 — findAll() with zero args")
@@ -224,7 +224,7 @@ class AbstractListPayloadSplitterTest {
             assertThat(merged.getArgs()).containsExactly(1L, 2L, 3L);
         }
 
-        @DisplayName("overriding doMergePayloadAndArgs should be able to drop null slices (compact policy)")
+        @DisplayName("overriding mergeSlices should be able to drop null slices (compact policy)")
         @Test
         void overriddenMergeDropsNulls() {
             var dropNullSplitter = new ThirdPartyDropNullSplitter(ThirdParty.class);
@@ -262,16 +262,83 @@ class AbstractListPayloadSplitterTest {
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // Defensive arg handling — guards must suppress recovery, never throw
+    // ════════════════════════════════════════════════════════════════════════
+    @Nested
+    @DisplayName("defensive arg handling — guards return empty, never throw")
+    class DefensiveArgHandling {
+
+        @DisplayName("id splitter should return empty (not IndexOutOfBounds) when args are empty")
+        @Test
+        void idSplitterEmptyArgs() {
+            var splitter = new ThirdPartyByIdsSplitter(ThirdParty.class);
+            var in = RecoverContext.<List<ThirdParty>>builder().failover(failover).args(List.of()).cause(cause).build();
+
+            assertThat(splitter.splitOnRecover(in)).isEmpty();
+        }
+
+        @DisplayName("id splitter should return empty when the first arg is not a List")
+        @Test
+        void idSplitterWrongType() {
+            var splitter = new ThirdPartyByIdsSplitter(ThirdParty.class);
+            var in = RecoverContext.<List<ThirdParty>>builder().failover(failover).args(List.of("not-a-list")).cause(cause).build();
+
+            assertThat(splitter.splitOnRecover(in)).isEmpty();
+        }
+
+        @DisplayName("id splitter should skip null ids inside the list")
+        @Test
+        void idSplitterSkipsNullIds() {
+            var splitter = new ThirdPartyByIdsSplitter(ThirdParty.class);
+            var ids = Arrays.asList(1L, null, 3L);
+            var in = RecoverContext.<List<ThirdParty>>builder().failover(failover).args(List.of(ids)).cause(cause).build();
+
+            var slices = splitter.splitOnRecover(in);
+
+            assertThat(slices).extracting(RecoverContext::getArgs).containsExactly(List.of(1L), List.of(3L));
+        }
+
+        @DisplayName("CSV splitter should return empty (not NullPointer) when the CSV arg is blank")
+        @Test
+        void csvSplitterBlank() {
+            var splitter = new ThirdPartyByStringIdsSplitter(ThirdParty.class);
+            var in = RecoverContext.<List<ThirdParty>>builder().failover(failover).args(List.of("   ")).cause(cause).build();
+
+            assertThat(splitter.splitOnRecover(in)).isEmpty();
+        }
+
+        @DisplayName("CSV splitter should skip empty tokens from a malformed CSV like \"1,,2\"")
+        @Test
+        void csvSplitterSkipsEmptyTokens() {
+            var splitter = new ThirdPartyByStringIdsSplitter(ThirdParty.class);
+            var in = RecoverContext.<List<ThirdParty>>builder().failover(failover).args(List.of("1,,2")).cause(cause).build();
+
+            var slices = splitter.splitOnRecover(in);
+
+            assertThat(slices).extracting(RecoverContext::getArgs).containsExactly(List.of(1L), List.of(2L));
+        }
+
+        @DisplayName("CSV splitter should return empty when the first arg is not a String")
+        @Test
+        void csvSplitterWrongType() {
+            var splitter = new ThirdPartyByStringIdsSplitter(ThirdParty.class);
+            var in = RecoverContext.<List<ThirdParty>>builder().failover(failover).args(List.of(42L)).cause(cause).build();
+
+            assertThat(splitter.splitOnRecover(in)).isEmpty();
+        }
+    }
+
     // ── test splitter implementations (one per documented scenario) ──────────
 
-    /** Scenario 1: findAll() — only payloadArgs; default single-group recover split. */
+    /** Scenario 1: findAll() — only keyArgsForSlice; default single-group recover split. */
     static class ThirdPartyListSplitter extends AbstractListPayloadSplitter<ThirdParty> {
         ThirdPartyListSplitter(Class<ThirdParty> clazz) {
             super(clazz);
         }
 
         @Override
-        protected List<Object> payloadArgs(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
+        protected List<Object> keyArgsForSlice(ThirdParty payload, StoreContext<List<ThirdParty>> context) {
             return List.of(payload.getId());
         }
     }
@@ -283,10 +350,11 @@ class AbstractListPayloadSplitterTest {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
-        protected List<List<Object>> doSplitCompositeArgsOnRecover(List<Object> args, RecoverContext<List<ThirdParty>> context) {
-            List<Long> ids = (List<Long>) args.getFirst();
-            return ids.stream().map(List::<Object>of).toList();
+        protected List<List<Object>> keyArgsToRecover(List<Object> args, RecoverContext<List<ThirdParty>> context) {
+            if (args.isEmpty() || !(args.getFirst() instanceof List<?> ids) || ids.isEmpty()) {
+                return List.of();
+            }
+            return ids.stream().filter(Objects::nonNull).map(List::<Object>of).toList();
         }
     }
 
@@ -295,7 +363,7 @@ class AbstractListPayloadSplitterTest {
         ThirdPartyByIdsAndFiltersSplitter(Class<ThirdParty> clazz) {
             super(clazz);
         }
-        // doSplitCompositeArgsOnRecover inherited — args.get(0) is the id list; args 1/2 ignored
+        // keyArgsToRecover inherited — args.get(0) is the id list; args 1/2 ignored
     }
 
     /** Scenario 4: findAllByStringIdsIn(String) — split CSV, parse to Long. */
@@ -305,10 +373,13 @@ class AbstractListPayloadSplitterTest {
         }
 
         @Override
-        protected List<List<Object>> doSplitCompositeArgsOnRecover(List<Object> args, RecoverContext<List<ThirdParty>> context) {
-            String csv = (String) args.getFirst();
+        protected List<List<Object>> keyArgsToRecover(List<Object> args, RecoverContext<List<ThirdParty>> context) {
+            if (args.isEmpty() || !(args.getFirst() instanceof String csv) || csv.isBlank()) {
+                return List.of();
+            }
             return Arrays.stream(csv.split(","))
                     .map(String::trim)
+                    .filter(token -> !token.isEmpty())
                     .map(Long::valueOf)
                     .map(List::<Object>of)
                     .toList();
@@ -320,7 +391,7 @@ class AbstractListPayloadSplitterTest {
         ThirdPartyByStringIdsAndFiltersSplitter(Class<ThirdParty> clazz) {
             super(clazz);
         }
-        // doSplitCompositeArgsOnRecover inherited — args.get(0) is the CSV; args 1/2 ignored
+        // keyArgsToRecover inherited — args.get(0) is the CSV; args 1/2 ignored
     }
 
     /** Overriding merge to drop null slices (compact policy). */
@@ -330,7 +401,7 @@ class AbstractListPayloadSplitterTest {
         }
 
         @Override
-        protected MergeResult<List<ThirdParty>> doMergePayloadAndArgs(List<ThirdParty> payloads, List<List<Object>> args) {
+        protected MergeResult<List<ThirdParty>> mergeSlices(List<ThirdParty> payloads, List<List<Object>> args) {
             return MergeResult.<List<ThirdParty>>builder()
                     .payload(payloads.stream().filter(Objects::nonNull).toList())
                     .args(args.stream().flatMap(List::stream).toList())
