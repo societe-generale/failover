@@ -74,6 +74,16 @@ body{
   box-shadow:0 0 0 4px var(--good-soft); background:var(--good)}
 .statuschip.degraded .dot{background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
 .statuschip.down .dot{background:var(--bad);box-shadow:0 0 0 4px var(--bad-soft)}
+/* metrics provenance badge: "this instance only" vs cluster aggregate */
+.src-badge{display:inline-flex;align-items:center;gap:6px;
+  padding:5px 11px;border-radius:999px;font-size:11px;font-weight:700;
+  letter-spacing:.04em;font-family:var(--mono);text-transform:uppercase;
+  border:1px solid var(--sb,var(--warn));color:var(--sb,var(--warn));
+  background:color-mix(in srgb,var(--sb,var(--warn)) 12%,transparent)}
+.src-badge::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--sb,var(--warn))}
+.src-badge.local{--sb:var(--warn)}
+.src-badge.cluster{--sb:var(--good)}
+.src-badge.partial{--sb:var(--bad)}
 .ctrl{display:flex;align-items:center;gap:8px}
 .last-updated{font-size:11px;color:var(--faint);font-family:var(--mono);white-space:nowrap}
 .live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}

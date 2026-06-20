@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard;
 
 import com.societegenerale.failover.dashboard.dto.ApiHealth;
 import com.societegenerale.failover.dashboard.dto.MetricsSummary;
+import com.societegenerale.failover.dashboard.dto.SourceInfo;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,25 +31,35 @@ import java.util.List;
  * <p>Registered only when a {@link io.micrometer.core.instrument.MeterRegistry} is present: without
  * Micrometer the config view still works and the metrics view degrades gracefully (design doc §3).
  *
+ * <p>The figures are obtained through a {@link MetricsSource} rather than the registry directly, so the
+ * same endpoints can be backed by a single instance (default) or a cluster-wide aggregate (see the
+ * distributed-dashboard design). {@code /metrics/source} exposes that provenance for the UI badge.
+ *
  * @author Anand Manissery
  */
 @RestController
 @RequestMapping("${failover.dashboard.base-path:/failover-dashboard}/api")
 public class DashboardMetricsController {
 
-    private final DashboardMetricsService metricsService;
+    private final MetricsSource metricsSource;
 
-    public DashboardMetricsController(DashboardMetricsService metricsService) {
-        this.metricsService = metricsService;
+    public DashboardMetricsController(MetricsSource metricsSource) {
+        this.metricsSource = metricsSource;
     }
 
     @GetMapping("/metrics")
     public MetricsSummary metrics() {
-        return metricsService.metricsSummary();
+        return metricsSource.summary();
     }
 
     @GetMapping("/health")
     public List<ApiHealth> health() {
-        return metricsService.health();
+        return metricsSource.health();
+    }
+
+    /** Provenance of the metrics (mode, instances reporting, freshness) for the UI source badge. */
+    @GetMapping("/metrics/source")
+    public SourceInfo source() {
+        return metricsSource.info();
     }
 }

@@ -44,6 +44,7 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
 | `/failover-dashboard/api/config/settings` | effective global `failover.*` / `failover.dashboard.*` config, grouped |
 | `/failover-dashboard/api/failover-health` | actuator-style overall status + active configuration |
 | `/failover-dashboard/api/metrics` | global + per-API KPIs and rates |
+| `/failover-dashboard/api/metrics/source` | metrics provenance (mode, instances reporting, freshness) for the UI source badge |
 | `/failover-dashboard/api/health` | per-API health classification |
 | `/failover-dashboard/api/metrics/series` | trend samples (only when history is enabled) |
 
@@ -75,6 +76,8 @@ failover:
     health:                          # healthyRate thresholds for the per-API status badge
       degraded-threshold: 0.99       # >= ⇒ HEALTHY; below (down to unhealthy floor) ⇒ DEGRADED
       unhealthy-threshold: 0.90      # >= ⇒ DEGRADED; below ⇒ UNHEALTHY
+    cluster:                         # where metrics are read from across instances
+      mode: local                    # local (default) | prometheus | shared-store — see Distributed below
 ```
 
 | Property | Default | Purpose |
@@ -91,6 +94,7 @@ failover:
 | `history.sample-interval-seconds` | `15` | Seconds between samples. |
 | `health.degraded-threshold` | `0.99` | Healthy-rate floor for `HEALTHY`. |
 | `health.unhealthy-threshold` | `0.90` | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`. |
+| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). Cluster-aware modes (`prometheus`, `shared-store`) aggregate across instances — see the distributed-dashboard design document. |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 

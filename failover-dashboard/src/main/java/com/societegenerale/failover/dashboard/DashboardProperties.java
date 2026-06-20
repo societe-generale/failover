@@ -55,6 +55,7 @@ import java.util.List;
  * @param security access-control posture (required role, or {@code allow-insecure} escape hatch)
  * @param history  opt-in in-memory trend history exposed at {@code /api/metrics/series}
  * @param health   health-classification thresholds on the recovery rate
+ * @param cluster  where metrics are read from in a multi-instance deployment
  * @author Anand Manissery
  */
 @ConfigurationProperties(prefix = "failover.dashboard")
@@ -64,7 +65,8 @@ public record DashboardProperties(
     @DefaultValue Exposure exposure,
     @DefaultValue Security security,
     @DefaultValue History history,
-    @DefaultValue Health health
+    @DefaultValue Health health,
+    @DefaultValue Cluster cluster
 ) {
     /** Canonical, binder-targeted constructor — validates the base path fail-fast. */
     @ConstructorBinding
@@ -80,13 +82,14 @@ public record DashboardProperties(
     /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health")),
-                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90));
+                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90),
+                new Cluster("local"));
     }
 
-    /** Convenience constructor with custom health, default exposure/security/history. */
+    /** Convenience constructor with custom health, default exposure/security/history/cluster. */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health")),
-                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), health);
+                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), health, new Cluster("local"));
     }
 
     /**
@@ -154,6 +157,19 @@ public record DashboardProperties(
     public record Health(
         @DefaultValue("0.99") double degradedThreshold,
         @DefaultValue("0.90") double unhealthyThreshold
+    ) {
+    }
+
+    /**
+     * Where the dashboard reads its metrics from, for correctness across a multi-instance deployment
+     * (see the distributed-dashboard design document). Default {@code local} reads this instance's
+     * in-process {@code MeterRegistry} only; cluster-aware modes ({@code prometheus}, {@code shared-store})
+     * aggregate across instances and arrive in later phases.
+     *
+     * @param mode {@code local} (default) | {@code prometheus} | {@code shared-store}
+     */
+    public record Cluster(
+        @DefaultValue("local") String mode
     ) {
     }
 }

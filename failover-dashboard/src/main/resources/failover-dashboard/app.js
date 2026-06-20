@@ -427,8 +427,29 @@ async function loadMetrics() {
         if (activeView === 'apis') { apiTable(summary.perApi); apiTrendChart(); perApiChart(summary.perApi); }
         if (!bannerDismissed) showBanner(summary.perApi);
         markUpdated();
+        fetchJson('api/metrics/source').then(renderSourceBadge).catch(() => {}); // non-fatal
     } catch (e) {
         showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
+    }
+}
+
+// Metrics-provenance badge so single-instance figures are never misread as a cluster aggregate.
+function renderSourceBadge(info) {
+    const el = document.getElementById('src-badge');
+    if (!info || !info.mode) { el.hidden = true; return; }
+    el.hidden = false;
+    if (info.mode === 'local') {
+        el.className = 'src-badge tip local';
+        el.textContent = 'This instance only';
+        el.dataset.tip = "Metrics from this instance's in-process registry only — not a cluster aggregate";
+    } else {
+        const partial = !!info.partial;
+        el.className = 'src-badge tip cluster' + (partial ? ' partial' : '');
+        const count = info.instancesExpected > 0
+            ? `${info.instancesReporting}/${info.instancesExpected}` : `${info.instancesReporting}`;
+        el.textContent = `Cluster · ${count}`;
+        el.dataset.tip = `Cluster aggregate (${info.mode}) · ${info.instancesReporting} instance(s) reporting`
+            + (partial ? ' · partial data' : '');
     }
 }
 

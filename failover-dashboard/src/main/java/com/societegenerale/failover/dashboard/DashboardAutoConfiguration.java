@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -102,11 +103,29 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new DashboardMetricsService(registry, properties);
     }
 
+    /**
+     * The metrics provenance seam (see the distributed-dashboard design). P0 ships only the default
+     * {@link LocalRegistryMetricsSource} (this instance's registry); cluster-aware modes plug in here as
+     * a {@code @ConditionalOnMissingBean} override. A non-{@code local} {@code cluster.mode} is accepted
+     * but warned about until its source lands, and figures stay correctly labelled {@code local}.
+     */
     @Bean
     @ConditionalOnBean(DashboardMetricsService.class)
     @ConditionalOnMissingBean
-    public DashboardMetricsController dashboardMetricsController(DashboardMetricsService metricsService) {
-        return new DashboardMetricsController(metricsService);
+    public MetricsSource metricsSource(DashboardMetricsService metricsService) {
+        String mode = properties.cluster().mode();
+        if (!"local".equalsIgnoreCase(mode)) {
+            log.warn("failover.dashboard.cluster.mode='{}' is not available yet; using 'local' "
+                    + "(this instance only). See the distributed-dashboard design.", mode);
+        }
+        return new LocalRegistryMetricsSource(metricsService);
+    }
+
+    @Bean
+    @ConditionalOnBean(MetricsSource.class)
+    @ConditionalOnMissingBean
+    public DashboardMetricsController dashboardMetricsController(MetricsSource metricsSource) {
+        return new DashboardMetricsController(metricsSource);
     }
 
     /** Enforces {@code exposure.include} narrowing and the CSP header on every {@code base-path/**} request. */
@@ -117,7 +136,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+    public void addResourceHandlers(@NonNull ResourceHandlerRegistry registry) {
         if (!properties.exposure().ui()) {
             return; // UI exposure narrowed off — serve no static assets
         }
@@ -132,7 +151,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * Skipped when UI exposure is narrowed off.
      */
     @Override
-    public void addViewControllers(ViewControllerRegistry registry) {
+    public void addViewControllers(@NonNull ViewControllerRegistry registry) {
         if (!properties.exposure().ui()) {
             return;
         }
@@ -177,7 +196,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
 
         @Bean
         @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
-        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> auth.anyRequest().hasRole(props.security().role()))
                     .httpBasic(Customizer.withDefaults());

@@ -83,7 +83,7 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("MeterRegistry present ⇒ metrics service + controller registered")
+    @DisplayName("MeterRegistry present ⇒ metrics service + source + controller registered")
     void metricsPresentWithRegistry() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
@@ -91,6 +91,23 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx).hasSingleBean(DashboardMetricsService.class);
                     assertThat(ctx).hasSingleBean(DashboardMetricsController.class);
+                    assertThat(ctx).hasSingleBean(MetricsSource.class);
+                    assertThat(ctx.getBean(MetricsSource.class)).isInstanceOf(LocalRegistryMetricsSource.class);
+                    assertThat(ctx.getBean(MetricsSource.class).info().mode()).isEqualTo("local");
+                });
+    }
+
+    @Test
+    @DisplayName("cluster.mode != local ⇒ context still starts; P0 keeps the local source (labelled local)")
+    void clusterModeFallsBackToLocal() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=prometheus")
+                .run(ctx -> {
+                    assertThat(ctx.getBean(DashboardProperties.class).cluster().mode()).isEqualTo("prometheus");
+                    assertThat(ctx.getBean(MetricsSource.class)).isInstanceOf(LocalRegistryMetricsSource.class);
+                    assertThat(ctx.getBean(MetricsSource.class).info().mode()).isEqualTo("local");
                 });
     }
 
@@ -166,7 +183,8 @@ class DashboardAutoConfigurationTest {
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
                 new DashboardProperties.Security("FAILOVER_ADMIN", false),
                 new DashboardProperties.History(false, 120, 15),
-                new DashboardProperties.Health(0.99, 0.90));
+                new DashboardProperties.Health(0.99, 0.90),
+                new DashboardProperties.Cluster("local"));
         ResourceHandlerRegistry resources = Mockito.mock(ResourceHandlerRegistry.class);
         org.springframework.web.servlet.config.annotation.ViewControllerRegistry views =
                 Mockito.mock(org.springframework.web.servlet.config.annotation.ViewControllerRegistry.class);

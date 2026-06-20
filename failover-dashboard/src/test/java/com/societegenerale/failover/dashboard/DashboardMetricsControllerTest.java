@@ -22,6 +22,7 @@ import com.societegenerale.failover.dashboard.dto.ExceptionStat;
 import com.societegenerale.failover.dashboard.dto.Latency;
 import com.societegenerale.failover.dashboard.dto.MetricsSummary;
 import com.societegenerale.failover.dashboard.dto.Rates;
+import com.societegenerale.failover.dashboard.dto.SourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,7 +51,7 @@ class DashboardMetricsControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private DashboardMetricsService metricsService;
+    private MetricsSource metricsSource;
 
     @Test
     @DisplayName("GET /api/metrics returns the summary JSON")
@@ -58,7 +59,7 @@ class DashboardMetricsControllerTest {
         Rates rates = new Rates(0.9, 0.1, 0.8, 0.2, 0.98);
         Latency latency = new Latency(1.5, 4.0, 2.2, 9.0);
         ApiKpis kpis = new ApiKpis("country", "geo", 100, 90, 10, 8, 1, 1, 0, 2, latency, rates);
-        when(metricsService.metricsSummary()).thenReturn(new MetricsSummary(
+        when(metricsSource.summary()).thenReturn(new MetricsSummary(
                 kpis, List.of(kpis), List.of(new ExceptionStat("java.net.SocketTimeoutException", 7)), 123L));
 
         mockMvc.perform(get("/failover-dashboard/api/metrics"))
@@ -75,11 +76,24 @@ class DashboardMetricsControllerTest {
     @Test
     @DisplayName("GET /api/health returns the per-API health list")
     void healthJson() throws Exception {
-        when(metricsService.health()).thenReturn(List.of(new ApiHealth("country", "DEGRADED", 0.95)));
+        when(metricsSource.health()).thenReturn(List.of(new ApiHealth("country", "DEGRADED", 0.95)));
 
         mockMvc.perform(get("/failover-dashboard/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("country"))
                 .andExpect(jsonPath("$[0].status").value("DEGRADED"));
+    }
+
+    @Test
+    @DisplayName("GET /api/metrics/source returns the metrics provenance")
+    void sourceJson() throws Exception {
+        when(metricsSource.info()).thenReturn(new SourceInfo("local", 1, -1, 123L, false));
+
+        mockMvc.perform(get("/failover-dashboard/api/metrics/source"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("local"))
+                .andExpect(jsonPath("$.instancesReporting").value(1))
+                .andExpect(jsonPath("$.instancesExpected").value(-1))
+                .andExpect(jsonPath("$.partial").value(false));
     }
 }
