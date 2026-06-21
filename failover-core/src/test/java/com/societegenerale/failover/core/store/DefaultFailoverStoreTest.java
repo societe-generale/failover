@@ -181,4 +181,42 @@ class DefaultFailoverStoreTest {
         assertThat(result).isEmpty();
         verify(delegate).findAll("name");
     }
+
+    // --- liveEntryCount() forwarding ---
+
+    @Test
+    @DisplayName("liveEntryCount is unsupported and returns 0 when the delegate is not size-aware")
+    void liveEntryCountUnsupportedWhenDelegateNotSizeAware() {
+        assertThat(store.liveEntryCountSupported()).isFalse();
+        assertThat(store.liveEntryCount("name")).isZero();
+    }
+
+    @Test
+    @DisplayName("liveEntryCount forwards to a size-aware delegate")
+    void liveEntryCountForwardsToSizeAwareDelegate() {
+        DefaultFailoverStore<String> sizeAware = new DefaultFailoverStore<>(new SizeAwareStore());
+
+        assertThat(sizeAware.liveEntryCountSupported()).isTrue();
+        assertThat(sizeAware.liveEntryCount("name")).isEqualTo(7L);
+    }
+
+    @Test
+    @DisplayName("liveEntryCount unsupported when a size-aware delegate reports counting unsupported")
+    void liveEntryCountUnsupportedWhenDelegateReportsUnsupported() {
+        DefaultFailoverStore<String> store = new DefaultFailoverStore<>(new SizeAwareStore() {
+            @Override public boolean liveEntryCountSupported() { return false; }
+        });
+
+        assertThat(store.liveEntryCountSupported()).isFalse();   // && short-circuits on the delegate's flag
+    }
+
+    /** A delegate that is both a store and size-aware, for the forwarding test. */
+    static class SizeAwareStore implements FailoverStore<String>, FailoverStoreSizeAware {
+        @Override public void store(ReferentialPayload<String> p) { }
+        @Override public void delete(ReferentialPayload<String> p) { }
+        @Override public Optional<ReferentialPayload<String>> find(String name, String key) { return Optional.empty(); }
+        @Override public List<ReferentialPayload<String>> findAll(String name) { return List.of(); }
+        @Override public void cleanByExpiry(Instant expiry) { }
+        @Override public long liveEntryCount(String name) { return 7L; }
+    }
 }

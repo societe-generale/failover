@@ -25,6 +25,7 @@ const classify = h => h >= 0.99 ? 'HEALTHY' : h >= 0.90 ? 'DEGRADED' : 'UNHEALTH
 // ── State ─────────────────────────────────────────────────────────────────────
 let lastSummary = null;
 let statusByName = {};          // name → HEALTHY|DEGRADED|UNHEALTHY (from api/health)
+let lastSource = null;          // SourceInfo {mode, instancesReporting, instancesExpected, asOfEpochMs, partial}
 let configRows = [];
 let settingsGroups = null;
 let bannerDismissed = false;
@@ -92,6 +93,8 @@ function kpiCards(o, perApi) {
         { c: 'failover', lbl: 'Failover rate', ic: '⚡', val: pct(r.failoverRate), of: n(o.failoverInvoked), sub: 'upstream failed → failover ran' },
         { c: 'recovery', lbl: 'Recovery rate', ic: '↺', val: pct(r.recoveryRate), of: n(o.recovered), sub: `failover served a value · ${n(o.partial)} partial` },
         { c: 'nonrec', lbl: 'Non-recovery rate', ic: '✕', val: pct(r.nonRecoveryRate), of: n(hardFail), sub: 'failover found nothing usable' },
+        { c: 'impact', lbl: 'Users unblocked', ic: '🛡', val: hasCalls ? pct(usable / o.totalCalls) : '—', of: n(usable),
+            sub: hardFail > 0 ? `${n(hardFail)} blocked — no value served` : 'every caller got a value' },
         { c: 'async', lbl: 'Persistence failures', ic: '!', val: n(o.asyncFailed),
             sub: o.asyncFailed > 0 ? '⚠ async writes lost — data NOT saved' : 'all store writes persisted' },
         { c: 'latency', lbl: 'Recover latency', ic: '◷', val: ms(o.latency.recoverMeanMs), sub: 'mean recover-path time' },
@@ -143,12 +146,20 @@ function overviewCharts(summary) {
         datasets: [{ data: ex.map(e => e.count), backgroundColor: tint(p.bad), borderColor: p.bad, borderWidth: 1.5, borderRadius: 6 }],
     }, { ...noLeg, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { title: i => ex[i[0].dataIndex].type } } } });
 
+    // p95/p99 are available for local + Prometheus; shared-store reports 0 (percentiles can't be merged).
+    const hasTail = perApi.some(k => k.latency.recoverP95Ms > 0 || k.latency.recoverP99Ms > 0);
+    const latencyDatasets = [
+        { label: 'store mean', data: perApi.map(k => k.latency.storeMeanMs), backgroundColor: tint(p.accent), borderColor: p.accent, borderWidth: 1.5, borderRadius: 6 },
+        { label: 'recover mean', data: perApi.map(k => k.latency.recoverMeanMs), backgroundColor: tint(p.info), borderColor: p.info, borderWidth: 1.5, borderRadius: 6 },
+    ];
+    if (hasTail) {
+        latencyDatasets.push(
+            { label: 'recover p95', data: perApi.map(k => k.latency.recoverP95Ms), backgroundColor: tint(p.warn), borderColor: p.warn, borderWidth: 1.5, borderRadius: 6 },
+            { label: 'recover p99', data: perApi.map(k => k.latency.recoverP99Ms), backgroundColor: tint(p.bad), borderColor: p.bad, borderWidth: 1.5, borderRadius: 6 });
+    }
     up('c_latency', 'bar', {
         labels: perApi.map(k => k.name),
-        datasets: [
-            { label: 'store', data: perApi.map(k => k.latency.storeMeanMs), backgroundColor: tint(p.accent), borderColor: p.accent, borderWidth: 1.5, borderRadius: 6 },
-            { label: 'recover', data: perApi.map(k => k.latency.recoverMeanMs), backgroundColor: tint(p.info), borderColor: p.info, borderWidth: 1.5, borderRadius: 6 },
-        ],
+        datasets: latencyDatasets,
     }, { ...bottomLeg(10), scales: { y: { beginAtZero: true, title: { display: true, text: 'ms' } } } });
 
     up('c_timeline', 'line', {
@@ -413,7 +424,7 @@ function showBanner(perApi) {
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────────
-async function loadMetrics() {
+async function loadMetrics(quiet = false) {
     try {
         const [summary, health] = await Promise.all([fetchJson('api/metrics'), fetchJson('api/health')]);
         lastSummary = summary;
@@ -426,15 +437,20 @@ async function loadMetrics() {
         if (activeView === 'overview') overviewCharts(summary);
         if (activeView === 'apis') { apiTable(summary.perApi); apiTrendChart(); perApiChart(summary.perApi); }
         if (!bannerDismissed) showBanner(summary.perApi);
+        renderHealthRollup();
+        loadInstances();   // refreshes the Instances tab + toggles its visibility
         markUpdated();
         fetchJson('api/metrics/source').then(renderSourceBadge).catch(() => {}); // non-fatal
     } catch (e) {
-        showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
+        if (!quiet) showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
     }
 }
 
 // Metrics-provenance badge so single-instance figures are never misread as a cluster aggregate.
 function renderSourceBadge(info) {
+    lastSource = info;
+    renderHealthRollup();
+    if (instances.length) renderInstances();   // source arrives after loadInstances — refresh provenance/total/silent
     const el = document.getElementById('src-badge');
     if (!info || !info.mode) { el.hidden = true; return; }
     el.hidden = false;
@@ -451,6 +467,130 @@ function renderSourceBadge(info) {
         el.dataset.tip = `Cluster aggregate (${info.mode}) · ${info.instancesReporting} instance(s) reporting`
             + (partial ? ' · partial data' : '');
     }
+}
+
+// Cluster health roll-up (Health tab): counts of APIs by status + cluster instance reporting.
+function renderHealthRollup() {
+    const el = document.getElementById('rollup');
+    if (!el) return;
+    const apis = (lastSummary && lastSummary.perApi) || [];
+    let healthy = 0, degraded = 0, unhealthy = 0;
+    apis.forEach(k => {
+        const s = effStatus(k);
+        if (s === 'HEALTHY') healthy++; else if (s === 'DEGRADED') degraded++; else unhealthy++;
+    });
+
+    const src = lastSource;
+    const cluster = src && src.mode && src.mode !== 'local';
+    const srcEl = document.getElementById('rollup-src');
+    if (srcEl) {
+        if (cluster) {
+            const count = src.instancesExpected > 0
+                ? `${src.instancesReporting}/${src.instancesExpected}` : `${src.instancesReporting}`;
+            srcEl.textContent = `cluster aggregate (${src.mode}) · ${count} instance(s) reporting`
+                + (src.partial ? ' · partial data' : '');
+        } else {
+            srcEl.textContent = 'this instance only';
+        }
+    }
+
+    const card = (cls, num, label) =>
+        `<div class="rollup-card ${cls}"><span class="rollup-n">${num}</span><span class="rollup-l">${label}</span></div>`;
+    let html = card('healthy', healthy, 'Healthy')
+        + card('degraded', degraded, 'Degraded')
+        + card('unhealthy', unhealthy, 'Unhealthy')
+        + card('total', apis.length, 'APIs');
+    if (cluster) {
+        html += card('instances', src.instancesReporting, 'Instances');
+    }
+    el.innerHTML = html;
+}
+
+// ── Instances tab (cluster per-instance metrics) ──────────────────────────────────
+let instances = [];           // [InstanceMetrics {instanceId, lastSeenEpochMs, summary}]
+let selectedInstance = null;  // instanceId
+
+async function loadInstances() {
+    let list = [];
+    try { list = await fetchJson('api/instances'); } catch (e) { list = []; }
+    instances = Array.isArray(list) ? list : [];
+    const tab = document.getElementById('tab-instances');
+    if (tab) tab.hidden = instances.length === 0;   // only a cluster source populates this
+    if (instances.length === 0) {
+        if (activeView === 'instances') openTab('overview');
+        return;
+    }
+    renderInstances();
+}
+
+function instStatus(s) {
+    const o = s.overall;
+    return o.totalCalls > 0 ? classify(o.rates.healthyRate) : 'HEALTHY';
+}
+
+function renderInstances() {
+    const live = lastSource && lastSource.mode && lastSource.mode !== 'local';
+    const total = lastSource && lastSource.instancesExpected > 0 ? lastSource.instancesExpected : instances.length;
+    const reporting = instances.length;
+    const silent = Math.max(0, total - reporting);
+    const by = st => instances.filter(i => instStatus(i.summary) === st).length;
+
+    const srcEl = document.getElementById('inst-src');
+    if (srcEl) srcEl.textContent = (live ? lastSource.mode : 'local')
+        + ` · ${reporting}/${total} reporting` + (silent ? ` · ${silent} silent` : '');
+
+    const card = (cls, num, label) =>
+        `<div class="rollup-card ${cls}"><span class="rollup-n">${num}</span><span class="rollup-l">${label}</span></div>`;
+    document.getElementById('inst-rollup').innerHTML =
+        card('total', total, 'Total') + card('instances', reporting, 'Reporting')
+        + card('unhealthy', silent, 'Silent') + card('healthy', by('HEALTHY'), 'Healthy')
+        + card('degraded', by('DEGRADED'), 'Degraded') + card('unhealthy', by('UNHEALTHY'), 'Unhealthy');
+
+    const now = Date.now();
+    document.getElementById('instbody').innerHTML = instances.map(i => {
+        const o = i.summary.overall, r = o.rates, st = instStatus(i.summary);
+        const ageSec = i.lastSeenEpochMs > 0 ? Math.round((now - i.lastSeenEpochMs) / 1000) : -1;
+        const seen = ageSec < 0 ? '—' : ageSec < 60 ? `${ageSec}s ago` : `${Math.round(ageSec / 60)}m ago`;
+        const badge = `<span class="badge ${st.toLowerCase()}">${st}</span>`;
+        return `<tr data-id="${i.instanceId}" class="${i.instanceId === selectedInstance ? 'sel' : ''}">
+            <td><span class="inst-dot live"></span><span class="inst-id">${i.instanceId}</span></td>
+            <td class="r">${n(o.totalCalls)}</td>
+            <td class="r">${pct(r.successRate)}</td>
+            <td class="r">${pct(r.failoverRate)}</td>
+            <td class="r">${o.failoverInvoked > 0 ? pct(r.recoveryRate) : '—'}</td>
+            <td class="r">${ms(o.latency.recoverP95Ms || 0)}</td>
+            <td>${seen}</td>
+            <td>${badge}</td>
+        </tr>`;
+    }).join('');
+    document.querySelectorAll('#instbody tr').forEach(tr =>
+        tr.addEventListener('click', () => selectInstance(tr.dataset.id)));
+
+    if (!selectedInstance || !instances.some(i => i.instanceId === selectedInstance)) {
+        selectedInstance = instances[0].instanceId;
+    }
+    selectInstance(selectedInstance);
+}
+
+function selectInstance(id) {
+    selectedInstance = id;
+    const inst = instances.find(i => i.instanceId === id);
+    if (!inst) return;
+    document.querySelectorAll('#instbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.id === id));
+    document.getElementById('inst-drill-title').textContent = id;
+    const o = inst.summary.overall, r = o.rates;
+    const blocked = o.notRecovered + o.errors;
+    const usable = o.upstreamSuccess + o.recovered;
+    const kpi = (c, lbl, val, sub) =>
+        `<div class="kpi" data-c="${c}"><div class="top"><span class="lbl">${lbl}</span></div>`
+        + `<div class="val">${val}</div><div class="sub">${sub}</div></div>`;
+    document.getElementById('inst-drill').innerHTML =
+        kpi('calls', 'Calls', n(o.totalCalls), 'on this instance')
+        + kpi('success', 'Success rate', pct(r.successRate), `${n(o.upstreamSuccess)} upstream ok`)
+        + kpi('failover', 'Failover rate', pct(r.failoverRate), `${n(o.failoverInvoked)} fired`)
+        + kpi('impact', 'Users unblocked', o.totalCalls > 0 ? pct(usable / o.totalCalls) : '—',
+            blocked > 0 ? `${n(blocked)} blocked` : 'all served')
+        + kpi('latency', 'p95 recover', ms(o.latency.recoverP95Ms || 0), 'tail latency');
 }
 
 async function loadConfig() {
@@ -477,7 +617,7 @@ async function loadFailoverHealth() {
 
 function refreshActive() {
     if (activeView === 'config') loadConfig();
-    else if (activeView === 'health') loadFailoverHealth();
+    else if (activeView === 'health') { loadFailoverHealth(); loadMetrics(true); }  // metrics feed the cluster roll-up (quiet: no notice if absent)
     else loadMetrics();
 }
 

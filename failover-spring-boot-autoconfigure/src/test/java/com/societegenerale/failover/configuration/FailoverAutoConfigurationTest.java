@@ -36,6 +36,7 @@ import com.societegenerale.failover.core.payload.splitter.PayloadSplitterLookup;
 import com.societegenerale.failover.core.propagator.CompositeContextPropagator;
 import com.societegenerale.failover.core.propagator.ContextPropagator;
 import com.societegenerale.failover.core.propagator.MdcContextPropagator;
+import com.societegenerale.failover.core.observable.publisher.AsyncObservablePublisher;
 import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
 import com.societegenerale.failover.core.observable.FailoverObserver;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
@@ -50,6 +51,8 @@ import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.store.async.FailoverStoreAsync;
 import com.societegenerale.failover.store.inmemory.FailoverStoreInmemory;
 import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
+import io.micrometer.core.instrument.config.MeterFilter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.Tracer;
 import org.jspecify.annotations.NonNull;
 import org.mockito.Mockito;
@@ -321,6 +324,115 @@ class FailoverAutoConfigurationTest {
         @DisplayName("should NOT load FailoverAspect bean")
         void shouldNotLoadFailoverAspectBean() {
             assertBeansAreEmpty(applicationContext, FailoverAspect.class);
+        }
+    }
+
+    // ── observable async (non-blocking publish) ───────────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.observable.async.enabled=true"})
+    @DisplayName("when observable async enabled")
+    class WhenObservableAsyncEnabled {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("dispatching publisher is non-blocking (AsyncObservablePublisher)")
+        void dispatchingPublisherIsAsyncWhenEnabled() {
+            ObservablePublisher publisher =
+                    applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
+            assertThat(publisher).isInstanceOf(AsyncObservablePublisher.class);
+        }
+    }
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.observable.async.enabled=false"})
+    @DisplayName("when observable async disabled")
+    class WhenObservableAsyncDisabled {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("dispatching publisher is the synchronous composite")
+        void dispatchingPublisherIsCompositeWhenSync() {
+            ObservablePublisher publisher =
+                    applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
+            assertThat(publisher).isInstanceOf(CompositeObservablePublisher.class);
+        }
+    }
+
+    // ── observable instance tag & cardinality guard ───────────────────────────
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @DisplayName("when observable instance/cardinality are default")
+    class WhenObservableTaggingDefault {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("instance tag is off by default (no failoverInstanceMeterFilter); cardinality guard is on")
+        void instanceOffCardinalityOnByDefault() {
+            assertThat(applicationContext.containsBean("failoverInstanceMeterFilter")).isFalse();
+            assertThat(applicationContext.containsBean("failoverCardinalityMeterFilter")).isTrue();
+        }
+    }
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {
+            "failover.observable.instance.enabled=true",
+            "failover.observable.instance.id=order-svc:node-1"})
+    @DisplayName("when instance tag enabled")
+    class WhenInstanceTagEnabled {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("tags failover.* meters with instance, leaves other meters untouched")
+        void instanceFilterTagsOnlyFailoverMeters() {
+            MeterFilter filter = applicationContext.getBean("failoverInstanceMeterFilter", MeterFilter.class);
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            registry.config().meterFilter(filter);
+
+            registry.counter("failover.store.total").increment();
+            registry.counter("other.metric").increment();
+
+            assertThat(registry.get("failover.store.total").tag("instance", "order-svc:node-1").counter().count())
+                    .isEqualTo(1.0);
+            assertThat(registry.find("other.metric").tag("instance", "order-svc:node-1").counter()).isNull();
+        }
+    }
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.observable.cardinality.max-apis=2"})
+    @DisplayName("when cardinality guard capped")
+    class WhenCardinalityGuardCapped {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("denies new failover series once the distinct-name cap is reached")
+        void capsDistinctFailoverNames() {
+            MeterFilter filter = applicationContext.getBean("failoverCardinalityMeterFilter", MeterFilter.class);
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            registry.config().meterFilter(filter);
+
+            registry.counter("failover.store.total", "name", "a").increment();
+            registry.counter("failover.store.total", "name", "b").increment();
+            registry.counter("failover.store.total", "name", "c").increment(); // beyond cap of 2
+
+            assertThat(registry.find("failover.store.total").tag("name", "a").counter()).isNotNull();
+            assertThat(registry.find("failover.store.total").tag("name", "b").counter()).isNotNull();
+            assertThat(registry.find("failover.store.total").tag("name", "c").counter()).isNull();
         }
     }
 

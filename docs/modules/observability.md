@@ -115,6 +115,18 @@ public class MyPublisher implements ObservablePublisher {
 
 `Metrics.toMap()` returns all key/value pairs collected during the operation.
 
+### Non-blocking by construction
+
+Every `ObservablePublisher` — the built-in ones **and your custom bean** — runs **off the caller's thread**, so publishing can never block or slow the `@Failover` business call. You get this for free; no async code in your publisher.
+
+How: all `ObservablePublisher` beans are gathered into a single `CompositeObservablePublisher`, which is wrapped in an `AsyncObservablePublisher`. The `@Failover` path only ever calls that wrapper — it does a bounded, non-blocking hand-off to a virtual-thread drain worker, and your `publish(...)` runs there. A full queue **drops** the metric (counted as `failover.metrics.dropped.total`) rather than back-pressuring the caller.
+
+Implications for a custom publisher:
+
+- Do **not** assume `publish(...)` runs on the request thread — no `ThreadLocal`/request-scoped state, no MDC unless you set it yourself.
+- A slow or failing publisher cannot stall the business call; an exception is logged and the drain loop continues.
+- Disable globally for deterministic tests with `failover.observable.async.enabled=false` (publishes synchronously). Tune the buffer with `failover.observable.async.queue-capacity`.
+
 ---
 
 ## Next Steps

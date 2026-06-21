@@ -19,9 +19,11 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -84,13 +86,15 @@ public class FailoverMicrometerAutoConfiguration {
      *
      * @param failoverScanner  scanner providing the list of registered failovers
      * @param expiryExtractor  extracts expiry configuration from each failover
+     * @param failoverStore    the assembled store; backs the {@code failover.live.entries} gauge when size-aware
      * @return {@link FailoverMeterBinder}
      */
     @ConditionalOnMissingBean(FailoverMeterBinder.class)
     @Bean
     public FailoverMeterBinder failoverMeterBinder(
             FailoverScanner failoverScanner,
-            FailoverExpiryExtractor expiryExtractor) {
-        return new FailoverMeterBinder(failoverScanner, expiryExtractor);
+            FailoverExpiryExtractor expiryExtractor,
+            ObjectProvider<FailoverStore<Object>> failoverStore) {
+        return new FailoverMeterBinder(failoverScanner, expiryExtractor, failoverStore.getIfAvailable());
     }
 }
