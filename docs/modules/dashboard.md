@@ -66,7 +66,7 @@ failover:
     exposure:                        # defaults expose everything; set flags only to NARROW
       ui: true                       # serve the static HTML/JS UI
       api: true                      # serve the JSON API
-      include: [config, failover-health, metrics, health]   # which API endpoints are served
+      include: [config, failover-health, metrics, health, cluster, instances]  # which API endpoints are served
     security:
       role: FAILOVER_ADMIN           # role required for base-path/** when Spring Security is present
       allow-insecure: false          # start unsecured + loud WARN when Spring Security is absent
@@ -78,12 +78,26 @@ failover:
     health:                          # healthyRate thresholds for the per-API status badge
       degraded-threshold: 0.99       # >= ⇒ HEALTHY; below (down to unhealthy floor) ⇒ DEGRADED
       unhealthy-threshold: 0.90      # >= ⇒ DEGRADED; below ⇒ UNHEALTHY
-    cluster:                         # where metrics are read from across instances
-      mode: local                    # local (default) | prometheus | shared-store — see Distributed below
+    cluster:                         # where metrics are read from across instances (see Distributed Deployment)
+      mode: local                    # local (default) | prometheus | shared-store
       prometheus:                    # used when mode=prometheus (aggregates failover.* across instances)
         base-url: ""                 # e.g. http://prometheus:9090 (blank ⇒ falls back to local)
         token: ""                    # optional bearer token (blank ⇒ none)
         timeout-seconds: 5           # per-query connect/read timeout
+      shared-store:                  # used when mode=shared-store (peers push snapshots, aggregated in-app)
+        store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
+        liveness-seconds: 45         # a peer silent longer than this drops out of the aggregate
+        max-instances: 10            # supported ceiling (warns beyond — graduate to prometheus)
+        sample-interval-seconds: 30  # cluster-trend sampling cadence
+        retention:
+          max-age: 7d                # trend-history age bound
+          max-entries: 100000        # trend-history size bound (oldest truncated)
+        jdbc:                        # used when store=jdbc
+          table-prefix: ""           # prepended to FAILOVER_DASHBOARD_SNAPSHOT (validated)
+          auto-ddl: true             # create the table on startup if missing
+      snapshot:                      # peer-side push (every instance, incl. non-UI nodes)
+        publish-url: ""              # dashboard ingest URL (blank ⇒ this instance does not push)
+        interval-seconds: 15         # seconds between snapshot pushes
 ```
 
 | Property | Default | Purpose |
@@ -100,10 +114,17 @@ failover:
 | `history.sample-interval-seconds` | `15` | Seconds between samples. |
 | `health.degraded-threshold` | `0.99` | Healthy-rate floor for `HEALTHY`. |
 | `health.unhealthy-threshold` | `0.90` | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`. |
-| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates the `failover.*` meters across all instances via the Prometheus HTTP API. `shared-store` is a later phase. See the distributed-dashboard design document. |
+| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment--scenarios). |
 | `cluster.prometheus.base-url` | `""` | Prometheus base URL for `mode=prometheus` (e.g. `http://prometheus:9090`). Blank, or unreachable at runtime, falls back to the local registry with a warning. |
 | `cluster.prometheus.token` | `""` | Optional bearer token for Prometheus. |
 | `cluster.prometheus.timeout-seconds` | `5` | Per-query connect/read timeout. |
+| `cluster.shared-store.store` | `inmemory` | `inmemory` (default) or `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). |
+| `cluster.shared-store.liveness-seconds` | `45` | A peer whose latest snapshot is older than this is excluded from the aggregate. |
+| `cluster.shared-store.max-instances` | `10` | Supported small-cluster ceiling; exceeding it logs a warning. |
+| `cluster.shared-store.sample-interval-seconds` | `30` | Cluster-trend sampling cadence. |
+| `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000` | Trend-history age and size bounds (oldest truncated). |
+| `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl` | `""` / `true` | Snapshot table prefix (validated) + auto-create, when `store=jdbc`. |
+| `cluster.snapshot.publish-url` / `.interval-seconds` | `""` / `15` | Peer-side push: dashboard ingest URL + cadence. Blank URL ⇒ this instance does not push. |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
@@ -114,7 +135,7 @@ See the [Properties Reference](../configuration/properties-reference.md#dashboar
 Every view shares the top bar:
 
 - **Status chip** — overall live status (`Healthy` / `Degraded` / `Unhealthy`), derived from the worst per-API health.
-- **Tabs** — `Overview`, `Per-API`, `Health`, `Config` (Overview is the default; the open tab is kept in the URL hash, e.g. `#per-api`).
+- **Tabs** — `Overview`, `Per-API`, `Instances` (cluster modes only — hidden in `local`), `Health`, `Config` (Overview is the default; the open tab is kept in the URL hash, e.g. `#per-api`).
 - **Auto-refresh** — selectable cadence: `off`, `10s`, `30s`, `1m`, `10m`, `1h` (default `30s`).
 - **Refresh now** (`⟳`) — reload immediately, independent of the cadence.
 - **Last-updated** — timestamp of the last successful load.
