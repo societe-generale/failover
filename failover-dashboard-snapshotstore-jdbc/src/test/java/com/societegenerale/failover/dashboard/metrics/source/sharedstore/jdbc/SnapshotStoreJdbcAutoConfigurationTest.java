@@ -37,7 +37,7 @@ class SnapshotStoreJdbcAutoConfigurationTest {
     }
 
     @Test
-    void wires_jdbc_snapshot_store_when_shared_store_jdbc_and_datasource_present() {
+    void wiresJdbcSnapshotStoreWhenSharedStoreJdbcAndDatasourcePresent() {
         runner.withBean(DataSource.class, SnapshotStoreJdbcAutoConfigurationTest::h2)
                 .withPropertyValues(
                         "failover.dashboard.cluster.mode=shared-store",
@@ -49,14 +49,14 @@ class SnapshotStoreJdbcAutoConfigurationTest {
     }
 
     @Test
-    void inactive_when_store_is_not_jdbc() {
+    void inactiveWhenStoreIsNotJdbc() {
         runner.withBean(DataSource.class, SnapshotStoreJdbcAutoConfigurationTest::h2)
                 .withPropertyValues("failover.dashboard.cluster.mode=shared-store")   // store defaults to inmemory
                 .run(ctx -> assertThat(ctx).doesNotHaveBean(SnapshotStore.class));
     }
 
     @Test
-    void inactive_without_a_datasource() {
+    void inactiveWithoutADatasource() {
         runner.withPropertyValues(
                         "failover.dashboard.cluster.mode=shared-store",
                         "failover.dashboard.cluster.shared-store.store=jdbc")

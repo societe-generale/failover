@@ -55,23 +55,35 @@ public class Observable {
     }
 
     /**
-     * Adds an {@code instance} tag to every {@code failover.*} meter so figures are attributable to the
-     * emitting instance in a cluster. <strong>Off by default</strong>: a Prometheus scrape already attaches
-     * an {@code instance} label from the target, and emitting our own would be relabelled to
-     * {@code exported_instance}. Enable it for push-based backends (OTLP) or the dashboard {@code shared-store}
-     * mode where no scrape-time instance label exists.
+     * Controls the {@code instance} tag on {@code failover.*} meters, which makes figures attributable to the
+     * emitting instance in a cluster. Who supplies that tag depends on the backend, so the default is
+     * <strong>{@code auto}</strong>: tag every registry <em>except</em> a Prometheus one (Prometheus attaches an
+     * {@code instance} label at scrape time, and a duplicate would be relabelled to {@code exported_instance}).
+     * Push backends (OTLP / Elastic / Datadog) have no scrape-time label, so {@code auto} tags them — no config
+     * needed. Use {@code always} to force the tag on every registry (incl. Prometheus), {@code never} to disable.
      */
     @Data
     public static class Instance {
 
-        /** Whether to tag {@code failover.*} meters with {@code instance} (default {@code false}). */
-        private boolean enabled = false;
+        /** Tagging mode: {@code auto} (default — tag all registries except Prometheus) | {@code always} | {@code never}. */
+        private Mode mode = Mode.AUTO;
 
         /**
          * Instance identifier used as the tag value. When blank it is resolved at startup from
-         * {@code spring.application.name} and the host name (e.g. {@code orders-service:host-42}).
+         * {@code spring.application.name} and the host name (e.g. {@code orders-service:host-42}); on
+         * Kubernetes/Docker set it to {@code ${HOSTNAME}} or the pod name for a reliable, readable identity.
          */
         private String id = "";
+
+        /** {@code instance}-tag strategy. */
+        public enum Mode {
+            /** Tag every registry except a Prometheus one (which adds {@code instance} itself at scrape). The default. */
+            AUTO,
+            /** Tag every registry, including Prometheus (yields {@code exported_instance} there). */
+            ALWAYS,
+            /** Never add the {@code instance} tag. */
+            NEVER
+        }
     }
 
     /**

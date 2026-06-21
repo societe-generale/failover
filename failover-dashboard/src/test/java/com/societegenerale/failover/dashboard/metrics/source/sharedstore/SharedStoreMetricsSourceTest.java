@@ -57,7 +57,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void merges_counters_across_live_instances() {
+    void mergesCountersAcrossLiveInstances() {
         SnapshotStore store = stubStore(
                 snapshot("country", 10, 2, 1, 0, List.of(new ExceptionStat("IOEx", 3))),
                 snapshot("country", 20, 3, 0, 1, List.of(new ExceptionStat("IOEx", 2), new ExceptionStat("TimeoutEx", 5))));
@@ -80,7 +80,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void info_reports_shared_store_mode_and_live_count() {
+    void infoReportsSharedStoreModeAndLiveCount() {
         SnapshotStore store = stubStore(snapshot("country", 1, 0, 0, 0, List.of()));
         SharedStoreMetricsSource source = new SharedStoreMetricsSource(store, THRESHOLDS, fallback("local"), 10);
 
@@ -92,7 +92,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void falls_back_to_local_when_no_instance_is_live() {
+    void fallsBackToLocalWhenNoInstanceIsLive() {
         SharedStoreMetricsSource source = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fallback("local"), 10);
 
         assertThat(source.summary().perApi()).singleElement()
@@ -103,7 +103,7 @@ class SharedStoreMetricsSourceTest {
     private static SnapshotStore stubStore(MetricsSummary... live) {
         List<MetricsSummary> list = List.of(live);
         return new SnapshotStore() {
-            public void upsert(ClusterSnapshot snapshot) { }
+            public void upsert(ClusterSnapshot snapshot) { /* no-op: stub is pre-seeded via the constructor */ }
             public List<MetricsSummary> live() { return list; }
             public List<com.societegenerale.failover.dashboard.metrics.InstanceMetrics> liveInstances() {
                 List<com.societegenerale.failover.dashboard.metrics.InstanceMetrics> out = new java.util.ArrayList<>();
@@ -118,7 +118,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void health_classifies_each_api_when_instances_are_live() {
+    void healthClassifiesEachApiWhenInstancesAreLive() {
         SnapshotStore store = stubStore(
                 snapshot("country", 100, 0, 0, 0, List.of()),   // 100% healthy
                 snapshot("fx", 50, 5, 40, 5, List.of()));       // degraded/unhealthy
@@ -128,7 +128,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void series_reads_the_ring_when_present_else_falls_back_to_local() {
+    void seriesReadsTheRingWhenPresentElseFallsBackToLocal() {
         // with a series ring → reads it
         ClusterSeriesStore ring = new ClusterSeriesStore(new RetentionPolicy(java.time.Duration.ofDays(1), 100));
         ring.append(new com.societegenerale.failover.dashboard.metrics.SeriesPoint(
@@ -145,7 +145,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void info_uses_newest_snapshot_time_when_present_else_now() {
+    void infoUsesNewestSnapshotTimeWhenPresentElseNow() {
         SharedStoreMetricsSource live = new SharedStoreMetricsSource(
                 stubStore(snapshot("country", 1, 0, 0, 0, List.of())), THRESHOLDS, fallback("local"), 10);
         assertThat(live.info().mode()).isEqualTo("shared-store");
@@ -158,7 +158,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void merge_with_zero_call_instance_yields_zero_latency_not_nan() {
+    void mergeWithZeroCallInstanceYieldsZeroLatencyNotNan() {
         // a snapshot whose API has no calls → zero latency weight → mean must be 0.0, never NaN
         SnapshotStore store = stubStore(snapshot("idle", 0, 0, 0, 0, List.of()));
         SharedStoreMetricsSource source = new SharedStoreMetricsSource(store, THRESHOLDS, fallback("local"), 10);
@@ -173,7 +173,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void instances_returns_per_instance_metrics_from_the_store() {
+    void instancesReturnsPerInstanceMetricsFromTheStore() {
         SnapshotStore store = stubStore(
                 snapshot("country", 10, 2, 1, 0, List.of()),
                 snapshot("country", 20, 3, 0, 1, List.of()));

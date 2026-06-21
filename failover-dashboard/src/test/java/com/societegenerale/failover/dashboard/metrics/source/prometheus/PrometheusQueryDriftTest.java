@@ -19,8 +19,6 @@ package com.societegenerale.failover.dashboard.metrics.source.prometheus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -62,16 +60,12 @@ class PrometheusQueryDriftTest {
 
     @Test
     @DisplayName("every PromQL constant references only metrics the framework exports (no drift)")
-    void queriesReferenceOnlyExportedMetrics() throws IllegalAccessException {
+    void queriesReferenceOnlyExportedMetrics() {
         Set<String> referenced = new TreeSet<>();
-        for (Field f : PrometheusMetricsSource.class.getDeclaredFields()) {
-            if (Modifier.isStatic(f.getModifiers()) && f.getType() == String.class) {
-                f.setAccessible(true);
-                String promql = (String) f.get(null);
-                Matcher m = METRIC.matcher(promql);
-                while (m.find()) {
-                    referenced.add(stripSuffix(m.group()));
-                }
+        for (String promql : PrometheusMetricsSource.promQlConstants()) {
+            Matcher m = METRIC.matcher(promql);
+            while (m.find()) {
+                referenced.add(stripSuffix(m.group()));
             }
         }
 

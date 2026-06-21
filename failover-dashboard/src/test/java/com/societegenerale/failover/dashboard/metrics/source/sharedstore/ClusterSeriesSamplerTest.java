@@ -53,7 +53,7 @@ class ClusterSeriesSamplerTest {
     }
 
     @Test
-    void per_api_failover_trend_is_reset_aware_monotonic() {
+    void perApiFailoverTrendIsResetAwareMonotonic() {
         MutableSource source = new MutableSource();
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofDays(1), 100));
         try (ClusterSeriesSampler sampler = new ClusterSeriesSampler(source, store, 3600)) {
@@ -70,7 +70,7 @@ class ClusterSeriesSamplerTest {
     }
 
     @Test
-    void sample_failure_is_swallowed_by_the_scheduled_runner() {
+    void sampleFailureIsSwallowedByTheScheduledRunner() {
         MetricsSource boom = new MetricsSource() {
             public MetricsSummary summary() { throw new IllegalStateException("kaboom"); }
             public List<ApiHealth> health() { return List.of(); }
@@ -85,7 +85,7 @@ class ClusterSeriesSamplerTest {
     }
 
     @Test
-    void series_is_monotonic_across_a_peer_reset() {
+    void seriesIsMonotonicAcrossAPeerReset() {
         MutableSource source = new MutableSource();
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofDays(1), 100));
         try (ClusterSeriesSampler sampler = new ClusterSeriesSampler(source, store, 3600)) {
@@ -102,7 +102,7 @@ class ClusterSeriesSamplerTest {
     }
 
     @Test
-    void first_sample_seeds_the_cumulative_baseline() {
+    void firstSampleSeedsTheCumulativeBaseline() {
         MutableSource source = new MutableSource();
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofDays(1), 100));
         try (ClusterSeriesSampler sampler = new ClusterSeriesSampler(source, store, 3600)) {

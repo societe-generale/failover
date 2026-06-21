@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AsyncObservablePublisherTest {
 
     @Test
-    void should_forward_published_metrics_to_the_delegate_off_the_caller_thread() throws Exception {
+    void shouldForwardPublishedMetricsToTheDelegateOffTheCallerThread() throws Exception {
         List<String> received = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(3);
         ObservablePublisher delegate = m -> {
@@ -51,7 +51,7 @@ class AsyncObservablePublisherTest {
     }
 
     @Test
-    void should_drop_without_blocking_the_caller_when_the_queue_is_full() {
+    void shouldDropWithoutBlockingTheCallerWhenTheQueueIsFull() {
         CountDownLatch blockDelegate = new CountDownLatch(1);
         AtomicInteger delivered = new AtomicInteger();
         // Delegate blocks on the first metric, so the drain worker is stuck and the bounded queue fills up.
@@ -79,7 +79,7 @@ class AsyncObservablePublisherTest {
     }
 
     @Test
-    void should_flush_buffered_metrics_on_close() {
+    void shouldFlushBufferedMetricsOnClose() {
         AtomicInteger delivered = new AtomicInteger();
         CountDownLatch release = new CountDownLatch(1);
         ObservablePublisher delegate = m -> {
@@ -102,7 +102,7 @@ class AsyncObservablePublisherTest {
     }
 
     @Test
-    void should_keep_draining_after_a_delegate_throws() throws Exception {
+    void shouldKeepDrainingAfterADelegateThrows() throws Exception {
         List<String> received = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(2);
         ObservablePublisher delegate = m -> {
@@ -124,7 +124,7 @@ class AsyncObservablePublisherTest {
     }
 
     @Test
-    void should_reject_a_non_positive_queue_capacity() {
+    void shouldRejectANonPositiveQueueCapacity() {
         assertThatThrownBy(() -> new AsyncObservablePublisher(m -> { }, 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("queueCapacity must be > 0");

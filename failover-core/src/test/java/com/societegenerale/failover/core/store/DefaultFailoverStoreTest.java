@@ -212,11 +212,11 @@ class DefaultFailoverStoreTest {
 
     /** A delegate that is both a store and size-aware, for the forwarding test. */
     static class SizeAwareStore implements FailoverStore<String>, FailoverStoreSizeAware {
-        @Override public void store(ReferentialPayload<String> p) { }
-        @Override public void delete(ReferentialPayload<String> p) { }
+        @Override public void store(ReferentialPayload<String> p) { /* no-op: test only exercises liveEntryCount */ }
+        @Override public void delete(ReferentialPayload<String> p) { /* no-op: test only exercises liveEntryCount */ }
         @Override public Optional<ReferentialPayload<String>> find(String name, String key) { return Optional.empty(); }
         @Override public List<ReferentialPayload<String>> findAll(String name) { return List.of(); }
-        @Override public void cleanByExpiry(Instant expiry) { }
+        @Override public void cleanByExpiry(Instant expiry) { /* no-op: test only exercises liveEntryCount */ }
         @Override public long liveEntryCount(String name) { return 7L; }
     }
 }

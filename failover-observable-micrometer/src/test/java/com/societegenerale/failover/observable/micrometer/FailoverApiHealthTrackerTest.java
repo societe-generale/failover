@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.within;
 class FailoverApiHealthTrackerTest {
 
     @Test
-    void empty_history_is_healthy_and_not_stale() {
+    void emptyHistoryIsHealthyAndNotStale() {
         FailoverApiHealthTracker tracker = new FailoverApiHealthTracker();
 
         assertThat(tracker.healthRatio("unseen")).isEqualTo(1.0);
@@ -34,7 +34,7 @@ class FailoverApiHealthTrackerTest {
     }
 
     @Test
-    void health_is_fresh_plus_stale_over_total_and_stale_is_stale_over_total() {
+    void healthIsFreshPlusStaleOverTotalAndStaleIsStaleOverTotal() {
         FailoverApiHealthTracker tracker = new FailoverApiHealthTracker();
         tracker.record("api", Outcome.SERVED_FRESH);
         tracker.record("api", Outcome.SERVED_STALE);
@@ -45,7 +45,7 @@ class FailoverApiHealthTrackerTest {
     }
 
     @Test
-    void all_blocked_is_zero_health() {
+    void allBlockedIsZeroHealth() {
         FailoverApiHealthTracker tracker = new FailoverApiHealthTracker();
         tracker.record("api", Outcome.BLOCKED);
         tracker.record("api", Outcome.BLOCKED);
@@ -55,7 +55,7 @@ class FailoverApiHealthTrackerTest {
     }
 
     @Test
-    void window_evicts_oldest_so_health_reflects_only_recent_outcomes() {
+    void windowEvictsOldestSoHealthReflectsOnlyRecentOutcomes() {
         FailoverApiHealthTracker tracker = new FailoverApiHealthTracker(2);
         tracker.record("api", Outcome.BLOCKED);       // evicted
         tracker.record("api", Outcome.SERVED_FRESH);
@@ -65,7 +65,7 @@ class FailoverApiHealthTrackerTest {
     }
 
     @Test
-    void names_are_tracked_independently() {
+    void namesAreTrackedIndependently() {
         FailoverApiHealthTracker tracker = new FailoverApiHealthTracker();
         tracker.record("a", Outcome.SERVED_FRESH);
         tracker.record("b", Outcome.BLOCKED);
@@ -75,14 +75,14 @@ class FailoverApiHealthTrackerTest {
     }
 
     @Test
-    void rejects_non_positive_window() {
+    void rejectsNonPositiveWindow() {
         assertThatThrownBy(() -> new FailoverApiHealthTracker(0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("window must be > 0");
     }
 
     @Test
-    void eviction_decrements_each_outcome_type_so_ratios_stay_correct() {
+    void evictionDecrementsEachOutcomeTypeSoRatiosStayCorrect() {
         FailoverApiHealthTracker tracker = new FailoverApiHealthTracker(3);
         // Fill, then push 3 more so each original (fresh, stale, blocked) is evicted in turn.
         tracker.record("api", Outcome.SERVED_FRESH);   // evicted by 4th

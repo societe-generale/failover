@@ -35,7 +35,7 @@ class ClusterSeriesStoreTest {
     }
 
     @Test
-    void evicts_oldest_when_over_max_entries() {
+    void evictsOldestWhenOverMaxEntries() {
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofDays(1), 2), now::get);
         store.append(point(1));
         store.append(point(2));
@@ -46,7 +46,7 @@ class ClusterSeriesStoreTest {
     }
 
     @Test
-    void evicts_points_older_than_max_age() {
+    void evictsPointsOlderThanMaxAge() {
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofSeconds(10), 100), now::get);
         store.append(point(now.get() - 20_000));   // 20s old
         store.append(point(now.get() - 5_000));    // 5s old
@@ -57,7 +57,7 @@ class ClusterSeriesStoreTest {
     }
 
     @Test
-    void series_filters_by_window() {
+    void seriesFiltersByWindow() {
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofDays(1), 100), now::get);
         store.append(point(now.get() - 30_000));
         store.append(point(now.get() - 5_000));
@@ -67,7 +67,7 @@ class ClusterSeriesStoreTest {
     }
 
     @Test
-    void retention_policy_rejects_invalid_bounds() {
+    void retentionPolicyRejectsInvalidBounds() {
         assertThatThrownBy(() -> new RetentionPolicy(Duration.ZERO, 10)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RetentionPolicy(null, 10)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RetentionPolicy(Duration.ofSeconds(-5), 10)).isInstanceOf(IllegalArgumentException.class);
@@ -76,7 +76,7 @@ class ClusterSeriesStoreTest {
     }
 
     @Test
-    void is_expired_boundary() {
+    void isExpiredBoundary() {
         RetentionPolicy p = new RetentionPolicy(Duration.ofSeconds(10), 100);
         assertThat(p.isExpired(1_000, 12_000)).isTrue();    // 11s old > 10s
         assertThat(p.isExpired(5_000, 12_000)).isFalse();   // 7s old <= 10s

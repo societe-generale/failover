@@ -41,7 +41,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void upsert_keeps_latest_per_instance() {
+    void upsertKeepsLatestPerInstance() {
         SnapshotStoreInmemory store = store(60_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 5)));   // replaces
@@ -52,7 +52,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void live_excludes_snapshots_older_than_the_liveness_window() {
+    void liveExcludesSnapshotsOlderThanTheLivenessWindow() {
         SnapshotStoreInmemory store = store(1_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));   // at t=10000
         now.set(10_500);
@@ -66,7 +66,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void newest_epoch_is_zero_when_nothing_live() {
+    void newestEpochIsZeroWhenNothingLive() {
         SnapshotStoreInmemory store = store(1_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         now.addAndGet(5_000);   // expire
@@ -77,7 +77,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void records_beyond_max_instances_still_stored_as_warn_only_guard() {
+    void recordsBeyondMaxInstancesStillStoredAsWarnOnlyGuard() {
         SnapshotStoreInmemory store = store(60_000, 2);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         store.upsert(new ClusterSnapshot("i2", summaryFor("a", 1)));
@@ -87,7 +87,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void re_upsert_existing_instance_at_ceiling_does_not_warn_or_grow() {
+    void reUpsertExistingInstanceAtCeilingDoesNotWarnOrGrow() {
         SnapshotStoreInmemory store = store(60_000, 1);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 2)));   // same id, at ceiling — update, no growth
@@ -96,7 +96,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void live_instances_carry_id_and_exclude_stale() {
+    void liveInstancesCarryIdAndExcludeStale() {
         SnapshotStoreInmemory store = store(1_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));   // t=10000
         now.set(10_400);
@@ -113,7 +113,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void live_instances_empty_when_all_stale() {
+    void liveInstancesEmptyWhenAllStale() {
         SnapshotStoreInmemory store = store(1_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         now.addAndGet(5_000);

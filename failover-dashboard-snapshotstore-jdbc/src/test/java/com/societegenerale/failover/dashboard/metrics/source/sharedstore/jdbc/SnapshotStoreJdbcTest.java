@@ -66,14 +66,14 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void auto_ddl_creates_the_table() {
+    void autoDdlCreatesTheTable() {
         store(60_000, 10);
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
         assertThat(count).isZero();
     }
 
     @Test
-    void table_prefix_namespaces_the_table() {
+    void tablePrefixNamespacesTheTable() {
         SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 60_000, 10, "DEMO_", true, now::get);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
 
@@ -82,14 +82,14 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void rejects_an_unsafe_table_prefix() {
+    void rejectsAnUnsafeTablePrefix() {
         assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 60_000, 10, "x; DROP TABLE y;--", true, now::get))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("table-prefix");
     }
 
     @Test
-    void upsert_keeps_latest_per_instance_and_round_trips_values() {
+    void upsertKeepsLatestPerInstanceAndRoundTripsValues() {
         SnapshotStoreJdbc store = store(60_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 9, 4)));   // replaces
@@ -102,7 +102,7 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void live_excludes_snapshots_older_than_liveness_and_reports_newest() {
+    void liveExcludesSnapshotsOlderThanLivenessAndReportsNewest() {
         SnapshotStoreJdbc store = store(1_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));   // t=100000
         now.set(100_500);
@@ -116,7 +116,7 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void newest_is_zero_when_nothing_live() {
+    void newestIsZeroWhenNothingLive() {
         SnapshotStoreJdbc store = store(1_000, 10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
         now.addAndGet(5_000);
@@ -127,7 +127,7 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void survives_a_new_store_instance_over_the_same_table() {
+    void survivesANewStoreInstanceOverTheSameTable() {
         store(60_000, 10).upsert(new ClusterSnapshot("i1", summaryFor("country", 7, 0)));
         // a "restart": a fresh store object over the same datasource/table still sees the row
         SnapshotStoreJdbc reopened = store(60_000, 10);

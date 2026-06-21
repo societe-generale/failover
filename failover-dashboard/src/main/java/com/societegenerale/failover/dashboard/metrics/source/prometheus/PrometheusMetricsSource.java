@@ -91,6 +91,19 @@ public class PrometheusMetricsSource implements MetricsSource {
     private static final String R_NOTREC    = "sum(failover_recovery_outcome_total{outcome=\"not_recovered\"})";
     private static final String R_BY_API    = "sum by (name) (failover_recovery_outcome_total)";
 
+    /**
+     * Every PromQL constant above, exposed package-private for the drift guard
+     * ({@code PrometheusQueryDriftTest}) to assert no query references an unexported metric — without reflection.
+     */
+    static java.util.List<String> promQlConstants() {
+        return java.util.List.of(
+                Q_SUCCESS, Q_OUTCOME, Q_PARTIAL, Q_ASYNC, Q_LAT_SUM, Q_LAT_CNT, Q_LAT_MAX, Q_LAT_P95, Q_LAT_P99,
+                Q_EXC, Q_INSTANCES,
+                QI_SUCCESS, QI_OUTCOME, QI_PARTIAL, QI_ASYNC, QI_LAT_SUM, QI_LAT_CNT, QI_LAT_MAX, QI_LAT_P95,
+                QI_LAT_P99, QI_EXC,
+                R_CALLS, R_STORE, R_FAILOVER, R_RECOVERED, R_NOTREC, R_BY_API);
+    }
+
     private static final int TOP_EXCEPTIONS = 8;
 
     private static final long DEFAULT_WINDOW_SEC = 1800;   // 30 min when windowSec <= 0 ("all retained")

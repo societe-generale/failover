@@ -53,8 +53,9 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - **Richer metric catalog** (all over existing events — still consumer-only): `failover.call.total{result}`,
   `failover.user.impact.total{impact=unblocked|blocked}`, `failover.upstream.duration{result}` (timer),
   percentile histograms on `failover.operation.duration` (p95/p99), and gauges `failover.api.health`,
-  `failover.stale.served.ratio`, `failover.live.entries` (in-memory/Caffeine stores). Opt-in `instance`
-  tag (`failover.observable.instance.*`) and a cardinality guard (`failover.observable.cardinality.*`).
+  `failover.stale.served.ratio`, `failover.live.entries` (in-memory/Caffeine stores). Automatic `instance`
+  tag (`failover.observable.instance.mode=auto` — tags push registries like OTLP/Elastic, skips Prometheus
+  which adds it at scrape) and a cardinality guard (`failover.observable.cardinality.*`).
 - **Distributed dashboard (multi-instance)** — pluggable `MetricsSource` read seam selected by
   `failover.dashboard.cluster.mode`: `local` (default, unchanged) · `prometheus` (cluster-wide PromQL incl.
   p95/p99 and per-instance) · `shared-store` (peers push KPI snapshots, aggregated in-app for small

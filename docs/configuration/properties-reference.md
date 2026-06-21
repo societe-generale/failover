@@ -79,8 +79,8 @@ Control how failover metrics are published. See [Observability](../modules/obser
 |---|---|---|---|
 | `failover.observable.async.enabled` | `boolean` | `true` | Publish metrics off the caller thread via a bounded queue drained by a virtual-thread worker, so emitting metrics can never block or slow the `@Failover` call. Set `false` to publish synchronously (deterministic for tests). |
 | `failover.observable.async.queue-capacity` | `int` | `10000` | Bounded queue size. A full queue **drops** the metric (counted as `failover.metrics.dropped.total`) rather than back-pressuring the caller. Raise for very high failover throughput. |
-| `failover.observable.instance.enabled` | `boolean` | `false` | Add an `instance` tag to every `failover.*` meter. Off by default — a Prometheus scrape already attaches `instance`; enable for **push** backends (OTLP/Elastic) or the dashboard `shared-store` mode. |
-| `failover.observable.instance.id` | `String` | `""` | Instance-tag value. Blank ⇒ resolved at startup from `spring.application.name` + host name. |
+| `failover.observable.instance.mode` | `auto` \| `always` \| `never` | `auto` | `instance`-tag strategy. **`auto`** (default) tags every registry **except** a Prometheus one (Prometheus adds `instance` itself at scrape; push backends like OTLP/Elastic don't, so they get tagged — zero config). `always` tags every registry incl. Prometheus (surfaces as `exported_instance`). `never` disables the tag. |
+| `failover.observable.instance.id` | `String` | `""` | Instance-tag value. Blank ⇒ resolved at startup from `spring.application.name` + host name. On k8s/Docker set to `${HOSTNAME}` (or the pod name via Downward API) for a reliable, readable identity. |
 | `failover.observable.cardinality.enabled` | `boolean` | `true` | Cardinality guard: cap the number of distinct `name` tag values on `failover.*` meters so a misconfigured high-cardinality name can't explode the registry. |
 | `failover.observable.cardinality.max-apis` | `int` | `1000` | Maximum distinct `name` values; new series are denied once the cap is hit. |
 
@@ -107,7 +107,7 @@ Only active with `failover-dashboard-spring-boot-starter` on the classpath (see 
 
 ### Cluster Properties
 
-Where the dashboard reads metrics from in a multi-instance deployment (see [Distributed Deployment](../modules/dashboard.md#distributed-deployment--scenarios)). Default `local` reads this instance only.
+Where the dashboard reads metrics from in a multi-instance deployment (see [Distributed Deployment](../modules/dashboard.md#distributed-deployment-scenarios)). Default `local` reads this instance only.
 
 | Property | Type | Default | Description |
 |---|---|---|---|

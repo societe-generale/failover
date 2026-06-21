@@ -58,9 +58,7 @@ import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ObservableScheduler;
 import io.micrometer.core.instrument.FunctionCounter;
-import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import io.micrometer.core.instrument.config.MeterFilter;
 import lombok.extern.slf4j.Slf4j;
@@ -75,14 +73,12 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -390,31 +386,6 @@ public class FailoverAutoConfiguration {
     }
 
     /**
-     * Opt-in {@code instance} tag on every {@code failover.*} meter (see {@code failover.observable.instance}).
-     * Off by default — a Prometheus scrape already attaches an {@code instance} label; enable for push-based
-     * backends / the dashboard {@code shared-store} mode. A {@link MeterFilter} bean is applied to all registries
-     * before any meter is registered, so it tags meters created lazily at runtime too.
-     *
-     * @param properties  failover properties (instance enabled flag + optional explicit id)
-     * @param environment resolves {@code spring.application.name} when the id is left blank
-     * @return a meter filter adding the {@code instance} tag to {@code failover.*} meters
-     */
-    @ConditionalOnClass(MeterFilter.class)
-    @ConditionalOnProperty(prefix = "failover.observable.instance", name = "enabled", havingValue = "true")
-    @Bean
-    public MeterFilter failoverInstanceMeterFilter(FailoverProperties properties, Environment environment) {
-        String instanceId = resolveInstanceId(properties.getObservable().getInstance(), environment);
-        log.info("Failover meters are tagged with instance='{}'.", instanceId);
-        Tag instanceTag = Tag.of("instance", instanceId);
-        return new MeterFilter() {
-            @Override
-            public Meter.Id map(Meter.Id id) {
-                return id.getName().startsWith("failover") ? id.withTag(instanceTag) : id;
-            }
-        };
-    }
-
-    /**
      * Cardinality guard for the {@code failover.*} meters: caps the number of distinct {@code name} tag values,
      * denying further new series once the cap is hit so a misconfigured high-cardinality failover name can never
      * explode the registry. On by default ({@code failover.observable.cardinality}).
@@ -428,21 +399,6 @@ public class FailoverAutoConfiguration {
     public MeterFilter failoverCardinalityMeterFilter(FailoverProperties properties) {
         int maxApis = properties.getObservable().getCardinality().getMaxApis();
         return MeterFilter.maximumAllowableTags("failover", "name", maxApis, MeterFilter.deny());
-    }
-
-    /** Resolves the instance id: the explicit value, else {@code spring.application.name:hostname}. */
-    private static String resolveInstanceId(Observable.Instance instance, Environment environment) {
-        if (instance.getId() != null && !instance.getId().isBlank()) {
-            return instance.getId();
-        }
-        String app = environment.getProperty("spring.application.name", "application");
-        String host;
-        try {
-            host = InetAddress.getLocalHost().getHostName();
-        } catch (Exception e) {
-            host = "unknown-host";
-        }
-        return app + ":" + host;
     }
 
     /**

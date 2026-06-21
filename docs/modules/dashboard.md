@@ -114,7 +114,7 @@ failover:
 | `history.sample-interval-seconds` | `15` | Seconds between samples. |
 | `health.degraded-threshold` | `0.99` | Healthy-rate floor for `HEALTHY`. |
 | `health.unhealthy-threshold` | `0.90` | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`. |
-| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment--scenarios). |
+| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment-scenarios). |
 | `cluster.prometheus.base-url` | `""` | Prometheus base URL for `mode=prometheus` (e.g. `http://prometheus:9090`). Blank, or unreachable at runtime, falls back to the local registry with a warning. |
 | `cluster.prometheus.token` | `""` | Optional bearer token for Prometheus. |
 | `cluster.prometheus.timeout-seconds` | `5` | Per-query connect/read timeout. |
@@ -312,9 +312,94 @@ If Micrometer is not on the classpath, the **Config and Health views still work*
 
 ---
 
+## The Read Axis (dashboard service) — how the dashboard collects metrics
+
+The **read axis = the dashboard service**: it never emits `failover.*` meters, it *reads and aggregates* them through a `MetricsSource` chosen by `cluster.mode`. The same UI/API sits on top of all three sources. (The **write axis = the failover service** that emits the meters — see [Observability](observability.md#the-write-axis-failover-service-how-meters-leave-the-app).)
+
+### Single instance (`local`)
+
+One JVM. The dashboard reads its own in-process registry directly — exactly the meters this instance emitted.
+
+```mermaid
+flowchart LR
+    A["@Failover (this JVM)"] --> M["Micrometer registry"]
+    M --> LS["LocalRegistryMetricsSource"]
+    LS --> UI["Read axis — dashboard service<br/>UI / JSON API"]
+```
+
+Behind a load balancer this is only **one node's** view — the UI labels it "this instance only". For a true cluster picture, pick `shared-store` or `prometheus`.
+
+### Multiple instances — `shared-store` (no Prometheus)
+
+Each instance **pushes** its own KPI snapshot to the dashboard; the dashboard keeps the latest per instance and aggregates them in memory with the same `DashboardKpis` math. Small clusters (≤ ~10), zero external infra.
+
+```mermaid
+flowchart LR
+    subgraph APPS["Write axis — failover service · N instances"]
+        I1["instance-1"]; I2["instance-2"]; I3["instance-3"]
+    end
+    I1 & I2 & I3 -->|"POST /api/cluster/snapshot<br/>(every interval-seconds)"| ING["ClusterSnapshotController"]
+    ING --> ST["SnapshotStore<br/>(in-memory | JDBC)"]
+    ST --> SS["SharedStoreMetricsSource<br/>sum latest-per-live-instance"]
+    SS --> UI["Read axis — dashboard service<br/>UI / Instances tab"]
+```
+
+Stale peers (older than `liveness-seconds`) drop out of the aggregate; `store: jdbc` makes the snapshots survive a dashboard restart.
+
+### Multiple instances — `prometheus` (large clusters)
+
+Prometheus scrapes every instance; the dashboard issues read-only PromQL to aggregate cluster-wide (incl. p95/p99 and per-instance) and falls back to `local` if Prometheus is down.
+
+```mermaid
+flowchart LR
+    subgraph APPS["Write axis — failover service · N instances"]
+        I1["instance-1<br/>/actuator/prometheus"]; I2["instance-2<br/>/actuator/prometheus"]; I3["instance-3<br/>/actuator/prometheus"]
+    end
+    I1 & I2 & I3 -->|scrape| PROM[(Prometheus)]
+    PROM -->|"PromQL: sum by (name[, instance])"| PS["PrometheusMetricsSource"]
+    PS --> UI["Read axis — dashboard service<br/>UI / Instances tab"]
+```
+
+### Picking a mode
+
+```mermaid
+flowchart TB
+    Q{how many instances?} -->|one| L["local — read own registry"]
+    Q -->|"a few (≤ ~10)"| S{run Prometheus?}
+    Q -->|many| P["prometheus"]
+    S -->|no| SH["shared-store<br/>(in-memory, or jdbc for durability)"]
+    S -->|yes| P
+```
+
+| Mode | Source | Infra | Per-instance view |
+|---|---|---|---|
+| `local` | in-process registry | none | n/a (single JVM) |
+| `shared-store` | pushed snapshots, in-app aggregate | none, or a DB table (jdbc) | yes (snapshot per instance) |
+| `prometheus` | PromQL across scraped instances | Prometheus/TSDB | yes (`instance` label) |
+
+### Pairing the read axis with your write-axis backend
+
+The read axis has **only these three sources** — it does **not** read every metrics backend. So the dashboard's `cluster.mode` does not always mirror the Micrometer registry you export with ([Observability → choosing a registry](observability.md#choosing-a-micrometer-registry)). Map it like this:
+
+| Write axis (export registry) | Dashboard read axis | Cluster view comes from |
+|---|---|---|
+| **Prometheus** (scrape) | `cluster.mode=prometheus` (+ `prometheus.base-url`) | the embedded dashboard, via PromQL — **1:1 pairing** |
+| **OTLP / Elastic / Datadog / New Relic / CloudWatch / Influx / Graphite** (push) | `cluster.mode=shared-store` **or** none | the **vendor's own UI** (Grafana / Kibana / Datadog…) for those exported meters; **or** the embedded dashboard via `shared-store` (peers push KPI snapshots straight to it — independent of the metrics backend) |
+| **none / SimpleMeterRegistry** (single JVM) | `cluster.mode=local` (default) | this instance only |
+
+Key point: **`shared-store` is independent of the metrics backend.** Its peers POST snapshots directly to the dashboard (`/api/cluster/snapshot`), so you get a cluster view in the embedded UI **regardless of which `micrometer-registry-*` you use** (or even with none). The only registry the dashboard *itself* reads back is Prometheus. There is **no** `MetricsSource` for OTLP/Elastic/Datadog/etc. — for those, either read the cluster picture in that vendor's UI, or run `shared-store` alongside.
+
+Examples:
+
+- **Prometheus everywhere:** apps export `micrometer-registry-prometheus`; dashboard `cluster.mode=prometheus`. One pairing, full cluster view + p95/p99 in the embedded UI.
+- **OTLP to Datadog, but still want the embedded dashboard clustered:** apps export `micrometer-registry-otlp` *and* set `cluster.snapshot.publish-url`; dashboard `cluster.mode=shared-store`. Datadog gets the meters; the dashboard gets snapshots — two parallel paths.
+- **OTLP to your APM, no embedded cluster view needed:** dashboard left at `local` (or not deployed) — use the APM's dashboards.
+
+---
+
 ## Distributed Deployment — Scenarios
 
-The dashboard reads the `failover.*` **meters**; `cluster.mode` chooses *where it reads them from*. Everything else (UI, KPIs, health, security) is identical across modes.
+The dashboard reads the `failover.*` **meters**; `cluster.mode` chooses *where it reads them from*. Everything else (UI, KPIs, health, security) is identical across modes. The scenarios below are complete, copy-pasteable configs for each.
 
 | Mode | Reads from | Infra | When |
 |---|---|---|---|
@@ -494,7 +579,7 @@ The dashboard reads `failover.*` **meters**; how those meters leave each instanc
 - **OTLP** (vendor-neutral → Prometheus / Elastic / Datadog / …): add `micrometer-registry-otlp`.
 - **Elastic**: add `micrometer-registry-elastic`.
 
-For these push-based backends, enable the `instance` tag so figures stay attributable (`failover.observable.instance.enabled=true`; see [Observability](observability.md)) — unlike a Prometheus scrape, there is no scrape-time `instance` label.
+For these push backends, per-instance attribution is automatic: `failover.observable.instance.mode` defaults to `auto`, which tags push registries (and skips Prometheus). Set `failover.observable.instance.id=${HOSTNAME}` on k8s/Docker for a readable identity. See [Observability](observability.md).
 
 For a metrics **read** source over Elasticsearch (or a log drill-down view), implement the `MetricsSource` SPI in an optional `failover-dashboard-source-elastic` module gated by `@ConditionalOnClass`/`@ConditionalOnProperty` — the same extension pattern as the Prometheus and shared-store sources.
 

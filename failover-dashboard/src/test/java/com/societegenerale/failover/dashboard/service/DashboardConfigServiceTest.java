@@ -39,13 +39,13 @@ class DashboardConfigServiceTest {
     @SuppressWarnings("unused")
     static class Fixtures {
         @Failover(name = "country-by-code", domain = "country", expiryDuration = 24)
-        void countryByCode() { }
+        void countryByCode() { /* fixture: only the @Failover annotation is read reflectively */ }
 
         @Failover(name = "alpha")
-        void alpha() { }
+        void alpha() { /* fixture: only the @Failover annotation is read reflectively */ }
 
         @Failover(name = "zebra")
-        void zebra() { }
+        void zebra() { /* fixture: only the @Failover annotation is read reflectively */ }
     }
 
     private static Failover annotation(String methodName) {

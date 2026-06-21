@@ -369,34 +369,63 @@ class FailoverAutoConfigurationTest {
 
     @Nested
     @SpringBootTest(classes = {MyTestApplication.class})
-    @DisplayName("when observable instance/cardinality are default")
+    @DisplayName("when observable instance/cardinality are default (mode=auto)")
     class WhenObservableTaggingDefault {
 
         @Autowired
         private ApplicationContext applicationContext;
 
         @Test
-        @DisplayName("instance tag is off by default (no failoverInstanceMeterFilter); cardinality guard is on")
-        void instanceOffCardinalityOnByDefault() {
-            assertThat(applicationContext.containsBean("failoverInstanceMeterFilter")).isFalse();
+        @DisplayName("mode=auto by default ⇒ the per-registry customizer is wired (not the global always-filter); cardinality on")
+        void autoByDefault() {
+            assertThat(applicationContext.containsBean("failoverInstanceMeterRegistryCustomizer")).isTrue();
+            assertThat(applicationContext.containsBean("failoverInstanceMeterFilter")).isFalse();   // global always-filter not used
             assertThat(applicationContext.containsBean("failoverCardinalityMeterFilter")).isTrue();
         }
+
+        @Test
+        @DisplayName("mode=auto ⇒ customizer tags non-Prometheus registries but skips a Prometheus one")
+        void autoCustomizerSkipsPrometheus() {
+            @SuppressWarnings("unchecked")
+            org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer<io.micrometer.core.instrument.MeterRegistry> customizer =
+                    applicationContext.getBean("failoverInstanceMeterRegistryCustomizer",
+                            org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer.class);
+
+            SimpleMeterRegistry push = new SimpleMeterRegistry();          // not Prometheus → tagged
+            customizer.customize(push);
+            push.counter("failover.store.total").increment();
+            push.counter("other.metric").increment();
+            assertThat(push.find("failover.store.total").tagKeys("instance").counter())
+                    .as("failover.* must carry an instance tag on a non-Prometheus registry").isNotNull();
+            assertThat(push.find("other.metric").tagKeys("instance").counter())
+                    .as("non-failover meters untouched").isNull();
+
+            SimpleMeterRegistry prom = new FakePrometheusMeterRegistry();  // simpleName contains "Prometheus" → skipped
+            customizer.customize(prom);
+            prom.counter("failover.store.total").increment();
+            assertThat(prom.find("failover.store.total").tagKeys("instance").counter())
+                    .as("Prometheus registry must NOT get our instance tag").isNull();
+        }
     }
+
+    /** A registry whose simple name contains "Prometheus" so the auto customizer treats it as Prometheus. */
+    static class FakePrometheusMeterRegistry extends SimpleMeterRegistry { }
 
     @Nested
     @SpringBootTest(classes = {MyTestApplication.class})
     @TestPropertySource(properties = {
-            "failover.observable.instance.enabled=true",
+            "failover.observable.instance.mode=always",
             "failover.observable.instance.id=order-svc:node-1"})
-    @DisplayName("when instance tag enabled")
-    class WhenInstanceTagEnabled {
+    @DisplayName("when instance mode=always")
+    class WhenInstanceModeAlways {
 
         @Autowired
         private ApplicationContext applicationContext;
 
         @Test
-        @DisplayName("tags failover.* meters with instance, leaves other meters untouched")
-        void instanceFilterTagsOnlyFailoverMeters() {
+        @DisplayName("global filter tags failover.* (all registries), leaves other meters untouched")
+        void alwaysFilterTagsOnlyFailoverMeters() {
+            assertThat(applicationContext.containsBean("failoverInstanceMeterRegistryCustomizer")).isFalse();
             MeterFilter filter = applicationContext.getBean("failoverInstanceMeterFilter", MeterFilter.class);
             SimpleMeterRegistry registry = new SimpleMeterRegistry();
             registry.config().meterFilter(filter);
@@ -407,6 +436,23 @@ class FailoverAutoConfigurationTest {
             assertThat(registry.get("failover.store.total").tag("instance", "order-svc:node-1").counter().count())
                     .isEqualTo(1.0);
             assertThat(registry.find("other.metric").tag("instance", "order-svc:node-1").counter()).isNull();
+        }
+    }
+
+    @Nested
+    @SpringBootTest(classes = {MyTestApplication.class})
+    @TestPropertySource(properties = {"failover.observable.instance.mode=never"})
+    @DisplayName("when instance mode=never")
+    class WhenInstanceModeNever {
+
+        @Autowired
+        private ApplicationContext applicationContext;
+
+        @Test
+        @DisplayName("neither the customizer nor the global filter is wired")
+        void neitherInstanceBean() {
+            assertThat(applicationContext.containsBean("failoverInstanceMeterRegistryCustomizer")).isFalse();
+            assertThat(applicationContext.containsBean("failoverInstanceMeterFilter")).isFalse();
         }
     }
 
