@@ -51,6 +51,14 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Jackson — provided: parses Prometheus HTTP-API responses in cluster mode. Any Boot web app
+             already has it on the classpath; the cluster.mode=prometheus path activates only there. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Spring Security — provided: the dashboard contributes a gate only when the consumer already
              has it; absent ⇒ fail-closed at startup unless allow-insecure (design doc §9 gate 4). -->
         <dependency>

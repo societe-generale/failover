@@ -18,11 +18,15 @@ package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.core.observable.Metrics;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
+import com.societegenerale.failover.observable.micrometer.FailoverApiHealthTracker.Outcome;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,6 +38,12 @@ import java.util.concurrent.TimeUnit;
  * <h2>Meters emitted</h2>
  * <ul>
  *   <li>{@code failover.store.total} (Counter) — tags: {@code name}, {@code stored}</li>
+ *   <li>{@code failover.call.total} (Counter) — tags: {@code name}, {@code domain},
+ *       {@code result} ({@code success} when the upstream call returned | {@code failover} when it failed
+ *       and recovery was attempted). The single per-call volume signal from which the failover rate derives.</li>
+ *   <li>{@code failover.user.impact.total} (Counter) — tags: {@code name}, {@code domain},
+ *       {@code impact} ({@code unblocked} = the caller got a value, fresh or recovered/stale |
+ *       {@code blocked} = upstream failed and nothing could be recovered). The most user-meaningful signal.</li>
  *   <li>{@code failover.recover.total} (Counter) — tags: {@code name}, {@code recovered},
  *       {@code recovery_failed}</li>
  *   <li>{@code failover.recovery.outcome.total} (Counter) — tags: {@code name}, {@code domain},
@@ -44,8 +54,14 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code failover.exception.total} (Counter) — tags: {@code name},
  *       {@code exception_type} (the aspect's wrapper), {@code cause_type} (first-level cause),
  *       {@code final_cause_type} (innermost / actual cause)</li>
- *   <li>{@code failover.operation.duration} (Timer) — tags: {@code name}, {@code action}
+ *   <li>{@code failover.operation.duration} (Timer, percentile histogram) — tags: {@code name}, {@code action}
  *       — only when the {@code Metrics} bag carries a {@code failover-duration-ns} key</li>
+ *   <li>{@code failover.upstream.duration} (Timer, percentile histogram) — tags: {@code name},
+ *       {@code result} ({@code success} | {@code failure}) — latency of the protected upstream call itself</li>
+ *   <li>{@code failover.api.health} (Gauge) — tags: {@code name}, {@code domain} — recent fraction of calls
+ *       where the caller got a value (1.0 healthy; lower = users blocked)</li>
+ *   <li>{@code failover.stale.served.ratio} (Gauge) — tags: {@code name}, {@code domain} — recent fraction
+ *       of calls served from stored (stale) data</li>
  *   <li>{@code failover.store.async.failed} (Counter) — tags: {@code name}, {@code operation},
  *       {@code exception_type} — emitted when an async store/delete/cleanByExpiry fails inside
  *       the executor thread (the async store layer is otherwise visible only in logs)</li>
@@ -78,15 +94,32 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
     static final String DURATION_NS_KEY  = "failover-duration-ns";
     static final String ASYNC_OP_KEY     = "failover-async-operation";
     static final String ASYNC_FAILED     = "store-async-failed";
+    static final String UPSTREAM_RESULT_KEY      = "failover-upstream-result";
+    static final String UPSTREAM_DURATION_NS_KEY = "failover-upstream-duration-ns";
 
     /** Recover outcome tag values for {@code failover.recovery.outcome.total}. */
     static final String OUTCOME_RECOVERED     = "recovered";
     static final String OUTCOME_NOT_RECOVERED = "not_recovered";
     static final String OUTCOME_ERROR         = "error";
+
+    /** {@code result} tag values for {@code failover.call.total}. */
+    static final String RESULT_SUCCESS  = "success";
+    static final String RESULT_FAILOVER = "failover";
+
+    /** {@code impact} tag values for {@code failover.user.impact.total}. */
+    static final String IMPACT_UNBLOCKED = "unblocked";
+    static final String IMPACT_BLOCKED   = "blocked";
+
     /** Fallback tag value when a tag is absent from the metrics bag. */
     static final String UNKNOWN              = "unknown";
 
     private final MeterRegistry registry;
+
+    /** Rolling per-API outcome state behind the health/stale gauges. */
+    private final FailoverApiHealthTracker healthTracker = new FailoverApiHealthTracker();
+
+    /** Names whose health gauges are already registered (gauge registration is once-per-name). */
+    private final Set<String> healthGaugeNames = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates a publisher that records meters in the given registry.
@@ -109,6 +142,7 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             case "store"   -> publishStore(name, info);
             case "recover" -> publishRecover(name, info);
             case "recover-partial" -> publishRecoverPartial(name, info);
+            case "upstream" -> publishUpstream(name, info);
             case ASYNC_FAILED -> publishAsyncFailed(name, info);
             default        -> { /* unknown action — ignore */ }
         }
@@ -121,6 +155,31 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .description("Total failover store attempts")
             .tag("name", name)
             .tag("stored", stored)
+            .register(registry)
+            .increment();
+        // A store event fires on the success path: the upstream call returned, so the caller is unblocked.
+        publishCallAndImpact(name, info, RESULT_SUCCESS, IMPACT_UNBLOCKED);
+        recordHealth(name, info, Outcome.SERVED_FRESH);
+    }
+
+    /**
+     * Per-call volume ({@code failover.call.total}) and user-impact ({@code failover.user.impact.total})
+     * counters, derived from the store/recover events so no extra emission is needed in the core handler.
+     */
+    private void publishCallAndImpact(String name, Map<String, String> info, String result, String impact) {
+        String domain = info.getOrDefault(DOMAIN_KEY, name);
+        Counter.builder("failover.call.total")
+            .description("Total failover-protected calls by result: success (upstream ok) or failover (upstream failed)")
+            .tag("name", name)
+            .tag("domain", domain)
+            .tag("result", result)
+            .register(registry)
+            .increment();
+        Counter.builder("failover.user.impact.total")
+            .description("Whether the caller got a value (unblocked) or upstream failed with nothing to recover (blocked)")
+            .tag("name", name)
+            .tag("domain", domain)
+            .tag("impact", impact)
             .register(registry)
             .increment();
     }
@@ -154,6 +213,11 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .increment();
 
         publishRecoveryOutcome(name, info, recovered, recoveryFailed);
+        // A recover event fires on the failure path (failover triggered). The caller is unblocked only if a
+        // value was recovered (served stale); otherwise blocked — upstream failed with nothing to return.
+        String impact = "true".equals(recovered) ? IMPACT_UNBLOCKED : IMPACT_BLOCKED;
+        publishCallAndImpact(name, info, RESULT_FAILOVER, impact);
+        recordHealth(name, info, "true".equals(recovered) ? Outcome.SERVED_STALE : Outcome.BLOCKED);
     }
 
     /**
@@ -206,6 +270,50 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             .increment();
     }
 
+    /**
+     * Latency of the protected upstream call itself ({@code failover.upstream.duration}), tagged by result
+     * (success/failure) — distinct from the store/recover path timed by {@code failover.operation.duration}.
+     */
+    private void publishUpstream(String name, Map<String, String> info) {
+        String nanosStr = info.get(UPSTREAM_DURATION_NS_KEY);
+        if (nanosStr == null) {
+            return;
+        }
+        try {
+            long nanos = Long.parseLong(nanosStr);
+            Timer.builder("failover.upstream.duration")
+                .description("Latency of the protected upstream call (success vs failure)")
+                .tag("name", name)
+                .tag("result", info.getOrDefault(UPSTREAM_RESULT_KEY, UNKNOWN))
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(nanos, TimeUnit.NANOSECONDS);
+        } catch (NumberFormatException ignored) {
+            // malformed value — skip silently
+        }
+    }
+
+    /**
+     * Feeds the rolling health state and lazily registers the per-API {@code failover.api.health} and
+     * {@code failover.stale.served.ratio} gauges (once per name) that read from it.
+     */
+    private void recordHealth(String name, Map<String, String> info, Outcome outcome) {
+        healthTracker.record(name, outcome);
+        if (healthGaugeNames.add(name)) {
+            String domain = info.getOrDefault(DOMAIN_KEY, name);
+            Gauge.builder("failover.api.health", healthTracker, t -> t.healthRatio(name))
+                .description("Recent fraction of calls where the caller got a value (1.0 healthy, lower = users blocked)")
+                .tag("name", name)
+                .tag("domain", domain)
+                .register(registry);
+            Gauge.builder("failover.stale.served.ratio", healthTracker, t -> t.staleRatio(name))
+                .description("Recent fraction of calls served from stored (stale) data")
+                .tag("name", name)
+                .tag("domain", domain)
+                .register(registry);
+        }
+    }
+
     private void recordDuration(String name, String action, Map<String, String> info) {
         String nanosStr = info.get(DURATION_NS_KEY);
         if (nanosStr == null) return;
@@ -215,6 +323,8 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
                 .description("Wall time of failover store/recover path")
                 .tag("name", name)
                 .tag("action", action)
+                .publishPercentileHistogram()                 // buckets → Prometheus histogram_quantile
+                .publishPercentiles(0.5, 0.95, 0.99)          // client-side percentiles → local dashboard p95/p99
                 .register(registry)
                 .record(nanos, TimeUnit.NANOSECONDS);
         } catch (NumberFormatException ignored) {
