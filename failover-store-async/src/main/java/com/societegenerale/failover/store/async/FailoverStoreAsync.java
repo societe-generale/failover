@@ -21,6 +21,7 @@ import com.societegenerale.failover.core.observable.publisher.ObservablePublishe
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.core.store.FailoverStoreException;
+import com.societegenerale.failover.core.store.FailoverStoreSizeAware;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -59,7 +60,7 @@ import java.util.Optional;
  * @author Anand Manissery
  */
 @Slf4j
-public class FailoverStoreAsync<T> implements FailoverStore<T> {
+public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSizeAware {
 
     /** Metric action tag value published when an async store operation fails inside the executor. */
     static final String ASYNC_FAILED_ACTION = "store-async-failed";
@@ -173,6 +174,18 @@ public class FailoverStoreAsync<T> implements FailoverStore<T> {
                 emitFailure("cleanByExpiry", "", e);
             }
         });
+    }
+
+    /** Forwards the live entry count to the delegate when it is size-aware; a synchronous read (no executor). */
+    @Override
+    public long liveEntryCount(String name) {
+        return failoverStore instanceof FailoverStoreSizeAware sizeAware ? sizeAware.liveEntryCount(name) : 0L;
+    }
+
+    /** Live counting is supported only when the delegate supports it. */
+    @Override
+    public boolean liveEntryCountSupported() {
+        return failoverStore instanceof FailoverStoreSizeAware sizeAware && sizeAware.liveEntryCountSupported();
     }
 
     /**
