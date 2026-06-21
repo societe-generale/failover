@@ -83,6 +83,33 @@ class FailoverStoreAsyncTest {
     }
 
     @Test
+    @DisplayName("liveEntryCount: 0 and unsupported when the delegate is not size-aware")
+    void liveEntryCountUnsupportedForPlainDelegate() {
+        assertThat(failoverStoreAsync.liveEntryCountSupported()).isFalse();
+        assertThat(failoverStoreAsync.liveEntryCount("name")).isZero();
+    }
+
+    @Test
+    @DisplayName("liveEntryCount: forwards to a size-aware delegate and reports supported")
+    void liveEntryCountForwardsToSizeAwareDelegate() {
+        FailoverStoreAsync<String> async = new FailoverStoreAsync<>(new SizeAwareStore(), SYNC_EXECUTOR);
+
+        assertThat(async.liveEntryCountSupported()).isTrue();
+        assertThat(async.liveEntryCount("name")).isEqualTo(5L);
+    }
+
+    /** A delegate that is both a store and size-aware, for the forwarding test. */
+    static class SizeAwareStore implements FailoverStore<String>,
+            com.societegenerale.failover.core.store.FailoverStoreSizeAware {
+        @Override public void store(ReferentialPayload<String> p) { }
+        @Override public void delete(ReferentialPayload<String> p) { }
+        @Override public Optional<ReferentialPayload<String>> find(String name, String key) { return Optional.empty(); }
+        @Override public List<ReferentialPayload<String>> findAll(String name) { return List.of(); }
+        @Override public void cleanByExpiry(Instant expiry) { }
+        @Override public long liveEntryCount(String name) { return 5L; }
+    }
+
+    @Test
     @DisplayName("should delegate find to the inner store directly (synchronous)")
     void shouldCallFind() {
         failoverStoreAsync.find("name", "key");
