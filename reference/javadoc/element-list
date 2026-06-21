@@ -17,8 +17,14 @@ com.societegenerale.failover.core.propagator
 com.societegenerale.failover.core.scanner
 com.societegenerale.failover.core.store
 com.societegenerale.failover.core.util
-com.societegenerale.failover.dashboard
-com.societegenerale.failover.dashboard.dto
+com.societegenerale.failover.dashboard.config
+com.societegenerale.failover.dashboard.metrics
+com.societegenerale.failover.dashboard.metrics.source
+com.societegenerale.failover.dashboard.metrics.source.prometheus
+com.societegenerale.failover.dashboard.metrics.source.sharedstore
+com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc
+com.societegenerale.failover.dashboard.service
+com.societegenerale.failover.dashboard.web
 com.societegenerale.failover.domain
 com.societegenerale.failover.execution.resilience
 com.societegenerale.failover.lookup
