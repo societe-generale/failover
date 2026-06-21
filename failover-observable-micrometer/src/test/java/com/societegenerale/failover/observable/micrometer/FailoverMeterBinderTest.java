@@ -20,6 +20,7 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.BasicFailoverExpiryExtractor;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.store.FailoverStoreSizeAware;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -162,6 +163,51 @@ class FailoverMeterBinderTest {
             .isEqualTo(3600.0);
         assertThat(registry.get("failover.config.expiry.seconds").tag("name", "fo2").gauge().value())
             .isEqualTo(1800.0);
+    }
+
+    // ── live.entries gauge ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("live.entries gauge registered per failover and reflects the store count when size-aware")
+    void liveEntriesGaugeRegisteredWhenStoreSizeAware() {
+        Failover fo = failover("my-fo", 2, ChronoUnit.HOURS);
+        when(scanner.findAllFailover()).thenReturn(List.of(fo));
+        FailoverStoreSizeAware store = name -> "my-fo".equals(name) ? 3L : 0L;
+        FailoverMeterBinder b = new FailoverMeterBinder(scanner, new BasicFailoverExpiryExtractor(), store);
+
+        b.bindTo(registry);
+        b.afterSingletonsInstantiated();
+
+        assertThat(registry.get("failover.live.entries").tag("name", "my-fo").gauge().value()).isEqualTo(3.0);
+    }
+
+    @Test
+    @DisplayName("no live.entries gauge when the store is not size-aware (e.g. JDBC)")
+    void noLiveEntriesGaugeWhenStoreNotSizeAware() {
+        Failover fo = failover("my-fo", 2, ChronoUnit.HOURS);
+        when(scanner.findAllFailover()).thenReturn(List.of(fo));
+
+        binder.bindTo(registry);          // binder built in setUp without a store
+        binder.afterSingletonsInstantiated();
+
+        assertThat(registry.find("failover.live.entries").gauges()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("no live.entries gauge when size-aware store reports counting unsupported")
+    void noLiveEntriesGaugeWhenUnsupported() {
+        Failover fo = failover("my-fo", 2, ChronoUnit.HOURS);
+        when(scanner.findAllFailover()).thenReturn(List.of(fo));
+        FailoverStoreSizeAware unsupported = new FailoverStoreSizeAware() {
+            @Override public long liveEntryCount(String name) { return 0L; }
+            @Override public boolean liveEntryCountSupported() { return false; }
+        };
+        FailoverMeterBinder b = new FailoverMeterBinder(scanner, new BasicFailoverExpiryExtractor(), unsupported);
+
+        b.bindTo(registry);
+        b.afterSingletonsInstantiated();
+
+        assertThat(registry.find("failover.live.entries").gauges()).isEmpty();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
