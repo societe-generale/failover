@@ -13,11 +13,13 @@
     <div class="mark">F</div>
     <div><b>FAILOVER</b> <span>dashboard</span></div>
   </a>
+  <span class="src-badge tip" id="src-badge" data-tip="Where the metrics come from" hidden></span>
   <div class="spacer"></div>
   <div class="statuschip" id="statuschip"><span class="dot"></span><span id="statustext">—</span></div>
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="overview" role="tab">Overview</button>
     <button class="tab" data-tab="apis" role="tab">Per-API</button>
+    <button class="tab" data-tab="instances" role="tab" id="tab-instances" hidden>Instances</button>
     <button class="tab" data-tab="health" role="tab">Health</button>
     <button class="tab" data-tab="config" role="tab">Config</button>
   </nav>
@@ -85,7 +87,7 @@
       </div>
       <div class="card">
         <h3>Latency · store vs recover</h3>
-        <div class="cap">Mean milliseconds per failover point</div>
+        <div class="cap">Mean &amp; tail (p95/p99) milliseconds per failover point</div>
         <div class="chart"><canvas id="c_latency"></canvas></div>
       </div>
     </div>
@@ -118,8 +120,33 @@
     <div class="card"><div class="chart tall"><canvas id="c_perapi"></canvas></div></div>
   </section>
 
+  <!-- ══ INSTANCES (cluster per-instance metrics) ════════════════════════ -->
+  <section class="view" data-view="instances" role="tabpanel" hidden>
+    <div class="sec"><h2>Instances</h2><span class="hint" id="inst-src">—</span></div>
+    <div class="rollup" id="inst-rollup"></div>
+
+    <div class="sec"><h2>Per-instance metrics</h2><span class="hint">click a row to drill in · ● live ● silent (beyond liveness window)</span></div>
+    <div class="tablewrap">
+      <table id="insttable">
+        <thead><tr>
+          <th>Instance</th>
+          <th class="r">Calls</th><th class="r">Success</th><th class="r">Failover</th>
+          <th class="r">Recovery</th><th class="r">p95 recover</th>
+          <th>Last seen</th><th>Status</th>
+        </tr></thead>
+        <tbody id="instbody"></tbody>
+      </table>
+    </div>
+
+    <div class="sec"><h2 id="inst-drill-title">Selected instance</h2><span class="hint">that instance's own KPIs — not the cluster aggregate</span></div>
+    <div class="kpis row2" id="inst-drill"></div>
+  </section>
+
   <!-- ══ HEALTH (actuator-style failover health) ═════════════════════════ -->
   <section class="view" data-view="health" role="tabpanel" hidden>
+    <div class="sec"><h2>Cluster roll-up</h2><span class="hint" id="rollup-src">—</span></div>
+    <div class="rollup" id="rollup"></div>
+
     <div class="sec"><h2>Failover health</h2><span class="hint">mirrors <code>/actuator/health/failover</code></span></div>
     <div class="health-hero" id="health-hero">
       <div class="health-hero-ic" id="health-hero-ic">●</div>

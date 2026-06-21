@@ -19,12 +19,14 @@ package com.societegenerale.failover.observable.micrometer;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.core.store.FailoverStoreSizeAware;
 import com.societegenerale.failover.scanner.SpringContextFailoverScanner;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
 import java.time.temporal.ChronoUnit;
@@ -40,6 +42,9 @@ import java.util.List;
  *       discovered; sampled lazily so it reflects the live scanner state</li>
  *   <li>{@code failover.config.expiry.seconds} (Gauge) — configured expiry in seconds for each
  *       named failover; tags: {@code name}, {@code unit}</li>
+ *   <li>{@code failover.live.entries} (Gauge) — current stored entry count per failover (cache footprint);
+ *       tags: {@code name}, {@code domain}. Registered only when the assembled store is
+ *       {@link FailoverStoreSizeAware} and supports counting (in-memory / Caffeine; not JDBC / multi-tenant)</li>
  * </ul>
  *
  * <h2>Lifecycle ordering</h2>
@@ -55,17 +60,32 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
 
     private final FailoverScanner scanner;
     private final FailoverExpiryExtractor expiryExtractor;
+    private final @Nullable FailoverStoreSizeAware sizeAwareStore;
     private final List<MeterRegistry> registries = new ArrayList<>();
 
     /**
-     * Creates a binder with the required scanner and expiry extractor.
+     * Creates a binder with the required scanner and expiry extractor (no live-entries gauge).
      *
      * @param scanner         scanner that provides the list of registered failovers
      * @param expiryExtractor extracts expiry configuration from {@code @Failover} annotations
      */
     public FailoverMeterBinder(FailoverScanner scanner, FailoverExpiryExtractor expiryExtractor) {
+        this(scanner, expiryExtractor, null);
+    }
+
+    /**
+     * Creates a binder that additionally exposes the {@code failover.live.entries} gauge when the assembled
+     * store can report its size.
+     *
+     * @param scanner         scanner that provides the list of registered failovers
+     * @param expiryExtractor extracts expiry configuration from {@code @Failover} annotations
+     * @param store           the assembled failover store; the live-entries gauge is registered only when it is
+     *                        a {@link FailoverStoreSizeAware} that {@link FailoverStoreSizeAware#liveEntryCountSupported() supports} counting
+     */
+    public FailoverMeterBinder(FailoverScanner scanner, FailoverExpiryExtractor expiryExtractor, @Nullable Object store) {
         this.scanner = scanner;
         this.expiryExtractor = expiryExtractor;
+        this.sizeAwareStore = (store instanceof FailoverStoreSizeAware sa && sa.liveEntryCountSupported()) ? sa : null;
     }
 
     /**
@@ -91,12 +111,21 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
         for (MeterRegistry registry : registries) {
             for (Failover failover : all) {
                 double seconds = toSeconds(failover);
+                String domain = failover.domain().isBlank() ? failover.name() : failover.domain();
                 Gauge.builder("failover.config.expiry.seconds", () -> seconds)
                     .description("Configured expiry duration in seconds for this failover")
                     .tag("name", failover.name())
-                    .tag("domain", failover.domain().isBlank() ? failover.name() : failover.domain())
+                    .tag("domain", domain)
                     .tag("unit", expiryExtractor.expiryUnit(failover).name())
                     .register(registry);
+                if (sizeAwareStore != null) {
+                    // The store keys entries under the effective (domain) name; count by that.
+                    Gauge.builder("failover.live.entries", sizeAwareStore, s -> s.liveEntryCount(domain))
+                        .description("Current number of stored failover entries (cache footprint)")
+                        .tag("name", failover.name())
+                        .tag("domain", domain)
+                        .register(registry);
+                }
             }
         }
     }
