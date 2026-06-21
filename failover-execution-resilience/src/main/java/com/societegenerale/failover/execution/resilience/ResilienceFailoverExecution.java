@@ -20,8 +20,10 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -45,7 +47,19 @@ public class ResilienceFailoverExecution<T> extends BasicFailoverExecution<T> {
      * @param circuitBreakerRegistry   Resilience4j registry used to look up circuit breakers by name
      */
     public ResilienceFailoverExecution(FailoverHandler<T> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
-        super(failoverHandler,  methodExceptionHandler);
+        this(failoverHandler, methodExceptionHandler, circuitBreakerRegistry, null);
+    }
+
+    /**
+     * Creates a resilience-backed failover execution that also publishes upstream-call latency.
+     *
+     * @param failoverHandler          handler for store and recover operations
+     * @param methodExceptionHandler   policy for handling exceptions after recovery
+     * @param circuitBreakerRegistry   Resilience4j registry used to look up circuit breakers by name
+     * @param observablePublisher      non-blocking publisher for the {@code failover.upstream.duration} metric
+     */
+    public ResilienceFailoverExecution(FailoverHandler<T> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry, @Nullable ObservablePublisher observablePublisher) {
+        super(failoverHandler, methodExceptionHandler, observablePublisher);
         this.circuitBreakerRegistry = circuitBreakerRegistry;
     }
 
