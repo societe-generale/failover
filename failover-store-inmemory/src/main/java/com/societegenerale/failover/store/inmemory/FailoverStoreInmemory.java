@@ -19,6 +19,7 @@ package com.societegenerale.failover.store.inmemory;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.core.store.FailoverStoreException;
+import com.societegenerale.failover.core.store.FailoverStoreSizeAware;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
@@ -50,7 +51,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author Anand Manissery
  */
 @Slf4j
-public class FailoverStoreInmemory<T> implements FailoverStore<T> {
+public class FailoverStoreInmemory<T> implements FailoverStore<T>, FailoverStoreSizeAware {
 
     /** Separator between referential name and entry key in the composite store key. */
     private static final String STORE_KEY_DELIMITER = "##";
@@ -151,6 +152,20 @@ public class FailoverStoreInmemory<T> implements FailoverStore<T> {
     public void cleanByExpiry(Instant expiry) {
         synchronized (store) {
             store.entrySet().removeIf(entry -> expiry.isAfter(entry.getValue().getExpireOn()));
+        }
+    }
+
+    /**
+     * Counts the entries currently held for the given referential name (composite-key prefix scan).
+     *
+     * @param name the referential name
+     * @return number of live entries stored under {@code name}
+     */
+    @Override
+    public long liveEntryCount(String name) {
+        String prefix = name + STORE_KEY_DELIMITER;
+        synchronized (store) {
+            return store.keySet().stream().filter(k -> k.startsWith(prefix)).count();
         }
     }
 

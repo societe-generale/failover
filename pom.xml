@@ -113,6 +113,7 @@
         <module>failover-spring-boot-autoconfigure</module>
         <module>failover-spring-boot-starter</module>
         <module>failover-dashboard</module>
+        <module>failover-dashboard-snapshotstore-jdbc</module>
         <module>failover-dashboard-spring-boot-starter</module>
         <module>failover-test-report</module>
     </modules>

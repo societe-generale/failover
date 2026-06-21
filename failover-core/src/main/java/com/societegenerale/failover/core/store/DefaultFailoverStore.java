@@ -37,7 +37,7 @@ import static java.lang.Boolean.FALSE;
  * @param <T> the type of the payload held by each referential entry
  */
 @RequiredArgsConstructor
-public class DefaultFailoverStore<T> implements FailoverStore<T> {
+public class DefaultFailoverStore<T> implements FailoverStore<T>, FailoverStoreSizeAware {
 
     @Getter
     private final FailoverStore<T> failoverStore;
@@ -106,5 +106,17 @@ public class DefaultFailoverStore<T> implements FailoverStore<T> {
     @Override
     public void cleanByExpiry(Instant expiry) throws FailoverStoreException {
         failoverStore.cleanByExpiry(expiry);
+    }
+
+    /** Forwards the live entry count to the delegate when it is size-aware; otherwise reports 0. */
+    @Override
+    public long liveEntryCount(String name) {
+        return failoverStore instanceof FailoverStoreSizeAware sizeAware ? sizeAware.liveEntryCount(name) : 0L;
+    }
+
+    /** Live counting is supported only when the delegate supports it. */
+    @Override
+    public boolean liveEntryCountSupported() {
+        return failoverStore instanceof FailoverStoreSizeAware sizeAware && sizeAware.liveEntryCountSupported();
     }
 }

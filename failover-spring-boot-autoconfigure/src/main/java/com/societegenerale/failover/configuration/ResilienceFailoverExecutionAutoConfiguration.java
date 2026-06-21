@@ -19,6 +19,7 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.FailoverHandler;
 import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.execution.resilience.ResilienceFailoverExecution;
 import com.societegenerale.failover.properties.FailoverType;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -26,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -55,11 +57,13 @@ public class ResilienceFailoverExecutionAutoConfiguration {
      * @param failoverHandler         assembled failover handler
      * @param methodExceptionHandler  exception handler applying the configured policy
      * @param circuitBreakerRegistry  Resilience4j registry providing per-failover circuit breakers
+     * @param applicationContext      resolves the non-blocking dispatching publisher (by name) for upstream-duration metrics
      * @return {@link ResilienceFailoverExecution} wrapping the handler with circuit-breaker protection
      */
     @Bean
-    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry) {
+    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler, CircuitBreakerRegistry circuitBreakerRegistry, ApplicationContext applicationContext) {
         log.info("FailoverExecution configured to ResilienceFailoverExecution. NOTE : You should not mix more than 1 framework for failover (like Resilience Retry and Feign Retry etc). Available options are : { {} }", (Object) FailoverType.values());
-        return new ResilienceFailoverExecution<>(failoverHandler, methodExceptionHandler, circuitBreakerRegistry);
+        ObservablePublisher observablePublisher = applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
+        return new ResilienceFailoverExecution<>(failoverHandler, methodExceptionHandler, circuitBreakerRegistry, observablePublisher);
     }
 }
