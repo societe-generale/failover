@@ -63,6 +63,9 @@ public class FailoverProperties {
     @NestedConfigurationProperty()
     private Scheduler scheduler = new Scheduler();
 
+    @NestedConfigurationProperty()
+    private Observable observable = new Observable();
+
     /**
      * Returns a flat map of key failover properties for inclusion in startup reports.
      *

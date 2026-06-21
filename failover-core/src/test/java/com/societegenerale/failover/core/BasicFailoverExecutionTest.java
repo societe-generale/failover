@@ -19,15 +19,19 @@ package com.societegenerale.failover.core;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.exception.MethodExceptionContext;
 import com.societegenerale.failover.core.exception.MethodExceptionHandler;
+import com.societegenerale.failover.core.observable.Metrics;
+import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,6 +62,9 @@ class BasicFailoverExecutionTest {
 
     @Mock
     private MethodExceptionHandler methodExceptionHandler;
+
+    @Mock
+    private ObservablePublisher observablePublisher;
 
     private Method method;
 
@@ -146,6 +153,48 @@ class BasicFailoverExecutionTest {
 
         assertThatThrownBy(() -> basicFailoverExecution.execute(failover, supplier, method, ARGS))
                 .isSameAs(rethrown);
+    }
+
+    // ── upstream-duration metric ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("publishes failover.upstream.duration with result=success on a successful upstream call")
+    void publishesUpstreamSuccessMetric() {
+        given(failover.name()).willReturn("country");
+        given(failover.domain()).willReturn("");
+        given(supplier.get()).willReturn(PAYLOAD);
+        BasicFailoverExecution<String> execution =
+                new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler, observablePublisher);
+
+        execution.execute(failover, supplier, method, ARGS);
+
+        Map<String, String> info = capturePublishedMetric();
+        assertThat(info).containsEntry("failover-action", "upstream")
+                .containsEntry("failover-upstream-result", "success");
+        assertThat(info.get("failover-upstream-duration-ns")).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("publishes failover.upstream.duration with result=failure when the upstream call throws")
+    void publishesUpstreamFailureMetric() {
+        given(failover.name()).willReturn("country");
+        given(failover.domain()).willReturn("");
+        Throwable throwable = new RuntimeException("upstream down");
+        given(supplier.get()).willThrow(throwable);
+        given(failoverHandler.recover(failover, method, ARGS, String.class, throwable)).willReturn(PAYLOAD);
+        given(methodExceptionHandler.handle(any())).willReturn(PAYLOAD);
+        BasicFailoverExecution<String> execution =
+                new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler, observablePublisher);
+
+        execution.execute(failover, supplier, method, ARGS);
+
+        assertThat(capturePublishedMetric()).containsEntry("failover-upstream-result", "failure");
+    }
+
+    private Map<String, String> capturePublishedMetric() {
+        ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+        verify(observablePublisher).publish(captor.capture());
+        return captor.getValue().getInfo();
     }
 
     interface ReferentialMethod {
