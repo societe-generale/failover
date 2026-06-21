@@ -74,6 +74,16 @@ body{
   box-shadow:0 0 0 4px var(--good-soft); background:var(--good)}
 .statuschip.degraded .dot{background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
 .statuschip.down .dot{background:var(--bad);box-shadow:0 0 0 4px var(--bad-soft)}
+/* metrics provenance badge: "this instance only" vs cluster aggregate */
+.src-badge{display:inline-flex;align-items:center;gap:6px;
+  padding:5px 11px;border-radius:999px;font-size:11px;font-weight:700;
+  letter-spacing:.04em;font-family:var(--mono);text-transform:uppercase;
+  border:1px solid var(--sb,var(--warn));color:var(--sb,var(--warn));
+  background:color-mix(in srgb,var(--sb,var(--warn)) 12%,transparent)}
+.src-badge::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--sb,var(--warn))}
+.src-badge.local{--sb:var(--warn)}
+.src-badge.cluster{--sb:var(--good)}
+.src-badge.partial{--sb:var(--bad)}
 .ctrl{display:flex;align-items:center;gap:8px}
 .last-updated{font-size:11px;color:var(--faint);font-family:var(--mono);white-space:nowrap}
 .live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
@@ -186,6 +196,17 @@ main{padding:24px 26px 60px;max-width:1480px;margin:0 auto}
 .kpi[data-c="nonrec"]{--kc:var(--bad);--kc-soft:var(--bad-soft)}
 .kpi[data-c="latency"]{--kc:var(--violet);--kc-soft:var(--violet)22}
 .kpi[data-c="async"]{--kc:var(--bad);--kc-soft:var(--bad-soft)}
+.kpi[data-c="impact"]{--kc:var(--good);--kc-soft:var(--good-soft)}
+.kpi[data-c="impact"].blocked{--kc:var(--bad);--kc-soft:var(--bad-soft)}
+
+/* ── Instances tab ─────────────────────────────────────────────────────── */
+.inst-dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle;margin-right:7px}
+.inst-dot.live{background:var(--good);box-shadow:0 0 0 4px var(--good-soft)}
+.inst-dot.stale{background:var(--bad);box-shadow:0 0 0 4px var(--bad-soft)}
+.inst-id{font-family:var(--mono);font-size:12.5px}
+#insttable tbody tr{cursor:pointer}
+#insttable tbody tr.sel{background:var(--good-soft)}
+td.stale{color:var(--bad)}
 
 /* ── Health strip (signals row 1): overall + per-API health ─────────────── */
 .health-strip{display:grid;grid-template-columns:280px 1fr;gap:14px;margin-bottom:14px}
@@ -332,3 +353,14 @@ td.barcell{min-width:120px}
 
 .footer{padding:18px 26px;color:var(--faint);font-size:11.5px;text-align:center;border-top:1px solid var(--line-soft);margin-top:30px}
 code{font-family:var(--mono);background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:.9em}
+
+/* ── Cluster health roll-up (Health tab) ───────────────────────────────── */
+.rollup{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.rollup-card{display:flex;flex-direction:column;gap:4px;padding:16px 18px;
+  background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--rc,var(--line));border-radius:11px}
+.rollup-card .rollup-n{font-size:30px;font-weight:700;line-height:1;color:var(--text)}
+.rollup-card .rollup-l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.rollup-card.healthy{--rc:var(--good)}
+.rollup-card.degraded{--rc:var(--warn)}
+.rollup-card.unhealthy{--rc:var(--bad)}
+.rollup-card.total,.rollup-card.instances{--rc:var(--muted)}

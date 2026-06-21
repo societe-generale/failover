@@ -23,6 +23,7 @@ import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.core.store.FailoverStoreException;
+import com.societegenerale.failover.core.store.FailoverStoreSizeAware;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 
@@ -70,7 +71,7 @@ import static java.util.Optional.ofNullable;
  * @see ReferentialPayload
  */
 @Slf4j
-public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
+public class FailoverStoreCaffeine<T> implements FailoverStore<T>, FailoverStoreSizeAware {
 
     /** Separator between referential name and entry key in the composite cache key. */
     private static final String STORE_KEY_DELIMITER = "##";
@@ -196,6 +197,19 @@ public class FailoverStoreCaffeine<T> implements FailoverStore<T> {
     @Override
     public void cleanByExpiry(Instant expiry) {
         log.debug("Ignoring the clean up as the expiry is already managed by Caffeine Cache with per-entry expiry policy");
+    }
+
+    /**
+     * Counts the live cache entries currently held for the given referential name (prefix scan over
+     * {@link Cache#asMap()}; already-expired entries are excluded by Caffeine's live view).
+     *
+     * @param name the referential name
+     * @return number of live entries cached under {@code name}
+     */
+    @Override
+    public long liveEntryCount(String name) {
+        String prefix = name + STORE_KEY_DELIMITER;
+        return cache.asMap().keySet().stream().filter(k -> k.startsWith(prefix)).count();
     }
 
     /**

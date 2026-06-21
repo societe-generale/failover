@@ -148,6 +148,19 @@ class FailoverStoreInmemoryTest {
         assertThat(unbounded.findAll("third-party-failover")).hasSize(50);
     }
 
+    @Test
+    @DisplayName("liveEntryCount returns the number of entries per name")
+    void shouldCountLiveEntriesByName() {
+        failoverStoreInmemory.store(payload("1"));
+        failoverStoreInmemory.store(payload("2"));
+        failoverStoreInmemory.store(new ReferentialPayload<>("other-failover", "9", true, NOW, NOW, new ThirdParty(9L, "BATA", 7)));
+
+        assertThat(failoverStoreInmemory.liveEntryCountSupported()).isTrue();
+        assertThat(failoverStoreInmemory.liveEntryCount("third-party-failover")).isEqualTo(2);
+        assertThat(failoverStoreInmemory.liveEntryCount("other-failover")).isEqualTo(1);
+        assertThat(failoverStoreInmemory.liveEntryCount("unknown")).isZero();
+    }
+
     private ReferentialPayload<ThirdParty> payload(String key) {
         return new ReferentialPayload<>("third-party-failover", key, true, NOW, NOW, new ThirdParty(Long.parseLong(key), "TATA", 5));
     }

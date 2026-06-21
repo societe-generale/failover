@@ -26,6 +26,7 @@ import com.societegenerale.failover.core.exception.policy.NeverRethrowMethodExce
 import com.societegenerale.failover.core.exception.policy.RethrowIfNoRecoveryMethodExceptionPolicy;
 import com.societegenerale.failover.core.expiry.*;
 import com.societegenerale.failover.core.key.*;
+import com.societegenerale.failover.core.observable.publisher.AsyncObservablePublisher;
 import com.societegenerale.failover.core.observable.publisher.CompositeObservablePublisher;
 import com.societegenerale.failover.core.observable.publisher.MdcLoggerObservablePublisher;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
@@ -52,9 +53,14 @@ import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.properties.ExceptionPolicy;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.FailoverType;
+import com.societegenerale.failover.properties.Observable;
 import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ObservableScheduler;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
+import io.micrometer.core.instrument.config.MeterFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -64,6 +70,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
@@ -330,6 +337,71 @@ public class FailoverAutoConfiguration {
     }
 
     /**
+     * The dispatching publisher used by the failover handler and the startup observer — wrapping the
+     * {@link CompositeObservablePublisher} in an {@link AsyncObservablePublisher} so metric publishing can
+     * never block or slow the caller's {@code @Failover} call (the core observability contract). Disable via
+     * {@code failover.observable.async.enabled=false} to publish synchronously (deterministic for tests).
+     *
+     * <p>{@code autowireCandidate = false} is essential: this bean <em>is</em> an {@link ObservablePublisher}
+     * but must never be collected into {@link #compositeObservablePublisher}'s {@code List<ObservablePublisher>}
+     * fan-out (that would recurse). Consumers therefore fetch it by name. The async instance's {@code close()}
+     * is invoked on shutdown by Spring's inferred destroy method, flushing the queue.
+     *
+     * @param composite  the leaf fan-out publisher this decorates
+     * @param properties async settings (enabled flag + queue capacity)
+     * @return an {@link AsyncObservablePublisher} when async is enabled (default), else the composite itself
+     */
+    @ConditionalOnMissingBean(name = "failoverObservablePublisher")
+    @Bean(autowireCandidate = false)
+    public ObservablePublisher failoverObservablePublisher(CompositeObservablePublisher composite,
+                                                           FailoverProperties properties) {
+        Observable.Async async = properties.getObservable().getAsync();
+        if (async.isEnabled()) {
+            log.info("Failover metric publishing is non-blocking (async, queue-capacity={}).", async.getQueueCapacity());
+            return new AsyncObservablePublisher(composite, async.getQueueCapacity());
+        }
+        log.info("Failover metric publishing is synchronous (failover.observable.async.enabled=false).");
+        return composite;
+    }
+
+    /**
+     * Exposes {@code failover.metrics.dropped.total} when async publishing is active, so any metric dropped
+     * by a full queue is observable rather than silent. Bound only when the dispatching publisher is in fact
+     * an {@link AsyncObservablePublisher} (i.e. async enabled).
+     *
+     * @param applicationContext context used to resolve the (non-autowire-candidate) dispatching publisher by name
+     * @return a {@link MeterBinder} registering the drop counter, or a no-op when publishing is synchronous
+     */
+    @ConditionalOnClass(MeterRegistry.class)
+    @Bean
+    public MeterBinder failoverMetricsDroppedMeterBinder(ApplicationContext applicationContext) {
+        return registry -> {
+            ObservablePublisher publisher = applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
+            if (publisher instanceof AsyncObservablePublisher async) {
+                FunctionCounter.builder("failover.metrics.dropped.total", async, AsyncObservablePublisher::dropped)
+                        .description("Failover metrics dropped because the non-blocking publish queue was full")
+                        .register(registry);
+            }
+        };
+    }
+
+    /**
+     * Cardinality guard for the {@code failover.*} meters: caps the number of distinct {@code name} tag values,
+     * denying further new series once the cap is hit so a misconfigured high-cardinality failover name can never
+     * explode the registry. On by default ({@code failover.observable.cardinality}).
+     *
+     * @param properties failover properties (cardinality cap)
+     * @return a meter filter bounding the {@code name} tag cardinality on {@code failover.*} meters
+     */
+    @ConditionalOnClass(MeterFilter.class)
+    @ConditionalOnProperty(prefix = "failover.observable.cardinality", name = "enabled", havingValue = "true", matchIfMissing = true)
+    @Bean
+    public MeterFilter failoverCardinalityMeterFilter(FailoverProperties properties) {
+        int maxApis = properties.getObservable().getCardinality().getMaxApis();
+        return MeterFilter.maximumAllowableTags("failover", "name", maxApis, MeterFilter.deny());
+    }
+
+    /**
      * Assembles the full {@link FailoverHandler} decorator chain:
      * {@code AdvancedFailoverHandler(ScatterGatherFailoverHandler(DefaultFailoverHandler))}.
      *
@@ -339,7 +411,7 @@ public class FailoverAutoConfiguration {
      * @param failoverStore              the assembled store (async/sync, single/multi-tenant)
      * @param payloadEnricher            enriches payloads on store
      * @param recoveredPayloadHandler    handles recovered (or null) payloads
-     * @param observablePublisher            composite report publisher
+     * @param applicationContext         resolves the (non-autowire-candidate) dispatching publisher by name
      * @param failoverExpiryExtractor    reads expiry from {@code @Failover}
      * @param payloadSplitterLookup      looks up named splitter beans
      * @param contextPropagator          propagates thread context to scatter executor threads
@@ -356,12 +428,15 @@ public class FailoverAutoConfiguration {
             FailoverStore<Object> failoverStore,
             PayloadEnricher<Object> payloadEnricher,
             RecoveredPayloadHandler recoveredPayloadHandler,
-            CompositeObservablePublisher observablePublisher,
+            ApplicationContext applicationContext,
             FailoverExpiryExtractor failoverExpiryExtractor,
             PayloadSplitterLookup<Object,Object> payloadSplitterLookup,
             @Qualifier("contextPropagator") ContextPropagator contextPropagator,
             @Qualifier("scatterGatherExecutor") ObjectProvider<TaskExecutor> scatterGatherExecutorProvider,
             FailoverProperties failoverProperties) {
+        // Resolved by name: the dispatching publisher is autowireCandidate=false to keep it out of the
+        // composite's fan-out list, so it cannot be injected by type/@Qualifier — see failoverObservablePublisher.
+        ObservablePublisher observablePublisher = applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
         var defaultHandler = new DefaultFailoverHandler<>(keyGenerator, clock, failoverStore, expiryPolicy, payloadEnricher);
         var scatterHandler = ScatterGatherFailoverHandler.builder(defaultHandler, defaultHandler, payloadSplitterLookup)
                 .executor(scatterGatherExecutorProvider.getIfAvailable())
@@ -389,14 +464,16 @@ public class FailoverAutoConfiguration {
      *
      * @param failoverHandler        assembled failover handler
      * @param methodExceptionHandler exception handler applying the configured policy
+     * @param applicationContext     resolves the non-blocking dispatching publisher (by name) for upstream-duration metrics
      * @return {@link BasicFailoverExecution}
      */
     @ConditionalOnProperty(prefix = "failover", name = "type", havingValue = "basic", matchIfMissing = true)
     @ConditionalOnMissingBean
     @Bean
-    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler) {
+    public FailoverExecution<Object> failoverExecution(FailoverHandler<Object> failoverHandler, MethodExceptionHandler methodExceptionHandler, ApplicationContext applicationContext) {
         log.info("FailoverExecution configured to BasicFailoverExecution. Available options are :  {{}}", (Object) FailoverType.values());
-        return new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler);
+        ObservablePublisher observablePublisher = applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
+        return new BasicFailoverExecution<>(failoverHandler, methodExceptionHandler, observablePublisher);
     }
 
     /**
