@@ -406,11 +406,11 @@ public class PrometheusMetricsSource implements MetricsSource {
                     meanMs(null, "recover"), maxMs(null, "recover"));
         }
 
-        /** Exact per-(name,action) quantile in ms; {@code 0} when absent or NaN. Not aggregated across names. */
+        /**
+         * Exact per-(name,action) quantile in ms; {@code 0} when absent or NaN. Not aggregated across names —
+         * only {@link #forName} calls this (always with a non-null {@code name}); {@link #overall} omits percentiles.
+         */
         private double percentileMs(Map<String, Double> map, String name, String action) {
-            if (name == null) {
-                return 0.0;
-            }
             Double seconds = map.get(name + "|" + action);
             return seconds == null || Double.isNaN(seconds) ? 0.0 : round2(seconds * 1000.0);
         }

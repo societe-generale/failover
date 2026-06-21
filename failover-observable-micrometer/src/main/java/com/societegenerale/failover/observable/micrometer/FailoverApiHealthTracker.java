@@ -79,9 +79,8 @@ class FailoverApiHealthTracker {
         private final Outcome[] ring;
         private int head;
         private int size;
-        private int fresh;
-        private int stale;
-        private int blocked;
+        private int fresh;   // SERVED_FRESH count in the window
+        private int stale;   // SERVED_STALE count in the window (BLOCKED is the implicit remainder: size - fresh - stale)
 
         Window(int capacity) {
             this.ring = new Outcome[capacity];
@@ -99,19 +98,21 @@ class FailoverApiHealthTracker {
             increment(outcome);
         }
 
+        // A Window exists only after the first record(), so size >= 1 here — the empty case is handled by
+        // the enclosing tracker (returns 1.0 / 0.0 when the per-name Window is absent). No size==0 guard needed.
         synchronized double healthRatio() {
-            return size == 0 ? 1.0 : (double) (fresh + stale) / size;
+            return (double) (fresh + stale) / size;
         }
 
         synchronized double staleRatio() {
-            return size == 0 ? 0.0 : (double) stale / size;
+            return (double) stale / size;
         }
 
         private void increment(Outcome o) {
             switch (o) {
                 case SERVED_FRESH -> fresh++;
                 case SERVED_STALE -> stale++;
-                case BLOCKED -> blocked++;
+                case BLOCKED -> { /* counted implicitly as size - fresh - stale */ }
             }
         }
 
@@ -119,7 +120,7 @@ class FailoverApiHealthTracker {
             switch (o) {
                 case SERVED_FRESH -> fresh--;
                 case SERVED_STALE -> stale--;
-                case BLOCKED -> blocked--;
+                case BLOCKED -> { /* see increment */ }
             }
         }
     }

@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
@@ -185,6 +186,31 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    @DisplayName("summary() tolerates edge samples: unlabelled rows skipped, all-'none' exception skipped, NaN percentile → 0")
+    void summaryHandlesEdgeSamples() {
+        when(client.query(argThat(q -> q != null && q.contains("stored=") && !q.contains("instance")))).thenReturn(List.of(
+                sample(5, "name", "ok"),
+                sample(9)));                                  // no 'name' label → sumByName skips it
+        when(client.query(argThat(q -> q != null && q.contains("recovery_outcome_total") && !q.contains("instance")))).thenReturn(List.of(
+                sample(3, "name", "ok", "domain", "d", "outcome", "recovered")));
+        when(client.query(argThat(q -> q != null && q.contains("exception_total") && !q.contains("instance")))).thenReturn(List.of(
+                sample(4, "final_cause_type", "none", "cause_type", "none", "exception_type", "none")));  // all 'none' → dropped
+        when(client.query(argThat(q -> q != null && q.contains("duration_seconds_sum") && !q.contains("instance")))).thenReturn(List.of(
+                sample(0.1, "name", "ok", "action", "recover"),
+                sample(0.2)));                               // no name/action → LatencyIndex.put skips it
+        when(client.query(argThat(q -> q != null && q.contains("duration_seconds_count") && !q.contains("instance")))).thenReturn(List.of(
+                sample(10, "name", "ok", "action", "recover")));
+        when(client.query(argThat(q -> q != null && q.contains("histogram_quantile(0.95") && !q.contains("instance")))).thenReturn(List.of(
+                sample(Double.NaN, "name", "ok", "action", "recover")));   // NaN quantile → reported as 0
+
+        MetricsSummary summary = source.summary();
+
+        assertThat(summary.perApi()).extracting(ApiKpis::name).containsExactly("ok");
+        assertThat(summary.topExceptions()).isEmpty();                      // the all-'none' row was dropped
+        assertThat(summary.perApi().getFirst().latency().recoverP95Ms()).isZero();   // NaN → 0
+    }
+
+    @Test
     @DisplayName("info() reports zero instances when the instance probe returns an empty vector")
     void infoZeroInstancesWhenEmpty() {
         when(client.query(argThat(q -> q != null && q.contains("group by (instance)")))).thenReturn(List.of());
@@ -286,7 +312,7 @@ class PrometheusMetricsSourceTest {
     @Test
     @DisplayName("series() falls back to the local source when query_range fails")
     void seriesFallsBack() {
-        when(client.queryRange(argThat(q -> q != null), anyLong(), anyLong(), anyLong()))
+        when(client.queryRange(argThat(Objects::nonNull), anyLong(), anyLong(), anyLong()))
                 .thenThrow(new PrometheusException("boom", null));
         List<SeriesPoint> local = List.of(new SeriesPoint(1L, 1, 0, 0, 0, 1, 0, Map.of()));
         when(fallback.series(0)).thenReturn(local);
