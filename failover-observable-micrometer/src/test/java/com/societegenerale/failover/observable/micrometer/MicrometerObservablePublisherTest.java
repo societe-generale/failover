@@ -370,6 +370,122 @@ class MicrometerObservablePublisherTest {
         assertThat(registry.get("failover.recovery.partial.total").tag("method", "unknown").counter().count()).isEqualTo(1.0);
     }
 
+    // ── call volume & user impact (derived from store/recover) ─────────────────
+
+    @Test
+    @DisplayName("store event — failover.call.total{result=success} and user.impact{impact=unblocked}")
+    void storeIncrementsCallSuccessAndUnblocked() {
+        publisher.publish(storeMetrics("country", "true"));
+
+        assertThat(registry.get("failover.call.total").tag("name", "country").tag("result", "success").counter().count())
+                .isEqualTo(1.0);
+        assertThat(registry.get("failover.user.impact.total").tag("name", "country").tag("impact", "unblocked").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("store that did not persist (stored=false) — caller still unblocked (upstream returned)")
+    void storeNotPersistedStillUnblocked() {
+        publisher.publish(storeMetrics("country", "false"));
+
+        assertThat(registry.get("failover.call.total").tag("result", "success").counter().count()).isEqualTo(1.0);
+        assertThat(registry.get("failover.user.impact.total").tag("impact", "unblocked").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("recovered failover — failover.call.total{result=failover} and user.impact{impact=unblocked}")
+    void recoverRecoveredIsFailoverAndUnblocked() {
+        publisher.publish(recoverMetrics("country", "true", "false", "java.lang.Exception", ""));
+
+        assertThat(registry.get("failover.call.total").tag("result", "failover").counter().count()).isEqualTo(1.0);
+        assertThat(registry.get("failover.user.impact.total").tag("impact", "unblocked").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("non-recovered failover — user.impact{impact=blocked} (upstream failed, nothing to return)")
+    void recoverNotRecoveredIsBlocked() {
+        publisher.publish(recoverMetrics("country", "false", "false", "java.lang.Exception", ""));
+
+        assertThat(registry.get("failover.call.total").tag("result", "failover").counter().count()).isEqualTo(1.0);
+        assertThat(registry.get("failover.user.impact.total").tag("impact", "blocked").counter().count()).isEqualTo(1.0);
+        assertThat(registry.find("failover.user.impact.total").tag("impact", "unblocked").counter()).isNull();
+    }
+
+    @Test
+    @DisplayName("call/impact carry the domain tag")
+    void callAndImpactCarryDomain() {
+        publisher.publish(storeMetrics("country-by-id", "true").collect("domain", "country"));
+
+        assertThat(registry.get("failover.call.total").tag("domain", "country").counter().count()).isEqualTo(1.0);
+        assertThat(registry.get("failover.user.impact.total").tag("domain", "country").counter().count()).isEqualTo(1.0);
+    }
+
+    // Note: operation.duration enables publishPercentileHistogram() for p95/p99. Percentile-histogram
+    // buckets are materialised by the Prometheus registry (not SimpleMeterRegistry), so they are verified
+    // against Prometheus rather than here; timer recording itself is covered by the timer tests above.
+
+    // ── upstream duration ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("upstream success — records failover.upstream.duration{result=success}")
+    void upstreamSuccessRecordsTimer() {
+        publisher.publish(upstreamMetrics("country", "success", "2500000"));
+
+        Timer timer = registry.get("failover.upstream.duration")
+            .tag("name", "country").tag("result", "success").timer();
+        assertThat(timer.count()).isEqualTo(1);
+        assertThat(timer.totalTime(TimeUnit.NANOSECONDS)).isEqualTo(2500000.0);
+    }
+
+    @Test
+    @DisplayName("upstream failure — records failover.upstream.duration{result=failure}")
+    void upstreamFailureRecordsTimer() {
+        publisher.publish(upstreamMetrics("country", "failure", "100"));
+
+        assertThat(registry.get("failover.upstream.duration").tag("result", "failure").timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("upstream without duration — no timer registered")
+    void upstreamWithoutDurationNoTimer() {
+        publisher.publish(Metrics.of("country").collect("action", "upstream").collect("upstream-result", "success"));
+
+        assertThat(registry.find("failover.upstream.duration").timer()).isNull();
+    }
+
+    @Test
+    @DisplayName("upstream event does not pollute failover.operation.duration")
+    void upstreamDoesNotPolluteOperationDuration() {
+        publisher.publish(upstreamMetrics("country", "success", "2500000"));
+
+        assertThat(registry.find("failover.operation.duration").timer()).isNull();
+    }
+
+    // ── api health & stale gauges ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("api.health gauge reflects recent served/blocked mix; stale.served.ratio reflects stale share")
+    void healthAndStaleGauges() {
+        publisher.publish(storeMetrics("country", "true"));                                   // fresh
+        publisher.publish(recoverMetrics("country", "true", "false", "java.lang.Exception", "")); // stale
+        publisher.publish(recoverMetrics("country", "false", "false", "java.lang.Exception", "")); // blocked
+
+        double health = registry.get("failover.api.health").tag("name", "country").gauge().value();
+        double stale = registry.get("failover.stale.served.ratio").tag("name", "country").gauge().value();
+        assertThat(health).isCloseTo(2.0 / 3, org.assertj.core.api.Assertions.within(1e-9));
+        assertThat(stale).isCloseTo(1.0 / 3, org.assertj.core.api.Assertions.within(1e-9));
+    }
+
+    @Test
+    @DisplayName("api.health gauge carries the domain tag and is registered once per name")
+    void healthGaugeCarriesDomainAndRegistersOnce() {
+        publisher.publish(storeMetrics("country-by-id", "true").collect("domain", "country"));
+        publisher.publish(storeMetrics("country-by-id", "true").collect("domain", "country"));
+
+        assertThat(registry.get("failover.api.health").tag("domain", "country").gauge().value()).isEqualTo(1.0);
+        assertThat(registry.find("failover.api.health").tag("name", "country-by-id").gauges()).hasSize(1);
+    }
+
     // ── startup/config events ─────────────────────────────────────────────────
 
     @Test
@@ -392,6 +508,13 @@ class MicrometerObservablePublisherTest {
             .collect("expiry-duration", "1")
             .collect("expiry-unit", "HOURS")
             .collect("is-stored", stored);
+    }
+
+    private static Metrics upstreamMetrics(String name, String result, String durationNs) {
+        return Metrics.of(name)
+            .collect("action", "upstream")
+            .collect("upstream-result", result)
+            .collect("upstream-duration-ns", durationNs);
     }
 
     private static Metrics recoverMetrics(String name, String recovered, String recoveryFailed,

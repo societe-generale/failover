@@ -95,6 +95,19 @@ class FailoverStoreCaffeineTest {
     }
 
     @Test
+    @DisplayName("liveEntryCount returns the number of live entries per name")
+    void shouldCountLiveEntriesByName() {
+        failoverStoreCaffeine.store(new ReferentialPayload<>(NAME, "1", true, NOW, NOW.plusSeconds(60L), new ThirdParty(1L, "TATA", 5)));
+        failoverStoreCaffeine.store(new ReferentialPayload<>(NAME, "2", true, NOW, NOW.plusSeconds(60L), new ThirdParty(2L, "TATA", 6)));
+        failoverStoreCaffeine.store(new ReferentialPayload<>("other", "9", true, NOW, NOW.plusSeconds(60L), new ThirdParty(9L, "BATA", 7)));
+
+        assertThat(failoverStoreCaffeine.liveEntryCountSupported()).isTrue();
+        assertThat(failoverStoreCaffeine.liveEntryCount(NAME)).isEqualTo(2);
+        assertThat(failoverStoreCaffeine.liveEntryCount("other")).isEqualTo(1);
+        assertThat(failoverStoreCaffeine.liveEntryCount("unknown")).isZero();
+    }
+
+    @Test
     @DisplayName("should delete the referential")
     void shouldDeleteTheReferential() {
         failoverStoreCaffeine.store(referentialPayload);

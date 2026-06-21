@@ -44,8 +44,11 @@ Once enabled, the UI and the full JSON API are served. The granular flags below 
 | `/failover-dashboard/api/config/settings` | effective global `failover.*` / `failover.dashboard.*` config, grouped |
 | `/failover-dashboard/api/failover-health` | actuator-style overall status + active configuration |
 | `/failover-dashboard/api/metrics` | global + per-API KPIs and rates |
+| `/failover-dashboard/api/metrics/source` | metrics provenance (mode, instances reporting, freshness) for the UI source badge |
 | `/failover-dashboard/api/health` | per-API health classification |
-| `/failover-dashboard/api/metrics/series` | trend samples (only when history is enabled) |
+| `/failover-dashboard/api/metrics/series` | trend samples — local: the in-memory ring (empty unless history is enabled); `mode=prometheus`: cluster-wide via `query_range` |
+| `/failover-dashboard/api/instances` | per-instance metrics for the Instances tab — empty in `local` (single JVM); populated in `shared-store` / `prometheus` |
+| `/failover-dashboard/api/cluster/snapshot` | *(shared-store only, POST)* peer snapshot ingest |
 
 `base-path` is a single dedicated, non-root namespace covering both the UI and the API; override it to relocate the whole dashboard. `server.servlet.context-path` still prepends as usual.
 
@@ -63,7 +66,7 @@ failover:
     exposure:                        # defaults expose everything; set flags only to NARROW
       ui: true                       # serve the static HTML/JS UI
       api: true                      # serve the JSON API
-      include: [config, failover-health, metrics, health]   # which API endpoints are served
+      include: [config, failover-health, metrics, health, cluster, instances]  # which API endpoints are served
     security:
       role: FAILOVER_ADMIN           # role required for base-path/** when Spring Security is present
       allow-insecure: false          # start unsecured + loud WARN when Spring Security is absent
@@ -75,6 +78,26 @@ failover:
     health:                          # healthyRate thresholds for the per-API status badge
       degraded-threshold: 0.99       # >= ⇒ HEALTHY; below (down to unhealthy floor) ⇒ DEGRADED
       unhealthy-threshold: 0.90      # >= ⇒ DEGRADED; below ⇒ UNHEALTHY
+    cluster:                         # where metrics are read from across instances (see Distributed Deployment)
+      mode: local                    # local (default) | prometheus | shared-store
+      prometheus:                    # used when mode=prometheus (aggregates failover.* across instances)
+        base-url: ""                 # e.g. http://prometheus:9090 (blank ⇒ falls back to local)
+        token: ""                    # optional bearer token (blank ⇒ none)
+        timeout-seconds: 5           # per-query connect/read timeout
+      shared-store:                  # used when mode=shared-store (peers push snapshots, aggregated in-app)
+        store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
+        liveness-seconds: 45         # a peer silent longer than this drops out of the aggregate
+        max-instances: 10            # supported ceiling (warns beyond — graduate to prometheus)
+        sample-interval-seconds: 30  # cluster-trend sampling cadence
+        retention:
+          max-age: 7d                # trend-history age bound
+          max-entries: 100000        # trend-history size bound (oldest truncated)
+        jdbc:                        # used when store=jdbc
+          table-prefix: ""           # prepended to FAILOVER_DASHBOARD_SNAPSHOT (validated)
+          auto-ddl: true             # create the table on startup if missing
+      snapshot:                      # peer-side push (every instance, incl. non-UI nodes)
+        publish-url: ""              # dashboard ingest URL (blank ⇒ this instance does not push)
+        interval-seconds: 15         # seconds between snapshot pushes
 ```
 
 | Property | Default | Purpose |
@@ -83,7 +106,7 @@ failover:
 | `base-path` | `/failover-dashboard` | Dedicated namespace for UI + API. Must start with `/`, not be `/`, no trailing `/` — else the context fails fast. |
 | `exposure.ui` | `true` | Serve the static UI. `false` = API-only. |
 | `exposure.api` | `true` | Serve the JSON API. `false` = UI-only. |
-| `exposure.include` | all four | API endpoints served: `config`, `failover-health`, `metrics`, `health`. Trim to narrow; an omitted endpoint returns `404`. `/api/metrics/series` is gated together with `metrics`. |
+| `exposure.include` | all of them | API endpoints served: `config`, `failover-health`, `metrics`, `health`, `cluster`, `instances`. Trim to narrow; an omitted endpoint returns `404`. `/api/metrics/series` is gated with `metrics`; `/api/cluster/snapshot` (shared-store ingest) with `cluster`; `/api/instances` with `instances`. |
 | `security.role` | `FAILOVER_ADMIN` | Role required for `base-path/**` when Spring Security is present. |
 | `security.allow-insecure` | `false` | When Spring Security is absent: `false` fails fast (fail-closed); `true` starts unsecured with a loud WARN. **Refused under the `prod` profile.** |
 | `history.enabled` | `false` | Turn on the server-side trend ring buffer + `/api/metrics/series`. |
@@ -91,6 +114,17 @@ failover:
 | `history.sample-interval-seconds` | `15` | Seconds between samples. |
 | `health.degraded-threshold` | `0.99` | Healthy-rate floor for `HEALTHY`. |
 | `health.unhealthy-threshold` | `0.90` | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`. |
+| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment-scenarios). |
+| `cluster.prometheus.base-url` | `""` | Prometheus base URL for `mode=prometheus` (e.g. `http://prometheus:9090`). Blank, or unreachable at runtime, falls back to the local registry with a warning. |
+| `cluster.prometheus.token` | `""` | Optional bearer token for Prometheus. |
+| `cluster.prometheus.timeout-seconds` | `5` | Per-query connect/read timeout. |
+| `cluster.shared-store.store` | `inmemory` | `inmemory` (default) or `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). |
+| `cluster.shared-store.liveness-seconds` | `45` | A peer whose latest snapshot is older than this is excluded from the aggregate. |
+| `cluster.shared-store.max-instances` | `10` | Supported small-cluster ceiling; exceeding it logs a warning. |
+| `cluster.shared-store.sample-interval-seconds` | `30` | Cluster-trend sampling cadence. |
+| `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000` | Trend-history age and size bounds (oldest truncated). |
+| `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl` | `""` / `true` | Snapshot table prefix (validated) + auto-create, when `store=jdbc`. |
+| `cluster.snapshot.publish-url` / `.interval-seconds` | `""` / `15` | Peer-side push: dashboard ingest URL + cadence. Blank URL ⇒ this instance does not push. |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
@@ -101,7 +135,7 @@ See the [Properties Reference](../configuration/properties-reference.md#dashboar
 Every view shares the top bar:
 
 - **Status chip** — overall live status (`Healthy` / `Degraded` / `Unhealthy`), derived from the worst per-API health.
-- **Tabs** — `Overview`, `Per-API`, `Health`, `Config` (Overview is the default; the open tab is kept in the URL hash, e.g. `#per-api`).
+- **Tabs** — `Overview`, `Per-API`, `Instances` (cluster modes only — hidden in `local`), `Health`, `Config` (Overview is the default; the open tab is kept in the URL hash, e.g. `#per-api`).
 - **Auto-refresh** — selectable cadence: `off`, `10s`, `30s`, `1m`, `10m`, `1h` (default `30s`).
 - **Refresh now** (`⟳`) — reload immediately, independent of the cadence.
 - **Last-updated** — timestamp of the last successful load.
@@ -130,11 +164,23 @@ Drill-down per failover point.
 - **Per-API health table** — sortable (click any header): calls, healthy-rate bar, success / failover / recovery %, errors, an inline **failover-trend sparkline**, and a `HEALTHY` / `DEGRADED` / `UNHEALTHY` badge.
 - **Failover trend — all APIs** — one line per failover point, failover invocations per tick.
 - **Per-API breakdown** — grouped bars: overall vs failover vs recovered vs not-recovered.
+- **Latency** (on Overview) shows store/recover **mean** plus **p95/p99** when available (`local` + `prometheus`); `shared-store` shows mean/max only (percentiles can't be merged from per-instance snapshots).
+
+### Instances
+
+*Cluster only* — shown when the dashboard reads from a multi-instance source (`shared-store` or `prometheus`); hidden for `local`. Answers the first incident question: **one bad node, or all of them?**
+
+- **Roll-up cards** — Total · Reporting · Silent · Healthy · Degraded · Unhealthy. *Silent* = expected-but-not-reporting (beyond the liveness window in `shared-store`).
+- **Per-instance table** — a row per instance: id, live/silent dot, calls, success / failover / recovery %, p95 recover, last-seen, and a status badge. Click a row to drill in.
+- **Drill-down** — the selected instance's *own* KPIs (calls, success, failover, users-unblocked, p95) — not the cluster aggregate.
+
+Data comes from `MetricsSource.instances()`: in `shared-store` from the per-instance snapshots the store already holds; in `prometheus` from `sum by (name, instance) (failover_*)` queries.
 
 ### Health
 
 Actuator-style subsystem health, mirroring the `/actuator/health/failover` contributor.
 
+- **Cluster roll-up** — healthy / degraded / unhealthy API counts + instances reporting, with a provenance line (local vs cluster aggregate). Cluster-wide via `MetricsSource.health()` across whichever tier is active.
 - **Status hero** — `UP` (at least one `@Failover` registered) or `DOWN` (none discovered — a misconfiguration signal).
 - **Active configuration** — the global config rendered as small stat cards (registered failovers, type, store type, async, exception policy, scheduler…). Types and flags only — never credentials or connection strings (§9).
 
@@ -153,6 +199,10 @@ Actuator-style subsystem health, mirroring the `/actuator/health/failover` contr
 
         ![Failover dashboard — per-API view, dark theme](../web/assets/images/dashboard-perapi.png)
 
+    === "Instances"
+
+        ![Failover dashboard — instances view, dark theme](../web/assets/images/dashboard-instances.png)
+
     === "Health"
 
         ![Failover dashboard — health view, dark theme](../web/assets/images/dashboard-health.png)
@@ -170,6 +220,10 @@ Actuator-style subsystem health, mirroring the `/actuator/health/failover` contr
     === "Per-API"
 
         ![Failover dashboard — per-API view, light theme](../web/assets/images/dashboard-perapi-light.png)
+
+    === "Instances"
+
+        ![Failover dashboard — instances view, light theme](../web/assets/images/dashboard-instances-light.png)
 
     === "Health"
 
@@ -257,6 +311,277 @@ It is process-local and lost on restart — deliberately **not** a TSDB. For lon
 If Micrometer is not on the classpath, the **Config and Health views still work**; the Overview / Per-API views show a friendly "metrics unavailable" notice. If the Chart.js asset is missing, KPI cards and tables still render and a notice replaces the charts.
 
 ---
+
+## The Read Axis (dashboard service) — how the dashboard collects metrics
+
+The **read axis = the dashboard service**: it never emits `failover.*` meters, it *reads and aggregates* them through a `MetricsSource` chosen by `cluster.mode`. The same UI/API sits on top of all three sources. (The **write axis = the failover service** that emits the meters — see [Observability](observability.md#the-write-axis-failover-service-how-meters-leave-the-app).)
+
+### Single instance (`local`)
+
+One JVM. The dashboard reads its own in-process registry directly — exactly the meters this instance emitted.
+
+```mermaid
+flowchart LR
+    A["@Failover (this JVM)"] --> M["Micrometer registry"]
+    M --> LS["LocalRegistryMetricsSource"]
+    LS --> UI["Read axis — dashboard service<br/>UI / JSON API"]
+```
+
+Behind a load balancer this is only **one node's** view — the UI labels it "this instance only". For a true cluster picture, pick `shared-store` or `prometheus`.
+
+### Multiple instances — `shared-store` (no Prometheus)
+
+Each instance **pushes** its own KPI snapshot to the dashboard; the dashboard keeps the latest per instance and aggregates them in memory with the same `DashboardKpis` math. Small clusters (≤ ~10), zero external infra.
+
+```mermaid
+flowchart LR
+    subgraph APPS["Write axis — failover service · N instances"]
+        I1["instance-1"]; I2["instance-2"]; I3["instance-3"]
+    end
+    I1 & I2 & I3 -->|"POST /api/cluster/snapshot<br/>(every interval-seconds)"| ING["ClusterSnapshotController"]
+    ING --> ST["SnapshotStore<br/>(in-memory | JDBC)"]
+    ST --> SS["SharedStoreMetricsSource<br/>sum latest-per-live-instance"]
+    SS --> UI["Read axis — dashboard service<br/>UI / Instances tab"]
+```
+
+Stale peers (older than `liveness-seconds`) drop out of the aggregate; `store: jdbc` makes the snapshots survive a dashboard restart.
+
+### Multiple instances — `prometheus` (large clusters)
+
+Prometheus scrapes every instance; the dashboard issues read-only PromQL to aggregate cluster-wide (incl. p95/p99 and per-instance) and falls back to `local` if Prometheus is down.
+
+```mermaid
+flowchart LR
+    subgraph APPS["Write axis — failover service · N instances"]
+        I1["instance-1<br/>/actuator/prometheus"]; I2["instance-2<br/>/actuator/prometheus"]; I3["instance-3<br/>/actuator/prometheus"]
+    end
+    I1 & I2 & I3 -->|scrape| PROM[(Prometheus)]
+    PROM -->|"PromQL: sum by (name[, instance])"| PS["PrometheusMetricsSource"]
+    PS --> UI["Read axis — dashboard service<br/>UI / Instances tab"]
+```
+
+### Picking a mode
+
+```mermaid
+flowchart TB
+    Q{how many instances?} -->|one| L["local — read own registry"]
+    Q -->|"a few (≤ ~10)"| S{run Prometheus?}
+    Q -->|many| P["prometheus"]
+    S -->|no| SH["shared-store<br/>(in-memory, or jdbc for durability)"]
+    S -->|yes| P
+```
+
+| Mode | Source | Infra | Per-instance view |
+|---|---|---|---|
+| `local` | in-process registry | none | n/a (single JVM) |
+| `shared-store` | pushed snapshots, in-app aggregate | none, or a DB table (jdbc) | yes (snapshot per instance) |
+| `prometheus` | PromQL across scraped instances | Prometheus/TSDB | yes (`instance` label) |
+
+### Pairing the read axis with your write-axis backend
+
+The read axis has **only these three sources** — it does **not** read every metrics backend. So the dashboard's `cluster.mode` does not always mirror the Micrometer registry you export with ([Observability → choosing a registry](observability.md#choosing-a-micrometer-registry)). Map it like this:
+
+| Write axis (export registry) | Dashboard read axis | Cluster view comes from |
+|---|---|---|
+| **Prometheus** (scrape) | `cluster.mode=prometheus` (+ `prometheus.base-url`) | the embedded dashboard, via PromQL — **1:1 pairing** |
+| **OTLP / Elastic / Datadog / New Relic / CloudWatch / Influx / Graphite** (push) | `cluster.mode=shared-store` **or** none | the **vendor's own UI** (Grafana / Kibana / Datadog…) for those exported meters; **or** the embedded dashboard via `shared-store` (peers push KPI snapshots straight to it — independent of the metrics backend) |
+| **none / SimpleMeterRegistry** (single JVM) | `cluster.mode=local` (default) | this instance only |
+
+Key point: **`shared-store` is independent of the metrics backend.** Its peers POST snapshots directly to the dashboard (`/api/cluster/snapshot`), so you get a cluster view in the embedded UI **regardless of which `micrometer-registry-*` you use** (or even with none). The only registry the dashboard *itself* reads back is Prometheus. There is **no** `MetricsSource` for OTLP/Elastic/Datadog/etc. — for those, either read the cluster picture in that vendor's UI, or run `shared-store` alongside.
+
+Examples:
+
+- **Prometheus everywhere:** apps export `micrometer-registry-prometheus`; dashboard `cluster.mode=prometheus`. One pairing, full cluster view + p95/p99 in the embedded UI.
+- **OTLP to Datadog, but still want the embedded dashboard clustered:** apps export `micrometer-registry-otlp` *and* set `cluster.snapshot.publish-url`; dashboard `cluster.mode=shared-store`. Datadog gets the meters; the dashboard gets snapshots — two parallel paths.
+- **OTLP to your APM, no embedded cluster view needed:** dashboard left at `local` (or not deployed) — use the APM's dashboards.
+
+---
+
+## Distributed Deployment — Scenarios
+
+The dashboard reads the `failover.*` **meters**; `cluster.mode` chooses *where it reads them from*. Everything else (UI, KPIs, health, security) is identical across modes. The scenarios below are complete, copy-pasteable configs for each.
+
+| Mode | Reads from | Infra | When |
+|---|---|---|---|
+| `local` (default) | this instance's in-process registry | none | single JVM, dev |
+| `shared-store` | peers push snapshots → in-memory or JDBC | none, or a small DB table | small cluster (≤ ~10), no Prometheus |
+| `prometheus` | Prometheus HTTP API across all instances | Prometheus/TSDB | large cluster |
+
+Each scenario below is a complete, copy-pasteable example.
+
+### Scenario A — Single JVM (default)
+
+Nothing to configure beyond enabling the dashboard; `cluster.mode` defaults to `local`.
+
+```yaml title="application.yml — the app that has @Failover methods"
+failover:
+  dashboard:
+    enabled: true            # secure-by-default: off unless set
+```
+
+Open `http://<app>:<port>/failover-dashboard`. Behind a load balancer this shows only the node that answered (a "this instance only" badge makes that explicit) — use one of the cluster modes below for a true aggregate.
+
+### Scenario B — Cluster via Prometheus (large clusters)
+
+Each instance exposes `/actuator/prometheus`; Prometheus scrapes them; the dashboard aggregates with PromQL (`sum`, `rate`, `histogram_quantile` → cluster-wide p95/p99). Falls back to `local` if Prometheus is unreachable, so it never goes dark.
+
+```yaml title="every app instance"
+management:
+  endpoints.web.exposure.include: prometheus,health
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: prometheus
+      prometheus:
+        base-url: http://prometheus:9090
+        # token: <bearer>      # optional
+        # timeout-seconds: 5
+```
+
+```yaml title="prometheus.yml (scrape config)"
+scrape_configs:
+  - job_name: my-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['app-1:8080', 'app-2:8080', 'app-3:8080']
+```
+
+Prometheus adds the `instance` label at scrape time, so the dashboard's per-instance grouping works automatically — you do **not** need the `failover.observable.instance` tag here (that tag is for push backends; see [Observability](observability.md)). The **Instances tab** then breaks the cluster down per node (`sum by (name, instance)`).
+
+### Scenario C — Cluster via shared-store, in-memory (small clusters, no Prometheus)
+
+Each instance **pushes** its local KPI snapshot to the dashboard; the dashboard aggregates them in memory with the same KPI math. Production-supported for ≤ ~10 instances. **Consistency over durability**: one (latest) snapshot per instance, stale peers excluded by a liveness window, reset-aware monotonic trend, age + size retention.
+
+```yaml title="the dashboard host (aggregator + UI)"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: inmemory          # default
+        liveness-seconds: 45     # a peer silent longer than this drops out of the aggregate
+        max-instances: 10        # supported ceiling (warning beyond)
+        sample-interval-seconds: 30   # cluster trend sampling cadence
+        retention:
+          max-age: 7d            # trend history age bound
+          max-entries: 100000    # trend history size bound (oldest truncated)
+```
+
+```yaml title="every peer (including non-UI instances)"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      snapshot:
+        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        interval-seconds: 15
+```
+
+The push endpoint sits behind the dashboard's access gate, so peers authenticate with the configured role (basic auth) — see **Security** below. Lost on dashboard restart (it's in memory); use Scenario D for restart-survival.
+
+Each pushed snapshot is retained per instance, so the **Instances tab** lists every reporting node (and flags silent ones past `liveness-seconds`); the **Health tab** shows the cluster roll-up.
+
+### Scenario D — Cluster via shared-store, JDBC durable
+
+Same as C, but snapshots persist to a database so the aggregate survives a dashboard restart. Add the optional module and flip one property.
+
+```xml title="dashboard host pom.xml"
+<dependency>
+  <groupId>com.societegenerale.failover</groupId>
+  <artifactId>failover-dashboard-snapshotstore-jdbc</artifactId>
+</dependency>
+```
+
+```yaml title="dashboard host"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        liveness-seconds: 45
+        max-instances: 10
+        jdbc:
+          table-prefix: ""       # prepended to the base table name; "" ⇒ FAILOVER_DASHBOARD_SNAPSHOT
+          auto-ddl: true         # create the table on startup if missing
+```
+
+Requires a `DataSource` in the dashboard app (the usual `spring.datasource.*`). Peers are configured exactly as in Scenario C (`cluster.snapshot.publish-url`).
+
+!!! question "Is multi-tenancy required for the snapshot store?"
+    **No.** The snapshot store holds only **aggregate, non-sensitive failover metrics** (counts, rates, latency means/percentiles) — never business data, payloads, keys or PII. So the per-tenant data-isolation / compliance reasons that drive the *failover store's* multi-tenancy (`failover.store.multitenant`) **do not apply here**. One shared table is correct and simplest.
+
+    If you need to **namespace** the table — e.g. several environments or several independent dashboards sharing one database — use `table-prefix` (validated: letters/digits/underscore only). If you genuinely want per-tenant *dashboards*, run separate dashboard instances each with its own `table-prefix` (or its own schema); the snapshot store itself stays single-table and tenant-agnostic by design.
+
+**Table name.** `table-prefix` + the base `FAILOVER_DASHBOARD_SNAPSHOT` (e.g. prefix `DEMO_` → `DEMO_FAILOVER_DASHBOARD_SNAPSHOT`). The prefix is validated as a safe SQL identifier fragment (no injection).
+
+**DDL.** With `auto-ddl: true` the table is created automatically. To manage the schema yourself (`auto-ddl: false`), create it with the dialect-appropriate type for the JSON column:
+
+```sql title="PostgreSQL"
+CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT (
+    INSTANCE_ID  VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT  BIGINT       NOT NULL,
+    SUMMARY_JSON TEXT         NOT NULL          -- or JSONB
+);
+```
+
+```sql title="MySQL / MariaDB"
+CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT (
+    INSTANCE_ID  VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT  BIGINT       NOT NULL,
+    SUMMARY_JSON LONGTEXT     NOT NULL
+);
+```
+
+```sql title="Oracle"
+CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT (
+    INSTANCE_ID  VARCHAR2(255) PRIMARY KEY,
+    RECEIVED_AT  NUMBER(19)    NOT NULL,
+    SUMMARY_JSON CLOB          NOT NULL
+);
+```
+
+```sql title="H2 / generic"
+CREATE TABLE IF NOT EXISTS FAILOVER_DASHBOARD_SNAPSHOT (
+    INSTANCE_ID  VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT  BIGINT       NOT NULL,
+    SUMMARY_JSON CLOB         NOT NULL
+);
+```
+
+Prepend your `table-prefix` to the table name if you set one. One row per instance (upserted on each push); the dashboard reads only rows within the liveness window.
+
+### Scenario E — Standalone dashboard (its own app)
+
+Run the dashboard as its own small Spring Boot app pointed at a backend, so a cluster has **one** dashboard rather than one embedded per instance. The `@Failover` library is **not** on its classpath.
+
+```yaml title="standalone dashboard app"
+spring:
+  application.name: failover-dashboard
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: prometheus          # or shared-store (then peers push to this app)
+      prometheus:
+        base-url: http://prometheus:9090
+```
+
+The app needs `spring-boot-starter-web`, `spring-boot-starter-security`, a `MeterRegistry`, and the `failover-dashboard` (or its starter) dependency. With no failover library there are no `@Failover` methods to discover, so the **Config view is empty** while all metrics/health/trend views work from the backend — a no-op `FailoverScanner` is supplied automatically. (For `shared-store` mode, also add `failover-dashboard-snapshotstore-jdbc` if you want durability.)
+
+## Exporting Metrics Elsewhere (OTLP / Elastic)
+
+The dashboard reads `failover.*` **meters**; how those meters leave each instance is a plain Micrometer concern — **no failover module is required**. Add the matching Micrometer registry to the application and the `failover.*` meters flow with everything else:
+
+- **OTLP** (vendor-neutral → Prometheus / Elastic / Datadog / …): add `micrometer-registry-otlp`.
+- **Elastic**: add `micrometer-registry-elastic`.
+
+For these push backends, per-instance attribution is automatic: `failover.observable.instance.mode` defaults to `auto`, which tags push registries (and skips Prometheus). Set `failover.observable.instance.id=${HOSTNAME}` on k8s/Docker for a readable identity. See [Observability](observability.md).
+
+For a metrics **read** source over Elasticsearch (or a log drill-down view), implement the `MetricsSource` SPI in an optional `failover-dashboard-source-elastic` module gated by `@ConditionalOnClass`/`@ConditionalOnProperty` — the same extension pattern as the Prometheus and shared-store sources.
 
 ## Next Steps
 
