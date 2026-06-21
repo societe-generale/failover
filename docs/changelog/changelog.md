@@ -45,6 +45,27 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Added
 
+- **Non-blocking metric publishing** — `AsyncObservablePublisher` (in `failover-core`) wraps the composite
+  publisher so every `ObservablePublisher` (built-in **and** custom) runs off the caller thread; a bounded
+  queue with drop-on-full (counted as `failover.metrics.dropped.total`) guarantees metric emission never
+  blocks or slows a `@Failover` call. Toggle with `failover.observable.async.{enabled,queue-capacity}`
+  (default on; set `enabled=false` for synchronous, deterministic tests). No new core dependencies.
+- **Richer metric catalog** (all over existing events — still consumer-only): `failover.call.total{result}`,
+  `failover.user.impact.total{impact=unblocked|blocked}`, `failover.upstream.duration{result}` (timer),
+  percentile histograms on `failover.operation.duration` (p95/p99), and gauges `failover.api.health`,
+  `failover.stale.served.ratio`, `failover.live.entries` (in-memory/Caffeine stores). Opt-in `instance`
+  tag (`failover.observable.instance.*`) and a cardinality guard (`failover.observable.cardinality.*`).
+- **Distributed dashboard (multi-instance)** — pluggable `MetricsSource` read seam selected by
+  `failover.dashboard.cluster.mode`: `local` (default, unchanged) · `prometheus` (cluster-wide PromQL incl.
+  p95/p99 and per-instance) · `shared-store` (peers push KPI snapshots, aggregated in-app for small
+  clusters with no Prometheus). `shared-store` ships an in-memory store plus an optional durable JDBC store
+  (**`failover-dashboard-snapshotstore-jdbc`** module) with validated `table-prefix`, age+size retention,
+  liveness windowing, and a reset-aware cluster trend.
+- **Dashboard Instances tab** — per-instance roll-up + table + drill-down (`/api/instances`,
+  `MetricsSource.instances()`) for `shared-store` and `prometheus`; answers "one bad node vs all". Plus a
+  cluster health roll-up on the Health tab and a metrics-provenance badge (this-instance vs cluster).
+- **Standalone dashboard** — runs as its own app pointed at a backend with no `@Failover` library present
+  (a no-op `FailoverScanner` keeps the config view empty while metrics/health work from the backend).
 - Async executor back-pressure guard (audit R-2). The async store executor and the scatter/gather
   executor can now be bounded: `failover.store.async-executor.concurrency-limit` /
   `failover.scatter.concurrency-limit` cap concurrently in-flight tasks, with a

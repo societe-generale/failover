@@ -75,6 +75,30 @@ executor (the async store layer is otherwise visible only in logs).
 | `operation` | `store`, `delete`, `cleanByExpiry` |
 | `exception_type` | The failure's class name |
 
+### Full meter catalog
+
+All `failover.*` meters (counters keep the `_total` suffix in Prometheus; timers export `_sum`/`_count`/`_max` in seconds; gauges export the bare name). Tag every meter with `instance` for cluster attribution by enabling `failover.observable.instance.enabled` (off by default — a Prometheus scrape already adds `instance`; turn it on for push backends / `shared-store`).
+
+| Meter | Type | Key tags | Meaning |
+|---|---|---|---|
+| `failover.call.total` | counter | `name`, `domain`, `result` (`success`\|`failover`) | Per-call volume — clean upstream success vs failover triggered. |
+| `failover.user.impact.total` | counter | `name`, `domain`, `impact` (`unblocked`\|`blocked`) | **Business signal** — caller got a value (fresh or recovered) vs got nothing. |
+| `failover.recovery.outcome.total` | counter | `name`, `domain`, `method`, `outcome` | Recovery breakdown (`recovered`/`not_recovered`/`error`); source of the rates. |
+| `failover.recovery.partial.total` | counter | `name`, `method` | Scatter/gather recoveries where some slices were missing. |
+| `failover.exception.total` | counter | `name`, `exception_type`, `cause_type`, `final_cause_type` | Which exception (and root cause) triggered failover. |
+| `failover.store.total` | counter | `name`, `stored` | Store attempts. |
+| `failover.store.async.failed` | counter | `name`, `operation`, `exception_type` | Async store-layer failures. |
+| `failover.operation.duration` | timer (+percentile histogram) | `name`, `action` (`store`\|`recover`) | Store/recover path latency → p50/p95/p99. |
+| `failover.upstream.duration` | timer (+percentile histogram) | `name`, `result` (`success`\|`failure`) | Latency of the protected upstream call itself. |
+| `failover.api.health` | gauge | `name`, `domain` | Recent fraction of calls where the caller got a value (1.0 healthy; lower = users blocked). |
+| `failover.stale.served.ratio` | gauge | `name`, `domain` | Recent fraction of calls served from stored (stale) data. |
+| `failover.live.entries` | gauge | `name`, `domain` | Current stored entry count (cache footprint). In-memory/Caffeine stores only — absent for JDBC/multi-tenant. |
+| `failover.metrics.dropped.total` | counter | — | Metrics dropped because the non-blocking publish queue was full (see [non-blocking](#non-blocking-by-construction)). Active only when async publishing is on. |
+| `failover.registered.total` | gauge | — | Number of discovered `@Failover` methods. |
+| `failover.config.expiry.seconds` | gauge | `name`, `domain`, `unit` | Configured expiry per failover point. |
+
+**Cardinality:** `name`/`domain`/`action`/`result`/`impact`/`outcome` are low-cardinality enums; exception tags use class names. Never tag with the raw store key or exception messages. A guard (`failover.observable.cardinality`) caps distinct `name` values.
+
 ### Health Indicator
 
 Registered at `/actuator/health` under the `failover` component:

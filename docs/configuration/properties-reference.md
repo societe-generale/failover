@@ -71,6 +71,21 @@ All properties are prefixed with `failover`. There are no mandatory properties �
 
 ---
 
+## Observable Properties
+
+Control how failover metrics are published. See [Observability](../modules/observability.md).
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `failover.observable.async.enabled` | `boolean` | `true` | Publish metrics off the caller thread via a bounded queue drained by a virtual-thread worker, so emitting metrics can never block or slow the `@Failover` call. Set `false` to publish synchronously (deterministic for tests). |
+| `failover.observable.async.queue-capacity` | `int` | `10000` | Bounded queue size. A full queue **drops** the metric (counted as `failover.metrics.dropped.total`) rather than back-pressuring the caller. Raise for very high failover throughput. |
+| `failover.observable.instance.enabled` | `boolean` | `false` | Add an `instance` tag to every `failover.*` meter. Off by default — a Prometheus scrape already attaches `instance`; enable for **push** backends (OTLP/Elastic) or the dashboard `shared-store` mode. |
+| `failover.observable.instance.id` | `String` | `""` | Instance-tag value. Blank ⇒ resolved at startup from `spring.application.name` + host name. |
+| `failover.observable.cardinality.enabled` | `boolean` | `true` | Cardinality guard: cap the number of distinct `name` tag values on `failover.*` meters so a misconfigured high-cardinality name can't explode the registry. |
+| `failover.observable.cardinality.max-apis` | `int` | `1000` | Maximum distinct `name` values; new series are denied once the cap is hit. |
+
+---
+
 ## Dashboard Properties
 
 Only active with `failover-dashboard-spring-boot-starter` on the classpath (see [Dashboard](../modules/dashboard.md)). `enabled` is the only switch you need; everything else has a working default once enabled.
@@ -81,7 +96,7 @@ Only active with `failover-dashboard-spring-boot-starter` on the classpath (see 
 | `failover.dashboard.base-path` | `String` | `/failover-dashboard` | Single dedicated namespace for the UI and API. Must start with `/`, must not be `/`, and must not end with `/` — a misconfigured value fails the context fast. |
 | `failover.dashboard.exposure.ui` | `boolean` | `true` | Serve the static HTML/JS UI. Set `false` to narrow to API-only. |
 | `failover.dashboard.exposure.api` | `boolean` | `true` | Serve the JSON API. Set `false` to narrow to UI-only. |
-| `failover.dashboard.exposure.include` | `List<String>` | `[config, failover-health, metrics, health]` | Which API endpoints are served. Trim to narrow; an endpoint not listed returns `404`. |
+| `failover.dashboard.exposure.include` | `List<String>` | `[config, failover-health, metrics, health, cluster, instances]` | Which API endpoints are served. Trim to narrow; an endpoint not listed returns `404`. (`cluster` gates the shared-store snapshot ingest; `instances` gates the per-instance view.) |
 | `failover.dashboard.security.role` | `String` | `FAILOVER_ADMIN` | Role required for `base-path/**` when Spring Security is present. |
 | `failover.dashboard.security.allow-insecure` | `boolean` | `false` | When Spring Security is absent: `false` fails the context fast (fail-closed); `true` starts unsecured with a loud `WARN` (dev / trusted-network only). **Refused outright when the `prod` profile is active** — production must add Spring Security. |
 | `failover.dashboard.history.enabled` | `boolean` | `false` | Enable the server-side ring-buffer sampler and `/api/metrics/series` for reload-surviving trends. |
@@ -89,6 +104,27 @@ Only active with `failover-dashboard-spring-boot-starter` on the classpath (see 
 | `failover.dashboard.history.sample-interval-seconds` | `int` | `15` | Seconds between samples. |
 | `failover.dashboard.health.degraded-threshold` | `double` | `0.99` | Healthy-rate floor for `HEALTHY`; below it (down to the unhealthy floor) is `DEGRADED`. |
 | `failover.dashboard.health.unhealthy-threshold` | `double` | `0.90` | Healthy-rate floor for `DEGRADED`; below it is `UNHEALTHY`. |
+
+### Cluster Properties
+
+Where the dashboard reads metrics from in a multi-instance deployment (see [Distributed Deployment](../modules/dashboard.md#distributed-deployment--scenarios)). Default `local` reads this instance only.
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `failover.dashboard.cluster.mode` | `String` | `local` | `local` (this instance) \| `prometheus` (PromQL across instances) \| `shared-store` (peers push snapshots, aggregated in-app). |
+| `failover.dashboard.cluster.prometheus.base-url` | `String` | `""` | Prometheus base URL (e.g. `http://prometheus:9090`). Blank ⇒ falls back to `local`. Used when `mode=prometheus`. |
+| `failover.dashboard.cluster.prometheus.token` | `String` | `""` | Optional bearer token sent as `Authorization: Bearer …`. |
+| `failover.dashboard.cluster.prometheus.timeout-seconds` | `int` | `5` | Per-query connect/read timeout. |
+| `failover.dashboard.cluster.shared-store.store` | `String` | `inmemory` | `inmemory` (default) \| `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). Used when `mode=shared-store`. |
+| `failover.dashboard.cluster.shared-store.liveness-seconds` | `int` | `45` | A peer whose latest snapshot is older than this is excluded from the aggregate (treated as silent). |
+| `failover.dashboard.cluster.shared-store.max-instances` | `int` | `10` | Supported small-cluster ceiling; exceeding it logs a warning (graduate to `prometheus`). |
+| `failover.dashboard.cluster.shared-store.sample-interval-seconds` | `int` | `30` | Cluster-trend sampling cadence. |
+| `failover.dashboard.cluster.shared-store.retention.max-age` | `Duration` | `7d` | Trend-history age bound; older points evicted. |
+| `failover.dashboard.cluster.shared-store.retention.max-entries` | `int` | `100000` | Trend-history size bound; oldest truncated first. |
+| `failover.dashboard.cluster.shared-store.jdbc.table-prefix` | `String` | `""` | Prefix prepended to base `FAILOVER_DASHBOARD_SNAPSHOT` (validated). Used when `store=jdbc`. |
+| `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` | `boolean` | `true` | Create the snapshot table on startup if missing. |
+| `failover.dashboard.cluster.snapshot.publish-url` | `String` | `""` | Peer-side: dashboard ingest URL each instance POSTs its snapshot to. Blank ⇒ this instance does not push. |
+| `failover.dashboard.cluster.snapshot.interval-seconds` | `int` | `15` | Seconds between snapshot pushes. |
 
 ---
 
