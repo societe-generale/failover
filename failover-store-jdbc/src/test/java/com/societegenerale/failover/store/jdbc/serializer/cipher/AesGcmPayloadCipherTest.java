@@ -29,13 +29,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("AesGcmPayloadCipher")
 class AesGcmPayloadCipherTest {
 
+    private final AesGcmPayloadCipher cipher = new AesGcmPayloadCipher(randomKey(32));
+
     private static byte[] randomKey(int bytes) {
         byte[] k = new byte[bytes];
         new SecureRandom().nextBytes(k);
         return k;
     }
-
-    private final AesGcmPayloadCipher cipher = new AesGcmPayloadCipher(randomKey(32));
 
     @Test
     @DisplayName("id is 'aesgcm'")

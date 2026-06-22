@@ -220,6 +220,11 @@ class FailoverStoreAsyncTest {
 
         private FailoverStoreAsync<String> failoverStoreAsyncWithPublisher;
 
+        /** Executor that rejects every submission, as a bounded executor does at its concurrency limit (ABORT). */
+        private final TaskExecutor rejectingExecutor = task -> {
+            throw new java.util.concurrent.RejectedExecutionException("saturated");
+        };
+
         @BeforeEach
         void setUp() {
             failoverStoreAsyncWithPublisher = new FailoverStoreAsync<>(failoverStore, SYNC_EXECUTOR, observablePublisher);
@@ -284,11 +289,6 @@ class FailoverStoreAsyncTest {
         }
 
         // ── Submit-time rejection (executor saturation / shutdown) — audit A2 ──────────────
-
-        /** Executor that rejects every submission, as a bounded executor does at its concurrency limit (ABORT). */
-        private final TaskExecutor rejectingExecutor = task -> {
-            throw new java.util.concurrent.RejectedExecutionException("saturated");
-        };
 
         @Test
         @DisplayName("store() rejected at submit time publishes a store-async-failed metric with the rejection exception type")
