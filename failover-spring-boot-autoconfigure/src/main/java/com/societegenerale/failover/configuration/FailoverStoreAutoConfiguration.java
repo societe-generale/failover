@@ -342,8 +342,10 @@ public class FailoverStoreAutoConfiguration {
                                      ObjectProvider<FailoverScanner> failoverScannerProvider,
                                      ObjectProvider<PayloadCipher> payloadCipherProvider) {
             List<String> configured = failoverProperties.getStore().getJdbc().getAllowedPayloadClasses();
+            boolean strictAllowlist = failoverProperties.getStore().getJdbc().isStrictAllowlist();
             Serializer jsonSerializer = new JsonSerializer(objectMapper,
-                    () -> mergeAllowedPayloadClasses(configured, failoverScannerProvider.getIfAvailable()));
+                    () -> mergeAllowedPayloadClasses(configured, failoverScannerProvider.getIfAvailable()),
+                    strictAllowlist);
 
             List<PayloadCipher> ciphers = payloadCipherProvider.orderedStream().toList();
             Jdbc.Encryption encryption = failoverProperties.getStore().getJdbc().getEncryption();
