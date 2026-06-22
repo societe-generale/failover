@@ -5,8 +5,10 @@ icon: material/lock-outline
 # Payload Encryption (JDBC store)
 
 Encrypt the serialized payload **at rest** in the JDBC failover store, so the `PAYLOAD` column holds
-ciphertext instead of readable JSON. A no-dependency **Base64** default ships out of the box; declare
-your own `PayloadCipher` bean for real encryption (AES-GCM, a KMS/Jasypt-backed implementation, …).
+ciphertext instead of readable JSON. Two ciphers ship out of the box: a no-dependency **Base64** encoder
+(`b64`, not encryption) and a production-grade **AES-GCM** cipher (`aesgcm`, real confidentiality — just
+supply a key). For anything more specialised (KMS/Jasypt-backed, HSM, …) declare your own `PayloadCipher`
+bean.
 
 !!! warning "JDBC store only"
     Encryption applies **only** to the JDBC store — it is the only store that persists the payload as
@@ -49,7 +51,45 @@ failover:
 | Property | Default | Meaning |
 |---|---|---|
 | `failover.store.jdbc.encryption.enabled` | `false` | Gates the **write** side only. `true` → new rows are encrypted. Reads always honour the `ENC(...)` marker regardless. |
-| `failover.store.jdbc.encryption.cipher` | `b64` | The `id()` of the registered `PayloadCipher` to encrypt **new writes** with. |
+| `failover.store.jdbc.encryption.cipher` | `b64` | The `id()` of the registered `PayloadCipher` to encrypt **new writes** with (e.g. `aesgcm`). |
+| `failover.store.jdbc.encryption.key` | `""` | Base64-encoded AES key for the built-in `aesgcm` cipher (decodes to 16/24/32 bytes). When set, an `AesGcmPayloadCipher` is auto-registered. **A secret — inject from a secret manager / env var, never commit it.** |
+
+---
+
+## Real encryption out of the box: AES-GCM (recommended)
+
+The built-in **`aesgcm`** cipher is AES-GCM authenticated encryption (random IV per write, 128-bit auth
+tag). It needs only a key — no custom bean:
+
+```yaml
+failover:
+  store:
+    type: jdbc
+    jdbc:
+      encryption:
+        enabled: true
+        cipher: aesgcm
+        key: ${FAILOVER_STORE_JDBC_ENCRYPTION_KEY}   # Base64, 16/24/32 bytes — from a secret store
+```
+
+```bash
+# generate a 256-bit key
+openssl rand -base64 32
+```
+
+When `failover.store.jdbc.encryption.key` is non-empty, the framework auto-registers an
+`AesGcmPayloadCipher` (id `aesgcm`) for both reads and writes. An invalid key (bad Base64 or wrong length)
+fails startup fast.
+
+!!! danger "The key is a secret"
+    Never commit a real key to source or `application.yml`. Inject it from a secret manager, KMS, or an
+    environment variable (e.g. `FAILOVER_STORE_JDBC_ENCRYPTION_KEY`). Anyone with the key **and** store
+    access can read the payloads; losing the key makes existing `ENC(aesgcm:…)` rows unreadable (they are
+    a regenerable cache, so this only costs a cold start).
+
+!!! note "Authenticated — fails loud"
+    AES-GCM verifies an authentication tag on read: a tampered row, the wrong key, or a non-AES-GCM value
+    throws rather than returning corrupted data.
 
 ### Enable / disable is always safe
 
@@ -80,8 +120,10 @@ Use it for obfuscation/demos only. For confidentiality, provide a real cipher (b
 
 ## Provide your own cipher
 
-Implement `PayloadCipher` and declare it as a bean. The decorator owns the `ENC(...)` envelope, so your
-cipher deals in **raw** ciphertext only — no envelope parsing.
+For most needs the built-in `aesgcm` cipher (above) is enough. Implement `PayloadCipher` only for a
+specialised backend — a KMS/HSM-managed key, an envelope-encryption scheme, Jasypt, etc. Declare it as a
+bean; the decorator owns the `ENC(...)` envelope, so your cipher deals in **raw** ciphertext only — no
+envelope parsing.
 
 ```java
 public interface PayloadCipher {
@@ -91,12 +133,12 @@ public interface PayloadCipher {
 }
 ```
 
-Example AES-GCM cipher selected for writes:
+Example: a KMS-backed cipher selected for writes:
 
 ```java
 @Bean
-public PayloadCipher aesGcmPayloadCipher() {
-    return new AesGcmPayloadCipher(loadKeyFromVault());   // your implementation; id() == "aesgcm"
+public PayloadCipher kmsPayloadCipher(KmsClient kms) {
+    return new KmsPayloadCipher(kms);   // your implementation; id() e.g. "kms"
 }
 ```
 
@@ -106,7 +148,7 @@ failover:
     jdbc:
       encryption:
         enabled: true
-        cipher: aesgcm     # must match your cipher's id()
+        cipher: kms     # must match your cipher's id()
 ```
 
 !!! tip "Contract"
