@@ -295,6 +295,53 @@ class JsonSerializerTest {
     }
 
     @Nested
+    @DisplayName("toClass(String) with strict mode (audit A3)")
+    class ToClassStrictMode {
+
+        @Test
+        @DisplayName("strict + empty allowlist DENIES all deserialization (fail-closed)")
+        void strictEmptyDeniesAll() {
+            JsonSerializer strict = new JsonSerializer(OBJECT_MAPPER, List::of, true);
+            assertThatThrownBy(() -> strict.toClass("java.lang.Runtime"))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("allowlist");
+        }
+
+        @Test
+        @DisplayName("strict + empty allowlist denies even a legitimate-looking app class")
+        void strictEmptyDeniesAppClass() {
+            JsonSerializer strict = new JsonSerializer(OBJECT_MAPPER, List::of, true);
+            assertThatThrownBy(() -> strict.toClass(SamplePayload.class.getName()))
+                    .isInstanceOf(FailoverStoreException.class);
+        }
+
+        @Test
+        @DisplayName("non-strict + empty allowlist still allows all (legacy default unchanged)")
+        void nonStrictEmptyAllowsAll() {
+            JsonSerializer lenient = new JsonSerializer(OBJECT_MAPPER, List::of, false);
+            assertThat(lenient.<Runtime>toClass("java.lang.Runtime")).isEqualTo(Runtime.class);
+        }
+
+        @Test
+        @DisplayName("strict mode with a populated allowlist behaves exactly as normal — allows listed, rejects unlisted")
+        void strictWithEntriesEnforcedNormally() {
+            JsonSerializer strict = new JsonSerializer(OBJECT_MAPPER, () -> List.of("java.lang.String"), true);
+            assertThat(strict.<String>toClass("java.lang.String")).isEqualTo(String.class);
+            assertThatThrownBy(() -> strict.toClass("java.lang.Runtime"))
+                    .isInstanceOf(FailoverStoreException.class)
+                    .hasMessageContaining("allowlist");
+        }
+
+        @Test
+        @DisplayName("strict + null supplier result is treated as empty → deny-all (defensive)")
+        void strictNullSupplierDeniesAll() {
+            JsonSerializer strict = new JsonSerializer(OBJECT_MAPPER, () -> null, true);
+            assertThatThrownBy(() -> strict.toClass("java.lang.Runtime"))
+                    .isInstanceOf(FailoverStoreException.class);
+        }
+    }
+
+    @Nested
     @DisplayName("serialize/deserialize round-trip")
     class RoundTrip {
 
@@ -370,6 +417,24 @@ class JsonSerializerTest {
                     .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
                     .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
                     .toList();
+        }
+
+        private List<String> errors() {
+            return appender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                    .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                    .toList();
+        }
+
+        @Test
+        @DisplayName("ERRORs that deserialization is DENIED (fail-closed) when strict + empty allowlist")
+        void errorsOnStrictEmptyDenyAll() {
+            JsonSerializer serializer = new JsonSerializer(OBJECT_MAPPER, List::of, true);
+
+            assertThatThrownBy(() -> serializer.toClass("java.lang.Runtime")) // triggers lazy resolution
+                    .isInstanceOf(FailoverStoreException.class);
+
+            assertThat(errors()).anySatisfy(msg -> assertThat(msg).contains("EMPTY").contains("DENIED"));
         }
 
         @Test

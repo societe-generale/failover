@@ -55,6 +55,12 @@ public class JsonSerializer implements Serializer {
 
     private final Supplier<List<String>> allowedPayloadClassesSupplier;
 
+    /**
+     * When {@code true}, an empty resolved allowlist denies all deserialization (fail-closed) instead
+     * of disabling the restriction (allow-all). See {@code failover.store.jdbc.strict-allowlist} (A3).
+     */
+    private final boolean strict;
+
     /** Memoized resolved allowlist; resolved once on first {@link #toClass} call. */
     @Nullable
     private volatile List<String> resolvedAllowedPayloadClasses;
@@ -80,7 +86,7 @@ public class JsonSerializer implements Serializer {
     }
 
     /**
-     * Creates a serializer whose allowlist is resolved lazily on first use.
+     * Creates a serializer whose allowlist is resolved lazily on first use (allow-all on empty).
      *
      * @param objectMapper                  the Jackson mapper used for all conversions
      * @param allowedPayloadClassesSupplier supplies the effective allowlist (exact class names or
@@ -88,8 +94,24 @@ public class JsonSerializer implements Serializer {
      *                                      result disables the restriction
      */
     public JsonSerializer(ObjectMapper objectMapper, Supplier<List<String>> allowedPayloadClassesSupplier) {
+        this(objectMapper, allowedPayloadClassesSupplier, false);
+    }
+
+    /**
+     * Creates a serializer whose allowlist is resolved lazily on first use, with a configurable
+     * empty-allowlist behaviour.
+     *
+     * @param objectMapper                  the Jackson mapper used for all conversions
+     * @param allowedPayloadClassesSupplier supplies the effective allowlist (exact class names or
+     *                                      package prefixes); invoked once and memoized
+     * @param strict                        when {@code true}, an empty resolved allowlist denies all
+     *                                      deserialization (fail-closed); when {@code false}, an empty
+     *                                      allowlist disables the restriction (allow-all, legacy default)
+     */
+    public JsonSerializer(ObjectMapper objectMapper, Supplier<List<String>> allowedPayloadClassesSupplier, boolean strict) {
         this.objectMapper = objectMapper;
         this.allowedPayloadClassesSupplier = allowedPayloadClassesSupplier;
+        this.strict = strict;
     }
 
     /**
@@ -156,7 +178,8 @@ public class JsonSerializer implements Serializer {
     private boolean isAllowed(String className) {
         List<String> allowed = resolvedAllowedPayloadClasses();
         if (allowed.isEmpty()) {
-            return true;
+            // Empty allowlist: fail-closed (deny all) in strict mode, else legacy allow-all.
+            return !strict;
         }
         return allowed.stream()
                 .anyMatch(entry -> className.equals(entry) || className.startsWith(entry + "."));
@@ -188,9 +211,16 @@ public class JsonSerializer implements Serializer {
      */
     private void logGrantSummary(List<String> resolved) {
         if (resolved.isEmpty()) {
+            if (strict) {
+                log.error("Failover deserialization allowlist is EMPTY and strict mode is ON (failover.store.jdbc.strict-allowlist=true) "
+                        + "— ALL payload deserialization will be DENIED (fail-closed). No @Failover payload types were discovered and "
+                        + "failover.store.jdbc.allowed-payload-classes is empty; recovery from the JDBC store will fail until the allowlist is populated.");
+                return;
+            }
             log.warn("Failover deserialization allowlist is EMPTY — every payload class read back from the "
-                    + "store will be loaded (allow-all). Set failover.store.jdbc.allowed-payload-classes or rely "
-                    + "on @Failover scanning to restrict which classes may be deserialized.");
+                    + "store will be loaded (allow-all). Set failover.store.jdbc.allowed-payload-classes, enable "
+                    + "failover.store.jdbc.strict-allowlist=true to fail closed, or rely on @Failover scanning to "
+                    + "restrict which classes may be deserialized.");
             return;
         }
         List<String> prefixGrants = resolved.stream().filter(entry -> !isLoadableClass(entry)).toList();
