@@ -65,6 +65,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -253,7 +254,9 @@ public class FailoverStoreAutoConfiguration {
         @ConditionalOnMissingBean(TenantStoreFactory.class)
         public TenantStoreFactory<Object> inmemoryTenantStoreFactory(FailoverProperties properties) {
             int maxEntries = properties.getStore().getInmemory().getMaxEntries();
-            log.warn("FailoverStore configured to FailoverStoreInmemory (maxEntries={}). We highly recommend to 'NOT to USE' FailoverStoreInmemory in PRODUCTION. Available options are : {{}}", maxEntries, StoreType.values());
+            log.warn("FailoverStore configured to FailoverStoreInmemory (maxEntries={}). This store is NON-DURABLE: data is per-instance and lost on restart, so it provides NO failover protection in production. "
+                    + "RECOMMENDED: use 'failover.store.type=jdbc' (durable, shared across instances) for production; 'caffeine' is acceptable only for a single-node deployment that tolerates data loss on restart. "
+                    + "Available options are {}. See docs: Configuration > Store Types.", maxEntries, Arrays.toString(StoreType.values()));
             return tenantId -> new FailoverStoreInmemory<>(maxEntries);
         }
     }
@@ -273,7 +276,9 @@ public class FailoverStoreAutoConfiguration {
         @ConditionalOnMissingBean(TenantStoreFactory.class)
         public TenantStoreFactory<Object> caffeineTenantStoreFactory(FailoverClock failoverClock, FailoverProperties properties) {
             long maxSize = properties.getStore().getCaffeine().getMaxSize();
-            log.warn("FailoverStore configured to FailoverStoreCaffeine (maxSize={}). This will be based on caffeine cache and hence you will have some impact on heap for high volume failover storage. Available options are : {{}}", maxSize, StoreType.values());
+            log.warn("FailoverStore configured to FailoverStoreCaffeine (maxSize={}). This store is NON-DURABLE and NOT shared across instances: data is per-instance, lost on restart, and high-volume storage impacts heap. "
+                    + "Acceptable for a SINGLE-NODE deployment that tolerates data loss on restart. RECOMMENDED for production / multi-instance (clustered) deployments: use 'failover.store.type=jdbc' (durable, shared state). "
+                    + "Available options are {}. See docs: Configuration > Store Types.", maxSize, Arrays.toString(StoreType.values()));
             return tenantId -> new FailoverStoreCaffeine<>(failoverClock, maxSize);
         }
     }
