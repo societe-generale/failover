@@ -19,6 +19,42 @@ Four backing stores are available. Choose based on your deployment topology and 
 
 ---
 
+## Choosing a Store
+
+Failover only protects callers if the last-known-good value still exists when an upstream fails.
+A **non-durable** store (InMemory, Caffeine) holds that value only in the JVM heap of one instance —
+it is lost on restart and is invisible to other instances. So the right choice is driven by your
+**deployment topology** and your tolerance for losing cached data.
+
+```text
+                ┌─ Need recovery to survive a restart, or
+                │  run across more than one instance?
+                │
+        ┌── YES ─┴───────────────► JDBC   (durable, shared)   ◄── recommended for production
+        │
+        └── NO (single node, loss on restart acceptable)
+                │
+                ├─ Want richer eviction / TTL handling?  ──► Caffeine
+                └─ Want zero dependencies (dev/test)?    ──► InMemory   (default)
+
+   Have your own backend (Redis, Mongo, …)?  ──► Custom (implement FailoverStore)
+```
+
+| Question | If **yes** |
+|---|---|
+| Production or any multi-instance deployment? | **JDBC** — the only built-in durable, shared store. |
+| Single node, and losing cached data on restart is acceptable? | **Caffeine** (or InMemory). |
+| Dev / test, want zero setup? | **InMemory** (default). |
+| Already operate Redis / Mongo / another store? | **Custom** — implement `FailoverStore<T>`. |
+
+!!! danger "Non-durable stores in production"
+    InMemory and Caffeine are **per-instance and volatile**. After a restart — or for any request
+    routed to a *different* instance — there is no stored value to recover, so the caller sees the raw
+    upstream failure. The library logs a startup `WARN` naming the recommended alternative when a
+    non-durable store is active. For production, use **JDBC** (or a durable Custom store).
+
+---
+
 ## InMemory
 
 In-process map store. Zero dependencies. Data is lost on restart. Not suitable for production.
@@ -161,8 +197,75 @@ public class RedisFailoverStore<T> implements FailoverStore<T> {
 
 ---
 
+## Deployment Topologies & Modes
+
+The store choice and these orthogonal modes together determine the behaviour of failover in your
+deployment. They compose — e.g. a clustered, multi-tenant, async JDBC store is the typical production setup.
+
+### Single-node
+
+One instance; recovery only needs to survive within the running process (or a restart).
+
+- **Loss-on-restart acceptable** → InMemory or Caffeine. Zero infrastructure.
+- **Must survive restart** → JDBC (durable), even on a single node.
+
+### Clustered / multi-instance
+
+More than one instance behind a load balancer. A request that succeeded on instance A may fail on
+instance B, so the last-known-good value must be **shared state**.
+
+- **Use JDBC.** All instances point at the same database/table; any instance can recover a value
+  stored by any other. This is what makes failover "clustered" — there is no special cluster mode for
+  the store itself, just shared durable state.
+- InMemory / Caffeine do **not** work across instances — each instance has its own isolated copy.
+- See [Async Store](../modules/store-async.md): writes are offloaded to a virtual-thread executor by
+  default, so the shared-DB write does not block the request thread.
+
+!!! note "Store cluster vs. dashboard cluster"
+    Making the *store* clustered is just "use JDBC". Separately, the **dashboard** has its own
+    cross-instance aggregation modes (`failover.dashboard.cluster.mode` = `local` | `prometheus` |
+    `shared-store`) for *viewing* metrics across instances. They are independent concerns — see the
+    [Dashboard module](../modules/dashboard.md). A clustered failover store does not require the
+    dashboard, and vice versa.
+
+### Multi-tenant
+
+One deployment serving multiple tenants whose data must be isolated. Routes each tenant to its own
+table (`TABLE_PREFIX`) or schema (`SCHEMA`) on top of the JDBC store.
+
+```yaml title="application.yml"
+failover:
+  store:
+    type: jdbc
+    multitenant:
+      enabled: true
+```
+
+See [Multi-Tenant](multi-tenant.md) for routing strategies and the `TenantResolver` SPI.
+
+### Async vs. synchronous writes
+
+Orthogonal to store type. `failover.store.async=true` (default) offloads `store`/`delete`/`cleanByExpiry`
+to a virtual-thread executor — the request thread is never blocked by store I/O. Set `async=false` for
+deterministic, synchronous writes (required for the JDBC `SCHEMA` multi-tenant strategy, and used in
+integration tests). `find` is always synchronous — the caller needs the recovered value immediately.
+
+### Summary
+
+| Topology | Store | Key settings |
+|---|---|---|
+| Dev / test | InMemory | defaults |
+| Single node, volatile OK | Caffeine | `type: caffeine` |
+| Single node, durable | JDBC | `type: jdbc` |
+| Clustered / multi-instance | JDBC (shared DB) | `type: jdbc`, `async: true` |
+| Multi-tenant | JDBC | `type: jdbc`, `multitenant.enabled: true` |
+| Custom backend (Redis, …) | Custom | implement `FailoverStore<T>` |
+
+---
+
 ## Next Steps
 
 - [Multi-Tenant](multi-tenant.md) — per-tenant table or schema routing
 - [Async Store](../modules/store-async.md) — how non-blocking writes work
+- [Dashboard](../modules/dashboard.md) — cross-instance metrics aggregation modes
 - [Payload Column Resolver](../how-to/payload-column-resolver.md) — customise JDBC serialization

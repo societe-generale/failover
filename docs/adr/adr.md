@@ -2793,3 +2793,200 @@ bounded.
   limit and policy so a misconfiguration is visible.
 
 ___
+
+## ADR 58 — Non-Durable Store in Production — Advisory Warning over Fail-Fast
+
+**Date : 22-JUN-2026**
+
+### Status
+
+Accepted (audit A1)
+
+### Context
+
+The default store is `INMEMORY`, and `CAFFEINE` is also non-durable — both are per-instance and lost on
+restart, so they provide no real failover protection in production or across a multi-instance fleet.
+Recovery only works if the last-known-good value still exists when an upstream fails; a non-durable store
+loses it on the first restart and never shares it between instances.
+
+The inmemory/caffeine configurations already logged a `WARN`, but it neither named the recommended
+alternative nor explained the production risk, and the store-selection trade-offs were under-documented
+(single-node vs clustered vs multi-tenant, and the orthogonal async mode).
+
+A stronger option was prototyped: a profile-aware startup guard that **fails fast** (or logs `ERROR`) when
+a non-durable store runs under a `prod`/`production` profile, with an opt-out property. It was rejected
+during review:
+
+* Profile-name detection is a brittle heuristic — many deployments do not use a literal `prod` profile,
+  producing both false negatives (no protection) and false positives (broken startup).
+* Failing application startup over a *cache* durability choice is disproportionate and risks blocking a
+  legitimate single-node or volatile-data deployment.
+* It adds new properties and a new failure mode for what is fundamentally a guidance problem.
+
+### Decision
+
+Keep the control **advisory**, and make the advice actionable:
+
+* **Warning names the fix.** The `INMEMORY` and `CAFFEINE` store WARNs now state the store is NON-DURABLE
+  (per-instance, lost on restart, no production protection) and recommend `failover.store.type=jdbc` for
+  production / multi-instance; Caffeine is flagged single-node-only. No behaviour change, no new property,
+  no fail-fast.
+* **Documentation.** `docs/configuration/store-types.md` gains a *Choosing a Store* decision guide
+  (decision tree + question→store table + a non-durable-in-production danger callout) and a *Deployment
+  Topologies & Modes* section (single-node / clustered-multi-instance / multi-tenant / async-vs-sync +
+  summary matrix), clarifying that a "clustered" store is simply JDBC shared state — distinct from the
+  dashboard's cross-instance aggregation modes.
+
+### Consequences
+
+* Misconfiguration is louder and self-correcting (the log tells you exactly what to set) without ever
+  breaking startup or depending on a profile-name convention.
+* It remains *possible* to run a non-durable store in production — by design; teams that accept volatile
+  failover data (single-node, regenerable) are not blocked.
+* No durability enforcement at the framework level; durability remains an operator responsibility,
+  surfaced through logs and docs. A future Actuator health-indicator signal (deploy/readiness gate) was
+  noted as the natural next step if enforcement is later wanted, avoiding the profile heuristic.
+
+___
+
+## ADR 59 — Async Store Submit-Time Rejection — Count Saturation, Don't Drop It Silently
+
+**Date : 22-JUN-2026**
+
+### Status
+
+Accepted (audit A2) — extends [ADR 41](#adr-41-async-store-failure-metric-visibility-for-a-silently-degraded-layer) and [ADR 57](#adr-57-async-executor-back-pressure-bounded-concurrency-rejection-policy)
+
+### Context
+
+ADR 41 made executor-side async store failures visible via the `failover.store.async.failed` counter.
+But that counter was emitted only from the `catch` block **inside** the executor task — i.e. when the task
+ran and the delegate store threw.
+
+ADR 57 then added `BoundedTaskExecutor`, whose `ABORT` rejection policy throws `RejectedExecutionException`
+from `execute(...)` at **submit time, on the calling thread** — before the task ever runs. In
+`FailoverStoreAsync`, the `executor.execute(...)` call sat outside any try/catch (the try/catch was inside
+the submitted lambda). So a submit-time rejection propagated out of `store`/`delete`/`cleanByExpiry`, was
+caught by the caller's generic "Ignoring Failover Exception" handler in `BasicFailoverExecution`, and the
+dropped write was **never counted**. Executor saturation — exactly the condition operators most need to
+see — was invisible to metrics.
+
+### Decision
+
+Capture submit-time rejection in `FailoverStoreAsync` and report it through the existing meter.
+
+* All three write methods now route through a private `submit(operation, name, task)` helper that wraps
+  `executor.execute(task)` in a try/catch.
+* A `RuntimeException` from submit (saturation `ABORT` → `RejectedExecutionException`, or any executor that
+  refuses a task / is shutting down) is logged at `ERROR` and published via the same
+  `failover.store.async.failed` counter — same tags (`name`, `operation`), with
+  `exception-type=java.util.concurrent.RejectedExecutionException` — then swallowed. A dropped cache write
+  must never break the business call.
+* **No new meter, no new tag.** Dashboards and alerts already consuming `failover.store.async.failed`
+  (summed by `name`, tag-agnostic) pick up the saturation case automatically.
+
+### Consequences
+
+* Executor saturation is now an alertable signal on the same counter as in-flight failures — the
+  observability gap is closed with zero downstream changes.
+* The `DISCARD` rejection policy remains intentionally **unmetered**: it drops the task and logs a `WARN`
+  by design (discarding is the configured behaviour, not a failure). Teams that need every dropped write
+  counted should use `ABORT`, which is now metered. This is documented in `observability.md`.
+* `exception_type` distinguishes saturation (`RejectedExecutionException`) from store faults
+  (`SQLException`, …) for triage, without a schema change.
+
+___
+
+## ADR 60 — Deserialization Allowlist Strict Mode — Fail-Closed on an Empty Allowlist
+
+**Date : 22-JUN-2026**
+
+### Status
+
+Accepted (audit A3) — extends [ADR 37](#adr-37-payload-deserialization-allowlist-secure-by-default-class-loading)
+
+### Context
+
+ADR 37 established a secure-by-default deserialization allowlist for the JDBC store: `JsonSerializer.toClass`
+loads a class named in the `PAYLOAD_CLASS` column only if it matches the allowlist, which is auto-derived
+from the exact FQCNs of every `@Failover` payload type discovered by the scanner, plus any
+`failover.store.jdbc.allowed-payload-classes` entries. Non-listed classes are refused per row.
+
+That design has one fail-open edge: when the resolved allowlist is **empty** — no `@Failover` payload
+types discovered *and* no configured entries — the restriction was disabled (allow-all), with only a
+`WARN`. This was a deliberate backward-compatibility choice in ADR 37, but it means a misconfiguration
+(e.g. scanner found nothing, AOP not wired) silently re-opens the very deserialization-gadget surface the
+allowlist exists to close.
+
+### Decision
+
+Add an opt-in strict mode that removes the fail-open path, without changing the secure default behaviour.
+
+* New property `failover.store.jdbc.strict-allowlist` (default `false`, backward-compatible).
+* `JsonSerializer` gains a `strict` flag (new constructor). In `isAllowed`, an empty resolved allowlist
+  returns `!strict`: allow-all when lenient (legacy), **deny-all (fail-closed)** when strict.
+* Strict + empty is logged at `ERROR` (deserialization denied) rather than `WARN`. The normal path —
+  scanner-derived and configured entries — is **unchanged** in either mode; strict only governs the empty
+  degenerate case.
+* The flag is threaded `Jdbc.strictAllowlist` → the `serializer()` auto-configuration bean → the new
+  `JsonSerializer` constructor.
+
+### Consequences
+
+* Production can opt into fail-closed deserialization with one property: a misconfiguration then fails
+  recovery loudly (no payloads load) instead of silently trusting arbitrary class names from store data.
+* Default behaviour is untouched, so existing deployments are unaffected until they opt in; recommended
+  on for production in `docs/support/security.md`.
+* In strict mode an empty allowlist makes *all* JDBC recovery fail — the intended secure outcome, and a
+  clear signal that the scanner/config needs fixing rather than a silent security regression.
+
+___
+
+## ADR 61 — Built-in AES-GCM Payload Cipher — Usable Encryption-at-Rest Out of the Box
+
+**Date : 22-JUN-2026**
+
+### Status
+
+Accepted (audit A4) — extends [ADR 56](#adr-56-payload-at-rest-encryption-for-the-jdbc-store)
+
+### Context
+
+ADR 56 added the payload-at-rest encryption framework for the JDBC store: the `PayloadCipher` SPI, the
+`EncryptingSerializer`, and the `ENC(<id>:<ciphertext>)` envelope with read-time dispatch by cipher id.
+But the only built-in cipher was `Base64PayloadCipher` (`b64`) — explicitly encoding, **not** encryption.
+Real confidentiality required every consumer to hand-write a `PayloadCipher` (correct AES-GCM: random
+nonce per write, authentication tag, key handling). That is exactly the kind of cryptographic code most
+teams should not be writing themselves, and it left the PII-at-rest concern (audit A4) effectively
+unaddressed for anyone without crypto expertise.
+
+### Decision
+
+Ship a production-grade `AesGcmPayloadCipher` (id `aesgcm`) in `failover-store-jdbc` and auto-register it
+from a configured key.
+
+* **Algorithm.** AES-GCM (`AES/GCM/NoPadding`), authenticated encryption. A fresh random 16-byte IV per
+  `encrypt`, prepended to the ciphertext; 128-bit GCM tag. Output is `Base64(IV || ciphertext+tag)` as the
+  raw ciphertext inside the existing envelope. Same plaintext encrypts to different ciphertext each time
+  (semantic security); `decrypt` throws on a wrong key / tampered row / non-AES-GCM input rather than
+  returning garbage.
+* **Key from config, treated as a secret.** New property `failover.store.jdbc.encryption.key`
+  (Base64, decodes to a 16/24/32-byte AES key). When non-empty, an `AesGcmPayloadCipher` bean is
+  auto-registered (`@ConditionalOnExpression` on the key, `@ConditionalOnMissingBean`). An invalid key
+  fails startup fast. Docs mandate injecting it from a secret manager / KMS / env var, never committing it.
+* **Composes with the existing model.** Set `encryption.enabled=true` and `encryption.cipher=aesgcm` to
+  write `ENC(aesgcm:…)`; `b64` stays registered for reads. Rotation and mixed-cipher reads work exactly as
+  in ADR 56. No SPI change — `AesGcmPayloadCipher` is just another `PayloadCipher`.
+
+### Consequences
+
+* Real encryption-at-rest is now a config-only change (key + two flags) — no consumer crypto code — which
+  is the concrete remediation for PII-at-rest (A4) alongside field-level masking via `PayloadEnricher`.
+* The framework now holds a cryptographic primitive it must maintain (algorithm/parameter choices). The
+  choices are conservative and standard (AES-GCM, random IV, 128-bit tag) to minimise that burden.
+* Key management remains the operator's responsibility; losing the key strands existing `ENC(aesgcm:…)`
+  rows — acceptable because the store is a regenerable cache (only a cold start is lost).
+* `b64` remains the default cipher and is unchanged, so existing deployments are unaffected until they set
+  a key and select `aesgcm`.
+
+___
