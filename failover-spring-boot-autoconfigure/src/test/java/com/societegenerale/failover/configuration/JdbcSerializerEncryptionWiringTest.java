@@ -19,6 +19,7 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.store.jdbc.serializer.Serializer;
+import com.societegenerale.failover.store.jdbc.serializer.cipher.AesGcmPayloadCipher;
 import com.societegenerale.failover.store.jdbc.serializer.cipher.Base64PayloadCipher;
 import com.societegenerale.failover.store.jdbc.serializer.cipher.PayloadCipher;
 import org.junit.jupiter.api.DisplayName;
@@ -104,6 +105,22 @@ class JdbcSerializerEncryptionWiringTest {
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("aesgcm")
                     .hasMessageContaining("encryption.cipher");
+        }
+
+        @Test
+        @DisplayName("with the built-in AES-GCM cipher, writes ENC(aesgcm:..) and the payload round-trips (audit A4)")
+        void aesGcmEncryptsAndRoundTrips() {
+            byte[] key = new byte[32];
+            new java.security.SecureRandom().nextBytes(key);
+            AesGcmPayloadCipher aesgcm = new AesGcmPayloadCipher(key);
+
+            Serializer serializer = build(props(true, "aesgcm"), List.of(new Base64PayloadCipher(), aesgcm));
+
+            String stored = serializer.serialize(new Sample("acme", 1));
+            assertThat(stored).startsWith("ENC(aesgcm:").doesNotContain("acme");
+
+            Sample recovered = serializer.deserialize(stored, Sample.class);
+            assertThat(recovered).isEqualTo(new Sample("acme", 1));
         }
     }
 }
