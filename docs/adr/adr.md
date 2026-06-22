@@ -2941,3 +2941,52 @@ Add an opt-in strict mode that removes the fail-open path, without changing the 
   clear signal that the scanner/config needs fixing rather than a silent security regression.
 
 ___
+
+## ADR 61 — Built-in AES-GCM Payload Cipher — Usable Encryption-at-Rest Out of the Box
+
+**Date : 22-JUN-2026**
+
+### Status
+
+Accepted (audit A4) — extends [ADR 56](#adr-56-payload-at-rest-encryption-for-the-jdbc-store)
+
+### Context
+
+ADR 56 added the payload-at-rest encryption framework for the JDBC store: the `PayloadCipher` SPI, the
+`EncryptingSerializer`, and the `ENC(<id>:<ciphertext>)` envelope with read-time dispatch by cipher id.
+But the only built-in cipher was `Base64PayloadCipher` (`b64`) — explicitly encoding, **not** encryption.
+Real confidentiality required every consumer to hand-write a `PayloadCipher` (correct AES-GCM: random
+nonce per write, authentication tag, key handling). That is exactly the kind of cryptographic code most
+teams should not be writing themselves, and it left the PII-at-rest concern (audit A4) effectively
+unaddressed for anyone without crypto expertise.
+
+### Decision
+
+Ship a production-grade `AesGcmPayloadCipher` (id `aesgcm`) in `failover-store-jdbc` and auto-register it
+from a configured key.
+
+* **Algorithm.** AES-GCM (`AES/GCM/NoPadding`), authenticated encryption. A fresh random 16-byte IV per
+  `encrypt`, prepended to the ciphertext; 128-bit GCM tag. Output is `Base64(IV || ciphertext+tag)` as the
+  raw ciphertext inside the existing envelope. Same plaintext encrypts to different ciphertext each time
+  (semantic security); `decrypt` throws on a wrong key / tampered row / non-AES-GCM input rather than
+  returning garbage.
+* **Key from config, treated as a secret.** New property `failover.store.jdbc.encryption.key`
+  (Base64, decodes to a 16/24/32-byte AES key). When non-empty, an `AesGcmPayloadCipher` bean is
+  auto-registered (`@ConditionalOnExpression` on the key, `@ConditionalOnMissingBean`). An invalid key
+  fails startup fast. Docs mandate injecting it from a secret manager / KMS / env var, never committing it.
+* **Composes with the existing model.** Set `encryption.enabled=true` and `encryption.cipher=aesgcm` to
+  write `ENC(aesgcm:…)`; `b64` stays registered for reads. Rotation and mixed-cipher reads work exactly as
+  in ADR 56. No SPI change — `AesGcmPayloadCipher` is just another `PayloadCipher`.
+
+### Consequences
+
+* Real encryption-at-rest is now a config-only change (key + two flags) — no consumer crypto code — which
+  is the concrete remediation for PII-at-rest (A4) alongside field-level masking via `PayloadEnricher`.
+* The framework now holds a cryptographic primitive it must maintain (algorithm/parameter choices). The
+  choices are conservative and standard (AES-GCM, random IV, 128-bit tag) to minimise that burden.
+* Key management remains the operator's responsibility; losing the key strands existing `ENC(aesgcm:…)`
+  rows — acceptable because the store is a regenerable cache (only a cold start is lost).
+* `b64` remains the default cipher and is unchanged, so existing deployments are unaffected until they set
+  a key and select `aesgcm`.
+
+___

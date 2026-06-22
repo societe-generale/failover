@@ -111,16 +111,29 @@ failover:
     audit logging, encryption-at-rest, and retention than the system of record. The JDBC store writes
     it to a database; the in-memory/Caffeine stores hold it in process memory.
 
-The library does **not** mask, encrypt, or transform payloads — that is a deliberate non-goal (it
-stores exactly what it recovers). To handle sensitive referentials:
+By default the library stores exactly what it recovers (no transformation). To handle sensitive
+referentials, layer these controls:
 
-- **Encode/encrypt at the boundary.** Use a `PayloadEnricher` to encode (or encrypt) sensitive fields
-  on store and decode them on recover, so the store never holds plaintext at rest while callers still
-  get the real value back. See
+- **Encrypt the JDBC payload at rest (built-in).** Enable the built-in **AES-GCM** cipher so the
+  `PAYLOAD` column holds ciphertext, not readable JSON — no custom code, just a key:
+  ```yaml
+  failover:
+    store:
+      jdbc:
+        encryption:
+          enabled: true
+          cipher: aesgcm
+          key: ${FAILOVER_STORE_JDBC_ENCRYPTION_KEY}   # Base64 16/24/32 bytes, from a secret store
+  ```
+  See [Payload Encryption → AES-GCM](../how-to/payload-encryption.md#real-encryption-out-of-the-box-aes-gcm-recommended).
+  Note this protects the JDBC store at rest only; in-memory/Caffeine payloads stay in process memory.
+- **Mask fields at the boundary.** Use a `PayloadEnricher` to mask, tokenise, or drop sensitive fields
+  on store and restore them on recover — applies to every store type and lets you keep non-sensitive
+  fields readable. See
   [Custom Payload Enricher → encode/decode example](../how-to/custom-payload-enricher.md#example-encode-on-store-decode-on-recover).
-- **Constrain the TTL.** Keep `expiryDuration` as short as the use case allows so PII does not linger.
-- **Protect the JDBC store** with the same encryption-at-rest, access control, and retention policy as
-  any other PII datastore; ensure expiry cleanup actually runs (`failover.scheduler`).
+- **Constrain the TTL.** Keep `expiryDuration` as short as the use case allows so PII does not linger;
+  ensure expiry cleanup actually runs (`failover.scheduler`).
+- **Protect the JDBC store** with the same access control and retention policy as any other PII datastore.
 - **Prefer not failover-protecting** highly sensitive methods at all if a stale copy is unacceptable.
 
 ### JVM-fatal errors

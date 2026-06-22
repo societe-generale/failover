@@ -43,6 +43,7 @@ import com.societegenerale.failover.store.jdbc.resolver.PayloadColumnResolver;
 import com.societegenerale.failover.store.jdbc.resolver.VarcharPayloadColumnResolver;
 import com.societegenerale.failover.store.jdbc.serializer.JsonSerializer;
 import com.societegenerale.failover.store.jdbc.serializer.Serializer;
+import com.societegenerale.failover.store.jdbc.serializer.cipher.AesGcmPayloadCipher;
 import com.societegenerale.failover.store.jdbc.serializer.cipher.Base64PayloadCipher;
 import com.societegenerale.failover.store.jdbc.serializer.cipher.EncryptingSerializer;
 import com.societegenerale.failover.store.jdbc.serializer.cipher.PayloadCipher;
@@ -316,6 +317,22 @@ public class FailoverStoreAutoConfiguration {
         @ConditionalOnMissingBean(Base64PayloadCipher.class)
         public Base64PayloadCipher base64PayloadCipher() {
             return new Base64PayloadCipher();
+        }
+
+        /**
+         * Built-in {@link AesGcmPayloadCipher} (id {@code "aesgcm"}) — real payload-at-rest encryption
+         * (audit A4). Registered only when {@code failover.store.jdbc.encryption.key} is set (non-empty),
+         * and unless the application already declares its own {@code AesGcmPayloadCipher}. The key is
+         * Base64-decoded to a 16/24/32-byte AES key; an invalid key fails startup fast.
+         *
+         * <p>Set {@code failover.store.jdbc.encryption.cipher=aesgcm} (with {@code enabled=true}) to make
+         * new writes use it; reads of {@code ENC(aesgcm:...)} rows work whenever this bean is registered.
+         */
+        @Bean
+        @ConditionalOnMissingBean(AesGcmPayloadCipher.class)
+        @ConditionalOnExpression("'${failover.store.jdbc.encryption.key:}' != ''")
+        public AesGcmPayloadCipher aesGcmPayloadCipher(FailoverProperties failoverProperties) {
+            return AesGcmPayloadCipher.fromBase64(failoverProperties.getStore().getJdbc().getEncryption().getKey());
         }
 
         /**

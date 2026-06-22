@@ -93,9 +93,25 @@ public class Jdbc {
 
         /**
          * Id of the registered {@code PayloadCipher} to encrypt new writes with. Defaults to
-         * {@code "b64"} (the built-in Base64 encoder — encoding only, not real encryption). Declare a
-         * {@code PayloadCipher} bean with a real algorithm and set this to its id for actual protection.
+         * {@code "b64"} (the built-in Base64 encoder — encoding only, not real encryption). Set to
+         * {@code "aesgcm"} to use the built-in AES-GCM cipher (requires {@link #key}), or declare your
+         * own {@code PayloadCipher} bean and set this to its id.
          */
         private String cipher = "b64";
+
+        /**
+         * Base64-encoded AES key for the built-in {@code aesgcm} cipher (audit A4). Decodes to 16, 24,
+         * or 32 bytes (AES-128/192/256). When set, the framework auto-registers an
+         * {@code AesGcmPayloadCipher} (id {@code "aesgcm"}) for reads and writes.
+         *
+         * <p><b>This is a secret.</b> Never commit a real key to source or {@code application.yml}.
+         * Inject it from a secret manager / KMS / environment variable (e.g.
+         * {@code FAILOVER_STORE_JDBC_ENCRYPTION_KEY}). Generate one with, e.g.,
+         * {@code openssl rand -base64 32}.
+         *
+         * <p>Default empty: no AES-GCM cipher is registered (the {@code b64} encoder remains the only
+         * built-in cipher).
+         */
+        private String key = "";
     }
 }
