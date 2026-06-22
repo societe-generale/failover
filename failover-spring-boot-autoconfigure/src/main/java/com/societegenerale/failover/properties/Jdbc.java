@@ -47,9 +47,25 @@ public class Jdbc {
      * classes the scanner cannot infer (e.g. a slice type in a different package than its composite).
      *
      * <p>If both this list is empty <em>and</em> the scanner discovers no payload types, the restriction
-     * is disabled (allow-all) to preserve backward compatibility.
+     * is disabled (allow-all) to preserve backward compatibility — unless {@link #strictAllowlist} is
+     * enabled, in which case an empty allowlist denies all deserialization (fail-closed).
      */
     private List<String> allowedPayloadClasses = new ArrayList<>();
+
+    /**
+     * Hardening switch for the deserialization allowlist (audit A3, security).
+     *
+     * <p>When {@code false} (default, backward-compatible): an empty resolved allowlist disables the
+     * restriction (<b>allow-all / fail-open</b>) and only a {@code WARN} is logged.
+     *
+     * <p>When {@code true}: an empty resolved allowlist <b>denies all</b> payload deserialization
+     * (<b>fail-closed</b>) rather than loading arbitrary classes named in store data. Recommended for
+     * production: it removes the fail-open path so a misconfiguration (no {@code @Failover} types
+     * discovered and no configured entries) can never silently re-open the deserialization-gadget
+     * surface. The normal secure-by-default path is unaffected — scanner-derived and configured entries
+     * are still honoured exactly as before.
+     */
+    private boolean strictAllowlist = false;
 
     /**
      * Payload-at-rest encryption for the JDBC store. JDBC-only: other store types never persist a
@@ -77,9 +93,25 @@ public class Jdbc {
 
         /**
          * Id of the registered {@code PayloadCipher} to encrypt new writes with. Defaults to
-         * {@code "b64"} (the built-in Base64 encoder — encoding only, not real encryption). Declare a
-         * {@code PayloadCipher} bean with a real algorithm and set this to its id for actual protection.
+         * {@code "b64"} (the built-in Base64 encoder — encoding only, not real encryption). Set to
+         * {@code "aesgcm"} to use the built-in AES-GCM cipher (requires {@link #key}), or declare your
+         * own {@code PayloadCipher} bean and set this to its id.
          */
         private String cipher = "b64";
+
+        /**
+         * Base64-encoded AES key for the built-in {@code aesgcm} cipher (audit A4). Decodes to 16, 24,
+         * or 32 bytes (AES-128/192/256). When set, the framework auto-registers an
+         * {@code AesGcmPayloadCipher} (id {@code "aesgcm"}) for reads and writes.
+         *
+         * <p><b>This is a secret.</b> Never commit a real key to source or {@code application.yml}.
+         * Inject it from a secret manager / KMS / environment variable (e.g.
+         * {@code FAILOVER_STORE_JDBC_ENCRYPTION_KEY}). Generate one with, e.g.,
+         * {@code openssl rand -base64 32}.
+         *
+         * <p>Default empty: no AES-GCM cipher is registered (the {@code b64} encoder remains the only
+         * built-in cipher).
+         */
+        private String key = "";
     }
 }

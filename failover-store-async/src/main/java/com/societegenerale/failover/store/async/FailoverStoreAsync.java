@@ -31,6 +31,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import static com.societegenerale.failover.core.util.CommonsUtil.canonicalTypeOf;
+
 /**
  * {@link FailoverStore} decorator that offloads write operations ({@link #store},
  * {@link #delete}, {@link #cleanByExpiry}) to a {@link TaskExecutor}, keeping the calling
@@ -106,7 +108,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
      */
     @Override
     public void store(ReferentialPayload<T> referentialPayload) {
-        executor.execute(() -> {
+        submit("store", referentialPayload.getName(), () -> {
             try {
                 log.info("Failover Store : Async call for storing information on '{}' for failover. ReferentialPayload : {{}}",
                         referentialPayload.getName(), referentialPayload);
@@ -125,7 +127,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
      */
     @Override
     public void delete(ReferentialPayload<T> referentialPayload) {
-        executor.execute(() -> {
+        submit("delete", referentialPayload.getName(), () -> {
             try {
                 log.info("Failover Store : Async call for deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}",
                         referentialPayload.getName(), referentialPayload);
@@ -165,7 +167,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
      */
     @Override
     public void cleanByExpiry(Instant expiry) {
-        executor.execute(() -> {
+        submit("cleanByExpiry", "", () -> {
             try {
                 log.info("Failover Store : Async call for clean the expired payload by the given expiry '{}'", expiry);
                 failoverStore.cleanByExpiry(expiry);
@@ -174,6 +176,32 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
                 emitFailure("cleanByExpiry", "", e);
             }
         });
+    }
+
+    /**
+     * Submits a write task to the executor, capturing <em>submit-time</em> rejection so executor
+     * saturation is observable, not silent (audit A2).
+     *
+     * <p>A bounded executor at its concurrency limit (rejection policy {@code ABORT}), or any executor
+     * that refuses a task, throws from {@link TaskExecutor#execute} on the <b>calling thread</b> — before
+     * the task ever runs, so the in-task {@code catch} in the write methods cannot see it. Without this
+     * guard that throw would propagate out and be swallowed by the caller's generic failover-error
+     * handler, dropping the write with no metric. Here it is logged and reported through the same
+     * {@code failover.store.async.failed} meter (with {@code exception-type=RejectedExecutionException}),
+     * then swallowed — a dropped cache write must never break the business call.
+     *
+     * @param operation the write operation name, used as the metric's {@code async-operation} tag
+     * @param name      the referential name (may be empty for {@code cleanByExpiry})
+     * @param task      the write task to run on the executor
+     */
+    private void submit(String operation, String name, Runnable task) {
+        try {
+            executor.execute(task);
+        } catch (RuntimeException rejected) {
+            log.error("Failover Store : Async '{}' rejected at submit time for '{}' (executor saturated or shutting down). "
+                    + "Failover data not persisted. Cause: {}", operation, name, rejected.getMessage(), rejected);
+            emitFailure(operation, name, rejected);
+        }
     }
 
     /** Forwards the live entry count to the delegate when it is size-aware; a synchronous read (no executor). */
@@ -201,9 +229,9 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
             observablePublisher.publish(Metrics.of(name)
                     .collect("action", ASYNC_FAILED_ACTION)
                     .collect("async-operation", operation)
-                    .collect("exception-type", cause.getClass().getCanonicalName()));
+                    .collect("exception-type", canonicalTypeOf(cause)));
         } catch (Exception publishError) {
-            log.debug("Failover Store : failed to publish async-failure metric for operation '{}'. Cause: {}", operation, publishError.getMessage());
+            log.debug("Failover Store : failed to publish async-failure metric for operation '{}'. Cause: {}", operation, publishError.getMessage(), publishError);
         }
     }
 }

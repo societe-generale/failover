@@ -220,6 +220,11 @@ class FailoverStoreAsyncTest {
 
         private FailoverStoreAsync<String> failoverStoreAsyncWithPublisher;
 
+        /** Executor that rejects every submission, as a bounded executor does at its concurrency limit (ABORT). */
+        private final TaskExecutor rejectingExecutor = task -> {
+            throw new java.util.concurrent.RejectedExecutionException("saturated");
+        };
+
         @BeforeEach
         void setUp() {
             failoverStoreAsyncWithPublisher = new FailoverStoreAsync<>(failoverStore, SYNC_EXECUTOR, observablePublisher);
@@ -282,6 +287,69 @@ class FailoverStoreAsyncTest {
             doThrow(new RuntimeException("publisher down")).when(observablePublisher).publish(org.mockito.ArgumentMatchers.any());
             assertThatNoException().isThrownBy(() -> failoverStoreAsyncWithPublisher.store(referentialPayload));
         }
+
+        // ── Submit-time rejection (executor saturation / shutdown) — audit A2 ──────────────
+
+        @Test
+        @DisplayName("store() rejected at submit time publishes a store-async-failed metric with the rejection exception type")
+        void storeRejectionPublishesMetric() {
+            given(referentialPayload.getName()).willReturn("country");
+            var async = new FailoverStoreAsync<>(failoverStore, rejectingExecutor, observablePublisher);
+
+            async.store(referentialPayload);
+
+            ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+            verify(observablePublisher).publish(captor.capture());
+            Map<String, String> info = captor.getValue().getInfo();
+            assertThat(info).containsEntry("failover-action", "store-async-failed");
+            assertThat(info).containsEntry("failover-async-operation", "store");
+            assertThat(info).containsEntry("failover-name", "country");
+            assertThat(info).containsEntry("failover-exception-type", "java.util.concurrent.RejectedExecutionException");
+            // delegate was never reached — the task did not run
+            verifyNoInteractions(failoverStore);
+        }
+
+        @Test
+        @DisplayName("delete() rejected at submit time publishes a store-async-failed metric for the delete operation")
+        void deleteRejectionPublishesMetric() {
+            given(referentialPayload.getName()).willReturn("country");
+            var async = new FailoverStoreAsync<>(failoverStore, rejectingExecutor, observablePublisher);
+
+            async.delete(referentialPayload);
+
+            ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+            verify(observablePublisher).publish(captor.capture());
+            assertThat(captor.getValue().getInfo()).containsEntry("failover-async-operation", "delete");
+        }
+
+        @Test
+        @DisplayName("cleanByExpiry() rejected at submit time publishes a store-async-failed metric for the cleanByExpiry operation")
+        void cleanByExpiryRejectionPublishesMetric() {
+            var async = new FailoverStoreAsync<>(failoverStore, rejectingExecutor, observablePublisher);
+
+            async.cleanByExpiry(Instant.now());
+
+            ArgumentCaptor<Metrics> captor = ArgumentCaptor.forClass(Metrics.class);
+            verify(observablePublisher).publish(captor.capture());
+            assertThat(captor.getValue().getInfo()).containsEntry("failover-async-operation", "cleanByExpiry");
+        }
+
+        @Test
+        @DisplayName("submit-time rejection is swallowed — the business call is never broken")
+        void rejectionIsSwallowed() {
+            var async = new FailoverStoreAsync<>(failoverStore, rejectingExecutor, observablePublisher);
+            assertThatNoException().isThrownBy(() -> async.store(referentialPayload));
+        }
+    }
+
+    @Test
+    @DisplayName("submit-time rejection is swallowed even without a publisher configured")
+    void rejectionSwallowedWithoutPublisher() {
+        TaskExecutor rejectingExecutor = task -> {
+            throw new java.util.concurrent.RejectedExecutionException("saturated");
+        };
+        FailoverStoreAsync<String> async = new FailoverStoreAsync<>(failoverStore, rejectingExecutor);
+        assertThatNoException().isThrownBy(() -> async.store(referentialPayload));
     }
 
     /**
