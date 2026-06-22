@@ -82,7 +82,7 @@ sum by (name, method) (rate(failover_recovery_outcome_total[5m]))
 
 When `failover.store.async=true` (the default), store writes run on a background executor and any
 failure there is swallowed so it never breaks the business call. To keep a silently-degraded store
-layer visible, `FailoverStoreAsync` emits a dedicated counter on each executor-side failure:
+layer visible, `FailoverStoreAsync` emits a dedicated counter on every dropped write:
 
 | Counter | Tag | Values |
 |---|---|---|
@@ -90,12 +90,26 @@ layer visible, `FailoverStoreAsync` emits a dedicated counter on each executor-s
 | | `operation` | `store`, `delete`, `cleanByExpiry` |
 | | `exception_type` | The failure's class name |
 
-Alert on any increase — it means failover data is not being persisted (e.g. DB down, connection
-pool exhausted):
+This counter covers **both** ways an async write can be lost:
+
+- **In-flight failure** — the task ran but the delegate store threw (e.g. DB down, connection pool
+  exhausted). `exception_type` is the store's exception.
+- **Submit-time rejection** — the task was never accepted because the executor was saturated or
+  shutting down. With a bounded executor (`failover.store.async-executor.concurrency-limit > 0`,
+  rejection policy `ABORT`) `exception_type` is `java.util.concurrent.RejectedExecutionException`.
+  This closes the gap where a saturated executor would otherwise drop writes with no metric.
+
+Alert on any increase — it means failover data is not being persisted:
 
 ```
 increase(failover_store_async_failed_total[5m]) > 0
 ```
+
+!!! note "`DISCARD` rejection policy"
+    The `DISCARD` rejection policy intentionally drops the task and logs a `WARN` **without**
+    incrementing this counter — discarding is the configured behaviour, not a failure. If you need
+    every dropped write counted as an alertable signal, use the `ABORT` policy (the rejection is then
+    metered as above) rather than `DISCARD`.
 
 ### Prometheus Scrape Example
 
