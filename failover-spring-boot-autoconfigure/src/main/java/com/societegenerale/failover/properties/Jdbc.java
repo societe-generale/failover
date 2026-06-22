@@ -47,9 +47,25 @@ public class Jdbc {
      * classes the scanner cannot infer (e.g. a slice type in a different package than its composite).
      *
      * <p>If both this list is empty <em>and</em> the scanner discovers no payload types, the restriction
-     * is disabled (allow-all) to preserve backward compatibility.
+     * is disabled (allow-all) to preserve backward compatibility — unless {@link #strictAllowlist} is
+     * enabled, in which case an empty allowlist denies all deserialization (fail-closed).
      */
     private List<String> allowedPayloadClasses = new ArrayList<>();
+
+    /**
+     * Hardening switch for the deserialization allowlist (audit A3, security).
+     *
+     * <p>When {@code false} (default, backward-compatible): an empty resolved allowlist disables the
+     * restriction (<b>allow-all / fail-open</b>) and only a {@code WARN} is logged.
+     *
+     * <p>When {@code true}: an empty resolved allowlist <b>denies all</b> payload deserialization
+     * (<b>fail-closed</b>) rather than loading arbitrary classes named in store data. Recommended for
+     * production: it removes the fail-open path so a misconfiguration (no {@code @Failover} types
+     * discovered and no configured entries) can never silently re-open the deserialization-gadget
+     * surface. The normal secure-by-default path is unaffected — scanner-derived and configured entries
+     * are still honoured exactly as before.
+     */
+    private boolean strictAllowlist = false;
 
     /**
      * Payload-at-rest encryption for the JDBC store. JDBC-only: other store types never persist a

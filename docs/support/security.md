@@ -57,10 +57,21 @@ failover:
       allowed-payload-classes:
         - com.acme.referential          # package prefix
         - com.acme.special.Currency     # exact class
+      strict-allowlist: true            # recommended for production — see below
 ```
 
 The restriction is disabled (allow-all) only when no payload types are discovered **and** the
 property is empty.
+
+!!! danger "Fail-open vs. fail-closed (`strict-allowlist`)"
+    By default, an empty resolved allowlist **disables** the restriction (allow-all / fail-open) and
+    logs a `WARN`. This preserves backward compatibility but means a misconfiguration — no `@Failover`
+    types discovered and no configured entries — silently re-opens the deserialization-gadget surface.
+
+    Set `failover.store.jdbc.strict-allowlist: true` to **fail closed**: an empty allowlist then
+    **denies all** deserialization (logged at `ERROR`) rather than loading arbitrary classes named in
+    store data. The normal secure-by-default path is unaffected — scanner-derived and configured
+    entries are honoured exactly as before. **Recommended for production.**
 
 **Derivation algorithm (and its limit).** The allowlist is built from the **packages** of the payload
 types the scanner finds on `@Failover` methods (return type + collection/array element type), minus
