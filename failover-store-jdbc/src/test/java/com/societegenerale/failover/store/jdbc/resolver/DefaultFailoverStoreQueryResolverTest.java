@@ -181,6 +181,15 @@ class DefaultFailoverStoreQueryResolverTest {
         }
 
         @Test
+        @DisplayName("countByNameQuery is a COUNT(*) filtered by FAILOVER_NAME")
+        void countByNameQueryCountsByName() {
+            assertThat(defaultResolver().getCountByNameQuery())
+                    .contains("SELECT COUNT(*)")
+                    .contains("FROM " + TABLE_PREFIX + "FAILOVER_STORE")
+                    .contains("WHERE FAILOVER_NAME = ?");
+        }
+
+        @Test
         @DisplayName("H2 mergeQuery uses MERGE INTO ... KEY(...) syntax")
         void h2MergeQueryKeyClause() {
             assertThat(resolver(TABLE_PREFIX, "H2").getMergeQuery())
