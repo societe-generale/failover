@@ -3089,3 +3089,42 @@ concrete-class CGLIB rules apply only to concrete-class beans.
   (the concrete method carries the annotation, so no warning fires).
 
 ___
+
+## ADR 64 — Startup Warning for `recoverAll` Without a `payloadSplitter`
+
+**Date : 25-JUN-2026**
+
+### Status
+
+Accepted (audit A10)
+
+### Context
+
+Scatter/gather recover-all (`@Failover(recoverAll=true)`, or a no-arg method) recovers the whole
+referential by slicing and merging it through a `PayloadSplitter`. The scatter path in
+`ScatterGatherFailoverHandler` is only entered when `payloadSplitter` is non-empty; otherwise `recover`
+delegates to the single-key handler. So `recoverAll=true` **without** a `payloadSplitter` is silently
+ignored — recover-all never runs and the call quietly falls back to single-key recover, with no error.
+(A `payloadSplitter` naming a missing bean already fails loudly at runtime via
+`PayloadSplitterNotFoundException`; only the missing-splitter-with-recoverAll combination was silent.)
+Scatter/gather is also the most complex feature, so it is easy to half-configure.
+
+### Decision
+
+Add a startup validation to `SpringContextFailoverScanner`: when a discovered `@Failover` has
+`recoverAll=true` and a blank `payloadSplitter`, log a `WARN` naming the failover and method, stating that
+recover-all will not run and the call falls back to single-key recover, with the fix (set a
+`payloadSplitter` or remove `recoverAll`). This complements ADR 63 (placement warnings) — same scanner,
+same boot-time-diagnostic philosophy. Documentation additionally states the adoption guidance (default to
+single-key; only adopt scatter/gather for genuine per-entity slicing) and that `recoverAll` requires a
+`payloadSplitter`.
+
+### Consequences
+
+* A half-configured recover-all is visible at boot instead of manifesting as a silent single-key recover
+  during an incident — no new dependency or configuration, behaviour otherwise unchanged.
+* The check is intentionally narrow (the one statically-detectable, silent misconfiguration). A
+  `payloadSplitter` naming a non-existent bean is left to the existing loud runtime exception; partial
+  recovery and other scatter semantics remain runtime concerns covered by metrics and docs.
+
+___

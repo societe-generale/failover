@@ -94,6 +94,7 @@ public class SpringContextFailoverScanner
                                 .formatted(annotation.name()));
                     }
                     warnIfNotAdvisable(userClass, method, annotation);
+                    warnIfInvalidScatterConfig(userClass, method, annotation);
                     collectPayloadType(method, discoveredPayloadTypes);
                 },
                 method -> !method.isBridge() && !method.isSynthetic()
@@ -202,6 +203,26 @@ public class SpringContextFailoverScanner
             log.warn("Failover '{}' on {}#{} will NOT be applied — the method cannot be intercepted by the Spring AOP proxy: {}. "
                     + "The annotation has no effect until fixed.",
                     annotation.name(), userClass.getSimpleName(), method.getName(), String.join("; ", reasons));
+        }
+    }
+
+    /**
+     * Warns at startup when a {@code @Failover} sets {@code recoverAll=true} but configures no
+     * {@code payloadSplitter} (audit A10). Recover-all relies on a {@link com.societegenerale.failover.core.payload.splitter.PayloadSplitter}
+     * to slice and merge the whole referential; without one the scatter path is never entered, so the
+     * flag is silently ignored and the call falls back to single-key recover. Surfacing it at boot avoids
+     * a feature that looks enabled but does nothing.
+     *
+     * @param userClass  the concrete bean class (used only for the message)
+     * @param method     the annotated method (used only for the message)
+     * @param annotation the discovered annotation
+     */
+    private void warnIfInvalidScatterConfig(Class<?> userClass, Method method, Failover annotation) {
+        if (annotation.recoverAll() && annotation.payloadSplitter().isBlank()) {
+            log.warn("Failover '{}' on {}#{} sets recoverAll=true but no payloadSplitter — recover-all needs a "
+                    + "PayloadSplitter to slice/merge the referential. Recover-all will NOT run; the call falls back "
+                    + "to single-key recover. Set @Failover(payloadSplitter=\"...\") or remove recoverAll.",
+                    annotation.name(), userClass.getSimpleName(), method.getName());
         }
     }
 

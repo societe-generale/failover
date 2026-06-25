@@ -300,6 +300,64 @@ class SpringContextFailoverScannerTest {
         }
     }
 
+    // ── Scatter/gather config warnings (audit A10) ──────────────────────────────
+
+    @org.junit.jupiter.api.Nested
+    @DisplayName("warns on invalid scatter/gather config")
+    class ScatterConfigWarnings {
+
+        private ch.qos.logback.classic.Logger logger;
+        private ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender;
+
+        @BeforeEach
+        void attach() {
+            logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(SpringContextFailoverScanner.class);
+            appender = new ch.qos.logback.core.read.ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+        }
+
+        @org.junit.jupiter.api.AfterEach
+        void detach() {
+            logger.detachAppender(appender);
+        }
+
+        private List<String> warnings() {
+            return appender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                    .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                    .toList();
+        }
+
+        private void scan(Class<?> type) {
+            when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[]{"bean"});
+            doReturn(type).when(applicationContext).getType("bean");
+            scanner.afterSingletonsInstantiated();
+        }
+
+        @Test
+        @DisplayName("recoverAll=true without a payloadSplitter warns")
+        void recoverAllWithoutSplitterWarns() {
+            scan(RecoverAllNoSplitter.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m)
+                    .contains("ra-no-splitter").contains("recoverAll=true").contains("no payloadSplitter"));
+        }
+
+        @Test
+        @DisplayName("recoverAll=true WITH a payloadSplitter does not warn")
+        void recoverAllWithSplitterDoesNotWarn() {
+            scan(RecoverAllWithSplitter.class);
+            assertThat(warnings()).noneMatch(m -> m.contains("recoverAll=true"));
+        }
+
+        @Test
+        @DisplayName("recoverAll=false (default) without a payloadSplitter does not warn")
+        void noRecoverAllDoesNotWarn() {
+            scan(ConcreteReferential.class);
+            assertThat(warnings()).noneMatch(m -> m.contains("recoverAll=true"));
+        }
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     static class ConcreteReferential {
@@ -379,10 +437,20 @@ class SpringContextFailoverScannerTest {
         public static final String findStaticFinal() { return null; }
     }
 
+    static class RecoverAllNoSplitter {
+        @Failover(name = "ra-no-splitter", recoverAll = true)
+        public List<String> findAll() { return null; }
+    }
+
+    static class RecoverAllWithSplitter {
+        @Failover(name = "ra-with-splitter", recoverAll = true, payloadSplitter = "someSplitter")
+        public List<String> findAll() { return null; }
+    }
+
     /** Collection with two type parameters — exercises the {@code args.length == 1} guard. */
     interface BiCollection<A, B> extends Collection<A> { }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({"rawtypes"})
     static class EdgeReturns {
         @Failover(name = "boxed-void")
         public Void boxedVoid() { return null; }                    // returnType == Void.class
