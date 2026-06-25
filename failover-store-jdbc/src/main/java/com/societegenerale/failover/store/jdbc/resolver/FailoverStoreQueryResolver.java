@@ -53,6 +53,9 @@ public interface FailoverStoreQueryResolver {
     /** @return the DELETE SQL that removes all rows with {@code EXPIRE_ON} before a given timestamp */
     String getCleanUpQuery();
 
+    /** @return the {@code SELECT COUNT(*)} SQL counting all rows for a given {@code FAILOVER_NAME} (capacity gauge) */
+    String getCountByNameQuery();
+
     /**
      * Native merge/upsert query for the detected database dialect, or {@code null} when no
      * known dialect is available — the store falls back to INSERT + UPDATE on duplicate in that case.

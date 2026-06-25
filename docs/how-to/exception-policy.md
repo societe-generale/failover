@@ -40,6 +40,17 @@ failover:
   exception-policy: never_throw
 ```
 
+!!! warning "`never_throw` masks outages — alert on metrics"
+    Because the upstream exception is suppressed, the caller cannot tell an outage occurred from the
+    return value. The failover **metrics still fire regardless of policy**, so they are the signal to
+    monitor. Alert on:
+
+    - `failover.recovery.outcome.total{outcome="not_recovered"}` — upstream failed and nothing could be recovered, and
+    - `failover.user.impact.total{impact="blocked"}` — the user got no value.
+
+    The framework also logs a `WARN` at startup when `never_throw` is active. See
+    [Observability](observability.md).
+
 !!! tip "Combine with RecoveredPayloadHandler"
     Pair `never_throw` with a `RecoveredPayloadHandler` to return an empty list, a default object, or any safe fallback instead of `null`. See [Recovered Payload Handler](recovered-payload-handler.md).
 
