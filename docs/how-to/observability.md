@@ -40,6 +40,21 @@ Requires `micrometer-core` and `spring-boot-starter-actuator` on the classpath (
 - `failover.recover.total` — one increment per recover attempt (one per intercepted method call).
 - `failover.recovery.outcome.total` — the per-method failover / recovery / non-recovery rates (below).
 
+### Gauges (configuration & capacity)
+
+`FailoverMeterBinder` registers these gauges:
+
+| Gauge | Tags | Meaning |
+|---|---|---|
+| `failover.registered.total` | — | Number of `@Failover`-annotated methods discovered. |
+| `failover.config.expiry.seconds` | `name`, `domain`, `unit` | Configured expiry per failover. |
+| `failover.live.entries` | `name`, `domain` | Current stored entry count per failover (cache footprint / capacity). |
+
+`failover.live.entries` is registered only when the store can report its size: always for in-memory /
+Caffeine, and for **JDBC only when opted in** with `failover.store.jdbc.live-entries-gauge-enabled=true`
+(it issues a `SELECT COUNT(*)` per scrape; audit A7). Use it to monitor table growth and alert on
+capacity. Not available in multi-tenant mode.
+
 ### Failover / Recovery / Non-recovery Rate (per method)
 
 `failover.recovery.outcome.total` is a single counter, recorded **once per intercepted method call**
