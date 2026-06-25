@@ -570,7 +570,10 @@ public class FailoverAutoConfiguration {
         @ConditionalOnMissingBean
         @Bean
         public MethodExceptionPolicy neverRethrowMethodExceptionPolicy() {
-            log.warn("MethodExceptionPolicy configured to NeverRethrowMethodExceptionPolicy. Available options are : {{}}", (Object) ExceptionPolicy.values());
+            log.warn("MethodExceptionPolicy configured to NeverRethrowMethodExceptionPolicy (failover.exception-policy=never_throw). "
+                    + "Upstream failures are SUPPRESSED from callers — on no recovery the caller receives null (or the RecoveredPayloadHandler "
+                    + "fallback), never the exception. This MASKS outages: monitor failover.recovery.outcome.total{outcome=not_recovered} and "
+                    + "failover.user.impact.total{impact=blocked} to detect them. Available options are : {}.", (Object) ExceptionPolicy.values());
             return new NeverRethrowMethodExceptionPolicy();
         }
 

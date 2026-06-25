@@ -79,6 +79,7 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     private static final String SELECT_ALL_BY_NAME_SQL  = "SELECT FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ?";
     private static final String DELETE_SQL              = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ? AND FAILOVER_KEY = ?";
     private static final String CLEAN_UP_SQL = "DELETE FROM " + PREFIX + "FAILOVER_STORE WHERE EXPIRE_ON < ?";
+    private static final String COUNT_BY_NAME_SQL = "SELECT COUNT(*) FROM " + PREFIX + "FAILOVER_STORE WHERE FAILOVER_NAME = ?";
 
     /** H2 native MERGE. Params: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS */
     private static final String MERGE_SQL_H2 = "MERGE INTO " + PREFIX + "FAILOVER_STORE (FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS) KEY (FAILOVER_NAME, FAILOVER_KEY) VALUES (?, ?, ?, ?, ?, ?)";
@@ -102,6 +103,7 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
     @Getter private final String selectAllByNameQuery;
     @Getter private final String deleteQuery;
     @Getter private final String cleanUpQuery;
+    @Getter private final String countByNameQuery;
 
     /**
      * Native merge/upsert query resolved for the detected database, or {@code null} when
@@ -142,6 +144,7 @@ public class DefaultFailoverStoreQueryResolver implements FailoverStoreQueryReso
         this.selectAllByNameQuery  = applyPrefix(SELECT_ALL_BY_NAME_SQL, tablePrefix);
         this.deleteQuery           = applyPrefix(DELETE_SQL,             tablePrefix);
         this.cleanUpQuery          = applyPrefix(CLEAN_UP_SQL,           tablePrefix);
+        this.countByNameQuery      = applyPrefix(COUNT_BY_NAME_SQL,      tablePrefix);
         this.mergeQuery            = resolveMergeQuery(tablePrefix, databaseResolver.resolve());
     }
 
