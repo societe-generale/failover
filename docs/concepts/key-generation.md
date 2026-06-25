@@ -30,9 +30,10 @@ Only **Layer 1** is user-controlled. Layers 2 and 3 are applied automatically by
 |---|---|
 | No arguments | `NO-ARG` |
 | `String`, `Number`, `Boolean`, primitive | `String.valueOf(arg)` |
-| `Collection` | elements joined by `,` |
+| `Collection` | elements joined by `,` (in iteration order) |
 | Array | elements joined by `,` |
-| Any other type | `ClassName@hexHashCode` *(warning logged)* |
+| Type that **overrides `toString()`** (record, enum, value object) | its `toString()` — deterministic, stable across JVM restarts |
+| Any other type (**identity `toString()`**) | `ClassName@hexHashCode` *(warning logged once per type)* |
 
 Multiple arguments are joined with `:`.
 
@@ -46,7 +47,10 @@ Multiple arguments are joined with `:`.
 | `findAll()` (no args) | `NO-ARG` |
 
 !!! warning "Complex object arguments"
-    If a method argument is a custom object (not a String/Number/Collection), `DefaultKeyGenerator` falls back to `ClassName@hashCode`. This is unstable unless `hashCode()` is deterministic. Use a custom `KeyGenerator` for complex argument types.
+    If a method argument is a custom object that does **not** override `toString()`, `DefaultKeyGenerator`
+    falls back to `ClassName@hashCode` — unstable across JVM restarts, so a persistent-store lookup will
+    miss. A `WARN` is logged (**once per type**, to avoid flooding the hot path). Give the type a real
+    `toString()`/`equals()`/`hashCode()` (a record or value object), or configure a custom `KeyGenerator`.
 
 ---
 
@@ -115,7 +119,21 @@ The custom generator completely replaces `DefaultKeyGenerator` — there is no p
 
 ## Key Stability Requirement
 
-The same arguments must produce the same key at both store time and recover time. If your method args are mutable, order-dependent, or contain non-deterministic components (e.g. timestamps), normalise them in your custom key generator.
+The same arguments must produce the same key at both store time and recover time, on every instance and
+across restarts. Watch for these pitfalls and normalise in a custom `KeyGenerator` where needed:
+
+- **Identity `toString()`/`hashCode()`** — a custom arg type without a real `toString()` keys on its
+  identity hash, which differs every run. Use a record/value object, or a custom generator. (The default
+  generator warns once per such type.)
+- **Unordered collections** — a `Set` (or any collection with non-deterministic iteration order) joins its
+  elements in iteration order, so the same logical content can yield different keys across runs/instances.
+  Pass an ordered collection, or sort in a custom generator.
+- **Non-deterministic components** — timestamps, request IDs, mutable fields: strip them from the key.
+- **Collisions** — args that don't uniquely identify the entity will share a store entry and recover each
+  other's data. Ensure the key derives from a complete business identifier.
+
+Two `@Failover` annotations sharing a `domain` must also derive **compatible** keys for the same entity, so
+a single-entity endpoint and a list endpoint can recover each other's stored slices.
 
 ---
 
