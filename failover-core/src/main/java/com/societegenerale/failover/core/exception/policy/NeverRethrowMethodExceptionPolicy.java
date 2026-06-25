@@ -19,21 +19,29 @@ package com.societegenerale.failover.core.exception.policy;
 import com.societegenerale.failover.core.exception.MethodExceptionContext;
 
 /**
- * {@link MethodExceptionPolicy} that serves recovered data when available, and cascades
- * the original exception only when there is nothing to recover.
+ * {@link MethodExceptionPolicy} that <b>never</b> rethrows: it always returns the recovered result,
+ * suppressing the original exception in every case.
  *
  * <p>Decision logic:
  * <ul>
  *   <li>If {@code recoveredResult} is non-null — return it; the caller is served stale data
  *       transparently and the failure is hidden.</li>
  *   <li>If {@code recoveredResult} is {@code null} (store miss, expiry, or store failure) —
- *       rethrow the original exception so the caller can react to the outage explicitly.</li>
+ *       return {@code null} (or the {@code RecoveredPayloadHandler} fallback) <b>without</b>
+ *       rethrowing. The caller cannot tell an outage occurred from the return value alone.</li>
  * </ul>
  *
- * <p>This is the "best-effort" policy: prefer stale data, but be honest when even that is
- * unavailable.
+ * <p>This is the most lenient policy: callers are never interrupted, at the cost of <b>masking
+ * upstream outages</b> from the caller. Because the failure is invisible to the caller, the outage
+ * must be observed through metrics — the recover event still fires regardless of policy, so
+ * {@code failover.recovery.outcome.total} (outcome {@code not_recovered}) and
+ * {@code failover.user.impact.total} (impact {@code blocked}) remain the signal to alert on.
+ *
+ * <p>Contrast {@link RethrowIfNoRecoveryMethodExceptionPolicy}, the default, which rethrows when there
+ * is nothing to recover so the outage surfaces to the caller.
  *
  * @author Anand Manissery
+ * @see RethrowIfNoRecoveryMethodExceptionPolicy
  */
 public class NeverRethrowMethodExceptionPolicy implements MethodExceptionPolicy {
 

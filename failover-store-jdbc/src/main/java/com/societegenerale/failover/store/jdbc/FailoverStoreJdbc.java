@@ -19,6 +19,7 @@ package com.societegenerale.failover.store.jdbc;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.core.store.FailoverStoreException;
+import com.societegenerale.failover.core.store.FailoverStoreSizeAware;
 import com.societegenerale.failover.store.jdbc.resolver.FailoverStoreQueryResolver;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @see FailoverStore
  */
 @Slf4j
-public class FailoverStoreJdbc<T> implements FailoverStore<T> {
+public class FailoverStoreJdbc<T> implements FailoverStore<T>, FailoverStoreSizeAware {
 
     /** Max INSERT→UPDATE attempts before a write is abandoned (1 initial + 1 bounded retry). */
     private static final int MAX_INSERT_OR_UPDATE_ATTEMPTS = 2;
@@ -64,6 +65,13 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
 
     private final RowMapper<ReferentialPayload<T>> rowMapper;
 
+    /**
+     * Whether the {@code failover.live.entries} gauge is enabled for this JDBC store. Opt-in
+     * (default {@code false}) because it issues a {@code SELECT COUNT(*)} per scrape, which can be
+     * costly on a large table (audit A7).
+     */
+    private final boolean liveEntryCountEnabled;
+
     /** Merge/upsert SQL resolved once at construction; {@code null} when no dialect is available. */
     @Getter
     private final String mergeQuery;
@@ -72,16 +80,30 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     private final AtomicBoolean mergeEnabled;
 
     /**
-     * Constructs the store and resolves the merge query at construction time.
+     * Constructs the store with the live-entries gauge disabled.
      *
      * @param jdbcTemplate               the JDBC template used for all SQL operations
      * @param failoverStoreQueryResolver provides SQL strings, parameter arrays, and type arrays
      * @param rowMapper                  maps {@code FAILOVER_STORE} rows to {@link ReferentialPayload}
      */
     public FailoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver, RowMapper<ReferentialPayload<T>> rowMapper) {
+        this(jdbcTemplate, failoverStoreQueryResolver, rowMapper, false);
+    }
+
+    /**
+     * Constructs the store and resolves the merge query at construction time.
+     *
+     * @param jdbcTemplate               the JDBC template used for all SQL operations
+     * @param failoverStoreQueryResolver provides SQL strings, parameter arrays, and type arrays
+     * @param rowMapper                  maps {@code FAILOVER_STORE} rows to {@link ReferentialPayload}
+     * @param liveEntryCountEnabled      {@code true} to support the {@code failover.live.entries} gauge via a
+     *                                   {@code SELECT COUNT(*)} per scrape (opt-in; see audit A7)
+     */
+    public FailoverStoreJdbc(JdbcTemplate jdbcTemplate, FailoverStoreQueryResolver failoverStoreQueryResolver, RowMapper<ReferentialPayload<T>> rowMapper, boolean liveEntryCountEnabled) {
         this.jdbcTemplate  = jdbcTemplate;
         this.queryResolver = failoverStoreQueryResolver;
         this.rowMapper = rowMapper;
+        this.liveEntryCountEnabled = liveEntryCountEnabled;
         this.mergeQuery = queryResolver.getMergeQuery();
         this.mergeEnabled  = new AtomicBoolean(this.mergeQuery != null);
     }
@@ -203,5 +225,25 @@ public class FailoverStoreJdbc<T> implements FailoverStore<T> {
     public void cleanByExpiry(Instant expiry) {
         var count = jdbcTemplate.update(queryResolver.getCleanUpQuery(), Timestamp.from(expiry));
         log.debug("Referential payload cleaned up by given expiry : '{}' . No of record deleted : '{}'", expiry, count);
+    }
+
+    /**
+     * Counts the rows currently stored for the given referential {@code name} via {@code SELECT COUNT(*)}.
+     * Backs the {@code failover.live.entries} gauge for capacity monitoring (audit A7). Only invoked when
+     * {@link #liveEntryCountSupported()} is {@code true}.
+     *
+     * @param name the referential name
+     * @return the row count for that name (0 when none)
+     */
+    @Override
+    public long liveEntryCount(String name) {
+        Long count = jdbcTemplate.queryForObject(queryResolver.getCountByNameQuery(), Long.class, name);
+        return count == null ? 0L : count;
+    }
+
+    /** Live counting is supported only when explicitly enabled (opt-in COUNT(*) per scrape — see audit A7). */
+    @Override
+    public boolean liveEntryCountSupported() {
+        return liveEntryCountEnabled;
     }
 }
