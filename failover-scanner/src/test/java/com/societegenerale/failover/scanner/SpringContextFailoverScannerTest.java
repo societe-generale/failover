@@ -185,6 +185,121 @@ class SpringContextFailoverScannerTest {
                 .contains("boxed-void", "raw-collection", "nested-generic", "bi-collection", "domained");
     }
 
+    // ── Advisability warnings (audit A8) ────────────────────────────────────────
+
+    @org.junit.jupiter.api.Nested
+    @DisplayName("warns when @Failover cannot be advised by the proxy")
+    class AdvisabilityWarnings {
+
+        private ch.qos.logback.classic.Logger logger;
+        private ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender;
+
+        @BeforeEach
+        void attach() {
+            logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(SpringContextFailoverScanner.class);
+            appender = new ch.qos.logback.core.read.ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+        }
+
+        @org.junit.jupiter.api.AfterEach
+        void detach() {
+            logger.detachAppender(appender);
+        }
+
+        private List<String> warnings() {
+            return appender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                    .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                    .toList();
+        }
+
+        private void scan(Class<?> type) {
+            when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[]{"bean"});
+            doReturn(type).when(applicationContext).getType("bean");
+            scanner.afterSingletonsInstantiated();
+        }
+
+        @Test
+        @DisplayName("interface-only annotation warns it is not on the concrete method")
+        void interfaceOnlyWarns() {
+            scan(ReferentialImpl.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m)
+                    .contains("interface-method").contains("NOT be applied").contains("supertype/interface"));
+        }
+
+        @Test
+        @DisplayName("final method warns")
+        void finalMethodWarns() {
+            scan(FinalMethodReferential.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m).contains("final-method").contains("final"));
+        }
+
+        @Test
+        @DisplayName("static method warns")
+        void staticMethodWarns() {
+            scan(StaticMethodReferential.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m).contains("static-method").contains("static"));
+        }
+
+        @Test
+        @DisplayName("non-public method warns")
+        void nonPublicMethodWarns() {
+            scan(NonPublicReferential.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m).contains("protected-method").contains("not public"));
+        }
+
+        @Test
+        @DisplayName("final class warns")
+        void finalClassWarns() {
+            scan(FinalReferential.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m).contains("final-class").contains("is final"));
+        }
+
+        @Test
+        @DisplayName("a well-placed public method on a non-final class does NOT warn")
+        void wellPlacedDoesNotWarn() {
+            scan(ConcreteReferential.class);
+            assertThat(warnings()).noneMatch(m -> m.contains("NOT be applied"));
+        }
+
+        @Test
+        @DisplayName("an interface bean (Feign/Spring-Data/@HttpExchange-like) with @Failover on the interface method does NOT warn")
+        void interfaceBeanDoesNotWarn() {
+            // bean type IS the interface (JDK dynamic proxy) — annotation on the interface method is correct
+            scan(ReferentialInterface.class);
+            assertThat(scanner.findFailoverByName("interface-method")).isNotNull();
+            assertThat(warnings()).noneMatch(m -> m.contains("NOT be applied"));
+        }
+
+        @Test
+        @DisplayName("the suggested fix — impl overrides AND annotates the method — silences the warning")
+        void overrideAnnotatedImplDoesNotWarn() {
+            scan(OverrideAnnotatedImpl.class);
+            assertThat(scanner.findFailoverByName("override-method")).isNotNull();
+            assertThat(warnings()).noneMatch(m -> m.contains("NOT be applied"));
+        }
+
+        @Test
+        @DisplayName("interface-only suggestion names the concrete method to override + annotate")
+        void interfaceOnlySuggestsOverrideAndAnnotate() {
+            scan(ReferentialImpl.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m)
+                    .contains("override 'findByCode'")
+                    .contains("ReferentialImpl"));
+        }
+
+        @Test
+        @DisplayName("multiple defects are reported together in a single warning")
+        void multipleReasonsCombined() {
+            scan(StaticFinalReferential.class);
+            assertThat(warnings()).anySatisfy(m -> assertThat(m)
+                    .contains("static-final-method")
+                    .contains("static")
+                    .contains("final"));
+        }
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     static class ConcreteReferential {
@@ -230,6 +345,38 @@ class SpringContextFailoverScannerTest {
 
     static class PlainBean {
         public String noAnnotation() { return null; }
+    }
+
+    static class FinalMethodReferential {
+        @Failover(name = "final-method")
+        public final String findFinal() { return null; }
+    }
+
+    static class StaticMethodReferential {
+        @Failover(name = "static-method")
+        public static String findStatic() { return null; }
+    }
+
+    static class NonPublicReferential {
+        @Failover(name = "protected-method")
+        protected String findProtected() { return null; }
+    }
+
+    static final class FinalReferential {
+        @Failover(name = "final-class")
+        public String find() { return null; }
+    }
+
+    /** Impl that overrides the interface method AND annotates the override — the recommended fix. */
+    static class OverrideAnnotatedImpl implements ReferentialInterface {
+        @Override
+        @Failover(name = "override-method")
+        public String findByCode(String code) { return null; }
+    }
+
+    static class StaticFinalReferential {
+        @Failover(name = "static-final-method")
+        public static final String findStaticFinal() { return null; }
     }
 
     /** Collection with two type parameters — exercises the {@code args.length == 1} guard. */

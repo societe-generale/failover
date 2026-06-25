@@ -2990,3 +2990,102 @@ from a configured key.
   a key and select `aesgcm`.
 
 ___
+
+## ADR 62 — Opt-in JDBC Live-Entries Gauge — Capacity Visibility Without a COUNT(\*) Tax
+
+**Date : 25-JUN-2026**
+
+### Status
+
+Accepted (audit A7)
+
+### Context
+
+The JDBC store takes one upsert per successful protected call, so on a high-QPS endpoint it generates
+real DB write volume and the table grows until expiry cleanup catches up. Sizing and monitoring that is a
+capacity concern. The framework already exposes a `failover.live.entries` gauge (cache footprint) via
+`FailoverMeterBinder` — but **only** for in-process stores (in-memory, Caffeine). The JDBC store, where
+capacity actually matters, was deliberately excluded because a live count means a `SELECT COUNT(*)` per
+scrape, which can be costly on a large table. The result: the production store's growth was invisible
+through the failover meters.
+
+### Decision
+
+Make JDBC size-awareness **opt-in**, preserving the no-COUNT(\*)-by-default stance.
+
+* `FailoverStoreJdbc` now implements `FailoverStoreSizeAware`. `liveEntryCount(name)` runs
+  `SELECT COUNT(*) ... WHERE FAILOVER_NAME = ?` (new `getCountByNameQuery()` on the query resolver, table-
+  prefix aware like every other query). `liveEntryCountSupported()` returns the opt-in flag.
+* New property `failover.store.jdbc.live-entries-gauge-enabled` (default `false`). The single-tenant
+  `jdbcTenantStoreFactory` passes it to the store. When `false`, `liveEntryCountSupported()` is `false`, so
+  `FailoverMeterBinder` does not register the gauge and no `COUNT(*)` ever runs — identical to today.
+* The size-aware capability flows through the existing decorator chain (`DefaultFailoverStore`,
+  `FailoverStoreAsync` already forward it), so enabling the flag is enough for the gauge to appear.
+* Multi-tenant mode is unaffected: the `MultiTenantFailoverStore` wrapper is not size-aware, so the gauge
+  is not registered there regardless of the flag.
+
+### Consequences
+
+* Operators can monitor JDBC table growth and alert on capacity by setting one property — the concrete
+  observability lever for capacity planning (A7), alongside the existing back-pressure (ADR 57) and expiry
+  cleanup controls that bound growth.
+* The default is unchanged: no new query runs, no behaviour change, until explicitly enabled. The cost of
+  the gauge (a `COUNT(*)` per scrape per failover name) is paid only by those who opt in, and is documented.
+* `getCountByNameQuery()` is a new method on the `FailoverStoreQueryResolver` SPI; custom resolver
+  implementations must supply it (the default resolver does). Counting is of all rows for the name
+  (including expired-but-not-yet-cleaned), which is the true table footprint and also surfaces cleanup lag.
+
+___
+
+## ADR 63 — Startup Warning for Un-advisable `@Failover` Placement
+
+**Date : 25-JUN-2026**
+
+### Status
+
+Accepted (audit A8)
+
+### Context
+
+`@Failover` is applied by a Spring AOP CGLIB proxy, which can only intercept a public, non-static,
+non-final method on a non-final concrete class, with the annotation on the implementation method. Place it
+anywhere the proxy cannot reach — an interface method only, a private/static/final method, a final class —
+and the annotation compiles, the bean starts, and failover simply never runs. Self-invocation (a bean
+calling its own annotated method) bypasses the proxy the same way. These are easy mistakes that produce a
+service which *looks* protected but is not, with no signal until an outage reveals nothing was stored.
+
+The `SpringContextFailoverScanner` already walks every bean at startup and discovers `@Failover` methods
+(via Spring's `findAnnotation`, which even sees interface-declared annotations), but it did not check
+whether what it discovered could actually be advised.
+
+### Decision
+
+Add a startup advisability check to the scanner. For each discovered `@Failover` method, emit a `WARN`
+naming the failover and method when it cannot be intercepted, with the specific reason(s):
+
+* annotation present only on a supertype/interface, not directly on the concrete method;
+* method is non-public, `static`, or `final`;
+* declaring class is `final`.
+
+The message states the annotation "will NOT be applied … has no effect until fixed." Discovery and all
+other behaviour are unchanged — this is purely an additional diagnostic. Self-invocation is **not** warned
+because it is a runtime call-graph property the scanner cannot see statically; it is covered by
+documentation instead.
+
+**Interface beans are excluded to avoid false positives.** Beans that *are* interfaces — `@FeignClient`,
+Spring Data repositories, `@HttpExchange` clients — are advised by JDK dynamic proxies at the interface
+level, where annotating the interface method is correct. The check therefore returns early when the scanned
+`userClass` is an interface or a JDK proxy class, so those legitimate placements are never warned; the
+concrete-class CGLIB rules apply only to concrete-class beans.
+
+### Consequences
+
+* A misplaced `@Failover` is now visible at boot rather than discovered during an incident — the cheapest
+  possible feedback loop, with no new dependency or configuration.
+* The check is heuristic for proxy semantics (standard Spring AOP CGLIB rules); it does not change whether
+  a method is advised, only whether a warning is logged. It will not warn on self-invocation, so the docs
+  call that out explicitly as the one case the tooling cannot catch.
+* Teams that deliberately annotate interface methods and re-declare on the implementation are unaffected
+  (the concrete method carries the annotation, so no warning fires).
+
+___
