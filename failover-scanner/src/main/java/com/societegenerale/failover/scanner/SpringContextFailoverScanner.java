@@ -29,6 +29,7 @@ import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -92,6 +93,8 @@ public class SpringContextFailoverScanner
                             "Duplicate @Failover name '%s' found. Each failover must have a unique name."
                                 .formatted(annotation.name()));
                     }
+                    warnIfNotAdvisable(userClass, method, annotation);
+                    warnIfInvalidScatterConfig(userClass, method, annotation);
                     collectPayloadType(method, discoveredPayloadTypes);
                 },
                 method -> !method.isBridge() && !method.isSynthetic()
@@ -153,6 +156,74 @@ public class SpringContextFailoverScanner
             }
         }
         return null;
+    }
+
+    /**
+     * Warns at startup when a discovered {@code @Failover} method cannot be advised by the Spring AOP
+     * CGLIB proxy, so a silently-inactive failover is visible rather than a runtime surprise (audit A8).
+     *
+     * <p>The proxy can only intercept a <b>public, non-static, non-final</b> method declared on a
+     * <b>non-final</b> concrete class, with the annotation present <b>directly on that concrete method</b>
+     * (not inherited from an interface/superclass — CGLIB advises the implementation, not the supertype).
+     * Self-invocation (a bean calling its own annotated method) bypasses the proxy too, but that is a
+     * runtime call-graph property and cannot be detected here — see the documentation.
+     *
+     * @param userClass  the concrete (CGLIB-unwrapped) bean class
+     * @param method     the method carrying (directly or by inheritance) the {@code @Failover} annotation
+     * @param annotation the discovered annotation
+     */
+    private void warnIfNotAdvisable(Class<?> userClass, Method method, Failover annotation) {
+        // Interface beans advised by JDK dynamic proxies — Feign clients, Spring Data repositories,
+        // @HttpExchange clients, etc. — are proxied at the interface level, so the annotation belongs on
+        // the interface method and the concrete-class CGLIB rules below do not apply. JDK proxy classes
+        // carry no usable method annotations either. Skip both to avoid false-positive warnings.
+        if (userClass.isInterface() || java.lang.reflect.Proxy.isProxyClass(userClass)) {
+            return;
+        }
+        List<String> reasons = new ArrayList<>();
+        if (!method.isAnnotationPresent(Failover.class)) {
+            reasons.add(("@Failover is declared on a supertype/interface, not directly on the concrete method — "
+                    + "override '%s' in '%s' and put @Failover on that override (CGLIB advises the implementation "
+                    + "method, not the interface)").formatted(method.getName(), userClass.getSimpleName()));
+        }
+        int modifiers = method.getModifiers();
+        if (!Modifier.isPublic(modifiers)) {
+            reasons.add("method is not public");
+        }
+        if (Modifier.isStatic(modifiers)) {
+            reasons.add("method is static");
+        }
+        if (Modifier.isFinal(modifiers)) {
+            reasons.add("method is final (CGLIB cannot override it)");
+        }
+        if (Modifier.isFinal(userClass.getModifiers())) {
+            reasons.add("declaring class '%s' is final (CGLIB cannot subclass it)".formatted(userClass.getSimpleName()));
+        }
+        if (!reasons.isEmpty()) {
+            log.warn("Failover '{}' on {}#{} will NOT be applied — the method cannot be intercepted by the Spring AOP proxy: {}. "
+                    + "The annotation has no effect until fixed.",
+                    annotation.name(), userClass.getSimpleName(), method.getName(), String.join("; ", reasons));
+        }
+    }
+
+    /**
+     * Warns at startup when a {@code @Failover} sets {@code recoverAll=true} but configures no
+     * {@code payloadSplitter} (audit A10). Recover-all relies on a {@link com.societegenerale.failover.core.payload.splitter.PayloadSplitter}
+     * to slice and merge the whole referential; without one the scatter path is never entered, so the
+     * flag is silently ignored and the call falls back to single-key recover. Surfacing it at boot avoids
+     * a feature that looks enabled but does nothing.
+     *
+     * @param userClass  the concrete bean class (used only for the message)
+     * @param method     the annotated method (used only for the message)
+     * @param annotation the discovered annotation
+     */
+    private void warnIfInvalidScatterConfig(Class<?> userClass, Method method, Failover annotation) {
+        if (annotation.recoverAll() && annotation.payloadSplitter().isBlank()) {
+            log.warn("Failover '{}' on {}#{} sets recoverAll=true but no payloadSplitter — recover-all needs a "
+                    + "PayloadSplitter to slice/merge the referential. Recover-all will NOT run; the call falls back "
+                    + "to single-key recover. Set @Failover(payloadSplitter=\"...\") or remove recoverAll.",
+                    annotation.name(), userClass.getSimpleName(), method.getName());
+        }
     }
 
     private void warnOnDomainExpirtyMismatch(Map<String, Failover> discovered) {

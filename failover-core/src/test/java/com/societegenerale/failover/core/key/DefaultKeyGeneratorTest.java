@@ -286,6 +286,13 @@ class DefaultKeyGeneratorTest {
                             && e.getFormattedMessage().contains("overrides neither toString()"));
         }
 
+        private long warnCount() {
+            return appender.list.stream()
+                    .filter(e -> e.getLevel() == Level.WARN
+                            && e.getFormattedMessage().contains("overrides neither toString()"))
+                    .count();
+        }
+
         @Test
         @DisplayName("warns when an arg overrides neither toString() nor is a known type (identity-hash fallback)")
         void warnsForIdentityHashFallback() {
@@ -314,6 +321,26 @@ class DefaultKeyGeneratorTest {
             record Money(String currency, long amount) {}
             defaultKeyProvider.key(FAILOVER, List.of(new Money("EUR", 42)));
             assertThat(warnLogged()).isFalse();
+        }
+
+        @Test
+        @DisplayName("warns only once per type across repeated calls (hot-path log throttling)")
+        void warnsOnlyOncePerType() {
+            for (int i = 0; i < 5; i++) {
+                defaultKeyProvider.key(FAILOVER, List.of(new Object()));
+            }
+            assertThat(warnCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("warns once per distinct unstable type")
+        void warnsPerDistinctType() {
+            class FirstUnstable { }   // identity toString()
+            class SecondUnstable { }  // identity toString()
+            defaultKeyProvider.key(FAILOVER, List.of(new FirstUnstable()));
+            defaultKeyProvider.key(FAILOVER, List.of(new FirstUnstable()));
+            defaultKeyProvider.key(FAILOVER, List.of(new SecondUnstable()));
+            assertThat(warnCount()).isEqualTo(2);
         }
     }
 }

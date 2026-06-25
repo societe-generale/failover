@@ -6,6 +6,17 @@ icon: material/scatter-plot
 
 Standard failover stores the entire method result under one key. For collection-returning methods this means a single upstream failure wipes out all cached entries at once and partial recovery is impossible. Scatter/gather solves both problems.
 
+!!! info "When to adopt — and when not to"
+    Scatter/gather is the most powerful and the most involved failover feature (a `PayloadSplitter` to
+    implement, parallelism, per-slice timeouts, partial-recovery semantics). **Default to single-key
+    `@Failover`** — do *not* set `payloadSplitter`/`recoverAll` — unless you specifically need
+    **per-entity slicing**: independent expiry/recovery per element and partial recovery of a collection
+    result. If a whole-collection cache entry is acceptable, single-key is simpler and sufficient.
+
+    `payloadSplitter` and `recoverAll` go together: **`recoverAll` requires a `PayloadSplitter`.** Setting
+    `recoverAll=true` without one has no effect — the framework logs a startup `WARN` and the call falls
+    back to single-key recover.
+
 ---
 
 ## The Problem with Single-Key Collections
@@ -252,13 +263,35 @@ Standard scatter/gather splits method args (e.g. a CSV of IDs) into per-entity k
 
 For both cases, the recover path must fetch **all stored slices by failover name** rather than looking up individual keys. This is the **recover-all path**.
 
+### `recoverAll` semantics (the four rules)
+
+1. **Recovery path only.** `recoverAll` affects only the **recover** path. The **store** path always
+   splits the result via `splitOnStore` regardless of the flag.
+2. **No-arg `findAll()` (null/empty args) recovers all either way.** Empty args trigger recover-all on
+   their own — marking `recoverAll` or not makes no difference.
+3. **Id args (e.g. `findAll(String ids)`) — no flag needed.** With entity-id args, the splitter splits
+   them into per-entity keys for recovery; leave `recoverAll=false` (the default).
+4. **Filter args (no ids) — you must force `recoverAll=true`.** When the args are *filters*, not entity
+   ids (e.g. `findByStatus("active","EU")`), set `recoverAll=true` so the recover-all path runs instead of
+   trying to split the filters into entity keys.
+
+In all four, `payloadSplitter` is what does the slicing/merging — so it is **always required** for
+scatter/gather. The `recoverAll` flag is the deciding factor **only in rule 4**.
+
 ### Trigger conditions
+
+This is exactly `shouldRecoverAll = args == null || args.isEmpty() || recoverAll()`:
 
 | Condition | Recovery path taken |
 |---|---|
-| `args` is `null` or empty | Recover-all (automatic) |
-| `@Failover(recoverAll = true)` | Recover-all (explicit) |
-| `args` non-empty, `recoverAll = false` | Normal scatter recover (split on args) |
+| `args` is `null` or empty (e.g. `findAll()`) | Recover-all (automatic — flag irrelevant) |
+| `args` non-empty, `recoverAll = false` (e.g. `findAll(ids)`) | Normal scatter recover (split on args) |
+| `args` non-empty, `recoverAll = true` (e.g. filter args) | Recover-all forced |
+
+!!! warning "Recover-all needs a `payloadSplitter`"
+    Recover-all (and all scatter/gather) requires a configured `payloadSplitter` — it slices and merges the
+    referential. `@Failover(recoverAll=true)` with **no** `payloadSplitter` does nothing: the framework
+    logs a startup `WARN` and falls back to single-key recover.
 
 ### How the recover-all path works
 

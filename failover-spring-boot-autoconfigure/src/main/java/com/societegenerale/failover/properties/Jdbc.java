@@ -68,6 +68,15 @@ public class Jdbc {
     private boolean strictAllowlist = false;
 
     /**
+     * Whether to expose the {@code failover.live.entries} gauge for the JDBC store (audit A7 — capacity
+     * monitoring). Default {@code false}: it issues a {@code SELECT COUNT(*)} per scrape per failover
+     * name, which can be costly on a large table, so it is opt-in. Enable it to monitor table growth /
+     * capacity from the failover meters. Not available in multi-tenant mode (the tenant-routing wrapper
+     * is not size-aware).
+     */
+    private boolean liveEntriesGaugeEnabled = false;
+
+    /**
      * Payload-at-rest encryption for the JDBC store. JDBC-only: other store types never persist a
      * payload string, so this lives under {@code failover.store.jdbc.encryption} rather than the
      * generic store namespace.

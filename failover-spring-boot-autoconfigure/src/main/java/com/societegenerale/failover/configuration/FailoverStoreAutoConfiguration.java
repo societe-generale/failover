@@ -450,9 +450,11 @@ public class FailoverStoreAutoConfiguration {
         public TenantStoreFactory<Object> jdbcTenantStoreFactory(
                 JdbcTemplate jdbcTemplate,
                 FailoverStoreQueryResolver failoverStoreQueryResolver,
-                RowMapper<ReferentialPayload<Object>> rowMapper) {
-            log.info("FailoverStore configured to FailoverStoreJdbc.");
-            return tenantId -> new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper);
+                RowMapper<ReferentialPayload<Object>> rowMapper,
+                FailoverProperties failoverProperties) {
+            boolean liveEntriesGauge = failoverProperties.getStore().getJdbc().isLiveEntriesGaugeEnabled();
+            log.info("FailoverStore configured to FailoverStoreJdbc (live-entries gauge {}).", liveEntriesGauge ? "ENABLED" : "disabled");
+            return tenantId -> new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper, liveEntriesGauge);
         }
     }
 }

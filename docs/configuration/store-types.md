@@ -159,6 +159,37 @@ Dialect detection is automatic via `DatabaseResolver`. See [Database Resolver Ho
 !!! tip "Async writes reduce latency"
     With `failover.store.async=true` (default), write operations run on a virtual-thread executor so they never block the request thread.
 
+### Capacity planning
+
+The JDBC store takes **one upsert per successful protected call**, so write volume scales with success
+throughput:
+
+```
+writes/sec  ≈  (success QPS per @Failover method)  ×  (number of instances)
+row count   ≈  (distinct keys per failover)  ×  (failovers)   — bounded by expiry cleanup
+```
+
+Size the store accordingly, and use the controls the framework already provides:
+
+- **Bound the write blast radius.** Under a failure storm every call enqueues an async write; cap
+  in-flight writes with `failover.store.async-executor.concurrency-limit` (see
+  [Async Store](../modules/store-async.md)). The store is a regenerable cache, so dropping a write
+  under saturation is acceptable.
+- **Keep TTL as short as the use case allows** (`@Failover(expiryDuration=…)`) and ensure the expiry
+  cleanup scheduler runs (`failover.scheduler`) — together they bound row count. The `EXPIRE_ON` index
+  (above) keeps cleanup an index scan.
+- **Monitor table growth.** Enable the opt-in capacity gauge:
+  ```yaml
+  failover:
+    store:
+      jdbc:
+        live-entries-gauge-enabled: true   # exposes failover.live.entries (SELECT COUNT(*) per scrape)
+  ```
+  Off by default because it issues a `COUNT(*)` per scrape per failover name. When on, the
+  `failover.live.entries{name,domain}` gauge reports rows per failover so you can alert on growth. Not
+  available in multi-tenant mode (the routing wrapper is not size-aware). See
+  [Observability](../how-to/observability.md).
+
 ---
 
 ## Custom
