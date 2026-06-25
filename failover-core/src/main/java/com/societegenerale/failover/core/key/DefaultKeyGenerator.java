@@ -23,6 +23,8 @@ import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static java.lang.Integer.toHexString;
 import static java.lang.String.valueOf;
@@ -63,6 +65,13 @@ public class DefaultKeyGenerator implements KeyGenerator {
     private static final String KEY_DELIMITER = ":";
 
     private static final List<Class<?>> NUMBER_TYPES = List.of(Number.class, String.class, Boolean.class);
+
+    /**
+     * Tracks the {@code failover-name|type} pairs already warned about, so the unstable-key warning is
+     * logged once per pair instead of on every call — {@link #castToStringValue} runs on the hot path
+     * (every intercepted invocation) and an unstable arg type would otherwise flood the logs.
+     */
+    private final Set<String> warnedUnstableKeyTypes = ConcurrentHashMap.newKeySet();
 
     /**
      * Generates a cache key by converting each argument to its string representation
@@ -107,11 +116,21 @@ public class DefaultKeyGenerator implements KeyGenerator {
             // key that is stable across JVM restarts — safe for a persistent store.
             return valueOf(item);
         }
-        log.warn("Failover '{}': key arg of type '{}' overrides neither toString() nor a stable hashCode/equals; "
-                        + "its identity hash is unstable across JVM restarts and will cause failover lookups to miss with a persistent store. "
-                        + "Override toString()/equals()/hashCode() or configure a custom KeyGenerator.",
-                failover.name(), item.getClass().getName());
+        warnOnceOnUnstableKeyType(failover, item.getClass());
         return "%s@%s".formatted(item.getClass().getName(), toHexString(item.hashCode()));
+    }
+
+    /**
+     * Logs the unstable-key warning at most once per {@code failover-name|type} pair. The warning is
+     * suppressed on subsequent calls for the same pair so a hot path does not flood the logs.
+     */
+    private void warnOnceOnUnstableKeyType(Failover failover, Class<?> type) {
+        if (warnedUnstableKeyTypes.add(failover.name() + "|" + type.getName())) {
+            log.warn("Failover '{}': key arg of type '{}' overrides neither toString() nor a stable hashCode/equals; "
+                            + "its identity hash is unstable across JVM restarts and will cause failover lookups to miss with a persistent store. "
+                            + "Override toString()/equals()/hashCode() or configure a custom KeyGenerator. (Logged once per type.)",
+                    failover.name(), type.getName());
+        }
     }
 
     /**

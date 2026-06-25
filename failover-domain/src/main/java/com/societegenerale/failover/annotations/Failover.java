@@ -153,21 +153,29 @@ public @interface Failover {
 
 
     /**
-     * Forces recover-all mode even when the method is called with non-empty (ID) arguments.
+     * Forces recover-all mode even when the method is called with non-empty arguments — intended for
+     * <em>filter</em> arguments that are not entity IDs.
      *
-     * <p>Recover-all retrieves every stored entry for the failover's referential name (via the
-     * store's {@code findAll}) instead of a single key lookup.
+     * <p>Applies to the <strong>recover path only</strong>: recover-all retrieves every stored entry for
+     * the failover's referential name (via the store's {@code findAll}) instead of per-key lookups. The
+     * store path always slices the result via {@link #payloadSplitter()} regardless of this flag.
      *
-     * <p><strong>Trigger precedence:</strong> recover-all is performed when <em>either</em> the
-     * method arguments are {@code null}/empty (no ID args) <em>or</em> this flag is {@code true}.
-     * Setting {@code recoverAll = true} is therefore only needed to force recover-all for a method
-     * that <em>does</em> receive arguments; with no arguments, recover-all already applies and this
-     * flag is redundant.
+     * <p><strong>Trigger precedence</strong> — recover-all runs when {@code args == null || args.isEmpty()
+     * || recoverAll()}. In practice:
+     * <ul>
+     *   <li><b>No-arg / empty args</b> (e.g. {@code findAll()}) — recover-all applies automatically;
+     *       this flag is redundant (set or not, same result).</li>
+     *   <li><b>Entity-ID args</b> (e.g. {@code findAll(String ids)}) — leave {@code false}; the splitter
+     *       splits the IDs into per-entity keys for recovery.</li>
+     *   <li><b>Filter args, no IDs</b> (e.g. {@code findByStatus("active","EU")}) — set {@code true} to
+     *       force recover-all, otherwise the filters would be wrongly split into entity keys.</li>
+     * </ul>
      *
-     * <p>A {@link #payloadSplitter()} must be configured in both cases.
+     * <p>A {@link #payloadSplitter()} is required for scatter/gather in every case; this flag is the
+     * deciding factor only for the filter-args case above.
      *
-     * @return {@code true} to force recover-all regardless of arguments; {@code false} (default) to
-     *         recover-all only when no ID arguments are supplied
+     * @return {@code true} to force recover-all for non-empty (filter) arguments; {@code false} (default)
+     *         to recover-all only when no arguments are supplied
      * @see #payloadSplitter()
      */
     boolean recoverAll() default false;

@@ -44,7 +44,9 @@ import java.util.List;
  *       named failover; tags: {@code name}, {@code unit}</li>
  *   <li>{@code failover.live.entries} (Gauge) — current stored entry count per failover (cache footprint);
  *       tags: {@code name}, {@code domain}. Registered only when the assembled store is
- *       {@link FailoverStoreSizeAware} and supports counting (in-memory / Caffeine; not JDBC / multi-tenant)</li>
+ *       {@link FailoverStoreSizeAware} and supports counting: always for in-memory / Caffeine, and for JDBC
+ *       only when {@code failover.store.jdbc.live-entries-gauge-enabled=true} (opt-in COUNT(*) per scrape,
+ *       audit A7). Not available in multi-tenant mode</li>
  * </ul>
  *
  * <h2>Lifecycle ordering</h2>

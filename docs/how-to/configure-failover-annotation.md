@@ -8,6 +8,39 @@ icon: material/tune
 
 ---
 
+## 0. Placement — where `@Failover` actually takes effect
+
+`@Failover` is applied by a Spring AOP (CGLIB) proxy, so it only works when the proxy can intercept the
+call. Put it on a **public, non-`static`, non-`final` method of a concrete `@Component`/`@Service` class
+(a non-`final` class)** — and call that method **from another bean**.
+
+It is silently **not** applied when:
+
+| Placement | Why it fails |
+|---|---|
+| On an **interface, but the bean is a concrete class** that implements it (annotation only on the interface) | The bean is proxied by CGLIB, which advises the implementation; annotate the concrete method. |
+| On a `private`, `static`, or `final` method | The proxy cannot intercept/override it. |
+| On a method of a `final` class | CGLIB cannot subclass the class. |
+| **Self-invocation** — the bean calls its own annotated method | The call doesn't go through the proxy. Call via the injected bean reference, or move the method to a separate bean. |
+
+!!! info "Interface beans (Feign, Spring Data, `@HttpExchange`) are the exception"
+    When the **bean itself is an interface** — a `@FeignClient`, a Spring Data repository, an
+    `@HttpExchange` client — Spring proxies it with a **JDK dynamic proxy at the interface level**. There
+    the interface method *is* the right place for `@Failover`, and it works. The rule above is only about
+    concrete-class beans (CGLIB), where the annotation must be on the implementation method.
+
+!!! tip "Startup check"
+    The framework logs a `WARN` at startup for every `@Failover` on a **concrete-class bean** that
+    **cannot be advised** (annotation only on a supertype/interface, non-public/static/final method, or
+    final class) — e.g. *"Failover 'x' on `Foo#bar` will NOT be applied …"*. Interface beans (Feign /
+    Spring Data / `@HttpExchange`) and JDK proxy classes are intentionally **not** warned, since
+    interface-level placement is correct for them. Self-invocation is a runtime call-graph property and
+    cannot be detected statically, so it is not warned — avoid it by construction. The
+    [`failover.registered.total` gauge](observability.md) and the failover health indicator also report
+    how many failovers were discovered.
+
+---
+
 ## 1. Fixed Expiry (Same Across All Environments)
 
 Use `expiryDuration` and `expiryUnit` when the expiry value is the same in every environment:
