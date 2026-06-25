@@ -656,6 +656,36 @@ class FailoverStoreJdbcTest {
                     .allSatisfy(p -> assertThat(p.isUpToDate()).isFalse());
         }
     }
+
+    @Nested
+    @DisplayName("liveEntryCount (capacity gauge — audit A7)")
+    class LiveEntryCountScenarios {
+
+        /** A store with the live-entries gauge ENABLED (opt-in). */
+        private FailoverStoreJdbc<Client> enabledStore() {
+            return new FailoverStoreJdbc<>(jdbcTemplate, failoverStoreQueryResolver, rowMapper, true);
+        }
+
+        @Test
+        @DisplayName("liveEntryCountSupported is false by default (opt-in), true when enabled")
+        void supportedReflectsFlag() {
+            assertThat(failoverStoreJdbc.liveEntryCountSupported()).isFalse();          // default ctor
+            assertThat(enabledStore().liveEntryCountSupported()).isTrue();
+        }
+
+        @Test
+        @DisplayName("liveEntryCount returns the row count for the given name")
+        void countsRowsForName() {
+            var store = enabledStore();
+            store.store(new ReferentialPayload<>(NAME, "k1", false, NOW, NOW.plusSeconds(3600), new Client(1L, "a")));
+            store.store(new ReferentialPayload<>(NAME, "k2", false, NOW, NOW.plusSeconds(3600), new Client(2L, "b")));
+            store.store(new ReferentialPayload<>("other", "k3", false, NOW, NOW.plusSeconds(3600), new Client(3L, "c")));
+
+            assertThat(store.liveEntryCount(NAME)).isEqualTo(2L);
+            assertThat(store.liveEntryCount("other")).isEqualTo(1L);
+            assertThat(store.liveEntryCount("absent")).isZero();
+        }
+    }
     // -------------------------------------------------------------------------
     // Domain fixture
     // -------------------------------------------------------------------------
