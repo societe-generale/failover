@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OWASP Dependency-Check suppression file.
+
+  Use this to silence confirmed false positives or accepted risks from the SCA gate
+  (`mvn -Pdependency-check verify`). Every suppression MUST carry a <notes> entry stating
+  WHO accepted it, WHY, and a review/expiry date, so suppressions are auditable and don't
+  become a place where real CVEs are quietly hidden.
+
+  Example (keep commented until a real suppression is needed):
+
+  <suppress until="2026-12-31Z">
+    <notes><![CDATA[
+      Accepted by <name> on 2026-06-17: CVE-XXXX-NNNN affects feature <X> we do not use.
+      Re-review by 2026-12-31 or when the dependency next updates.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/com\.example/some-lib@.*$</packageUrl>
+    <cve>CVE-XXXX-NNNN</cve>
+  </suppress>
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>
