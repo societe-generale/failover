@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.metrics.source;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 import com.societegenerale.failover.dashboard.metrics.ApiHealth;
+import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
 import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
 import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
 import com.societegenerale.failover.dashboard.metrics.SourceInfo;
@@ -34,9 +35,11 @@ import static org.mockito.Mockito.when;
 
 class LocalRegistryMetricsSourceTest {
 
+    private static final String INSTANCE_ID = "myapp:host-1";
+
     private final DashboardMetricsService metricsService = mock(DashboardMetricsService.class);
     private final DashboardHistoryService history = mock(DashboardHistoryService.class);
-    private final LocalRegistryMetricsSource source = new LocalRegistryMetricsSource(metricsService, history);
+    private final LocalRegistryMetricsSource source = new LocalRegistryMetricsSource(metricsService, history, INSTANCE_ID);
 
     @Test
     @DisplayName("summary() delegates to the metrics service")
@@ -82,8 +85,24 @@ class LocalRegistryMetricsSourceTest {
     @Test
     @DisplayName("series() is empty when history is disabled (null)")
     void seriesEmptyWithoutHistory() {
-        LocalRegistryMetricsSource noHistory = new LocalRegistryMetricsSource(metricsService, null);
+        LocalRegistryMetricsSource noHistory = new LocalRegistryMetricsSource(metricsService, null, INSTANCE_ID);
 
         assertThat(noHistory.series(0)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("instances() always returns one entry for this instance so the Instances tab is always visible")
+    void instancesAlwaysReturnsSingleEntry() {
+        MetricsSummary summary = new MetricsSummary(null, List.of(), List.of(), 7L);
+        when(metricsService.metricsSummary()).thenReturn(summary);
+        long before = System.currentTimeMillis();
+
+        List<InstanceMetrics> result = source.instances();
+
+        assertThat(result).hasSize(1);
+        InstanceMetrics inst = result.getFirst();
+        assertThat(inst.instanceId()).isEqualTo(INSTANCE_ID);
+        assertThat(inst.summary()).isSameAs(summary);
+        assertThat(inst.lastSeenEpochMs()).isGreaterThanOrEqualTo(before);
     }
 }
