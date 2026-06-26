@@ -20,6 +20,7 @@ import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 
 import com.societegenerale.failover.dashboard.metrics.ApiHealth;
+import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
 import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
 import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
 import com.societegenerale.failover.dashboard.metrics.SourceInfo;
@@ -33,6 +34,9 @@ import java.util.List;
  * declares as {@code mode = "local"}, {@code instancesReporting = 1} so the UI shows a "this instance only"
  * badge (see the distributed-dashboard design document).
  *
+ * <p>{@link #instances()} always returns a single entry for this instance so the Instances tab is
+ * always visible (showing "1 of 1"), not only when a cluster source is configured.
+ *
  * @author Anand Manissery
  */
 public class LocalRegistryMetricsSource implements MetricsSource {
@@ -42,10 +46,13 @@ public class LocalRegistryMetricsSource implements MetricsSource {
 
     private final DashboardMetricsService metricsService;
     private final DashboardHistoryService history;   // nullable — present only when history is enabled
+    private final String instanceId;
 
-    public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history) {
+    public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
+                                      String instanceId) {
         this.metricsService = metricsService;
         this.history = history;
+        this.instanceId = instanceId;
     }
 
     @Override
@@ -66,5 +73,10 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     @Override
     public List<SeriesPoint> series(long windowSec) {
         return history != null ? history.series(windowSec) : List.of();
+    }
+
+    @Override
+    public List<InstanceMetrics> instances() {
+        return List.of(new InstanceMetrics(instanceId, System.currentTimeMillis(), summary()));
     }
 }
