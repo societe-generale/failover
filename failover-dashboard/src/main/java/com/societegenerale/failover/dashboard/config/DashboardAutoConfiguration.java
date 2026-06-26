@@ -151,9 +151,11 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     public MetricsSource metricsSource(DashboardMetricsService metricsService,
                                        org.springframework.beans.factory.ObjectProvider<DashboardHistoryService> history,
                                        org.springframework.beans.factory.ObjectProvider<SnapshotStore> snapshotStore,
-                                       org.springframework.beans.factory.ObjectProvider<ClusterSeriesStore> seriesStore) {
+                                       org.springframework.beans.factory.ObjectProvider<ClusterSeriesStore> seriesStore,
+                                       Environment environment) {
         // history is present only when failover.dashboard.history.enabled=true; null otherwise.
-        LocalRegistryMetricsSource local = new LocalRegistryMetricsSource(metricsService, history.getIfAvailable());
+        LocalRegistryMetricsSource local = new LocalRegistryMetricsSource(metricsService, history.getIfAvailable(),
+                resolveInstanceId(environment));
         DashboardProperties.Cluster cluster = properties.cluster();
         String mode = cluster.mode();
         if ("prometheus".equalsIgnoreCase(mode)) {
