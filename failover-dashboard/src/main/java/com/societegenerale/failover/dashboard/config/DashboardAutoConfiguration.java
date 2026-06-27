@@ -29,7 +29,6 @@ import com.societegenerale.failover.dashboard.metrics.source.prometheus.Promethe
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesSampler;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesStore;
-import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStoreInmemory;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.RetentionPolicy;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SharedStoreMetricsSource;
@@ -37,13 +36,11 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Snapsho
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -58,7 +55,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
-import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -66,11 +62,12 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.net.InetAddress;
 
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
 
@@ -154,7 +151,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
             String app = environment.getProperty("spring.application.name", "application");
             String host;
             try {
-                host = java.net.InetAddress.getLocalHost().getHostName();
+                host = InetAddress.getLocalHost().getHostName();
             } catch (Exception e) {
                 host = "unknown-host";
             }
@@ -164,11 +161,28 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         };
     }
 
+    /**
+     * Standalone fallback {@link FailoverMetricsSnapshotService} for dashboard-only deployments where
+     * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover starter
+     * is present, {@code FailoverMicrometerAutoConfiguration} contributes the real service first and this
+     * fallback is skipped.
+     */
     @Bean
     @ConditionalOnBean(MeterRegistry.class)
     @ConditionalOnMissingBean
-    public DashboardMetricsService dashboardMetricsService(MeterRegistry registry) {
-        return new DashboardMetricsService(registry, properties);
+    public FailoverMetricsSnapshotService failoverMetricsSnapshotService(MeterRegistry registry) {
+        return new FailoverMetricsSnapshotService(registry);
+    }
+
+    /**
+     * Metrics service + controller — present only when a {@link MeterRegistry} is in the context.
+     * Without Micrometer the config view above still works; the metrics view degrades gracefully (§3).
+     */
+    @Bean
+    @ConditionalOnBean({MeterRegistry.class, FailoverMetricsSnapshotService.class})
+    @ConditionalOnMissingBean
+    public DashboardMetricsService dashboardMetricsService(FailoverMetricsSnapshotService snapshotService) {
+        return new DashboardMetricsService(snapshotService, properties);
     }
 
     /**
@@ -181,9 +195,9 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnBean(DashboardMetricsService.class)
     @ConditionalOnMissingBean
     public MetricsSource metricsSource(DashboardMetricsService metricsService,
-                                       org.springframework.beans.factory.ObjectProvider<DashboardHistoryService> history,
-                                       org.springframework.beans.factory.ObjectProvider<SnapshotStore> snapshotStore,
-                                       org.springframework.beans.factory.ObjectProvider<ClusterSeriesStore> seriesStore,
+                                       ObjectProvider<DashboardHistoryService> history,
+                                       ObjectProvider<SnapshotStore> snapshotStore,
+                                       ObjectProvider<ClusterSeriesStore> seriesStore,
                                        InstanceIdResolver instanceIdResolver) {
         // history is present only when failover.dashboard.history.enabled=true; null otherwise.
         LocalRegistryMetricsSource local = new LocalRegistryMetricsSource(metricsService, history.getIfAvailable(),
@@ -259,59 +273,6 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     public ClusterSeriesSampler clusterSeriesSampler(MetricsSource metricsSource, ClusterSeriesStore seriesStore) {
         return new ClusterSeriesSampler(metricsSource, seriesStore,
                 properties.cluster().sharedStore().sampleIntervalSeconds());
-    }
-
-    /**
-     * Peer-side snapshot publisher — active on any instance that sets {@code cluster.snapshot.publish-url},
-     * regardless of its own read mode. Closed on shutdown to stop the scheduler.
-     *
-     * <p>Auth selection (in priority order):
-     * <ol>
-     *   <li>OAuth2 Bearer — when {@code oauth2-client-registration-id} is set and an
-     *       {@code OAuth2AuthorizedClientManager} bean is contributed by {@link OAuth2PublisherConfiguration}.</li>
-     *   <li>HTTP Basic — when {@code username} + {@code password} are set (no Spring Security required on peer).</li>
-     *   <li>No auth — insecure POST; acceptable on trusted internal networks.</li>
-     * </ol>
-     */
-    @Bean(destroyMethod = "close")
-    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
-    @ConditionalOnBean(DashboardMetricsService.class)
-    @ConditionalOnMissingBean
-    public ClusterSnapshotPublisher clusterSnapshotPublisher(DashboardMetricsService metricsService,
-            InstanceIdResolver instanceIdResolver,
-            @Qualifier("dashboardSnapshotOAuth2Interceptor")
-            ObjectProvider<ClientHttpRequestInterceptor> oauth2Interceptor) {
-        DashboardProperties.Snapshot snapshot = properties.cluster().snapshot();
-        RestClient client = buildPublisherClient(snapshot, oauth2Interceptor.getIfAvailable());
-        return new ClusterSnapshotPublisher(metricsService, instanceIdResolver,
-                snapshot.publishUrl(), snapshot.intervalSeconds(), client);
-    }
-
-    private RestClient buildPublisherClient(DashboardProperties.Snapshot snapshot,
-                                            ClientHttpRequestInterceptor oauth2Interceptor) {
-        if (oauth2Interceptor != null) {
-            log.info("Snapshot publisher using OAuth2 Bearer auth (registration-id: '{}').",
-                    snapshot.oauth2ClientRegistrationId());
-            return RestClient.builder().requestInterceptor(oauth2Interceptor).build();
-        }
-        String username = snapshot.username();
-        if (username != null && !username.isBlank()) {
-            log.info("Snapshot publisher using HTTP Basic Auth (user: '{}').", username);
-            String creds = Base64.getEncoder().encodeToString(
-                    (username + ":" + snapshot.password()).getBytes(StandardCharsets.UTF_8));
-            return RestClient.builder()
-                    .requestInterceptor((req, body, exec) -> {
-                        req.getHeaders().set("Authorization", "Basic " + creds);
-                        return exec.execute(req, body);
-                    })
-                    .build();
-        }
-        if (!snapshot.allowInsecureIngest()) {
-            log.warn("Snapshot publisher '{}' has no auth configured — posting without credentials (insecure). "
-                    + "Set snapshot.username+password, snapshot.oauth2-client-registration-id, or "
-                    + "snapshot.allow-insecure-ingest=true to suppress this warning.", snapshot.publishUrl());
-        }
-        return RestClient.create();
     }
 
     @Bean
@@ -422,8 +383,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
 
         /**
          * Ingest open (permit-all) when {@code snapshot.allow-insecure-ingest=true} is explicitly set.
-         * Emits the same loud multi-line WARN block as {@code security.allow-insecure} so the operator
-         * cannot miss it. Not created when Basic or OAuth2 ingest chain is already registered.
+         * Not created when Basic or OAuth2 ingest chain is already registered.
          */
         @Bean
         @Order(-10)
@@ -456,41 +416,6 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
             return http.build();
-        }
-    }
-
-    /**
-     * Wires an OAuth2 {@link ClientHttpRequestInterceptor} for the snapshot publisher when the consumer's
-     * application already has {@code spring-security-oauth2-client} on the classpath. The interceptor
-     * obtains a Bearer token from the consumer's existing {@code OAuth2AuthorizedClientManager} on every
-     * push — token refresh is handled automatically by Spring Security. Activated only when
-     * {@code snapshot.oauth2-client-registration-id} is set.
-     *
-     * <p>Isolated in its own inner class so the OAuth2 client API is never loaded when the module is absent.
-     */
-    @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager")
-    static class OAuth2PublisherConfiguration {
-
-        @Bean("dashboardSnapshotOAuth2Interceptor")
-        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "oauth2-client-registration-id")
-        @ConditionalOnMissingBean(name = "dashboardSnapshotOAuth2Interceptor")
-        ClientHttpRequestInterceptor dashboardSnapshotOAuth2Interceptor(
-                org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager manager,
-                DashboardProperties props) {
-            String registrationId = props.cluster().snapshot().oauth2ClientRegistrationId();
-            log.info("Snapshot publisher using OAuth2 Bearer auth (registration-id: '{}').", registrationId);
-            return (req, body, execution) -> {
-                var authorizeReq = org.springframework.security.oauth2.client.OAuth2AuthorizeRequest
-                        .withClientRegistrationId(registrationId)
-                        .principal("failover-snapshot-publisher")
-                        .build();
-                var authorizedClient = manager.authorize(authorizeReq);
-                if (authorizedClient != null) {
-                    req.getHeaders().setBearerAuth(authorizedClient.getAccessToken().getTokenValue());
-                }
-                return execution.execute(req, body);
-            };
         }
     }
 

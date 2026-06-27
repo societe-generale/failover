@@ -253,31 +253,25 @@ public record DashboardProperties(
     }
 
     /**
-     * Peer-side push settings for {@code cluster.mode=shared-store}: each instance periodically POSTs its local
-     * {@code MetricsSummary} snapshot to the dashboard's ingest endpoint. Inactive when {@code publishUrl} is blank.
+     * Snapshot push / ingest settings for {@code cluster.mode=shared-store}.
      *
-     * <p>Auth priority (publisher side — what credentials the peer sends):
-     * <ol>
-     *   <li>{@code oauth2-client-registration-id} set and {@code OAuth2AuthorizedClientManager} in context
-     *       → Bearer token via the consumer's existing OAuth2 client (no new dependencies).</li>
-     *   <li>{@code username} + {@code password} set → HTTP Basic Auth (no Spring Security required on the peer).</li>
-     *   <li>Neither → POST without credentials (insecure; acceptable on trusted internal networks).</li>
-     * </ol>
+     * <p><strong>Peer (publisher) side</strong> — each peer instance POSTs its local {@code MetricsSummary} to the
+     * dashboard's ingest endpoint. Inactive when {@code publishUrl} is blank.
      *
-     * <p>The dashboard (receiver) side mirrors this: it creates a matching security filter chain for
-     * {@code base-path/api/cluster/snapshot} — OAuth2 JWT validation, HTTP Basic, or open (permit-all).
+     * <p><strong>Dashboard (receiver) side</strong> — controls which security gate protects the ingest endpoint:
+     * <ul>
+     *   <li>{@code username} + {@code password} → HTTP Basic, dedicated in-memory user</li>
+     *   <li>{@code oauth2-client-registration-id} → OAuth2 JWT Bearer (requires
+     *       {@code spring-security-oauth2-resource-server} on the classpath)</li>
+     *   <li>{@code allow-insecure-ingest=true} → permit-all (trusted internal network only)</li>
+     * </ul>
      *
-     * @param publishUrl                  dashboard ingest URL, e.g. {@code http://dashboard:8080/failover-dashboard/api/cluster/snapshot}
-     *                                    (blank ⇒ this instance does not push)
-     * @param intervalSeconds             seconds between snapshot pushes (default {@code 15})
-     * @param username                    HTTP Basic Auth username for the ingest endpoint (blank ⇒ no Basic Auth)
-     * @param password                    HTTP Basic Auth password — <strong>must be plain text</strong>; the publisher
-     *                                    sends it as-is in the {@code Authorization: Basic} header and the dashboard
-     *                                    stores it with {@code {noop}} encoding internally. Spring Security encoded
-     *                                    strings (e.g. {@code {bcrypt}…}) must not be used here — they would be sent
-     *                                    literally and never match.
-     * @param oauth2ClientRegistrationId  id of an existing {@code spring.security.oauth2.client.registration.*} to use for Bearer auth
-     *                                    (blank ⇒ no OAuth2; takes precedence over Basic Auth when set)
+     * @param publishUrl                 dashboard ingest URL (blank ⇒ this instance does not push)
+     * @param intervalSeconds            seconds between pushes (default {@code 15})
+     * @param username                   ingest Basic-auth username accepted by the dashboard (blank ⇒ Basic disabled)
+     * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})
+     * @param oauth2ClientRegistrationId Spring Security resource-server registration id for JWT validation (blank ⇒ disabled)
+     * @param allowInsecureIngest        {@code true} to allow ingest without any auth gate (not recommended in production)
      */
     public record Snapshot(
         @DefaultValue("") String publishUrl,
@@ -287,10 +281,6 @@ public record DashboardProperties(
         @DefaultValue("") String oauth2ClientRegistrationId,
         @DefaultValue("false") boolean allowInsecureIngest
     ) {
-        @ConstructorBinding
-        public Snapshot {
-        }
-
         /** Convenience with defaults. */
         public Snapshot() {
             this("", 15, "", "", "", false);

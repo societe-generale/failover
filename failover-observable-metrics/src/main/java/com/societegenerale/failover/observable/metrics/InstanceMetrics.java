@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics;
+package com.societegenerale.failover.observable.metrics;
 
 /**
  * One cluster member's metrics, for the dashboard's per-instance view. Lets the UI answer "is it one bad

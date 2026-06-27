@@ -27,6 +27,13 @@
             <version>${project.parent.version}</version>
         </dependency>
 
+        <!-- Shared metrics data model (ApiKpis, MetricsSummary, MetricsKpis, etc.) + FailoverMetricsSnapshotService -->
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-observable-metrics</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>

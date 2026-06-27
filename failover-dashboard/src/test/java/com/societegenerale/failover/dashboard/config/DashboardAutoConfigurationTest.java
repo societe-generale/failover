@@ -172,7 +172,7 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("no SnapshotStore / ingest controller / publisher when not in shared-store mode")
+    @DisplayName("no SnapshotStore / ingest controller when not in shared-store mode")
     void noSharedStoreBeansInLocalMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
@@ -180,19 +180,7 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
                     assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.web.ClusterSnapshotController.class);
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class);
                 });
-    }
-
-    @Test
-    @DisplayName("snapshot publish-url set ⇒ ClusterSnapshotPublisher is active")
-    void publishUrlWiresPublisher() {
-        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
-                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
-                .withPropertyValues("failover.dashboard.enabled=true",
-                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
-                .run(ctx -> assertThat(ctx)
-                        .hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class));
     }
 
     @Test

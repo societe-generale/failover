@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
+package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
-import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
+import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
@@ -27,24 +28,31 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Peer side of {@code cluster.mode=shared-store}: periodically POSTs this instance's local {@link
- * DashboardMetricsService#metricsSummary() snapshot} to the dashboard's ingest endpoint. Active only when a
- * non-blank publish URL is configured; failures are logged and never propagate (observability must not disrupt
- * the app). The scheduler runs on a single daemon thread and is stopped on shutdown.
+ * Peer side of {@code cluster.mode=shared-store}: periodically POSTs this instance's local
+ * {@link FailoverMetricsSnapshotService#metricsSummary() snapshot} to the dashboard's ingest endpoint.
+ * Active only when a non-blank publish URL is configured via
+ * {@code failover.dashboard.cluster.snapshot.publish-url}; failures are logged and never propagate
+ * (observability must not disrupt the app). The scheduler runs on a single daemon thread and is stopped
+ * on shutdown.
+ *
+ * <p>Registered by {@link FailoverMicrometerAutoConfiguration} so that any peer app carrying only the
+ * {@code failover-spring-boot-starter} (no dashboard dependency) can push snapshots to a centralised
+ * dashboard host without pulling in the full dashboard artifact.
  *
  * @author Anand Manissery
  */
 @Slf4j
 public class ClusterSnapshotPublisher implements AutoCloseable {
 
-    private final DashboardMetricsService metricsService;
+    private final FailoverMetricsSnapshotService metricsService;
     private final InstanceIdResolver instanceIdResolver;
     private final String publishUrl;
     private final RestClient client;
     private final ScheduledExecutorService scheduler;
 
-    public ClusterSnapshotPublisher(DashboardMetricsService metricsService, InstanceIdResolver instanceIdResolver,
-                                      String publishUrl, int intervalSeconds, RestClient client) {
+    public ClusterSnapshotPublisher(FailoverMetricsSnapshotService metricsService,
+                                    InstanceIdResolver instanceIdResolver,
+                                    String publishUrl, int intervalSeconds, RestClient client) {
         this.metricsService = metricsService;
         this.instanceIdResolver = instanceIdResolver;
         this.publishUrl = publishUrl;
