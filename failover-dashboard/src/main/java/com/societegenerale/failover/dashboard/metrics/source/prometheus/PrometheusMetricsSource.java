@@ -170,8 +170,8 @@ public class PrometheusMetricsSource implements MetricsSource {
         try {
             return buildInstances();
         } catch (PrometheusException e) {
-            log.warn("Prometheus per-instance aggregation failed; no instance breakdown shown. Cause: {}", e.getMessage());
-            return List.of();
+            log.warn("Prometheus per-instance aggregation failed; falling back to local instance. Cause: {}", e.getMessage());
+            return fallback.instances();
         }
     }
 

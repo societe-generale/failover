@@ -17,6 +17,13 @@
     </properties>
 
     <dependencies>
+        <!-- InstanceIdResolver interface lives in failover-core -->
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-core</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
         <!-- Real Micrometer meters: Counter, Timer, MeterRegistry — used by FailoverMetricsSnapshotService -->
         <dependency>
             <groupId>io.micrometer</groupId>

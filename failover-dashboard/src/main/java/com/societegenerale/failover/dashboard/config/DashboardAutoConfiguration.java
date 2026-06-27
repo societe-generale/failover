@@ -35,6 +35,7 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SharedS
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
+import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -66,8 +67,6 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
-import java.net.InetAddress;
 
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
 
@@ -140,25 +139,15 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover
      * starter is present, {@code FailoverMicrometerAutoConfiguration} supplies a
      * {@code DefaultInstanceIdResolver} first and this bean is skipped.
-     *
-     * <p>The lambda resolves lazily — {@code local.server.port} is only available after the embedded
-     * server starts, so construction-time capture would miss the actual port for {@code server.port=0}.
      */
     @Bean
     @ConditionalOnMissingBean
     public InstanceIdResolver instanceIdResolver(Environment environment) {
-        return () -> {
-            String app = environment.getProperty("spring.application.name", "application");
-            String host;
-            try {
-                host = InetAddress.getLocalHost().getHostName();
-            } catch (Exception e) {
-                host = "unknown-host";
-            }
-            String port = environment.getProperty("local.server.port",
-                    environment.getProperty("server.port", "8080"));
-            return app + ":" + host + ":" + port;
-        };
+        String app = environment.getProperty("spring.application.name", "application");
+        String host = DefaultInstanceIdResolver.resolveHostname();
+        return new DefaultInstanceIdResolver(app, host,
+                () -> environment.getProperty("local.server.port",
+                        environment.getProperty("server.port", "8080")));
     }
 
     /**

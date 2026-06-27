@@ -21,6 +21,7 @@ import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
@@ -102,7 +103,11 @@ public class FailoverMicrometerAutoConfiguration {
     @ConditionalOnMissingBean
     @Bean
     public InstanceIdResolver instanceIdResolver(Environment environment) {
-        return new DefaultInstanceIdResolver(environment);
+        String app = environment.getProperty("spring.application.name", "application");
+        String host = DefaultInstanceIdResolver.resolveHostname();
+        return new DefaultInstanceIdResolver(app, host,
+                () -> environment.getProperty("local.server.port",
+                        environment.getProperty("server.port", "8080")));
     }
 
     /**

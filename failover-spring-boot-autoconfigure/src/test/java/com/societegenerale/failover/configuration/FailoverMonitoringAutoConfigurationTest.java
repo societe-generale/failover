@@ -18,6 +18,7 @@ package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
+import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;

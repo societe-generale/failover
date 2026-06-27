@@ -177,12 +177,15 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
-    @DisplayName("instances() returns empty (tab hidden) when Prometheus per-instance query fails")
-    void instancesFallsBackEmpty() {
+    @DisplayName("instances() falls back to local instance when Prometheus per-instance query fails")
+    void instancesFallsBackToLocal() {
         when(client.query(argThat(q -> q != null && q.contains("(name, instance)") && q.contains("stored="))))
                 .thenThrow(new PrometheusException("boom", null));
+        InstanceMetrics localInstance = new InstanceMetrics("local-app:host:8080", System.currentTimeMillis(),
+                new MetricsSummary(null, List.of(), List.of(), System.currentTimeMillis()));
+        when(fallback.instances()).thenReturn(List.of(localInstance));
 
-        assertThat(source.instances()).isEmpty();
+        assertThat(source.instances()).containsExactly(localInstance);
     }
 
     @Test
