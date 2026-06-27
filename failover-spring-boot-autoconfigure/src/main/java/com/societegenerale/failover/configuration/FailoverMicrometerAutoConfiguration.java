@@ -17,9 +17,11 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import com.societegenerale.failover.properties.FailoverProperties;
@@ -30,6 +32,7 @@ import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.config.MeterFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -39,9 +42,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.web.client.RestClient;
 
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 /**
  * Autoconfiguration for Micrometer-based failover metrics.
@@ -77,9 +85,25 @@ import java.net.InetAddress;
 @ConditionalOnExpression("${failover.enabled:true} eq true")
 @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
 @ConditionalOnBean(MeterRegistry.class)
-@EnableConfigurationProperties(FailoverProperties.class)
+@EnableConfigurationProperties({FailoverProperties.class, FailoverClusterPublisherProperties.class})
 @Slf4j
 public class FailoverMicrometerAutoConfiguration {
+
+    /**
+     * Default instance identity resolver: {@code <app>:<host>:<port>}.
+     *
+     * <p>Registered here (metrics config) rather than the dashboard config so that any service that
+     * publishes metrics — including peer apps in cluster mode that only have the failover starter, not
+     * the dashboard starter — gets the correct instance id without pulling in dashboard dependencies.
+     *
+     * <p>Declare a custom {@link InstanceIdResolver} bean to override — for example to use a k8s pod
+     * name, a Docker container id, or the explicit {@code failover.observable.instance.id} value.
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public InstanceIdResolver instanceIdResolver(Environment environment) {
+        return new DefaultInstanceIdResolver(environment);
+    }
 
     /**
      * Emits {@code failover.store.total}, {@code failover.recover.total},
@@ -110,6 +134,16 @@ public class FailoverMicrometerAutoConfiguration {
             FailoverExpiryExtractor expiryExtractor,
             ObjectProvider<FailoverStore<Object>> failoverStore) {
         return new FailoverMeterBinder(failoverScanner, expiryExtractor, failoverStore.getIfAvailable());
+    }
+
+    /**
+     * Aggregates the existing {@code failover.*} Micrometer counters into a {@link com.societegenerale.failover.observable.metrics.MetricsSummary}.
+     * Used by peer apps to build snapshots for the shared-store cluster tier without dashboard dependencies.
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public FailoverMetricsSnapshotService failoverMetricsSnapshotService(MeterRegistry registry) {
+        return new FailoverMetricsSnapshotService(registry);
     }
 
     // ── instance tag (failover.observable.instance.mode) ──────────────────────────────
@@ -201,5 +235,109 @@ public class FailoverMicrometerAutoConfiguration {
             host = "unknown-host";
         }
         return app + ":" + host;
+    }
+
+    // ── cluster snapshot publisher (shared-store peer side) ───────────────────────────
+
+    /**
+     * Snapshot publisher configuration — active only when {@code spring-web} is on the classpath
+     * (RestClient is in spring-web). Isolated in a nested class so that the RestClient type is only
+     * referenced when it is actually available — ASM-evaluated condition means no runtime failure
+     * when the consumer is a non-web app.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.web.client.RestClient")
+    @Slf4j
+    static class PublisherConfiguration {
+
+        /**
+         * Peer-side snapshot publisher: periodically POSTs this instance's local metrics snapshot to
+         * the dashboard's ingest endpoint. Active only when a non-blank publish URL is configured.
+         * Moved here from the dashboard artifact so that any peer app carrying only the
+         * {@code failover-spring-boot-starter} (no dashboard dependency) can push snapshots to a
+         * centralised dashboard host.
+         *
+         * <p>Auth priority (publisher side):
+         * <ol>
+         *   <li>OAuth2 Bearer — when {@code oauth2-client-registration-id} is set and
+         *       {@code spring-security-oauth2-client} is on the classpath.</li>
+         *   <li>HTTP Basic — when {@code username} + {@code password} are set.</li>
+         *   <li>No auth — insecure; warn unless {@code allow-insecure-ingest=true}.</li>
+         * </ol>
+         */
+        @Bean(destroyMethod = "close")
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
+        @ConditionalOnMissingBean(ClusterSnapshotPublisher.class)
+        public ClusterSnapshotPublisher clusterSnapshotPublisher(
+                FailoverMetricsSnapshotService metricsSnapshotService,
+                InstanceIdResolver instanceIdResolver,
+                FailoverClusterPublisherProperties publisherProperties,
+                @Qualifier("failoverSnapshotOAuth2Interceptor")
+                ObjectProvider<ClientHttpRequestInterceptor> oauth2Interceptor) {
+            RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
+            return new ClusterSnapshotPublisher(metricsSnapshotService, instanceIdResolver,
+                    publisherProperties.publishUrl(), publisherProperties.intervalSeconds(), client);
+        }
+
+        private static RestClient buildPublisherClient(FailoverClusterPublisherProperties props,
+                                                       ClientHttpRequestInterceptor oauth2Interceptor) {
+            if (oauth2Interceptor != null) {
+                return RestClient.builder().requestInterceptor(oauth2Interceptor).build();
+            }
+            String username = props.username();
+            if (username != null && !username.isBlank()) {
+                log.info("Failover snapshot publisher using HTTP Basic Auth (user: '{}').", username);
+                String creds = Base64.getEncoder().encodeToString(
+                        (username + ":" + props.password()).getBytes(StandardCharsets.UTF_8));
+                return RestClient.builder()
+                        .requestInterceptor((req, body, exec) -> {
+                            req.getHeaders().set("Authorization", "Basic " + creds);
+                            return exec.execute(req, body);
+                        })
+                        .build();
+            }
+            if (!props.allowInsecureIngest()) {
+                log.warn("Failover snapshot publisher '{}' has no auth configured — posting without credentials "
+                        + "(insecure). Set snapshot.username+password, snapshot.oauth2-client-registration-id, "
+                        + "or snapshot.allow-insecure-ingest=true to suppress this warning.", props.publishUrl());
+            }
+            return RestClient.create();
+        }
+
+        /**
+         * Wires an OAuth2 {@link ClientHttpRequestInterceptor} for the snapshot publisher when the consumer's
+         * application already has {@code spring-security-oauth2-client} on the classpath. The interceptor
+         * obtains a Bearer token from the consumer's existing {@code OAuth2AuthorizedClientManager} on every
+         * push — token refresh is handled automatically by Spring Security. Activated only when
+         * {@code snapshot.oauth2-client-registration-id} is set.
+         *
+         * <p>Isolated in its own inner class so the OAuth2 client API is never loaded when the module is absent.
+         */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnClass(name = "org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager")
+        @Slf4j
+        static class OAuth2PublisherConfiguration {
+
+            @Bean("failoverSnapshotOAuth2Interceptor")
+            @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "oauth2-client-registration-id")
+            @ConditionalOnMissingBean(name = "failoverSnapshotOAuth2Interceptor")
+            ClientHttpRequestInterceptor failoverSnapshotOAuth2Interceptor(
+                    org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager manager,
+                    FailoverClusterPublisherProperties props) {
+                String registrationId = props.oauth2ClientRegistrationId();
+                log.info("Failover snapshot publisher using OAuth2 Bearer auth (registration-id: '{}').", registrationId);
+                return (req, body, execution) -> {
+                    var authorizeReq = org.springframework.security.oauth2.client.OAuth2AuthorizeRequest
+                            .withClientRegistrationId(registrationId)
+                            .principal("failover-snapshot-publisher")
+                            .build();
+                    var authorizedClient = manager.authorize(authorizeReq);
+                    if (authorizedClient != null) {
+                        req.getHeaders().setBearerAuth(authorizedClient.getAccessToken().getTokenValue());
+                    }
+                    return execution.execute(req, body);
+                };
+            }
+        }
     }
 }

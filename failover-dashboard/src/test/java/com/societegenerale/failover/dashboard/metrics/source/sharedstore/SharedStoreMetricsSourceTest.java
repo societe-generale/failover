@@ -17,14 +17,15 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
-import com.societegenerale.failover.dashboard.metrics.ExceptionStat;
-import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +39,7 @@ class SharedStoreMetricsSourceTest {
 
     private static MetricsSummary snapshot(String name, long success, long recovered, long notRecovered,
                                            long errors, List<ExceptionStat> exceptions) {
-        ApiKpis k = DashboardKpis.build(name, name, success, recovered, notRecovered, errors, 0, 0,
+        ApiKpis k = MetricsKpis.build(name, name, success, recovered, notRecovered, errors, 0, 0,
                 new Latency(1, 2, 3, 4));
         return new MetricsSummary(k, List.of(k), exceptions, 0L);
     }
@@ -47,7 +48,7 @@ class SharedStoreMetricsSourceTest {
     private static MetricsSource fallback(String marker) {
         return new MetricsSource() {
             public MetricsSummary summary() {
-                ApiKpis k = DashboardKpis.build(marker, marker, 1, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
+                ApiKpis k = MetricsKpis.build(marker, marker, 1, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
                 return new MetricsSummary(k, List.of(k), List.of(), 0L);
             }
             public List<ApiHealth> health() { return List.of(new ApiHealth(marker, "HEALTHY", 1.0)); }
@@ -105,10 +106,10 @@ class SharedStoreMetricsSourceTest {
         return new SnapshotStore() {
             public void upsert(ClusterSnapshot snapshot) { /* no-op: stub is pre-seeded via the constructor */ }
             public List<MetricsSummary> live() { return list; }
-            public List<com.societegenerale.failover.dashboard.metrics.InstanceMetrics> liveInstances() {
-                List<com.societegenerale.failover.dashboard.metrics.InstanceMetrics> out = new java.util.ArrayList<>();
+            public List<com.societegenerale.failover.observable.metrics.InstanceMetrics> liveInstances() {
+                List<com.societegenerale.failover.observable.metrics.InstanceMetrics> out = new java.util.ArrayList<>();
                 for (int i = 0; i < list.size(); i++) {
-                    out.add(new com.societegenerale.failover.dashboard.metrics.InstanceMetrics("instance-" + i, 100L + i, list.get(i)));
+                    out.add(new com.societegenerale.failover.observable.metrics.InstanceMetrics("instance-" + i, 100L + i, list.get(i)));
                 }
                 return out;
             }
@@ -131,7 +132,7 @@ class SharedStoreMetricsSourceTest {
     void seriesReadsTheRingWhenPresentElseFallsBackToLocal() {
         // with a series ring → reads it
         ClusterSeriesStore ring = new ClusterSeriesStore(new RetentionPolicy(java.time.Duration.ofDays(1), 100));
-        ring.append(new com.societegenerale.failover.dashboard.metrics.SeriesPoint(
+        ring.append(new com.societegenerale.failover.observable.metrics.SeriesPoint(
                 System.currentTimeMillis(), 5, 1, 1, 0, 4, 1, java.util.Map.of()));
         SharedStoreMetricsSource withRing = new SharedStoreMetricsSource(
                 stubStore(), THRESHOLDS, fallback("local"), 10, ring);
@@ -180,7 +181,7 @@ class SharedStoreMetricsSourceTest {
         SharedStoreMetricsSource source = new SharedStoreMetricsSource(store, THRESHOLDS, fallback("local"), 10);
 
         assertThat(source.instances())
-                .extracting(com.societegenerale.failover.dashboard.metrics.InstanceMetrics::instanceId)
+                .extracting(com.societegenerale.failover.observable.metrics.InstanceMetrics::instanceId)
                 .containsExactly("instance-0", "instance-1");
     }
 }

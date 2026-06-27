@@ -18,19 +18,19 @@ package com.societegenerale.failover.dashboard.metrics.source.prometheus;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
-import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
+import com.societegenerale.failover.observable.metrics.MetricsKpis;
 
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.RangePoint;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.RangeSeries;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.Sample;
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.ExceptionStat;
-import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -136,7 +136,8 @@ public class PrometheusMetricsSource implements MetricsSource {
     public List<ApiHealth> health() {
         try {
             return buildSummary().perApi().stream()
-                    .map(k -> DashboardKpis.classify(k.name(), k.rates().healthyRate(), thresholds))
+                    .map(k -> MetricsKpis.classify(k.name(), k.rates().healthyRate(),
+                            thresholds.degradedThreshold(), thresholds.unhealthyThreshold()))
                     .toList();
         } catch (PrometheusException e) {
             log.warn("Prometheus health aggregation failed; falling back to local. Cause: {}", e.getMessage());
@@ -280,14 +281,14 @@ public class PrometheusMetricsSource implements MetricsSource {
         List<ApiKpis> perApi = new ArrayList<>();
         for (String name : names) {
             long[] o = outcomeByName.getOrDefault(name, new long[3]);
-            perApi.add(DashboardKpis.build(
+            perApi.add(MetricsKpis.build(
                     name, domainByName.getOrDefault(name, name),
                     success.getOrDefault(name, 0L), o[0], o[1], o[2],
                     partial.getOrDefault(name, 0L), async.getOrDefault(name, 0L),
                     latency.forName(name)));
         }
 
-        ApiKpis overall = DashboardKpis.overall(perApi, latency.overall());
+        ApiKpis overall = MetricsKpis.overall(perApi, latency.overall());
         return new MetricsSummary(overall, perApi, topExceptions(exc), System.currentTimeMillis());
     }
 

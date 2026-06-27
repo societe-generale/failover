@@ -17,9 +17,9 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
