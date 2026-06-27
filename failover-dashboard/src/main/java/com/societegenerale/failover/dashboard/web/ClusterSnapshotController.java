@@ -16,7 +16,7 @@
 
 package com.societegenerale.failover.dashboard.web;
 
-import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;

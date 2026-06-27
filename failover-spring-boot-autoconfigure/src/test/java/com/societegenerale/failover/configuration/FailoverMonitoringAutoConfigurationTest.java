@@ -17,6 +17,8 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
+import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
@@ -143,6 +145,28 @@ class FailoverMonitoringAutoConfigurationTest {
                     assertThat(registry.find("failover.registered.total").gauge()).isNotNull();
                 });
         }
+
+        @Test
+        @DisplayName("DefaultInstanceIdResolver bean is registered when MeterRegistry present")
+        void instanceIdResolverRegisteredByDefault() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
+                    assertThat(ctx.getBean(InstanceIdResolver.class))
+                            .isInstanceOf(DefaultInstanceIdResolver.class);
+                });
+        }
+
+        @Test
+        @DisplayName("custom InstanceIdResolver bean honoured via @ConditionalOnMissingBean")
+        void customInstanceIdResolverHonouredViaMissingBean() {
+            InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withBean(InstanceIdResolver.class, () -> custom)
+                .run(ctx -> assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom));
+        }
     }
 
     @Nested
@@ -161,6 +185,13 @@ class FailoverMonitoringAutoConfigurationTest {
         void failoverMeterBinderNotRegisteredWithoutRegistry() {
             micrometerRunner.run(ctx ->
                 assertThat(ctx.getBeansOfType(FailoverMeterBinder.class)).isEmpty());
+        }
+
+        @Test
+        @DisplayName("InstanceIdResolver NOT registered when MeterRegistry absent")
+        void instanceIdResolverNotRegisteredWithoutRegistry() {
+            micrometerRunner.run(ctx ->
+                assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty());
         }
     }
 
@@ -245,6 +276,59 @@ class FailoverMonitoringAutoConfigurationTest {
         @DisplayName("FailoverHealthIndicator NOT registered when failover disabled")
         void healthIndicatorAbsent() {
             assertThat(applicationContext.getBeansOfType(FailoverHealthIndicator.class)).isEmpty();
+        }
+    }
+
+    // ── cluster snapshot publisher ────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("cluster snapshot publisher — wired by FailoverMicrometerAutoConfiguration")
+    class WhenClusterPublisher {
+
+        @Test
+        @DisplayName("publish-url + username ⇒ ClusterSnapshotPublisher wired (Basic Auth)")
+        void publisherWiredWithBasicAuth() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                    "failover.dashboard.cluster.snapshot.username=peer",
+                    "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+        }
+
+        @Test
+        @DisplayName("publish-url + oauth2-client-registration-id + OAuth2AuthorizedClientManager ⇒ publisher + OAuth2 interceptor wired")
+        void publisherWiredWithOAuth2() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
+                    () -> mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                    "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("failoverSnapshotOAuth2Interceptor");
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
+        }
+
+        @Test
+        @DisplayName("publish-url, no auth ⇒ publisher wired in insecure mode")
+        void publisherWiredInsecureWhenNoAuthConfigured() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
+                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+        }
+
+        @Test
+        @DisplayName("publish-url absent ⇒ ClusterSnapshotPublisher not wired")
+        void publisherNotWiredWhenPublishUrlAbsent() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
         }
     }
 

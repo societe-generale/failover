@@ -35,6 +35,13 @@
             <version>${project.parent.version}</version>
         </dependency>
 
+        <!-- Shared metrics data model + FailoverMetricsSnapshotService (for ClusterSnapshotPublisher) -->
+        <dependency>
+            <groupId>com.societegenerale.failover</groupId>
+            <artifactId>failover-observable-metrics</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>com.societegenerale.failover</groupId>
             <artifactId>failover-store-inmemory</artifactId>
@@ -106,6 +113,23 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- spring-web is provided: ClusterSnapshotPublisher uses RestClient, activated only in web apps -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- OAuth2 client — provided/optional: ClusterSnapshotPublisher obtains Bearer tokens via the
+             consumer's existing OAuth2AuthorizedClientManager. Only activates when the consumer already
+             has spring-security-oauth2-client on the classpath. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-client</artifactId>
+            <scope>provided</scope>
             <optional>true</optional>
         </dependency>
 

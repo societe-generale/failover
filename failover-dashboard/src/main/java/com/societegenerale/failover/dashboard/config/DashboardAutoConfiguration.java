@@ -29,17 +29,19 @@ import com.societegenerale.failover.dashboard.metrics.source.prometheus.Promethe
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesSampler;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesStore;
-import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStoreInmemory;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.RetentionPolicy;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SharedStoreMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
+import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
-import java.net.InetAddress;
+import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -51,11 +53,16 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -129,14 +136,43 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * Metrics service + controller — present only when a {@link MeterRegistry} is in the context.
-     * Without Micrometer the config view above still works; the metrics view degrades gracefully (§3).
+     * Fallback {@link InstanceIdResolver} for standalone-dashboard deployments where
+     * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover
+     * starter is present, {@code FailoverMicrometerAutoConfiguration} supplies a
+     * {@code DefaultInstanceIdResolver} first and this bean is skipped.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public InstanceIdResolver instanceIdResolver(Environment environment) {
+        String app = environment.getProperty("spring.application.name", "application");
+        String host = DefaultInstanceIdResolver.resolveHostname();
+        return new DefaultInstanceIdResolver(app, host,
+                () -> environment.getProperty("local.server.port",
+                        environment.getProperty("server.port", "8080")));
+    }
+
+    /**
+     * Standalone fallback {@link FailoverMetricsSnapshotService} for dashboard-only deployments where
+     * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover starter
+     * is present, {@code FailoverMicrometerAutoConfiguration} contributes the real service first and this
+     * fallback is skipped.
      */
     @Bean
     @ConditionalOnBean(MeterRegistry.class)
     @ConditionalOnMissingBean
-    public DashboardMetricsService dashboardMetricsService(MeterRegistry registry) {
-        return new DashboardMetricsService(registry, properties);
+    public FailoverMetricsSnapshotService failoverMetricsSnapshotService(MeterRegistry registry) {
+        return new FailoverMetricsSnapshotService(registry);
+    }
+
+    /**
+     * Metrics service + controller — present only when a {@link MeterRegistry} is in the context.
+     * Without Micrometer the config view above still works; the metrics view degrades gracefully (§3).
+     */
+    @Bean
+    @ConditionalOnBean({MeterRegistry.class, FailoverMetricsSnapshotService.class})
+    @ConditionalOnMissingBean
+    public DashboardMetricsService dashboardMetricsService(FailoverMetricsSnapshotService snapshotService) {
+        return new DashboardMetricsService(snapshotService, properties);
     }
 
     /**
@@ -149,13 +185,13 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnBean(DashboardMetricsService.class)
     @ConditionalOnMissingBean
     public MetricsSource metricsSource(DashboardMetricsService metricsService,
-                                       org.springframework.beans.factory.ObjectProvider<DashboardHistoryService> history,
-                                       org.springframework.beans.factory.ObjectProvider<SnapshotStore> snapshotStore,
-                                       org.springframework.beans.factory.ObjectProvider<ClusterSeriesStore> seriesStore,
-                                       Environment environment) {
+                                       ObjectProvider<DashboardHistoryService> history,
+                                       ObjectProvider<SnapshotStore> snapshotStore,
+                                       ObjectProvider<ClusterSeriesStore> seriesStore,
+                                       InstanceIdResolver instanceIdResolver) {
         // history is present only when failover.dashboard.history.enabled=true; null otherwise.
         LocalRegistryMetricsSource local = new LocalRegistryMetricsSource(metricsService, history.getIfAvailable(),
-                resolveInstanceId(environment));
+                instanceIdResolver);
         DashboardProperties.Cluster cluster = properties.cluster();
         String mode = cluster.mode();
         if ("prometheus".equalsIgnoreCase(mode)) {
@@ -229,32 +265,6 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                 properties.cluster().sharedStore().sampleIntervalSeconds());
     }
 
-    /**
-     * Peer-side snapshot publisher — active on any instance that sets {@code cluster.snapshot.publish-url},
-     * regardless of its own read mode. Closed on shutdown to stop the scheduler.
-     */
-    @Bean(destroyMethod = "close")
-    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
-    @ConditionalOnBean(DashboardMetricsService.class)
-    @ConditionalOnMissingBean
-    public ClusterSnapshotPublisher clusterSnapshotPublisher(DashboardMetricsService metricsService, Environment environment) {
-        DashboardProperties.Snapshot snapshot = properties.cluster().snapshot();
-        return new ClusterSnapshotPublisher(metricsService, resolveInstanceId(environment),
-                snapshot.publishUrl(), snapshot.intervalSeconds());
-    }
-
-    /** Resolves this instance's id: {@code spring.application.name:hostname} (host falls back to {@code unknown-host}). */
-    private static String resolveInstanceId(Environment environment) {
-        String app = environment.getProperty("spring.application.name", "application");
-        String host;
-        try {
-            host = InetAddress.getLocalHost().getHostName();
-        } catch (Exception e) {
-            host = "unknown-host";
-        }
-        return app + ":" + host;
-    }
-
     @Bean
     @ConditionalOnBean(MetricsSource.class)
     @ConditionalOnMissingBean
@@ -315,22 +325,119 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * Access-control gate when Spring Security IS on the classpath (design doc §9 gate 4): a
-     * {@link SecurityFilterChain} scoped to {@code base-path/**} that requires the configured role.
-     * It is {@code @ConditionalOnMissingBean} so a consumer can fully override it.
+     * Access-control gate when Spring Security IS on the classpath (design doc §9 gate 4).
+     *
+     * <p>Contains three tiers of ingest-endpoint security for {@code base-path/api/cluster/snapshot},
+     * each mutually exclusive and evaluated in declaration order:
+     * <ol>
+     *   <li>{@code dashboardIngestBasicFilterChain} — HTTP Basic with peer credentials from config.</li>
+     *   <li>{@code dashboardIngestOpenFilterChain} — permit-all for trusted internal networks
+     *       (shared-store mode, no auth configured).</li>
+     * </ol>
+     * OAuth2 JWT validation lives in {@link OAuth2IngestSecurityConfiguration} (separate class required
+     * to avoid loading the resource-server API when it is absent from the classpath).
+     *
+     * <p>The main {@code dashboardSecurityFilterChain} is {@code @Order(0)}; ingest chains are
+     * {@code @Order(-10)} so they match {@code /api/cluster/snapshot} before the broad {@code /**} gate.
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(SecurityFilterChain.class)
     static class SecurityPresentConfiguration {
 
+        /**
+         * Ingest secured with HTTP Basic using a dedicated in-memory user (peer credentials from config).
+         * Activated when {@code snapshot.username} is set and no OAuth2 ingest chain is registered first.
+         * Stateless — service-to-service only; no session is created, so CSRF does not apply.
+         */
         @Bean
+        @Order(-10)
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "username")
+        @ConditionalOnMissingBean(name = "dashboardIngestOAuth2FilterChain")
+        SecurityFilterChain dashboardIngestBasicFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+            String ingestPath = props.basePath() + "/api/cluster/snapshot";
+            DashboardProperties.Snapshot snapshot = props.cluster().snapshot();
+            String password = snapshot.password();
+            String encodedPassword = password.startsWith("{") ? password : "{noop}" + password;
+            InMemoryUserDetailsManager userDetails = new InMemoryUserDetailsManager(
+                    User.builder().username(snapshot.username()).password(encodedPassword)
+                            .roles("FAILOVER_PEER").build());
+            http.securityMatcher(ingestPath)
+                    .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                    .httpBasic(Customizer.withDefaults())
+                    .userDetailsService(userDetails)
+                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                    .csrf(AbstractHttpConfigurer::disable);
+            log.info("Failover dashboard ingest '{}' secured with HTTP Basic (user: '{}').",
+                    ingestPath, snapshot.username());
+            return http.build();
+        }
+
+        /**
+         * Ingest open (permit-all) when {@code snapshot.allow-insecure-ingest=true} is explicitly set.
+         * Not created when Basic or OAuth2 ingest chain is already registered.
+         */
+        @Bean
+        @Order(-10)
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "allow-insecure-ingest",
+                havingValue = "true")
+        @ConditionalOnMissingBean(name = {"dashboardIngestOAuth2FilterChain", "dashboardIngestBasicFilterChain"})
+        SecurityFilterChain dashboardIngestOpenFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+            String ingestPath = props.basePath() + "/api/cluster/snapshot";
+            http.securityMatcher(ingestPath)
+                    .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                    .csrf(AbstractHttpConfigurer::disable);
+            log.warn("===================================================================================");
+            log.warn("Failover dashboard ingest '{}' is running WITHOUT an access-control gate.", ingestPath);
+            log.warn("(allow-insecure-ingest=true) Set snapshot.username+password or");
+            log.warn("snapshot.oauth2-client-registration-id to secure the ingest endpoint.");
+            log.warn("Use only on a trusted internal network (k8s namespace, VPC).");
+            log.warn("===================================================================================");
+            return http.build();
+        }
+
+        /** Main dashboard gate: {@code base-path/**} requires the configured role. {@code @Order(0)} ensures
+         * ingest chains at {@code @Order(-10)} are evaluated first for {@code /api/cluster/snapshot}.
+         * Stateless — HTTP Basic auth; no session is created, so CSRF does not apply. */
+        @Bean
+        @Order(0)
         @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
-        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) {
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> auth.anyRequest().hasRole(props.security().role()))
-                    .httpBasic(Customizer.withDefaults());
+                    .httpBasic(Customizer.withDefaults())
+                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                    .csrf(AbstractHttpConfigurer::disable);
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
+            return http.build();
+        }
+    }
+
+    /**
+     * Secures the ingest endpoint with OAuth2 JWT Bearer validation when the consumer has
+     * {@code spring-security-oauth2-resource-server} on the classpath and
+     * {@code snapshot.oauth2-client-registration-id} is set. Takes priority over the main dashboard
+     * security chain via {@code @Order(-10)}.
+     *
+     * <p>Isolated in its own inner class so the resource-server API is never loaded when absent.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.BearerTokenAuthenticationToken")
+    static class OAuth2IngestSecurityConfiguration {
+
+        @Bean("dashboardIngestOAuth2FilterChain")
+        @Order(-10)
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "oauth2-client-registration-id")
+        @ConditionalOnMissingBean(name = "dashboardIngestOAuth2FilterChain")
+        SecurityFilterChain dashboardIngestOAuth2FilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+            String ingestPath = props.basePath() + "/api/cluster/snapshot";
+            http.securityMatcher(ingestPath)
+                    .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                    .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                    .csrf(AbstractHttpConfigurer::disable);
+            log.info("Failover dashboard ingest '{}' secured with OAuth2 JWT.", ingestPath);
             return http.build();
         }
     }
