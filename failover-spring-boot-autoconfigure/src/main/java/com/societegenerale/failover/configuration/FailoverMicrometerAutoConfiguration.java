@@ -160,7 +160,7 @@ public class FailoverMicrometerAutoConfiguration {
      * — {@code @ConditionalOnClass} is ASM-evaluated, so a runtime without that jar (e.g. the dashboard-only
      * classpath) simply skips this class instead of failing to introspect the enclosing one.
      */
-    @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+    @Configuration(proxyBeanMethods = false)
     @ConditionalOnExpression("${failover.enabled:true} eq true")
     @ConditionalOnClass(MeterRegistryCustomizer.class)
     @ConditionalOnProperty(prefix = "failover.observable.instance", name = "mode", havingValue = "auto", matchIfMissing = true)

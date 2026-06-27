@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static java.lang.System.currentTimeMillis;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SharedStoreMetricsSourceTest {
@@ -133,12 +134,9 @@ class SharedStoreMetricsSourceTest {
     void seriesReadsTheRingWhenPresentElseFallsBackToLocal() {
         // with a series ring → reads it
         ClusterSeriesStore ring = new ClusterSeriesStore(new RetentionPolicy(java.time.Duration.ofDays(1), 100));
-        ring.append(new com.societegenerale.failover.observable.metrics.SeriesPoint(
-                System.currentTimeMillis(), 5, 1, 1, 0, 4, 1, java.util.Map.of()));
-        SharedStoreMetricsSource withRing = new SharedStoreMetricsSource(
-                stubStore(), THRESHOLDS, fallback("local"), 10, ring);
-        assertThat(withRing.series(0)).singleElement()
-                .satisfies(p -> assertThat(p.calls()).isEqualTo(5));
+        ring.append(new SeriesPoint(currentTimeMillis(), 5, 1, 1, 0, 4, 1, java.util.Map.of()));
+        SharedStoreMetricsSource withRing = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fallback("local"), 10, ring);
+        assertThat(withRing.series(0)).singleElement().satisfies(p -> assertThat(p.calls()).isEqualTo(5));
 
         // without a ring (4-arg ctor → null) → falls back to local source
         MetricsSource fb = fallback("local");
@@ -230,7 +228,7 @@ class SharedStoreMetricsSourceTest {
             public List<SeriesPoint> series(long w) { return List.of(); }
             @Override
             public List<InstanceMetrics> instances() {
-                return List.of(new InstanceMetrics(instanceId, System.currentTimeMillis(), summary));
+                return List.of(new InstanceMetrics(instanceId, currentTimeMillis(), summary));
             }
         };
     }
