@@ -17,6 +17,7 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
@@ -143,6 +144,28 @@ class FailoverMonitoringAutoConfigurationTest {
                     assertThat(registry.find("failover.registered.total").gauge()).isNotNull();
                 });
         }
+
+        @Test
+        @DisplayName("DefaultInstanceIdResolver bean is registered when MeterRegistry present")
+        void instanceIdResolverRegisteredByDefault() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
+                    assertThat(ctx.getBean(InstanceIdResolver.class))
+                            .isInstanceOf(DefaultInstanceIdResolver.class);
+                });
+        }
+
+        @Test
+        @DisplayName("custom InstanceIdResolver bean honoured via @ConditionalOnMissingBean")
+        void customInstanceIdResolverHonouredViaMissingBean() {
+            InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withBean(InstanceIdResolver.class, () -> custom)
+                .run(ctx -> assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom));
+        }
     }
 
     @Nested
@@ -161,6 +184,13 @@ class FailoverMonitoringAutoConfigurationTest {
         void failoverMeterBinderNotRegisteredWithoutRegistry() {
             micrometerRunner.run(ctx ->
                 assertThat(ctx.getBeansOfType(FailoverMeterBinder.class)).isEmpty());
+        }
+
+        @Test
+        @DisplayName("InstanceIdResolver NOT registered when MeterRegistry absent")
+        void instanceIdResolverNotRegisteredWithoutRegistry() {
+            micrometerRunner.run(ctx ->
+                assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty());
         }
     }
 

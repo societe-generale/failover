@@ -17,6 +17,7 @@
 package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.core.expiry.FailoverExpiryExtractor;
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
@@ -80,6 +81,22 @@ import java.net.InetAddress;
 @EnableConfigurationProperties(FailoverProperties.class)
 @Slf4j
 public class FailoverMicrometerAutoConfiguration {
+
+    /**
+     * Default instance identity resolver: {@code <app>:<host>:<port>}.
+     *
+     * <p>Registered here (metrics config) rather than the dashboard config so that any service that
+     * publishes metrics — including peer apps in cluster mode that only have the failover starter, not
+     * the dashboard starter — gets the correct instance id without pulling in dashboard dependencies.
+     *
+     * <p>Declare a custom {@link InstanceIdResolver} bean to override — for example to use a k8s pod
+     * name, a Docker container id, or the explicit {@code failover.observable.instance.id} value.
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public InstanceIdResolver instanceIdResolver(Environment environment) {
+        return new DefaultInstanceIdResolver(environment);
+    }
 
     /**
      * Emits {@code failover.store.total}, {@code failover.recover.total},
