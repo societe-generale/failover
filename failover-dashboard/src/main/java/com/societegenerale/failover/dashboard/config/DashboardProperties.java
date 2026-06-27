@@ -281,6 +281,10 @@ public record DashboardProperties(
         @DefaultValue("") String oauth2ClientRegistrationId,
         @DefaultValue("false") boolean allowInsecureIngest
     ) {
+        @ConstructorBinding
+        public Snapshot {
+        }
+
         /** Convenience with defaults. */
         public Snapshot() {
             this("", 15, "", "", "", false);

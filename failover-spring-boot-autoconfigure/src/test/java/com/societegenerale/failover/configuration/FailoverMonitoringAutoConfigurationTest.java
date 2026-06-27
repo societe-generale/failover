@@ -278,6 +278,59 @@ class FailoverMonitoringAutoConfigurationTest {
         }
     }
 
+    // ── cluster snapshot publisher ────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("cluster snapshot publisher — wired by FailoverMicrometerAutoConfiguration")
+    class WhenClusterPublisher {
+
+        @Test
+        @DisplayName("publish-url + username ⇒ ClusterSnapshotPublisher wired (Basic Auth)")
+        void publisherWiredWithBasicAuth() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                    "failover.dashboard.cluster.snapshot.username=peer",
+                    "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+        }
+
+        @Test
+        @DisplayName("publish-url + oauth2-client-registration-id + OAuth2AuthorizedClientManager ⇒ publisher + OAuth2 interceptor wired")
+        void publisherWiredWithOAuth2() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
+                    () -> mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                    "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("failoverSnapshotOAuth2Interceptor");
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
+        }
+
+        @Test
+        @DisplayName("publish-url, no auth ⇒ publisher wired in insecure mode")
+        void publisherWiredInsecureWhenNoAuthConfigured() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
+                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+        }
+
+        @Test
+        @DisplayName("publish-url absent ⇒ ClusterSnapshotPublisher not wired")
+        void publisherNotWiredWhenPublishUrlAbsent() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
+        }
+    }
+
     // ── @TestConfiguration helpers ────────────────────────────────────────────
 
     @TestConfiguration

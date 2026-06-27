@@ -387,64 +387,6 @@ class DashboardAutoConfigurationTest {
                 });
     }
 
-    // ── snapshot publisher auth (§cluster ingest security) ───────────────────
-
-    @Test
-    @DisplayName("oauth2-client-registration-id set + OAuth2AuthorizedClientManager present ⇒ OAuth2 interceptor registered (takes priority over Basic)")
-    void oauth2InterceptorRegisteredWhenManagerPresentAndRegistrationIdSet() {
-        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
-                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
-                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
-                        () -> Mockito.mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
-                .withPropertyValues("failover.dashboard.enabled=true",
-                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
-                        "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard",
-                        "failover.dashboard.cluster.snapshot.username=peer",
-                        "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> {
-                    assertThat(ctx).hasBean("dashboardSnapshotOAuth2Interceptor");
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class);
-                });
-    }
-
-    @Test
-    @DisplayName("oauth2-client-registration-id absent ⇒ no OAuth2 interceptor (Basic Auth path used instead)")
-    void noOAuth2InterceptorWhenRegistrationIdAbsent() {
-        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
-                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
-                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
-                        () -> Mockito.mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
-                .withPropertyValues("failover.dashboard.enabled=true",
-                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
-                        "failover.dashboard.cluster.snapshot.username=peer",
-                        "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> assertThat(ctx).doesNotHaveBean("dashboardSnapshotOAuth2Interceptor"));
-    }
-
-    @Test
-    @DisplayName("snapshot publish-url + username ⇒ publisher wired (Basic Auth path)")
-    void publisherWiredWithBasicAuth() {
-        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
-                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
-                .withPropertyValues("failover.dashboard.enabled=true",
-                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
-                        "failover.dashboard.cluster.snapshot.username=peer",
-                        "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> assertThat(ctx)
-                        .hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class));
-    }
-
-    @Test
-    @DisplayName("snapshot publish-url, no auth ⇒ publisher wired in insecure mode")
-    void publisherWiredInsecureWhenNoAuthConfigured() {
-        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
-                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
-                .withPropertyValues("failover.dashboard.enabled=true",
-                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
-                .run(ctx -> assertThat(ctx)
-                        .hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class));
-    }
-
     @Test
     @DisplayName("shared-store mode + username ⇒ Basic Auth ingest filter chain registered")
     void basicIngestChainRegisteredWhenUsernameSet() {
