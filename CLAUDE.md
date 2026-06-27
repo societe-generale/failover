@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ALWAYS query the knowledge graph first.
 - Only read raw files if explicitly asked.
 - Use graphify-out/GRAPH_REPORT.md as your entry point.
+- WITH EVERY RESPONSE PROVIDE THE TOKEN USAGES, SESSION LIMIT , AND WEEKLY LIMIT as the last line of each response. [token usage: n, session limit: x%, weekly limit: x%]
 
 ## Build and test commands
 
