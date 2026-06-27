@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -37,25 +38,24 @@ import java.util.concurrent.TimeUnit;
 public class ClusterSnapshotPublisher implements AutoCloseable {
 
     private final DashboardMetricsService metricsService;
-    private final String instanceId;
+    private final InstanceIdResolver instanceIdResolver;
     private final String publishUrl;
     private final RestClient client;
     private final ScheduledExecutorService scheduler;
 
-    public ClusterSnapshotPublisher(DashboardMetricsService metricsService, String instanceId,
-                                    String publishUrl, int intervalSeconds) {
+    public ClusterSnapshotPublisher(DashboardMetricsService metricsService, InstanceIdResolver instanceIdResolver,
+                                      String publishUrl, int intervalSeconds, RestClient client) {
         this.metricsService = metricsService;
-        this.instanceId = instanceId;
+        this.instanceIdResolver = instanceIdResolver;
         this.publishUrl = publishUrl;
-        this.client = RestClient.create();
+        this.client = client;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "failover-snapshot-publisher");
             thread.setDaemon(true);
             return thread;
         });
         this.scheduler.scheduleWithFixedDelay(this::push, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
-        log.info("Failover shared-store snapshot publisher active: instance='{}' -> '{}' every {}s.",
-                instanceId, publishUrl, intervalSeconds);
+        log.info("Failover shared-store snapshot publisher active: -> '{}' every {}s.", publishUrl, intervalSeconds);
     }
 
     /** Pushes one snapshot; any failure is swallowed with a warning so the app is never affected. */
@@ -64,7 +64,7 @@ public class ClusterSnapshotPublisher implements AutoCloseable {
             client.post()
                     .uri(publishUrl)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new ClusterSnapshot(instanceId, metricsService.metricsSummary()))
+                    .body(new ClusterSnapshot(instanceIdResolver.resolve(), metricsService.metricsSummary()))
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {

@@ -70,17 +70,20 @@ public class SharedStoreMetricsSource implements MetricsSource {
 
     @Override
     public MetricsSummary summary() {
-        List<MetricsSummary> live = store.live();
-        return live.isEmpty() ? fallback.summary() : merge(live);
+        List<InstanceMetrics> all = instances();
+        if (all.isEmpty()) {
+            return fallback.summary();
+        }
+        return merge(all.stream().map(InstanceMetrics::summary).toList());
     }
 
     @Override
     public List<ApiHealth> health() {
-        List<MetricsSummary> live = store.live();
-        if (live.isEmpty()) {
+        List<InstanceMetrics> all = instances();
+        if (all.isEmpty()) {
             return fallback.health();
         }
-        return merge(live).perApi().stream()
+        return merge(all.stream().map(InstanceMetrics::summary).toList()).perApi().stream()
                 .map(k -> DashboardKpis.classify(k.name(), k.rates().healthyRate(), thresholds))
                 .toList();
     }
@@ -88,7 +91,7 @@ public class SharedStoreMetricsSource implements MetricsSource {
     @Override
     public SourceInfo info() {
         long newest = store.newestEpochMs();
-        return new SourceInfo("shared-store", store.liveCount(), maxInstances,
+        return new SourceInfo("shared-store", instances().size(), maxInstances,
                 newest > 0 ? newest : System.currentTimeMillis(), false);
     }
 
@@ -98,9 +101,29 @@ public class SharedStoreMetricsSource implements MetricsSource {
         return seriesStore != null ? seriesStore.series(windowSec) : fallback.series(windowSec);
     }
 
+    /**
+     * Returns per-instance metrics. Always includes the dashboard host's own metrics from the
+     * {@code fallback} (local registry), even when the store is empty or the host did not push
+     * a snapshot to itself — so the Instances tab is never blank.
+     *
+     * <p>If the host IS in the store (it pushed to itself), it is not duplicated.
+     */
     @Override
     public List<InstanceMetrics> instances() {
-        return store.liveInstances();
+        List<InstanceMetrics> peers = store.liveInstances();
+        List<InstanceMetrics> local = fallback.instances();
+        if (local.isEmpty()) {
+            return peers;   // standalone app with no @Failover — nothing local to add
+        }
+        String localId = local.getFirst().instanceId();
+        boolean alreadyInStore = peers.stream().anyMatch(m -> localId.equals(m.instanceId()));
+        if (alreadyInStore) {
+            return peers;   // host pushed to itself — already counted, no duplicate
+        }
+        // Prepend the dashboard host (always show "1 of N" minimum)
+        List<InstanceMetrics> result = new ArrayList<>(local);
+        result.addAll(peers);
+        return result;
     }
 
     // ── aggregation ─────────────────────────────────────────────────────────────

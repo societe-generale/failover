@@ -67,6 +67,25 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- OAuth2 client — provided/optional: snapshot publisher uses the consumer's existing
+             OAuth2AuthorizedClientManager to obtain Bearer tokens for the ingest endpoint. Only
+             activates when the consumer already has spring-security-oauth2-client on the classpath. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-client</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- OAuth2 resource server — provided/optional: the dashboard ingest endpoint can be secured
+             with JWT Bearer tokens when the consumer has spring-security-oauth2-resource-server. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-resource-server</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
         <!-- TEST -->
         <!-- End-to-end IT only: the real failover runtime (aspect + autoconfigure + inmemory store) and
              the Micrometer publisher, so a live @Failover call moves the meters the dashboard reads.

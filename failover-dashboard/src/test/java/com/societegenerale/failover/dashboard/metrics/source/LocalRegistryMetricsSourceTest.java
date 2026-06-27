@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.dashboard.metrics.source;
 
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 import com.societegenerale.failover.dashboard.metrics.ApiHealth;
@@ -35,11 +36,12 @@ import static org.mockito.Mockito.when;
 
 class LocalRegistryMetricsSourceTest {
 
-    private static final String INSTANCE_ID = "myapp:host-1";
+    private static final String INSTANCE_ID = "myapp:host-1:8080";
+    private static final InstanceIdResolver RESOLVER = () -> INSTANCE_ID;
 
     private final DashboardMetricsService metricsService = mock(DashboardMetricsService.class);
     private final DashboardHistoryService history = mock(DashboardHistoryService.class);
-    private final LocalRegistryMetricsSource source = new LocalRegistryMetricsSource(metricsService, history, INSTANCE_ID);
+    private final LocalRegistryMetricsSource source = new LocalRegistryMetricsSource(metricsService, history, RESOLVER);
 
     @Test
     @DisplayName("summary() delegates to the metrics service")
@@ -85,7 +87,7 @@ class LocalRegistryMetricsSourceTest {
     @Test
     @DisplayName("series() is empty when history is disabled (null)")
     void seriesEmptyWithoutHistory() {
-        LocalRegistryMetricsSource noHistory = new LocalRegistryMetricsSource(metricsService, null, INSTANCE_ID);
+        LocalRegistryMetricsSource noHistory = new LocalRegistryMetricsSource(metricsService, null, RESOLVER);
 
         assertThat(noHistory.series(0)).isEmpty();
     }

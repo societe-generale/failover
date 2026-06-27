@@ -25,6 +25,7 @@ import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
 import com.societegenerale.failover.dashboard.metrics.SourceInfo;
 import com.societegenerale.failover.dashboard.metrics.ExceptionStat;
 import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
+import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import org.junit.jupiter.api.Test;
 
@@ -180,7 +181,57 @@ class SharedStoreMetricsSourceTest {
         SharedStoreMetricsSource source = new SharedStoreMetricsSource(store, THRESHOLDS, fallback("local"), 10);
 
         assertThat(source.instances())
-                .extracting(com.societegenerale.failover.dashboard.metrics.InstanceMetrics::instanceId)
+                .extracting(InstanceMetrics::instanceId)
                 .containsExactly("instance-0", "instance-1");
+    }
+
+    @Test
+    void instancesAlwaysIncludesDashboardHostEvenWhenStoreIsEmpty() {
+        // Production scenario: no peers have pushed yet (or dashboard just restarted).
+        // The dashboard host must still appear so the Instances tab is never blank.
+        MetricsSummary localSummary = snapshot("country", 5, 0, 0, 0, List.of());
+        MetricsSource fb = fallbackWithInstance("dashboard-host:8080", localSummary);
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fb, 10);
+
+        assertThat(source.instances())
+                .extracting(InstanceMetrics::instanceId)
+                .containsExactly("dashboard-host:8080");
+        assertThat(source.info().instancesReporting()).isEqualTo(1);
+    }
+
+    @Test
+    void instancesDeduplicatesWhenDashboardHostPushedToItself() {
+        // Host configured publish-url=http://localhost/... → store already contains its snapshot.
+        MetricsSummary localSummary = snapshot("country", 5, 0, 0, 0, List.of());
+        MetricsSource fb = fallbackWithInstance("dashboard-host:8080", localSummary);
+        // stub store already contains a snapshot keyed to the same instance id
+        SnapshotStore storeWithHost = new SnapshotStore() {
+            public void upsert(ClusterSnapshot s) {}
+            public List<MetricsSummary> live() { return List.of(localSummary); }
+            public List<InstanceMetrics> liveInstances() {
+                return List.of(new InstanceMetrics("dashboard-host:8080", 100L, localSummary));
+            }
+            public int liveCount() { return 1; }
+            public long newestEpochMs() { return 123L; }
+        };
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(storeWithHost, THRESHOLDS, fb, 10);
+
+        assertThat(source.instances())
+                .extracting(InstanceMetrics::instanceId)
+                .containsExactly("dashboard-host:8080");   // not duplicated
+    }
+
+    /** Fallback with a real {@code instances()} implementation (simulates {@link com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource}). */
+    private static MetricsSource fallbackWithInstance(String instanceId, MetricsSummary summary) {
+        return new MetricsSource() {
+            public MetricsSummary summary() { return summary; }
+            public List<ApiHealth> health() { return List.of(); }
+            public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false); }
+            public List<SeriesPoint> series(long w) { return List.of(); }
+            @Override
+            public List<InstanceMetrics> instances() {
+                return List.of(new InstanceMetrics(instanceId, System.currentTimeMillis(), summary));
+            }
+        };
     }
 }

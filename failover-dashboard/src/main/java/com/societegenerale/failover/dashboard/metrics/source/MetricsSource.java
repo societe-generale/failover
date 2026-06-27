@@ -55,10 +55,14 @@ public interface MetricsSource {
 
     /**
      * Per-instance metrics for the cluster's Instances view — one entry per reporting member, each with that
-     * member's own summary and last-seen time. Defaults to empty: sources without a per-instance dimension
-     * (so the UI simply hides the Instances tab). {@code shared-store} and {@code prometheus} override it.
+     * member's own summary and last-seen time.
      *
-     * @return per-instance metrics, or an empty list when the source has no per-instance breakdown
+     * <p>The default returns empty (sources with no per-instance dimension — the UI then hides the tab).
+     * {@code local} always returns exactly one entry (itself). {@code shared-store} always returns at least
+     * one entry (the dashboard host itself plus any peer snapshots in the store). {@code prometheus} returns
+     * one entry per instance label.
+     *
+     * @return per-instance metrics; never {@code null}; at least one element in any active source
      */
     default List<InstanceMetrics> instances() {
         return List.of();

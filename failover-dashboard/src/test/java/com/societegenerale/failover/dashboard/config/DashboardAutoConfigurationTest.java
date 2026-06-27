@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.dashboard.config;
 
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
@@ -77,6 +78,27 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx.getBean(DashboardProperties.class).basePath())
                             .isEqualTo("/failover-dashboard");
                 });
+    }
+
+    // ── instance id resolver ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("enabled=true ⇒ InstanceIdResolver bean registered (standalone fallback lambda)")
+    void instanceIdResolverRegisteredByDefault() {
+        runner.withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
+                    assertThat(ctx.getBean(InstanceIdResolver.class).resolve()).isNotBlank();
+                });
+    }
+
+    @Test
+    @DisplayName("custom InstanceIdResolver bean ⇒ @ConditionalOnMissingBean — default not created")
+    void customInstanceIdResolverHonouredViaMissingBean() {
+        InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
+        runner.withPropertyValues("failover.dashboard.enabled=true")
+                .withBean(InstanceIdResolver.class, () -> custom)
+                .run(ctx -> assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom));
     }
 
     @Test
@@ -374,6 +396,116 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx).hasNotFailed();
                     assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                });
+    }
+
+    // ── snapshot publisher auth (§cluster ingest security) ───────────────────
+
+    @Test
+    @DisplayName("oauth2-client-registration-id set + OAuth2AuthorizedClientManager present ⇒ OAuth2 interceptor registered (takes priority over Basic)")
+    void oauth2InterceptorRegisteredWhenManagerPresentAndRegistrationIdSet() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
+                        () -> Mockito.mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                        "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardSnapshotOAuth2Interceptor");
+                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class);
+                });
+    }
+
+    @Test
+    @DisplayName("oauth2-client-registration-id absent ⇒ no OAuth2 interceptor (Basic Auth path used instead)")
+    void noOAuth2InterceptorWhenRegistrationIdAbsent() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
+                        () -> Mockito.mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> assertThat(ctx).doesNotHaveBean("dashboardSnapshotOAuth2Interceptor"));
+    }
+
+    @Test
+    @DisplayName("snapshot publish-url + username ⇒ publisher wired (Basic Auth path)")
+    void publisherWiredWithBasicAuth() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> assertThat(ctx)
+                        .hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class));
+    }
+
+    @Test
+    @DisplayName("snapshot publish-url, no auth ⇒ publisher wired in insecure mode")
+    void publisherWiredInsecureWhenNoAuthConfigured() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
+                .run(ctx -> assertThat(ctx)
+                        .hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshotPublisher.class));
+    }
+
+    @Test
+    @DisplayName("shared-store mode + username ⇒ Basic Auth ingest filter chain registered")
+    void basicIngestChainRegisteredWhenUsernameSet() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> assertThat(ctx).hasBean("dashboardIngestBasicFilterChain"));
+    }
+
+    @Test
+    @DisplayName("shared-store mode + allow-insecure-ingest=true ⇒ open (permit-all) ingest chain registered")
+    void openIngestChainRegisteredWhenAllowInsecureIngest() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.allow-insecure-ingest=true")
+                .run(ctx -> assertThat(ctx).hasBean("dashboardIngestOpenFilterChain"));
+    }
+
+    @Test
+    @DisplayName("allow-insecure-ingest=true + username set ⇒ Basic chain wins, open chain suppressed")
+    void basicChainWinsOverOpenChain() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=secret",
+                        "failover.dashboard.cluster.snapshot.allow-insecure-ingest=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardIngestBasicFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("no ingest auth configured ⇒ no ingest security chains (ingest falls through to main gate)")
+    void noIngestChainsWhenNoAuthConfigured() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOAuth2FilterChain");
                 });
     }
 
