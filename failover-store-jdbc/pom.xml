@@ -101,6 +101,15 @@
             <scope>test</scope>
             <optional>true</optional>
         </dependency>
+        <!--
+          commons-codec is required at runtime by the MySQL and MariaDB JDBC drivers' auth
+          initialization path. Spring Boot BOM manages the version; no explicit version needed.
+        -->
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <scope>test</scope>
+        </dependency>
 
     </dependencies>
 
