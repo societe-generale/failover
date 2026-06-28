@@ -64,7 +64,6 @@ public class DefaultFailoverHandler<T> extends AbstractFailoverHandler<T> {
         Class<T> clazz = cast(payload.getClass());
         var referentialPayload = payloadEnricher.enrichOnStore(failover, clazz, new ReferentialPayload<>(effectiveName(failover), keyGenerator.key(failover, args), true, clock.now(), expiryPolicy.computeExpiry(failover), payload));
         failoverStore.store(referentialPayload);
-        log.info("Failover : Storing information on '{}' for failover.", failover.name());
         log.debug("Failover : Stored ReferentialPayload on '{}' : {{}}", failover.name(), referentialPayload);
         return referentialPayload.getPayload();
     }

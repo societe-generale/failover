@@ -55,7 +55,7 @@ class PayloadScatter<T, R> {
 
         sliceDispatcher.dispatchStore(slices, ctx -> storeSlice(method, ctx));
 
-        log.info("Failover scatter-store: stored {} slices for '{}'", slices.size(), failover.name());
+        log.debug("Failover scatter-store: stored {} slices for '{}'", slices.size(), failover.name());
         return payload;
     }
 
