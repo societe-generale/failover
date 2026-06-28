@@ -59,7 +59,6 @@ import org.springframework.core.env.Profiles;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
@@ -72,7 +71,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
 
 /**
- * Auto-configuration for the embedded failover dashboard.
+ * Autoconfiguration for the embedded failover dashboard.
  *
  * <p><strong>Secure-by-default (design doc §1a):</strong> an absent {@code failover.dashboard.enabled}
  * property means <em>off</em> — no {@code matchIfMissing}. The consumer must explicitly opt in via YAML.
@@ -353,7 +352,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @Order(-10)
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "username")
         @ConditionalOnMissingBean(name = "dashboardIngestOAuth2FilterChain")
-        SecurityFilterChain dashboardIngestBasicFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+        SecurityFilterChain dashboardIngestBasicFilterChain(HttpSecurity http, DashboardProperties props) {
             String ingestPath = props.basePath() + "/api/cluster/snapshot";
             DashboardProperties.Snapshot snapshot = props.cluster().snapshot();
             String password = snapshot.password();
@@ -366,7 +365,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                     .httpBasic(Customizer.withDefaults())
                     .userDetailsService(userDetails)
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(AbstractHttpConfigurer::disable);
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPath));
             log.info("Failover dashboard ingest '{}' secured with HTTP Basic (user: '{}').",
                     ingestPath, snapshot.username());
             return http.build();
@@ -381,12 +380,12 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "allow-insecure-ingest",
                 havingValue = "true")
         @ConditionalOnMissingBean(name = {"dashboardIngestOAuth2FilterChain", "dashboardIngestBasicFilterChain"})
-        SecurityFilterChain dashboardIngestOpenFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+        SecurityFilterChain dashboardIngestOpenFilterChain(HttpSecurity http, DashboardProperties props) {
             String ingestPath = props.basePath() + "/api/cluster/snapshot";
             http.securityMatcher(ingestPath)
                     .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(AbstractHttpConfigurer::disable);
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPath));
             log.warn("===================================================================================");
             log.warn("Failover dashboard ingest '{}' is running WITHOUT an access-control gate.", ingestPath);
             log.warn("(allow-insecure-ingest=true) Set snapshot.username+password or");
@@ -398,16 +397,16 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
 
         /** Main dashboard gate: {@code base-path/**} requires the configured role. {@code @Order(0)} ensures
          * ingest chains at {@code @Order(-10)} are evaluated first for {@code /api/cluster/snapshot}.
-         * Stateless — HTTP Basic auth; no session is created, so CSRF does not apply. */
+         * Stateless — HTTP Basic auth; no session is created. Dashboard is read-only (GET only), so no
+         * state-changing operations exist and CSRF protection uses Spring Security defaults. */
         @Bean
         @Order(0)
         @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
-        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> auth.anyRequest().hasRole(props.security().role()))
                     .httpBasic(Customizer.withDefaults())
-                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(AbstractHttpConfigurer::disable);
+                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
             return http.build();
@@ -430,13 +429,13 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @Order(-10)
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "oauth2-client-registration-id")
         @ConditionalOnMissingBean(name = "dashboardIngestOAuth2FilterChain")
-        SecurityFilterChain dashboardIngestOAuth2FilterChain(HttpSecurity http, DashboardProperties props) throws Exception {
+        SecurityFilterChain dashboardIngestOAuth2FilterChain(HttpSecurity http, DashboardProperties props) {
             String ingestPath = props.basePath() + "/api/cluster/snapshot";
             http.securityMatcher(ingestPath)
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(AbstractHttpConfigurer::disable);
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPath));
             log.info("Failover dashboard ingest '{}' secured with OAuth2 JWT.", ingestPath);
             return http.build();
         }
