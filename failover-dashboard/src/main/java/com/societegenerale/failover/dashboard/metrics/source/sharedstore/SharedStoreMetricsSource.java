@@ -22,6 +22,7 @@ import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 /**
  * Cluster-wide {@link MetricsSource} for {@code cluster.mode=shared-store}: it merges the live per-instance
@@ -52,20 +54,40 @@ public class SharedStoreMetricsSource implements MetricsSource {
     private final DashboardProperties.Health thresholds;
     private final MetricsSource fallback;
     private final int maxInstances;
-    private final ClusterSeriesStore seriesStore;   // nullable — null ⇒ no cluster trend, fall back to local
+    private final ClusterSeriesStore seriesStore;       // nullable — null ⇒ no cluster trend, fall back to local
+    private final HeartbeatStore heartbeatStore;        // nullable only if no shared-store (should not happen in normal wiring)
+    private final long livenessMillis;                  // from liveness-seconds config
+    private final LongSupplier nowMillis;
 
     public SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
                                     MetricsSource fallback, int maxInstances) {
-        this(store, thresholds, fallback, maxInstances, null);
+        this(store, thresholds, fallback, maxInstances, null, null, 0);
     }
 
     public SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
                                     MetricsSource fallback, int maxInstances, ClusterSeriesStore seriesStore) {
+        this(store, thresholds, fallback, maxInstances, seriesStore, null, 0);
+    }
+
+    public SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
+                                    MetricsSource fallback, int maxInstances, ClusterSeriesStore seriesStore,
+                                    HeartbeatStore heartbeatStore, long livenessMillis) {
+        this(store, thresholds, fallback, maxInstances, seriesStore, heartbeatStore, livenessMillis,
+                System::currentTimeMillis);
+    }
+
+    /** Test seam: inject a clock to control liveness age. */
+    SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
+                             MetricsSource fallback, int maxInstances, ClusterSeriesStore seriesStore,
+                             HeartbeatStore heartbeatStore, long livenessMillis, LongSupplier nowMillis) {
         this.store = store;
         this.thresholds = thresholds;
         this.fallback = fallback;
         this.maxInstances = maxInstances;
         this.seriesStore = seriesStore;
+        this.heartbeatStore = heartbeatStore;
+        this.livenessMillis = livenessMillis;
+        this.nowMillis = nowMillis;
     }
 
     @Override
@@ -91,8 +113,10 @@ public class SharedStoreMetricsSource implements MetricsSource {
 
     @Override
     public SourceInfo info() {
-        long newest = store.newestEpochMs();
-        return new SourceInfo("shared-store", instances().size(), maxInstances,
+        List<InstanceMetrics> all = instances();
+        long newest = all.stream().mapToLong(InstanceMetrics::lastSeenEpochMs).max().orElse(0L);
+        long reporting = all.stream().filter(i -> i.liveStatus() != LiveStatus.DOWN).count();
+        return new SourceInfo("shared-store", (int) reporting, maxInstances,
                 newest > 0 ? newest : System.currentTimeMillis(), false);
     }
 
@@ -103,28 +127,30 @@ public class SharedStoreMetricsSource implements MetricsSource {
     }
 
     /**
-     * Returns per-instance metrics. Always includes the dashboard host's own metrics from the
-     * {@code fallback} (local registry), even when the store is empty or the host did not push
-     * a snapshot to itself — so the Instances tab is never blank.
-     *
-     * <p>If the host IS in the store (it pushed to itself), it is not duplicated.
+     * Returns per-instance metrics from the shared store only. The dashboard host's own local
+     * registry is not included — instances are the remote failover services that push snapshots,
+     * not the dashboard itself.
      */
     @Override
     public List<InstanceMetrics> instances() {
-        List<InstanceMetrics> peers = store.liveInstances();
-        List<InstanceMetrics> local = fallback.instances();
-        if (local.isEmpty()) {
-            return peers;   // standalone app with no @Failover — nothing local to add
+        return enrichWithLiveness(store.allInstances());
+    }
+
+    private List<InstanceMetrics> enrichWithLiveness(List<InstanceMetrics> instances) {
+        if (heartbeatStore == null) {
+            return instances;
         }
-        String localId = local.getFirst().instanceId();
-        boolean alreadyInStore = peers.stream().anyMatch(m -> localId.equals(m.instanceId()));
-        if (alreadyInStore) {
-            return peers;   // host pushed to itself — already counted, no duplicate
-        }
-        // Prepend the dashboard host (always show "1 of N" minimum)
-        List<InstanceMetrics> result = new ArrayList<>(local);
-        result.addAll(peers);
-        return result;
+        return instances.stream()
+                .map(i -> {
+                    Long last = heartbeatStore.lastSeen(i.instanceId());
+                    if (last == null) {
+                        return i; // peer has not sent any heartbeat — keep UNKNOWN
+                    }
+                    long age = nowMillis.getAsLong() - last;
+                    return new InstanceMetrics(i.instanceId(), i.lastSeenEpochMs(), i.summary(),
+                            age <= livenessMillis ? LiveStatus.LIVE : LiveStatus.DOWN);
+                })
+                .toList();
     }
 
     // ── aggregation ─────────────────────────────────────────────────────────────
