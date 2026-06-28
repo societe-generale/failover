@@ -19,6 +19,11 @@ package com.societegenerale.failover.dashboard.service;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.dashboard.metrics.ConfigEntry;
+import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
@@ -56,6 +61,20 @@ class DashboardConfigServiceTest {
 
     private DashboardConfigService serviceWith(MockEnvironment env) {
         return new DashboardConfigService(scanner, env);
+    }
+
+    private DashboardConfigService clusterServiceWith(MockEnvironment env, MetricsSource metricsSource) {
+        return new DashboardConfigService(scanner, env, metricsSource);
+    }
+
+    /** Minimal stub MetricsSource that returns a fixed ApiHealth list. */
+    private static MetricsSource stubSourceWithHealth(List<ApiHealth> apiHealthList) {
+        return new MetricsSource() {
+            public MetricsSummary summary() { return null; }
+            public List<ApiHealth> health() { return apiHealthList; }
+            public SourceInfo info() { return null; }
+            public List<SeriesPoint> series(long w) { return List.of(); }
+        };
     }
 
     @Test
@@ -145,6 +164,62 @@ class DashboardConfigServiceTest {
 
         assertThat(health.status()).isEqualTo("DOWN");
         assertThat(health.details()).containsEntry("registered-failovers", "0");
+    }
+
+    @Test
+    @DisplayName("failoverHealth() uses recovery rates when MetricsSource has health data — UP when none UNHEALTHY")
+    void failoverHealthUsesRecoveryRatesWhenPresent() {
+        MetricsSource source = stubSourceWithHealth(List.of(
+                new ApiHealth("country", "HEALTHY", 0.98),
+                new ApiHealth("city", "DEGRADED", 0.92)));
+
+        var health = clusterServiceWith(new MockEnvironment(), source).failoverHealth();
+
+        assertThat(health.status()).isEqualTo("UP");
+        assertThat(health.details())
+                .containsEntry("endpoints", "2")
+                .containsKey("country")
+                .containsKey("city");
+        assertThat(health.details().get("country")).startsWith("HEALTHY");
+        assertThat(health.details().get("city")).startsWith("DEGRADED");
+    }
+
+    @Test
+    @DisplayName("failoverHealth() is DOWN when any endpoint is UNHEALTHY")
+    void failoverHealthDownWhenAnyEndpointUnhealthy() {
+        MetricsSource source = stubSourceWithHealth(List.of(
+                new ApiHealth("country", "HEALTHY", 0.99),
+                new ApiHealth("city", "UNHEALTHY", 0.60)));
+
+        var health = clusterServiceWith(new MockEnvironment(), source).failoverHealth();
+
+        assertThat(health.status()).isEqualTo("DOWN");
+        assertThat(health.details().get("city")).startsWith("UNHEALTHY");
+    }
+
+    @Test
+    @DisplayName("failoverHealth() in cluster cold-start (no calls yet) returns UP with note")
+    void failoverHealthClusterColdStart() {
+        MetricsSource source = stubSourceWithHealth(List.of());  // no calls yet
+        MockEnvironment env = new MockEnvironment()
+                .withProperty("failover.dashboard.cluster.mode", "shared-store");
+
+        var health = clusterServiceWith(env, source).failoverHealth();
+
+        assertThat(health.status()).isEqualTo("UP");
+        assertThat(health.details()).containsEntry("note", "No calls recorded yet");
+    }
+
+    @Test
+    @DisplayName("failoverHealth() falls back to scanner in local mode when no health data yet")
+    void failoverHealthFallsBackToScannerInLocalMode() {
+        MetricsSource source = stubSourceWithHealth(List.of());  // no calls yet
+        when(scanner.findAllFailover()).thenReturn(List.of(annotation("alpha")));
+
+        var health = clusterServiceWith(new MockEnvironment(), source).failoverHealth();
+
+        assertThat(health.status()).isEqualTo("UP");
+        assertThat(health.details()).containsEntry("registered-failovers", "1");
     }
 
     @Test

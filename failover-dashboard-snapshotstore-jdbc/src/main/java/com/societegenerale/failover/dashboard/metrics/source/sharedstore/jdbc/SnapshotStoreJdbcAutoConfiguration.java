@@ -64,7 +64,6 @@ public class SnapshotStoreJdbcAutoConfiguration {
         return new SnapshotStoreJdbc(
                 new JdbcTemplate(dataSource),
                 mapper.getIfAvailable(ObjectMapper::new),
-                sharedStore.livenessSeconds() * 1000L,
                 sharedStore.maxInstances(),
                 sharedStore.jdbc().tablePrefix(),
                 sharedStore.jdbc().autoDdl());

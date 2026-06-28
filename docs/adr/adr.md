@@ -3173,3 +3173,56 @@ Replace polling with event-driven, throttled publishing:
 * `interval-seconds` semantics shifted from "polling cadence" to "throttle interval" (maximum push frequency).
 
 ___
+
+## ADR 66 — Decoupled Heartbeat Liveness Tracking
+
+**Date : 28-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The `shared-store` cluster mode aggregates metrics snapshots pushed by peers. Before this ADR the only way to know whether an instance was alive was to check snapshot freshness: if the latest snapshot from an instance was older than `freshness-seconds`, it was treated as DOWN and its metrics contribution was zeroed. This created two problems:
+
+1. **Liveness conflated with data freshness.** A healthy instance with no metric events in the window (quiet period) would be misclassified as DOWN even though it was running.
+2. **Heavy payload on liveness path.** Each snapshot is kilobytes of JSON. Using it as a heartbeat is an expensive signal for liveness detection.
+
+### Decision
+
+Separate liveness tracking into a lightweight heartbeat mechanism decoupled from snapshot publishing:
+
+1. **`HeartbeatPublisher`** (`failover-observable-micrometer`) — scheduled via `ScheduledExecutorService` with virtual-thread factory. Fires `HeartbeatPushClient.send(instanceId)` at `heartbeat.interval-seconds`. Logs WARN once on first failure, DEBUG for stack trace, INFO on recovery. `AutoCloseable` — scheduler shut down on context close.
+
+2. **`HeartbeatPushClient`** interface (`failover-observable-micrometer`) — transport abstraction; same module-boundary rule as `SnapshotPushClient`. The RestClient implementation lives in `failover-spring-boot-autoconfigure`.
+
+3. **`RestClientHeartbeatPushClient`** (`failover-spring-boot-autoconfigure`) — POSTs `{"instanceId": "..."}` to the heartbeat endpoint.
+
+4. **Heartbeat URL** — always derived as `{publish-url}/api/cluster/heartbeat`. No explicit override property.
+
+5. **`HeartbeatStore`** / **`HeartbeatStoreInmemory`** (`failover-dashboard`) — records `instanceId → lastSeenMs`; `isLive(instanceId, livenessMillis)` checks the age of the last heartbeat.
+
+6. **`ClusterHeartbeatController`** (`failover-dashboard`) — `POST /api/cluster/heartbeat` accepts `{"instanceId":"..."}` and records to `HeartbeatStore`. Returns `202 Accepted`.
+
+7. **`LiveStatus` enum** (`failover-observable-metrics`) — `UNKNOWN` (tracking disabled), `LIVE` (heartbeat fresh), `DOWN` (heartbeat expired or absent). `InstanceMetrics` record gains a `liveStatus` field; the existing 3-arg constructor defaults to `UNKNOWN` for backward compat.
+
+8. **Metrics preservation.** `SnapshotStore.allInstances()` returns ALL stored snapshots regardless of age. `SharedStoreMetricsSource.instances()` calls `allInstances()`, enriches with `LiveStatus`. Summary and aggregate always include DOWN instances' last-known metrics. `info().instancesReporting` counts non-DOWN instances only.
+
+9. **Opt-in, default off.** Both sides have feature flags defaulting to `false`:
+    - Client: `failover.dashboard.cluster.snapshot.heartbeat.enabled=false`
+    - Dashboard: `failover.dashboard.cluster.shared-store.liveness.enabled=false`
+    When liveness is disabled, all instances carry `LiveStatus.UNKNOWN`.
+
+10. **UI.** Instance dot CSS class reflects `LiveStatus`: `live` (green), `stale` (red/orange), `unknown` (light green, reduced opacity).
+
+### Consequences
+
+* Liveness signal is cheap: only `{"instanceId":"..."}` is sent, not the full metrics payload.
+* Healthy idle instances are not misclassified as DOWN.
+* Metrics of DOWN instances are preserved in the cluster aggregate — last-known values are always shown.
+* Zero overhead by default — both heartbeat sending and liveness checking are opt-in.
+* Module boundaries preserved: `failover-observable-micrometer` has no `spring-web` dependency.
+* Polling is correct for heartbeat (unlike event-driven snapshot publishing) — heartbeats must fire on a fixed schedule even when no metric events occur.
+
+___

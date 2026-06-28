@@ -25,10 +25,20 @@ package com.societegenerale.failover.observable.metrics;
  * holds one entry per instance) and {@code prometheus} (the {@code instance} label). {@code local} reports a
  * single entry for this instance.
  *
+ * <p><strong>Metrics are always retained, regardless of liveness.</strong> Even when an instance is down, its
+ * last-known summary contributes to the cluster aggregate so totals do not silently drop. {@link LiveStatus}
+ * controls only the UI status indicator, not whether the metrics are included.
+ *
  * @param instanceId      the emitting instance's identifier (e.g. {@code orders-svc:host-1})
  * @param lastSeenEpochMs epoch millis of that instance's most recent data point ({@code 0} when unknown)
  * @param summary         that instance's own KPI summary (its overall + per-API), not the cluster aggregate
+ * @param liveStatus      heartbeat-based liveness — {@code UNKNOWN} when tracking is disabled (default)
  * @author Anand Manissery
  */
-public record InstanceMetrics(String instanceId, long lastSeenEpochMs, MetricsSummary summary) {
+public record InstanceMetrics(String instanceId, long lastSeenEpochMs, MetricsSummary summary, LiveStatus liveStatus) {
+
+    /** Backward-compat: liveness unknown (tracking disabled). */
+    public InstanceMetrics(String instanceId, long lastSeenEpochMs, MetricsSummary summary) {
+        this(instanceId, lastSeenEpochMs, summary, LiveStatus.UNKNOWN);
+    }
 }

@@ -294,21 +294,28 @@ function renderSettings() {
     }).join('');
 }
 
-// ── Health view (actuator-style) ─────────────────────────────────────────────────
+// ── Health view (failover recovery health) ───────────────────────────────────────
 function renderFailoverHealth(h) {
     const up = h.status === 'UP';
     const hero = document.getElementById('health-hero');
     hero.className = 'health-hero ' + (up ? 'up' : 'down');
     document.getElementById('health-hero-ic').textContent = up ? '✓' : '✕';
     document.getElementById('health-hero-status').textContent = h.status;
-    document.getElementById('health-hero-note').textContent = up
-        ? 'At least one @Failover point is registered and serving.'
-        : 'No @Failover points discovered — likely a misconfiguration.';
     const details = h.details || {};
+    const hasRates = 'endpoints' in details;   // primary: recovery-rate health
+    const coldStart = !hasRates && details['note'] === 'No calls recorded yet';
+    document.getElementById('health-hero-note').textContent = hasRates
+        ? (up ? 'All configured endpoints within acceptable failover recovery rate.'
+               : 'One or more endpoints show elevated failover recovery — upstream services may be degraded.')
+        : coldStart ? 'Cluster starting up — no calls recorded yet; health will update on first call.'
+        : (up ? '@Failover endpoints registered. Health will reflect recovery rates once calls are made.'
+               : 'No @Failover endpoints discovered — likely a misconfiguration.');
     document.getElementById('health-details').innerHTML =
         Object.entries(details).map(([k, v]) => {
             const empty = v === '' || v == null;
-            const cls = v === 'true' ? 'on' : v === 'false' ? 'off' : empty ? 'empty' : '';
+            const cls = v === 'true' || (typeof v === 'string' && v.startsWith('HEALTHY')) ? 'on'
+                : v === 'false' || (typeof v === 'string' && v.startsWith('UNHEALTHY')) ? 'off'
+                : empty ? 'empty' : '';
             const label = k.replace(/[-.]/g, ' ');
             return `<div class="stat-card">
                 <span class="stat-k">${label}</span>
@@ -455,16 +462,17 @@ function renderSourceBadge(info) {
     if (!info || !info.mode) { el.hidden = true; return; }
     el.hidden = false;
     if (info.mode === 'local') {
+        const ltb = document.getElementById('live-track-badge');
+        if (ltb) { ltb.className = 'live-track-badge tip local'; ltb.innerHTML = '<span class="lt-dot"></span>local instance'; ltb.dataset.tip = 'Metrics from this instance only — not a cluster aggregate'; }
         el.className = 'src-badge tip local';
         el.textContent = 'This instance only';
         el.dataset.tip = "Metrics from this instance's in-process registry only — not a cluster aggregate";
     } else {
         const partial = !!info.partial;
         el.className = 'src-badge tip cluster' + (partial ? ' partial' : '');
-        const count = info.instancesExpected > 0
-            ? `${info.instancesReporting}/${info.instancesExpected}` : `${info.instancesReporting}`;
-        el.textContent = `Cluster · ${count}`;
-        el.dataset.tip = `Cluster aggregate (${info.mode}) · ${info.instancesReporting} instance(s) reporting`
+        const total = instances.length || info.instancesReporting;
+        el.textContent = `Cluster · ${total}`;
+        el.dataset.tip = `Cluster aggregate (${info.mode}) · ${total} instance(s) known`
             + (partial ? ' · partial data' : '');
     }
 }
@@ -530,20 +538,36 @@ function instStatus(s) {
 
 function renderInstances() {
     const live = lastSource && lastSource.mode && lastSource.mode !== 'local';
-    const total = lastSource && lastSource.instancesExpected > 0 ? lastSource.instancesExpected : instances.length;
-    const reporting = instances.length;
-    const silent = Math.max(0, total - reporting);
+    const total = instances.length;
+    const downCount = instances.filter(i => (i.liveStatus || 'UNKNOWN') === 'DOWN').length;
+    const reporting = total - downCount;
+    const silent = downCount;   // when tracking off, "silent" = instances not heartbeating; when on, use downCount
     const by = st => instances.filter(i => instStatus(i.summary) === st).length;
+    const trackingEnabled = total > 0 && instances.some(i => i.liveStatus && i.liveStatus !== 'UNKNOWN');
 
     const srcEl = document.getElementById('inst-src');
     if (srcEl) srcEl.textContent = (live ? lastSource.mode : 'local')
-        + ` · ${reporting}/${total} reporting` + (silent ? ` · ${silent} silent` : '');
+        + ` · ${total} instance${total !== 1 ? 's' : ''}`
+        + (trackingEnabled ? ` · ${reporting} live · ${downCount} down` : '');
+
+    const ltBadge = document.getElementById('live-track-badge');
+    if (ltBadge && live) {
+        if (trackingEnabled) {
+            ltBadge.className = 'live-track-badge tip on';
+            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · on';
+            ltBadge.dataset.tip = 'Heartbeat liveness tracking is active — instance dots reflect LIVE / DOWN status';
+        } else {
+            ltBadge.className = 'live-track-badge tip off';
+            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · off';
+            ltBadge.dataset.tip = 'Instance heartbeat tracking is disabled — dot colour reflects snapshot age only';
+        }
+    }
 
     const card = (cls, num, label) =>
         `<div class="rollup-card ${cls}"><span class="rollup-n">${num}</span><span class="rollup-l">${label}</span></div>`;
     document.getElementById('inst-rollup').innerHTML =
-        card('total', total, 'Total') + card('instances', reporting, 'Reporting')
-        + card('unhealthy', silent, 'Silent') + card('healthy', by('HEALTHY'), 'Healthy')
+        card('total', total, 'Total') + (trackingEnabled ? card('instances', reporting, 'Live') + card('unhealthy', downCount, 'Down') : '')
+        + card('healthy', by('HEALTHY'), 'Healthy')
         + card('degraded', by('DEGRADED'), 'Degraded') + card('unhealthy', by('UNHEALTHY'), 'Unhealthy');
 
     const now = Date.now();
@@ -552,14 +576,23 @@ function renderInstances() {
         const ageSec = i.lastSeenEpochMs > 0 ? Math.round((now - i.lastSeenEpochMs) / 1000) : -1;
         const seen = ageSec < 0 ? '—' : ageSec < 60 ? `${ageSec}s ago` : `${Math.round(ageSec / 60)}m ago`;
         const badge = `<span class="badge ${st.toLowerCase()}">${st}</span>`;
+        const ls = i.liveStatus || 'UNKNOWN';
+        const dotCls = ls === 'DOWN' ? 'stale' : ls === 'LIVE' ? 'live' : 'unknown';
+        const dotTitle = ls === 'DOWN' ? 'Heartbeat expired — instance may be down'
+                       : ls === 'LIVE' ? 'Heartbeat active — instance is live'
+                       : 'No heartbeat received — peer heartbeat not enabled';
+        const hbCell = ls === 'LIVE'    ? '<span class="hb-badge live">● on</span>'
+                     : ls === 'DOWN'    ? '<span class="hb-badge down">● down</span>'
+                     :                    '<span class="hb-badge off">—</span>';
         return `<tr data-id="${i.instanceId}" class="${i.instanceId === selectedInstance ? 'sel' : ''}">
-            <td><span class="inst-dot live"></span><span class="inst-id">${i.instanceId}</span></td>
+            <td><span class="inst-dot ${dotCls}" title="${dotTitle}"></span><span class="inst-id">${i.instanceId}</span></td>
             <td class="r">${n(o.totalCalls)}</td>
             <td class="r">${pct(r.successRate)}</td>
             <td class="r">${pct(r.failoverRate)}</td>
             <td class="r">${o.failoverInvoked > 0 ? pct(r.recoveryRate) : '—'}</td>
             <td class="r">${ms(o.latency.recoverP95Ms || 0)}</td>
             <td>${seen}</td>
+            <td>${hbCell}</td>
             <td>${badge}</td>
         </tr>`;
     }).join('');
