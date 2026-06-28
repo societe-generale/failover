@@ -332,10 +332,6 @@ public class FailoverMicrometerAutoConfiguration {
         }
 
         private static String resolveHeartbeatUrl(FailoverClusterPublisherProperties props) {
-            String explicit = props.heartbeat().url();
-            if (explicit != null && !explicit.isBlank()) {
-                return explicit;
-            }
             return stripTrailingSlash(props.publishUrl()) + "/api/cluster/heartbeat";
         }
 

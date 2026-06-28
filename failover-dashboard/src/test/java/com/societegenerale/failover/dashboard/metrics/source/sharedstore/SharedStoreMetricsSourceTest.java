@@ -195,7 +195,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void livenessTrackingDisabled_allInstancesHaveUnknownStatus() {
+    void livenessTrackingDisabledAllInstancesHaveUnknownStatus() {
         SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
         SharedStoreMetricsSource source = new SharedStoreMetricsSource(
                 store, THRESHOLDS, fallback("local"), 10, null, null, 0);
@@ -206,7 +206,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void livenessTrackingEnabled_liveInstanceMarkedLive() {
+    void livenessTrackingEnabledLiveInstanceMarkedLive() {
         SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
         HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory();
         heartbeatStore.record("instance-0");   // fresh heartbeat
@@ -221,7 +221,7 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void livenessTracking_noHeartbeatReceived_instanceUnknown() {
+    void livenessTrackingNoHeartbeatReceivedInstanceUnknown() {
         SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
         HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(); // no heartbeat recorded
 

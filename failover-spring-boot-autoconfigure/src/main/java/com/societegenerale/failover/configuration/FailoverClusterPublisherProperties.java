@@ -33,7 +33,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *   <li>Neither → open POST (insecure; warn unless {@code allow-insecure-ingest=true})</li>
  * </ol>
  *
- * @param publishUrl                 dashboard ingest URL; blank means this instance does not push
+ * @param publishUrl                 dashboard base URL including context path (e.g. {@code http://dashboard:8080/failover-dashboard}); {@code /api/cluster/snapshot} is appended automatically. Blank means this instance does not push.
  * @param intervalSeconds            throttle interval for snapshot pushes (default {@code 15})
  * @param retryIntervalSeconds       seconds to wait before retrying after a push failure (default {@code 300})
  * @param username                   HTTP Basic username for the ingest endpoint (blank ⇒ no Basic Auth)
@@ -68,24 +68,21 @@ public record FailoverClusterPublisherProperties(
      * only, no metrics payload) to the dashboard at a fixed interval so the dashboard can detect crashes
      * independently of metric events.
      *
-     * <p>The heartbeat URL defaults to the snapshot URL with {@code /snapshot} replaced by {@code /heartbeat}.
-     * Override {@code url} explicitly for non-standard dashboard paths.
+     * <p>The heartbeat URL is always derived from {@code publish-url}: {@code <publish-url>/api/cluster/heartbeat}.
      *
      * @param enabled         send periodic heartbeat pings (default {@code false})
      * @param intervalSeconds seconds between pings (default {@code 60})
-     * @param url             explicit heartbeat endpoint URL; blank ⇒ derived from {@code publish-url}
      */
     public record Heartbeat(
             @DefaultValue("false") boolean enabled,
-            @DefaultValue("60") int intervalSeconds,
-            @DefaultValue("") String url
+            @DefaultValue("60") int intervalSeconds
     ) {
         @ConstructorBinding
         public Heartbeat {
         }
 
         public Heartbeat() {
-            this(false, 60, "");
+            this(false, 60);
         }
     }
 }

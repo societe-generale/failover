@@ -260,7 +260,9 @@ public record DashboardProperties(
      * Snapshot push / ingest settings for {@code cluster.mode=shared-store}.
      *
      * <p><strong>Peer (publisher) side</strong> — each peer instance POSTs its local {@code MetricsSummary} to the
-     * dashboard's ingest endpoint. Inactive when {@code publishUrl} is blank.
+     * dashboard's ingest endpoint. Set {@code publishUrl} to the dashboard base URL including context path
+     * (e.g. {@code http://dashboard:8080/failover-dashboard}); {@code /api/cluster/snapshot} is appended automatically.
+     * Inactive when {@code publishUrl} is blank.
      *
      * <p><strong>Dashboard (receiver) side</strong> — controls which security gate protects the ingest endpoint:
      * <ul>
@@ -270,7 +272,7 @@ public record DashboardProperties(
      *   <li>{@code allow-insecure-ingest=true} → permit-all (trusted internal network only)</li>
      * </ul>
      *
-     * @param publishUrl                 dashboard ingest URL (blank ⇒ this instance does not push)
+     * @param publishUrl                 dashboard base URL including context path, e.g. {@code http://dashboard:8080/failover-dashboard} (blank ⇒ this instance does not push); {@code /api/cluster/snapshot} is appended automatically
      * @param intervalSeconds            seconds between pushes (default {@code 15})
      * @param username                   ingest Basic-auth username accepted by the dashboard (blank ⇒ Basic disabled)
      * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})

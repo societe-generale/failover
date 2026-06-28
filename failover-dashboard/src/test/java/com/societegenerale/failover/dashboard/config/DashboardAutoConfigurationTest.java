@@ -187,6 +187,7 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @SuppressWarnings("java:S2699")
     @DisplayName("shared-store mode ⇒ HeartbeatStore + ClusterHeartbeatController always wired")
     void heartbeatBeansAlwaysWiredInSharedStoreMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,

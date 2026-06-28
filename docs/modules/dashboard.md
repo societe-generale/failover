@@ -1202,6 +1202,7 @@ By default the dashboard knows an instance pushed a snapshot but does **not** ac
 **Instance live tracking** adds a dedicated lightweight heartbeat: each peer sends `{"instanceId":"..."}` to the dashboard on a short fixed interval (no metrics payload, ~10 bytes). The dashboard records the receive time and classifies instances as `LIVE` or `DOWN`. The dot colour in the Instances tab changes accordingly, and the topbar shows `instance live tracking · on`. When disabled, the dot reflects snapshot age only and the topbar shows `instance live tracking · off`.
 
 **Key design decisions:**
+
 - **Off by default** — zero overhead unless you opt in on both sides.
 - **Metrics of DOWN instances are preserved** — last-known values still contribute to the cluster aggregate. Only the dot turns red; the numbers are not zeroed.
 - **Liveness ≠ snapshot freshness** — a healthy instance with no upstream calls (quiet period) keeps its heartbeat green even if no snapshots arrive.
