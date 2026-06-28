@@ -96,6 +96,16 @@ failover:
 </dependency>
 ```
 
+!!! warning "Add the Caffeine library"
+    `failover-store-caffeine` does **not** bundle Caffeine. Add it explicitly — version is managed by `spring-boot-dependencies`:
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.github.ben-manes.caffeine</groupId>
+        <artifactId>caffeine</artifactId>
+    </dependency>
+    ```
+
 Caffeine handles its own eviction using the `expireOn` field from `ReferentialPayload`. Entries are evicted at their configured TTL without needing the cleanup scheduler.
 
 By default the cache is capped at `max-size: 10000` entries (the same default as the in-memory store's
