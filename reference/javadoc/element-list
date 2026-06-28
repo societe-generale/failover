@@ -28,6 +28,7 @@ com.societegenerale.failover.dashboard.web
 com.societegenerale.failover.domain
 com.societegenerale.failover.execution.resilience
 com.societegenerale.failover.lookup
+com.societegenerale.failover.observable.metrics
 com.societegenerale.failover.observable.micrometer
 com.societegenerale.failover.observable.micrometer.health
 com.societegenerale.failover.propagator
