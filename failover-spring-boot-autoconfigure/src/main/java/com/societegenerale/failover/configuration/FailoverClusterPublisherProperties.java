@@ -33,13 +33,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *   <li>Neither → open POST (insecure; warn unless {@code allow-insecure-ingest=true})</li>
  * </ol>
  *
- * @param publishUrl                 dashboard ingest URL; blank means this instance does not push
- * @param intervalSeconds            seconds between snapshot pushes (default {@code 15})
+ * @param publishUrl                 dashboard base URL including context path (e.g. {@code http://dashboard:8080/failover-dashboard}); {@code /api/cluster/snapshot} is appended automatically. Blank means this instance does not push.
+ * @param intervalSeconds            throttle interval for snapshot pushes (default {@code 15})
  * @param retryIntervalSeconds       seconds to wait before retrying after a push failure (default {@code 300})
  * @param username                   HTTP Basic username for the ingest endpoint (blank ⇒ no Basic Auth)
  * @param password                   HTTP Basic password
  * @param oauth2ClientRegistrationId OAuth2 client registration id for Bearer auth (takes priority over Basic)
  * @param allowInsecureIngest        suppress the no-auth warning (trusted-network / dev only)
+ * @param heartbeat                  optional lightweight liveness heartbeat settings (default disabled)
  * @author Anand Manissery
  */
 @ConfigurationProperties(prefix = "failover.dashboard.cluster.snapshot")
@@ -50,7 +51,8 @@ public record FailoverClusterPublisherProperties(
         @DefaultValue("") String username,
         @DefaultValue("") String password,
         @DefaultValue("") String oauth2ClientRegistrationId,
-        @DefaultValue("false") boolean allowInsecureIngest
+        @DefaultValue("false") boolean allowInsecureIngest,
+        @DefaultValue Heartbeat heartbeat
 ) {
     @ConstructorBinding
     public FailoverClusterPublisherProperties {
@@ -58,6 +60,29 @@ public record FailoverClusterPublisherProperties(
 
     /** Convenience with all defaults (used in tests / programmatic setup). */
     public FailoverClusterPublisherProperties() {
-        this("", 15, 300, "", "", "", false);
+        this("", 15, 300, "", "", "", false, new Heartbeat());
+    }
+
+    /**
+     * Lightweight heartbeat ping settings. When enabled, this instance sends a minimal ping (instance id
+     * only, no metrics payload) to the dashboard at a fixed interval so the dashboard can detect crashes
+     * independently of metric events.
+     *
+     * <p>The heartbeat URL is always derived from {@code publish-url}: {@code <publish-url>/api/cluster/heartbeat}.
+     *
+     * @param enabled         send periodic heartbeat pings (default {@code false})
+     * @param intervalSeconds seconds between pings (default {@code 60})
+     */
+    public record Heartbeat(
+            @DefaultValue("false") boolean enabled,
+            @DefaultValue("60") int intervalSeconds
+    ) {
+        @ConstructorBinding
+        public Heartbeat {
+        }
+
+        public Heartbeat() {
+            this(false, 60);
+        }
     }
 }

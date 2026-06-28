@@ -127,11 +127,12 @@ class FailoverDashboardEndToEndIT {
     @Test
     @Order(5)
     void failoverHealthIsUpWithTheRegisteredFailover() throws Exception {
+        // After order-3 calls the health endpoint reflects recovery-rate data, not scanner count.
         mockMvc.perform(get("/failover-dashboard/api/failover-health").header("Authorization", AUTH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.details['registered-failovers']")
-                        .value(org.hamcrest.Matchers.not("0")));
+                .andExpect(jsonPath("$.details.endpoints").exists())
+                .andExpect(jsonPath("$.details['country-by-code']").exists());
     }
 
     @Test
