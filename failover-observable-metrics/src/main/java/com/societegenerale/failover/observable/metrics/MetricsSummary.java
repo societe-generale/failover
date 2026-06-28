@@ -14,14 +14,21 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics;
+package com.societegenerale.failover.observable.metrics;
+
+import java.util.List;
 
 /**
- * One root exception type that triggered failover recovery, with its cumulative count — derived from the
- * {@code failover.exception.total} counter, aggregated across all failover points.
+ * The {@code /api/metrics} response: the global aggregate plus per-API KPIs and a capture timestamp.
  *
- * @param type  fully-qualified exception class name (the {@code exception_type} tag)
- * @param count cumulative occurrences
+ * @param overall       aggregate KPIs across every failover point
+ * @param perApi        per-failover KPIs, sorted by name
+ * @param topExceptions most frequent root exception types triggering failover (descending by count)
+ * @param timestamp     epoch millis when the snapshot was taken
  */
-public record ExceptionStat(String type, long count) {
+public record MetricsSummary(
+        ApiKpis overall,
+        List<ApiKpis> perApi,
+        List<ExceptionStat> topExceptions,
+        long timestamp) {
 }

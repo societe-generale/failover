@@ -16,11 +16,11 @@
 
 package com.societegenerale.failover.dashboard.metrics.source;
 
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 
 import java.util.List;
 
@@ -55,10 +55,14 @@ public interface MetricsSource {
 
     /**
      * Per-instance metrics for the cluster's Instances view — one entry per reporting member, each with that
-     * member's own summary and last-seen time. Defaults to empty: sources without a per-instance dimension
-     * (so the UI simply hides the Instances tab). {@code shared-store} and {@code prometheus} override it.
+     * member's own summary and last-seen time.
      *
-     * @return per-instance metrics, or an empty list when the source has no per-instance breakdown
+     * <p>The default returns empty (sources with no per-instance dimension — the UI then hides the tab).
+     * {@code local} always returns exactly one entry (itself). {@code shared-store} always returns at least
+     * one entry (the dashboard host itself plus any peer snapshots in the store). {@code prometheus} returns
+     * one entry per instance label.
+     *
+     * @return per-instance metrics; never {@code null}; at least one element in any active source
      */
     default List<InstanceMetrics> instances() {
         return List.of();
