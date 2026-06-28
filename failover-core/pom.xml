@@ -30,6 +30,7 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
         </dependency>
         <!--
           JMH core is on the test classpath so the JMH micro-benchmark sources (named *Benchmark,

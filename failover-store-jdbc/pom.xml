@@ -77,19 +77,37 @@
             <artifactId>mariadb</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+          JDBC drivers are NOT compile or runtime dependencies of this module —
+          the application that uses failover-store-jdbc provides its own driver.
+          Listed here as optional so the dialect ITs can reference them;
+          they do NOT propagate to consumers.
+        -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <scope>test</scope>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.mariadb.jdbc</groupId>
             <artifactId>mariadb-java-client</artifactId>
+            <scope>test</scope>
+            <optional>true</optional>
+        </dependency>
+        <!--
+          commons-codec is required at runtime by the MySQL and MariaDB JDBC drivers' auth
+          initialization path. Spring Boot BOM manages the version; no explicit version needed.
+        -->
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
             <scope>test</scope>
         </dependency>
 

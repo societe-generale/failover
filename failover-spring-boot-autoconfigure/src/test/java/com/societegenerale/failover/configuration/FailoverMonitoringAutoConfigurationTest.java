@@ -147,7 +147,6 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("DefaultInstanceIdResolver bean is registered when MeterRegistry present")
         void instanceIdResolverRegisteredByDefault() {
             micrometerRunner
@@ -156,11 +155,11 @@ class FailoverMonitoringAutoConfigurationTest {
                     assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
                     assertThat(ctx.getBean(InstanceIdResolver.class))
                             .isInstanceOf(DefaultInstanceIdResolver.class);
+                    assertThat(ctx.getBean(InstanceIdResolver.class).resolve()).isNotBlank();
                 });
         }
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("custom InstanceIdResolver bean honoured via @ConditionalOnMissingBean")
         void customInstanceIdResolverHonouredViaMissingBean() {
             InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
@@ -168,6 +167,7 @@ class FailoverMonitoringAutoConfigurationTest {
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withBean(InstanceIdResolver.class, () -> custom)
                 .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
                     assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom);
                 });
         }
@@ -195,9 +195,7 @@ class FailoverMonitoringAutoConfigurationTest {
         @SuppressWarnings("java:S2699")
         @DisplayName("InstanceIdResolver NOT registered when MeterRegistry absent")
         void instanceIdResolverNotRegisteredWithoutRegistry() {
-            micrometerRunner.run(ctx -> {
-                assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty();
-            });
+            micrometerRunner.run(ctx -> assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty());
         }
     }
 
@@ -301,9 +299,7 @@ class FailoverMonitoringAutoConfigurationTest {
                     "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
                     "failover.dashboard.cluster.snapshot.username=peer",
                     "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> {
-                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
-                });
+                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
         }
 
         @Test
@@ -331,9 +327,7 @@ class FailoverMonitoringAutoConfigurationTest {
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withPropertyValues(
                     "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
-                .run(ctx -> {
-                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
-                });
+                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
         }
 
         @Test
@@ -342,9 +336,7 @@ class FailoverMonitoringAutoConfigurationTest {
         void publisherNotWiredWhenPublishUrlAbsent() {
             micrometerRunner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
-                .run(ctx -> {
-                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class);
-                });
+                .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
         }
     }
 
