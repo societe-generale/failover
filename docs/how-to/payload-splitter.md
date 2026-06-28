@@ -402,7 +402,7 @@ protected MergeResult<List<ThirdParty>> mergeSlices(
 ```
 
 The trade-offs (keep positional nulls vs. compact vs. reject-on-any-miss) are the same as for the raw
-interface — see [Partial Recovery — Null Policy](#partial-recovery--null-policy-in-merge).
+interface — see [Partial Recovery: Null Policy](#partial-recovery-null-policy-in-merge).
 
 ---
 
@@ -411,7 +411,7 @@ interface — see [Partial Recovery — Null Policy](#partial-recovery--null-pol
 When you need full control — or the composite/key shape does not fit the base classes — implement
 `PayloadSplitter<T, R>` yourself. The example below uses a `Country` keyed by string `code`.
 
-### Step 1 — Implement PayloadSplitter
+### Step 1: Implement PayloadSplitter
 
 ```java title="CountrySplitter.java"
 @Component("countrySplitter")
@@ -497,7 +497,7 @@ List<Country> findByCodes(@RequestParam String codes);
 
 ---
 
-## Partial Recovery — Null Policy in `merge`
+## Partial Recovery: Null Policy in `merge`
 
 When several keys are recovered at once (e.g. `findByCodes("FR,DE,US")`), some keys may have a stored
 entry and others may not — a **partial recovery**. Each unrecovered slice arrives at `merge` as a
@@ -559,7 +559,7 @@ public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> context
 ```
 
 Use when the caller just wants "whatever is available" and does not correlate results to input
-positions. This is what the [Step 1 example](#step-1--implement-payloadsplitter) does.
+positions. This is what the [Step 1 example](#step-1-implement-payloadsplitter) does.
 
 ### Option C — Reject the whole composite on any miss
 
