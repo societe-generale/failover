@@ -64,7 +64,7 @@ class HeartbeatPublisherTest {
                 "http://dashboard/api/cluster/heartbeat", 1)) {
             started.await(3, TimeUnit.SECONDS);
         }
-        // No exception propagated — verified by reaching this line
+        verify(pushClient, atLeastOnce()).send(any()); // fired and did not propagate the exception
     }
 
     @Test
@@ -77,7 +77,8 @@ class HeartbeatPublisherTest {
         HeartbeatPublisher publisher = new HeartbeatPublisher(instanceIdResolver, pushClient,
                 "http://dashboard/api/cluster/heartbeat", 1);
         latch.await(3, TimeUnit.SECONDS);
-        publisher.close(); // should not block or throw
+        publisher.close();
+        verify(pushClient, atLeastOnce()).send(any());
     }
 
     private static <T> org.assertj.core.api.ObjectAssert<T> assertThat(T actual) {
