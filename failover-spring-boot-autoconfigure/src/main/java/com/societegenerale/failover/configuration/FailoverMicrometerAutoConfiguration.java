@@ -48,7 +48,6 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
 
-import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -233,13 +232,7 @@ public class FailoverMicrometerAutoConfiguration {
             return instance.getId();
         }
         String app = environment.getProperty("spring.application.name", "application");
-        String host;
-        try {
-            host = InetAddress.getLocalHost().getHostName();
-        } catch (Exception e) {
-            host = "unknown-host";
-        }
-        return app + ":" + host;
+        return app + ":" + DefaultInstanceIdResolver.resolveHostname();
     }
 
     // ── cluster snapshot publisher (shared-store peer side) ───────────────────────────

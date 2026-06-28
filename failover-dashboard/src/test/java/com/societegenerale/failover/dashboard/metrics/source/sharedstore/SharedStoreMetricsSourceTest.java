@@ -204,7 +204,7 @@ class SharedStoreMetricsSourceTest {
         MetricsSummary localSummary = snapshot("country", 5, 0, 0, 0, List.of());
         MetricsSource fb = fallbackWithInstance("dashboard-host:8080", localSummary);
         SnapshotStore storeWithHost = new SnapshotStore() {
-            public void upsert(ClusterSnapshot s) {}
+            public void upsert(ClusterSnapshot s) { /* no-op stub */ }
             public List<MetricsSummary> live() { return List.of(localSummary); }
             public List<InstanceMetrics> liveInstances() {
                 return List.of(new InstanceMetrics("dashboard-host:8080", 100L, localSummary));
@@ -222,10 +222,10 @@ class SharedStoreMetricsSourceTest {
     /** Fallback with a real {@code instances()} implementation (simulates {@link com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource}). */
     private static MetricsSource fallbackWithInstance(String instanceId, MetricsSummary summary) {
         return new MetricsSource() {
-            public MetricsSummary summary() { return summary; }
-            public List<ApiHealth> health() { return List.of(); }
-            public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false); }
-            public List<SeriesPoint> series(long w) { return List.of(); }
+            @Override public MetricsSummary summary() { return summary; }
+            @Override public List<ApiHealth> health() { return List.of(); }
+            @Override public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false); }
+            @Override public List<SeriesPoint> series(long w) { return List.of(); }
             @Override
             public List<InstanceMetrics> instances() {
                 return List.of(new InstanceMetrics(instanceId, currentTimeMillis(), summary));

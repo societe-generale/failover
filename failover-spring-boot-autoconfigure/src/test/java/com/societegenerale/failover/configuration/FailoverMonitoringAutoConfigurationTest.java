@@ -147,6 +147,7 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("DefaultInstanceIdResolver bean is registered when MeterRegistry present")
         void instanceIdResolverRegisteredByDefault() {
             micrometerRunner
@@ -159,13 +160,16 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("custom InstanceIdResolver bean honoured via @ConditionalOnMissingBean")
         void customInstanceIdResolverHonouredViaMissingBean() {
             InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
             micrometerRunner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withBean(InstanceIdResolver.class, () -> custom)
-                .run(ctx -> assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom));
+                .run(ctx -> {
+                    assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom);
+                });
         }
     }
 
@@ -188,10 +192,12 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("InstanceIdResolver NOT registered when MeterRegistry absent")
         void instanceIdResolverNotRegisteredWithoutRegistry() {
-            micrometerRunner.run(ctx ->
-                assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty());
+            micrometerRunner.run(ctx -> {
+                assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty();
+            });
         }
     }
 
@@ -286,6 +292,7 @@ class FailoverMonitoringAutoConfigurationTest {
     class WhenClusterPublisher {
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url + username ⇒ ClusterSnapshotPublisher wired (Basic Auth)")
         void publisherWiredWithBasicAuth() {
             micrometerRunner
@@ -294,10 +301,13 @@ class FailoverMonitoringAutoConfigurationTest {
                     "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
                     "failover.dashboard.cluster.snapshot.username=peer",
                     "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url + oauth2-client-registration-id + OAuth2AuthorizedClientManager ⇒ publisher + OAuth2 interceptor wired")
         void publisherWiredWithOAuth2() {
             micrometerRunner
@@ -314,21 +324,27 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url, no auth ⇒ publisher wired in insecure mode")
         void publisherWiredInsecureWhenNoAuthConfigured() {
             micrometerRunner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withPropertyValues(
                     "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
-                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url absent ⇒ ClusterSnapshotPublisher not wired")
         void publisherNotWiredWhenPublishUrlAbsent() {
             micrometerRunner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
-                .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class);
+                });
         }
     }
 
