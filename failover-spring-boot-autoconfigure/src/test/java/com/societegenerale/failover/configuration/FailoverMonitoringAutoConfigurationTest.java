@@ -21,6 +21,7 @@ import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.micrometer.HeartbeatPublisher;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
 import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
@@ -61,32 +62,6 @@ import static org.mockito.Mockito.mock;
  */
 class FailoverMonitoringAutoConfigurationTest {
 
-    /**
-     * Thin runner targeting only {@link MicrometerTracingAutoConfiguration} with the minimal
-     * user beans that {@link FailoverMeterBinder} requires. The runner ensures user beans are
-     * registered before autoconfiguration conditions, making {@code @ConditionalOnBean} work.
-     */
-    private final ApplicationContextRunner micrometerRunner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
-            .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
-            .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
-
-    /**
-     * Runner that lets Spring Boot's own metrics autoconfigurations create the {@link MeterRegistry}
-     * (instead of hand-registering one as a user bean). This is the only configuration that exercises
-     * the real autoconfiguration ordering: {@link FailoverMicrometerAutoConfiguration} must be ordered
-     * <em>after</em> the Boot metrics autoconfigurations, otherwise its {@code @ConditionalOnBean(MeterRegistry)}
-     * sees no registry and silently backs off.
-     */
-    private final ApplicationContextRunner autoConfiguredRegistryRunner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(
-                    MetricsAutoConfiguration.class,
-                    CompositeMeterRegistryAutoConfiguration.class,
-                    SimpleMetricsExportAutoConfiguration.class,
-                    FailoverMicrometerAutoConfiguration.class))
-            .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
-            .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
-
     // ── Scanner ───────────────────────────────────────────────────────────────
 
     @Nested
@@ -117,10 +92,15 @@ class FailoverMonitoringAutoConfigurationTest {
     @DisplayName("Micrometer — MicrometerObservablePublisher and FailoverMeterBinder present when MeterRegistry available")
     class WhenMeterRegistryPresent {
 
+        private final ApplicationContextRunner runner = new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
+                .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
+                .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
+
         @Test
         @DisplayName("MicrometerObservablePublisher is registered as a ObservablePublisher")
         void micrometerObservablePublisherRegistered() {
-            micrometerRunner
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .run(ctx -> assertThat(ctx.getBeansOfType(ObservablePublisher.class).values())
                     .anyMatch(p -> p instanceof MicrometerObservablePublisher));
@@ -129,7 +109,7 @@ class FailoverMonitoringAutoConfigurationTest {
         @Test
         @DisplayName("FailoverMeterBinder bean is registered")
         void failoverMeterBinderRegistered() {
-            micrometerRunner
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .run(ctx -> assertThat(ctx.getBean(FailoverMeterBinder.class)).isNotNull());
         }
@@ -137,7 +117,7 @@ class FailoverMonitoringAutoConfigurationTest {
         @Test
         @DisplayName("failover.registered.total gauge is present after bindTo(registry)")
         void registeredTotalGaugePresent() {
-            micrometerRunner
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .run(ctx -> {
                     MeterRegistry registry = ctx.getBean(MeterRegistry.class);
@@ -150,7 +130,7 @@ class FailoverMonitoringAutoConfigurationTest {
         @Test
         @DisplayName("DefaultInstanceIdResolver bean is registered when MeterRegistry present")
         void instanceIdResolverRegisteredByDefault() {
-            micrometerRunner
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .run(ctx -> {
                     assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
@@ -164,7 +144,7 @@ class FailoverMonitoringAutoConfigurationTest {
         @DisplayName("custom InstanceIdResolver bean honoured via @ConditionalOnMissingBean")
         void customInstanceIdResolverHonouredViaMissingBean() {
             InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
-            micrometerRunner
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withBean(InstanceIdResolver.class, () -> custom)
                 .run(ctx -> {
@@ -178,17 +158,22 @@ class FailoverMonitoringAutoConfigurationTest {
     @DisplayName("Micrometer — MicrometerObservablePublisher absent when no MeterRegistry")
     class WhenNoMeterRegistry {
 
+        private final ApplicationContextRunner runner = new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
+                .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
+                .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
+
         @Test
         @DisplayName("MicrometerObservablePublisher NOT registered when MeterRegistry absent")
         void micrometerPublisherNotRegisteredWithoutRegistry() {
-            micrometerRunner.run(ctx ->
+            runner.run(ctx ->
                 assertThat(ctx.getBeansOfType(MicrometerObservablePublisher.class)).isEmpty());
         }
 
         @Test
         @DisplayName("FailoverMeterBinder NOT registered when MeterRegistry absent")
         void failoverMeterBinderNotRegisteredWithoutRegistry() {
-            micrometerRunner.run(ctx ->
+            runner.run(ctx ->
                 assertThat(ctx.getBeansOfType(FailoverMeterBinder.class)).isEmpty());
         }
 
@@ -196,7 +181,7 @@ class FailoverMonitoringAutoConfigurationTest {
         @SuppressWarnings("java:S2699")
         @DisplayName("InstanceIdResolver NOT registered when MeterRegistry absent")
         void instanceIdResolverNotRegisteredWithoutRegistry() {
-            micrometerRunner.run(ctx -> assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty());
+            runner.run(ctx -> assertThat(ctx.getBeansOfType(InstanceIdResolver.class)).isEmpty());
         }
     }
 
@@ -204,19 +189,21 @@ class FailoverMonitoringAutoConfigurationTest {
     @DisplayName("Micrometer — ordering regression: publisher registered when the MeterRegistry is auto-configured by Spring Boot")
     class WhenMeterRegistryAutoConfigured {
 
-        /**
-         * Regression for the auto-configuration ordering bug: when the {@link MeterRegistry} is
-         * contributed by Spring Boot's own metrics autoconfigurations (the real-world case) rather
-         * than hand-registered as a user bean, {@link FailoverMicrometerAutoConfiguration} must still
-         * see it and register the {@link MicrometerObservablePublisher}. Without the {@code afterName}
-         * ordering on {@link FailoverMicrometerAutoConfiguration}, this autoconfiguration runs before
-         * the registry exists, its {@code @ConditionalOnBean} fails, and the app silently falls back
-         * to {@code MdcLoggerObservablePublisher} only.
-         */
+        // Exercises real Boot autoconfiguration ordering: FailoverMicrometerAutoConfiguration must be
+        // after the Boot metrics autoconfigurations so its @ConditionalOnBean(MeterRegistry) sees the registry.
+        private final ApplicationContextRunner runner = new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        MetricsAutoConfiguration.class,
+                        CompositeMeterRegistryAutoConfiguration.class,
+                        SimpleMetricsExportAutoConfiguration.class,
+                        FailoverMicrometerAutoConfiguration.class))
+                .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
+                .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
+
         @Test
         @DisplayName("auto-configured MeterRegistry is visible to FailoverMicrometerAutoConfiguration → MicrometerObservablePublisher registered")
         void publisherRegisteredWhenRegistryAutoConfigured() {
-            autoConfiguredRegistryRunner.run(ctx -> {
+            runner.run(ctx -> {
                 assertThat(ctx).hasSingleBean(MeterRegistry.class);
                 assertThat(ctx.getBeansOfType(ObservablePublisher.class).values())
                         .anyMatch(MicrometerObservablePublisher.class::isInstance);
@@ -290,55 +277,97 @@ class FailoverMonitoringAutoConfigurationTest {
     @DisplayName("cluster snapshot publisher — wired by FailoverMicrometerAutoConfiguration")
     class WhenClusterPublisher {
 
-        @Test
-        @SuppressWarnings("java:S2699")
-        @DisplayName("publish-url + username ⇒ ClusterSnapshotPublisher wired (Basic Auth)")
-        void publisherWiredWithBasicAuth() {
-            micrometerRunner
-                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
-                .withPropertyValues(
-                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
-                    "failover.dashboard.cluster.snapshot.username=peer",
-                    "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
-        }
+        private static final String PUBLISH_URL = "http://dashboard:8080/failover-dashboard";
+
+        private final ApplicationContextRunner runner = new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(FailoverMicrometerAutoConfiguration.class))
+                .withBean(FailoverScanner.class, () -> mock(FailoverScanner.class))
+                .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
 
         @Test
-        @SuppressWarnings("java:S2699")
-        @DisplayName("publish-url + oauth2-client-registration-id + OAuth2AuthorizedClientManager ⇒ publisher + OAuth2 interceptor wired")
-        void publisherWiredWithOAuth2() {
-            micrometerRunner
+        @DisplayName("publish-url + username ⇒ ClusterSnapshotPublisher wired (Basic Auth)")
+        void publisherWiredWithBasicAuth() {
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
-                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
-                    () -> mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
                 .withPropertyValues(
-                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
-                    "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard")
+                    "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL,
+                    "failover.dashboard.cluster.snapshot.username=peer",
+                    "failover.dashboard.cluster.snapshot.password=secret")
                 .run(ctx -> {
-                    assertThat(ctx).hasBean("failoverSnapshotOAuth2Interceptor");
+                    assertThat(ctx).hasBean("clusterSnapshotPublisher");
                     assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
                 });
         }
 
         @Test
         @SuppressWarnings("java:S2699")
+        @DisplayName("publish-url + oauth2-client-registration-id + OAuth2AuthorizedClientManager ⇒ publisher + OAuth2 interceptor wired")
+        void publisherWiredWithOAuth2() {
+            runner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class,
+                    () -> mock(org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager.class))
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL,
+                    "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("clusterSnapshotPublisher");
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
+        }
+
+        @Test
         @DisplayName("publish-url, no auth ⇒ publisher wired in insecure mode")
         void publisherWiredInsecureWhenNoAuthConfigured() {
-            micrometerRunner
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withPropertyValues(
-                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
-                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+                    "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL)
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("clusterSnapshotPublisher");
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
+        }
+
+        @Test
+        @DisplayName("publish-url absent ⇒ ClusterSnapshotPublisher not wired")
+        void publisherNotWiredWhenPublishUrlAbsent() {
+            runner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean("clusterSnapshotPublisher");
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class);
+                });
         }
 
         @Test
         @SuppressWarnings("java:S2699")
-        @DisplayName("publish-url absent ⇒ ClusterSnapshotPublisher not wired")
-        void publisherNotWiredWhenPublishUrlAbsent() {
-            micrometerRunner
+        @DisplayName("heartbeat.enabled=true + publish-url ⇒ HeartbeatPublisher wired")
+        void heartbeatPublisherWiredWhenEnabled() {
+            runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
-                .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL,
+                    "failover.dashboard.cluster.snapshot.heartbeat.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("heartbeatPublisher");
+                    assertThat(ctx).hasSingleBean(HeartbeatPublisher.class);
+                });
         }
+
+        @Test
+        @SuppressWarnings("java:S2699")
+        @DisplayName("heartbeat.enabled=false (default) ⇒ HeartbeatPublisher not wired")
+        void heartbeatPublisherNotWiredByDefault() {
+            runner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL)
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(HeartbeatPublisher.class);
+                });
+        }
+
     }
 
     // ── @TestConfiguration helpers ────────────────────────────────────────────

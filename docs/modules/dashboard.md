@@ -86,7 +86,6 @@ failover:
         timeout-seconds: 5           # per-query connect/read timeout
       shared-store:                  # used when mode=shared-store (peers push snapshots, aggregated in-app)
         store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
-        liveness-seconds: 45         # a peer silent longer than this drops out of the aggregate
         max-instances: 10            # supported ceiling (warns beyond — graduate to prometheus)
         sample-interval-seconds: 30  # cluster-trend sampling cadence
         retention:
@@ -119,12 +118,17 @@ failover:
 | `cluster.prometheus.token` | `""` | Optional bearer token for Prometheus. |
 | `cluster.prometheus.timeout-seconds` | `5` | Per-query connect/read timeout. |
 | `cluster.shared-store.store` | `inmemory` | `inmemory` (default) or `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). |
-| `cluster.shared-store.liveness-seconds` | `45` | A peer whose latest snapshot is older than this is excluded from the aggregate. |
+| `cluster.shared-store.liveness-seconds` | `180` | Heartbeat age threshold — instance is `DOWN` after this many seconds without a heartbeat ping. Default matches 3 × the peer default `heartbeat.interval-seconds` (60s). |
 | `cluster.shared-store.max-instances` | `10` | Supported small-cluster ceiling; exceeding it logs a warning. |
 | `cluster.shared-store.sample-interval-seconds` | `30` | Cluster-trend sampling cadence. |
 | `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000` | Trend-history age and size bounds (oldest truncated). |
 | `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl` | `""` / `true` | Snapshot table prefix (validated) + auto-create, when `store=jdbc`. |
-| `cluster.snapshot.publish-url` / `.interval-seconds` | `""` / `15` | Peer-side push: dashboard ingest URL + cadence. Blank URL ⇒ this instance does not push. |
+| `cluster.snapshot.publish-url` / `.interval-seconds` | `""` / `15` | Peer-side push. Set to the dashboard's **base URL** (same as `base-path` on the dashboard host): `http://<host>:<port>/failover-dashboard`. The snapshot and heartbeat endpoints are derived automatically (`/api/cluster/snapshot`, `/api/cluster/heartbeat`). Blank ⇒ this instance does not push. |
+| `cluster.snapshot.username` / `.password` | `""` | HTTP Basic Auth credentials for the ingest endpoint. Ignored when `oauth2-client-registration-id` is set. |
+| `cluster.snapshot.oauth2-client-registration-id` | `""` | Spring OAuth2 client id for Bearer auth (takes priority over Basic). |
+| `cluster.snapshot.allow-insecure-ingest` | `false` | Suppress the no-auth startup warning (dev / trusted network only). |
+| `cluster.snapshot.heartbeat.enabled` | `false` | Send lightweight heartbeat pings from this peer. Off by default. `publish-url` must be set; heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`. |
+| `cluster.snapshot.heartbeat.interval-seconds` | `60` | Ping cadence. Keep ≤ ⅓ of the dashboard `liveness-seconds`. |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
@@ -344,7 +348,7 @@ flowchart LR
     SS --> UI["Read axis — dashboard service<br/>UI / Instances tab"]
 ```
 
-Stale peers (older than `liveness-seconds`) drop out of the aggregate; `store: jdbc` makes the snapshots survive a dashboard restart.
+All instance snapshots are retained regardless of age — last-known values always contribute to the aggregate. Per-instance staleness is visible through each row's last-seen timestamp in the Instances tab. `store: jdbc` makes snapshots survive a dashboard restart.
 
 ### Multiple instances — `prometheus` (large clusters)
 
@@ -461,7 +465,6 @@ failover:
       mode: shared-store
       shared-store:
         store: inmemory          # default
-        liveness-seconds: 45     # a peer silent longer than this drops out of the aggregate
         max-instances: 10        # supported ceiling (warning beyond)
         sample-interval-seconds: 30   # cluster trend sampling cadence
         retention:
@@ -475,13 +478,13 @@ failover:
     enabled: true
     cluster:
       snapshot:
-        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard-host:8080/failover-dashboard
         interval-seconds: 15
 ```
 
 The push endpoint sits behind the dashboard's access gate, so peers authenticate with the configured role (basic auth) — see **Security** below. Lost on dashboard restart (it's in memory); use Scenario D for restart-survival.
 
-Each pushed snapshot is retained per instance, so the **Instances tab** lists every reporting node (and flags silent ones past `liveness-seconds`); the **Health tab** shows the cluster roll-up.
+Each pushed snapshot is retained per instance, so the **Instances tab** lists every reporting node; the **Health tab** shows the cluster roll-up. To classify instances as `LIVE` / `DOWN` based on a lightweight heartbeat rather than snapshot age, see [Instance Live Tracking (2.8)](#28-instance-live-tracking-heartbeat).
 
 ### Scenario D — Cluster via shared-store, JDBC durable
 
@@ -502,7 +505,6 @@ failover:
       mode: shared-store
       shared-store:
         store: jdbc
-        liveness-seconds: 45
         max-instances: 10
         jdbc:
           table-prefix: ""       # prepended to the base table name; "" ⇒ FAILOVER_DASHBOARD_SNAPSHOT
@@ -759,7 +761,7 @@ failover:
     enabled: true
     cluster:
       snapshot:
-        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard-host:8080/failover-dashboard
         interval-seconds: 15
         allow-insecure-ingest: true   # suppresses the publisher-side no-auth startup WARN
         # no username / password / oauth2 (matches open ingest on dashboard)
@@ -775,7 +777,6 @@ failover:
       mode: shared-store
       shared-store:
         store: inmemory
-        liveness-seconds: 45
         max-instances: 10
       snapshot:
         allow-insecure-ingest: true   # ⚠ dev / trusted-network only — logs startup WARN
@@ -818,7 +819,7 @@ failover:
     enabled: true
     cluster:
       snapshot:
-        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard-host:8080/failover-dashboard
         interval-seconds: 15
         username: ingest-user   # must match dashboard's snapshot.username
         password: s3cr3t        # plain text — sent as HTTP Basic
@@ -834,7 +835,6 @@ failover:
       mode: shared-store
       shared-store:
         store: inmemory
-        liveness-seconds: 45
         max-instances: 10
       snapshot:
         username: ingest-user   # creates dashboardIngestBasicFilterChain
@@ -896,7 +896,7 @@ failover:
     enabled: true
     cluster:
       snapshot:
-        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard-host:8080/failover-dashboard
         interval-seconds: 15
         oauth2-client-registration-id: failover-dashboard   # matches the registration above
 ```
@@ -927,7 +927,6 @@ failover:
       mode: shared-store
       shared-store:
         store: inmemory
-        liveness-seconds: 45
         max-instances: 10
       # no snapshot.username needed — OAuth2 chain activates from the classpath dep below
 ```
@@ -997,7 +996,6 @@ failover:
       mode: shared-store
       shared-store:
         store: jdbc
-        liveness-seconds: 45
         max-instances: 10
         jdbc:
           table-prefix: ""    # "" → FAILOVER_DASHBOARD_SNAPSHOT
@@ -1045,7 +1043,6 @@ failover:
       mode: shared-store
       shared-store:
         store: jdbc
-        liveness-seconds: 45
         max-instances: 10
         jdbc:
           table-prefix: ""
@@ -1176,7 +1173,6 @@ failover:
       mode: shared-store        # or prometheus
       shared-store:
         store: inmemory         # or jdbc (add failover-dashboard-snapshotstore-jdbc)
-        liveness-seconds: 45
       snapshot:
         username: ingest-user   # or use oauth2, or allow-insecure-ingest for dev
         password: s3cr3t
@@ -1190,11 +1186,91 @@ failover:
     enabled: true
     cluster:
       snapshot:
-        publish-url: http://dashboard-app:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard-app:8080/failover-dashboard
         interval-seconds: 15
         username: ingest-user
         password: s3cr3t
 ```
+
+---
+
+#### 2.8 Instance Live Tracking (Heartbeat)
+
+By default the dashboard knows an instance pushed a snapshot but does **not** actively track whether that instance is still running. If a service crashes after its last snapshot push, the dashboard has no way to distinguish "still alive but idle" from "crashed" — both look the same.
+
+**Instance live tracking** adds a dedicated lightweight heartbeat: each peer sends `{"instanceId":"..."}` to the dashboard on a short fixed interval (no metrics payload, ~10 bytes). The dashboard records the receive time and classifies instances as `LIVE` or `DOWN`. The dot colour in the Instances tab changes accordingly, and the topbar shows `instance live tracking · on`. When disabled, the dot reflects snapshot age only and the topbar shows `instance live tracking · off`.
+
+**Key design decisions:**
+
+- **Off by default** — zero overhead unless you opt in on both sides.
+- **Metrics of DOWN instances are preserved** — last-known values still contribute to the cluster aggregate. Only the dot turns red; the numbers are not zeroed.
+- **Liveness ≠ snapshot freshness** — a healthy instance with no upstream calls (quiet period) keeps its heartbeat green even if no snapshots arrive.
+- **Heartbeat URL is auto-derived** — `/api/cluster/snapshot` → `/api/cluster/heartbeat`; override only for non-standard paths.
+
+**Recommended timing rule:** set `liveness-seconds` ≥ 3 × `heartbeat.interval-seconds` so an instance must miss three pings before it is classified as DOWN.
+
+```
+  @Failover Service                    Dashboard Host
+ ┌─────────────────────────────────┐   ┌──────────────────────────────────┐
+ │  ClusterSnapshotPublisher       │──►│  POST /api/cluster/snapshot      │
+ │  (every 15s, event-driven)      │   │  → SnapshotStore                 │
+ │                                 │   │                                  │
+ │  HeartbeatPublisher             │──►│  POST /api/cluster/heartbeat     │
+ │  (every 60s, fixed schedule)    │   │  → HeartbeatStore                │
+ └─────────────────────────────────┘   │                                  │
+                                       │  instances() enriched with       │
+                                       │  LIVE / DOWN from heartbeat age  │
+                                       └──────────────────────────────────┘
+```
+
+**Step 1 — Enable heartbeat on each `@Failover` service peer:**
+
+```yaml title="peer-service/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      snapshot:
+        publish-url: http://dashboard-host:8080/failover-dashboard
+        interval-seconds: 15
+        username: ingest-user   # same auth as snapshot push
+        password: s3cr3t
+        heartbeat:
+          enabled: true           # off by default — opt in explicitly
+          interval-seconds: 60    # ping cadence (default); keep well below liveness-seconds on dashboard
+```
+
+The heartbeat uses the **same auth** as the snapshot endpoint (Basic Auth or OAuth2 — whichever is configured). The heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`.
+
+**Step 2 — Enable liveness tracking on the dashboard:**
+
+```yaml title="dashboard-host/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: inmemory
+        liveness-seconds: 180    # heartbeat age threshold: DOWN after 180s without a ping (= 3 × peer interval-seconds of 60s)
+      snapshot:
+        username: ingest-user
+        password: s3cr3t
+```
+
+!!! tip "Sizing the liveness window"
+    Set `liveness-seconds` = 3 × peer `heartbeat.interval-seconds`. With `heartbeat.interval-seconds: 60` (default), use `liveness-seconds: 180` — an instance must miss three consecutive pings before it flips to DOWN, tolerating transient hiccups without false positives. Do not use `liveness-seconds` ≤ `heartbeat.interval-seconds`; the instance would be marked DOWN before its first ping arrives.
+
+**What you see in the UI:**
+
+| Instance state | Dot colour | Topbar badge |
+|---|---|---|
+| Tracking disabled | light green (unknown) | `instance live tracking · off` |
+| Tracking on, heartbeat fresh | green pulse | `instance live tracking · on` |
+| Tracking on, heartbeat expired | red | `instance live tracking · on` |
+
+!!! note "Heartbeat endpoint security"
+    `POST /api/cluster/heartbeat` is gated by the **same** filter chain as `POST /api/cluster/snapshot`. No extra security config is needed; peers authenticate identically to snapshot pushes.
 
 ---
 
@@ -1235,7 +1311,7 @@ failover:
   dashboard:
     cluster:
       snapshot:
-        publish-url: http://dashboard:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard:8080/failover-dashboard
         username: ingest-user   # must match dashboard's snapshot.username
         password: s3cr3t        # plain text — sent as-is in Authorization: Basic
 ```
@@ -1292,7 +1368,7 @@ failover:
   dashboard:
     cluster:
       snapshot:
-        publish-url: http://dashboard:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard:8080/failover-dashboard
         oauth2-client-registration-id: failover-dashboard
 ```
 
@@ -1321,7 +1397,7 @@ failover:
   dashboard:
     cluster:
       snapshot:
-        publish-url: http://dashboard:8080/failover-dashboard/api/cluster/snapshot
+        publish-url: http://dashboard:8080/failover-dashboard
         allow-insecure-ingest: true   # suppresses the publisher-side no-auth startup WARN
         # no username / password / oauth2 needed
 ```
