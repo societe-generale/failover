@@ -47,6 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     continue-on-error: true
+    env:
+      # Ryuk (the Testcontainers resource-reaper) requires pulling testcontainers/ryuk from Docker Hub,
+      # which fails under Hub rate-limits. Disabling it is safe in CI: JUnit 5 @Container lifecycle
+      # stops/removes containers on test completion regardless.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
     - uses: actions/checkout@v5
     - name: Set up JDK 21
