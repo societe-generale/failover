@@ -18,7 +18,6 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
-import com.societegenerale.failover.observable.metrics.MetricsSummary;
 
 import java.util.List;
 
@@ -28,9 +27,9 @@ import java.util.List;
  * lets a consumer supply a durable (JDBC) or distributed (Redis/Hazelcast) implementation without touching the
  * source or UI.
  *
- * <p><strong>Consistency over durability (design §5.3):</strong> exactly one snapshot per instance (latest wins on
- * {@code upsert}, so a duplicate push never double-counts), and {@link #live()} returns only snapshots fresh within
- * the liveness window — stale peers are dropped from the aggregate, never silently summed.
+ * <p>All snapshots are retained regardless of age — every instance always contributes its last-known values
+ * to the cluster aggregate, so the dashboard never silently zeroes a quiet or crashed peer. Staleness is
+ * visible through the per-instance {@code lastSeenEpochMs} timestamp shown in the Instances tab.
  *
  * @author Anand Manissery
  */
@@ -39,20 +38,15 @@ public interface SnapshotStore {
     /** Records (or replaces) the latest snapshot for the snapshot's instance, stamping the current receive time. */
     void upsert(ClusterSnapshot snapshot);
 
-    /** The freshest snapshot per instance whose age is within the liveness window. */
-    List<MetricsSummary> live();
-
     /**
-     * The live snapshots as per-instance entries (id + last-seen + that instance's summary), for the dashboard's
-     * Instances view. Same liveness filtering as {@link #live()}.
+     * All known per-instance entries (id + last-seen + summary), regardless of snapshot age.
+     * {@link com.societegenerale.failover.observable.metrics.LiveStatus} is set to {@code UNKNOWN}
+     * by the store — callers enrich it from a {@link HeartbeatStore} when liveness tracking is enabled.
      *
-     * @return one {@link InstanceMetrics} per live instance
+     * <p>Stale instances retain their last-known metric values so the cluster aggregate does not silently
+     * drop when a peer crashes. Per-instance staleness is visible through {@code lastSeenEpochMs}.
+     *
+     * @return one {@link InstanceMetrics} per known instance, with {@code liveStatus = UNKNOWN}
      */
-    List<InstanceMetrics> liveInstances();
-
-    /** Number of instances currently reporting (live within the liveness window). */
-    int liveCount();
-
-    /** Epoch-millis of the most recent live snapshot, or {@code 0} when none are live. */
-    long newestEpochMs();
+    List<InstanceMetrics> allInstances();
 }

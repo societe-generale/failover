@@ -84,6 +84,7 @@ public class ClusterSnapshotPublisher extends ThresholdSnapshotPublisher {
                         publishUrl,
                         cause.getClass().getSimpleName() + (cause.getMessage() != null ? ": " + cause.getMessage() : ""),
                         retryIntervalMs / 60_000);
+                log.debug("Snapshot push failure detail:", e);
             }
             nextRetryMs = System.currentTimeMillis() + retryIntervalMs;
         }

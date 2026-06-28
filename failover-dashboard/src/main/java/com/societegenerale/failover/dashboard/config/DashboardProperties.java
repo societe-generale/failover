@@ -193,21 +193,25 @@ public record DashboardProperties(
      * where peers push their KPI snapshot to the dashboard and it aggregates them in memory, with no Prometheus.
      * Production-supported for small deployments; data quality/consistency is prioritised over durability.
      *
-     * @param livenessSeconds a snapshot older than this is excluded from the aggregate (peer treated as silent)
-     *                        and surfaced in {@code SourceInfo} (default {@code 45})
-     * @param maxInstances    supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
+     * <p>All snapshots are retained regardless of age. Each instance always contributes its last-known values
+     * to the cluster aggregate. Per-instance staleness is visible through each row's {@code lastSeenEpochMs}
+     * timestamp in the Instances tab.
+     *
+     * @param livenessSeconds  heartbeat age threshold in seconds — an instance is {@code DOWN} when no heartbeat
+     *                         was received within this window; {@code UNKNOWN} if no heartbeat ever received
+     *                         (default {@code 180}; rule of thumb: ≥ 3 × peer {@code heartbeat.interval-seconds})
+     * @param maxInstances     supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
-        @DefaultValue("45") int livenessSeconds,
+        @DefaultValue("180") int livenessSeconds,
         @DefaultValue("10") int maxInstances,
         @DefaultValue Retention retention,
         @DefaultValue("30") int sampleIntervalSeconds,
         @DefaultValue Jdbc jdbc
     ) {
-        /** Convenience with defaults. */
         public SharedStore() {
-            this("inmemory", 45, 10, new Retention(), 30, new Jdbc());
+            this("inmemory", 180, 10, new Retention(), 30, new Jdbc());
         }
     }
 
@@ -256,7 +260,9 @@ public record DashboardProperties(
      * Snapshot push / ingest settings for {@code cluster.mode=shared-store}.
      *
      * <p><strong>Peer (publisher) side</strong> — each peer instance POSTs its local {@code MetricsSummary} to the
-     * dashboard's ingest endpoint. Inactive when {@code publishUrl} is blank.
+     * dashboard's ingest endpoint. Set {@code publishUrl} to the dashboard base URL including context path
+     * (e.g. {@code http://dashboard:8080/failover-dashboard}); {@code /api/cluster/snapshot} is appended automatically.
+     * Inactive when {@code publishUrl} is blank.
      *
      * <p><strong>Dashboard (receiver) side</strong> — controls which security gate protects the ingest endpoint:
      * <ul>
@@ -266,7 +272,7 @@ public record DashboardProperties(
      *   <li>{@code allow-insecure-ingest=true} → permit-all (trusted internal network only)</li>
      * </ul>
      *
-     * @param publishUrl                 dashboard ingest URL (blank ⇒ this instance does not push)
+     * @param publishUrl                 dashboard base URL including context path, e.g. {@code http://dashboard:8080/failover-dashboard} (blank ⇒ this instance does not push); {@code /api/cluster/snapshot} is appended automatically
      * @param intervalSeconds            seconds between pushes (default {@code 15})
      * @param username                   ingest Basic-auth username accepted by the dashboard (blank ⇒ Basic disabled)
      * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})
