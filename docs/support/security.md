@@ -116,6 +116,7 @@ referentials, layer these controls:
 
 - **Encrypt the JDBC payload at rest (built-in).** Enable the built-in **AES-GCM** cipher so the
   `PAYLOAD` column holds ciphertext, not readable JSON — no custom code, just a key:
+
   ```yaml
   failover:
     store:
@@ -125,6 +126,7 @@ referentials, layer these controls:
           cipher: aesgcm
           key: ${FAILOVER_STORE_JDBC_ENCRYPTION_KEY}   # Base64 16/24/32 bytes, from a secret store
   ```
+
   See [Payload Encryption → AES-GCM](../how-to/payload-encryption.md#real-encryption-out-of-the-box-aes-gcm-recommended).
   Note this protects the JDBC store at rest only; in-memory/Caffeine payloads stay in process memory.
 - **Mask fields at the boundary.** Use a `PayloadEnricher` to mask, tokenise, or drop sensitive fields
