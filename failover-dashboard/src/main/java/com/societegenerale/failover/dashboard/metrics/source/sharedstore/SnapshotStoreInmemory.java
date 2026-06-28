@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,12 +26,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.LongSupplier;
 
 /**
- * Default {@link SnapshotStore}: latest snapshot per instance in a {@link ConcurrentHashMap}, with a liveness
- * window so stale peers drop out of the aggregate. Zero infra; lost on restart — acceptable for the
- * shared-store tier where consistency is prioritised over durability (design §5).
+ * Default {@link SnapshotStore}: latest snapshot per instance in a {@link ConcurrentHashMap}.
+ * All snapshots are retained — last-known values are always included in the aggregate so a quiet or
+ * crashed peer never silently drops out. Staleness is visible through each instance's {@code lastSeenEpochMs}.
  *
  * <p>The supported small-cluster ceiling {@code maxInstances} is enforced as a loud warning (not a hard reject):
  * pushing beyond it still records, but signals the deployment has outgrown shared-store and should move to
@@ -45,23 +45,10 @@ public class SnapshotStoreInmemory implements SnapshotStore {
     }
 
     private final Map<String, Entry> byInstance = new ConcurrentHashMap<>();
-    private final long livenessMillis;
     private final int maxInstances;
-    private final LongSupplier nowMillis;
 
-    /**
-     * @param livenessMillis snapshots older than this are excluded from {@link #live()}
-     * @param maxInstances   supported instance ceiling (warning only when exceeded)
-     */
-    public SnapshotStoreInmemory(long livenessMillis, int maxInstances) {
-        this(livenessMillis, maxInstances, System::currentTimeMillis);
-    }
-
-    /** Test seam: inject a clock. */
-    SnapshotStoreInmemory(long livenessMillis, int maxInstances, LongSupplier nowMillis) {
-        this.livenessMillis = livenessMillis;
+    public SnapshotStoreInmemory(int maxInstances) {
         this.maxInstances = maxInstances;
-        this.nowMillis = nowMillis;
     }
 
     @Override
@@ -71,54 +58,15 @@ public class SnapshotStoreInmemory implements SnapshotStore {
             log.warn("Failover shared-store has {} reporting instances (max-instances={}); '{}' exceeds the supported "
                     + "ceiling. Consider cluster.mode=prometheus for clusters this large.", byInstance.size(), maxInstances, id);
         }
-        byInstance.put(id, new Entry(snapshot.summary(), nowMillis.getAsLong()));
+        byInstance.put(id, new Entry(snapshot.summary(), System.currentTimeMillis()));
     }
 
     @Override
-    public List<MetricsSummary> live() {
-        long cutoff = nowMillis.getAsLong() - livenessMillis;
-        List<MetricsSummary> out = new ArrayList<>();
-        for (Entry e : byInstance.values()) {
-            if (e.receivedAtMs() >= cutoff) {
-                out.add(e.summary());
-            }
-        }
-        return out;
-    }
-
-    @Override
-    public List<InstanceMetrics> liveInstances() {
-        long cutoff = nowMillis.getAsLong() - livenessMillis;
+    public List<InstanceMetrics> allInstances() {
         List<InstanceMetrics> out = new ArrayList<>();
         for (Map.Entry<String, Entry> e : byInstance.entrySet()) {
-            if (e.getValue().receivedAtMs() >= cutoff) {
-                out.add(new InstanceMetrics(e.getKey(), e.getValue().receivedAtMs(), e.getValue().summary()));
-            }
+            out.add(new InstanceMetrics(e.getKey(), e.getValue().receivedAtMs(), e.getValue().summary(), LiveStatus.UNKNOWN));
         }
         return out;
-    }
-
-    @Override
-    public int liveCount() {
-        long cutoff = nowMillis.getAsLong() - livenessMillis;
-        int n = 0;
-        for (Entry e : byInstance.values()) {
-            if (e.receivedAtMs() >= cutoff) {
-                n++;
-            }
-        }
-        return n;
-    }
-
-    @Override
-    public long newestEpochMs() {
-        long cutoff = nowMillis.getAsLong() - livenessMillis;
-        long newest = 0;
-        for (Entry e : byInstance.values()) {
-            if (e.receivedAtMs() >= cutoff && e.receivedAtMs() > newest) {
-                newest = e.receivedAtMs();
-            }
-        }
-        return newest;
     }
 }
