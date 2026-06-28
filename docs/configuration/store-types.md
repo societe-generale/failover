@@ -125,6 +125,66 @@ failover:
 </dependency>
 ```
 
+### JDBC Driver
+
+!!! warning "Add your own JDBC driver"
+    `failover-store-jdbc` does **not** bundle or force any specific JDBC driver. Add the driver for your database — versions are managed by `spring-boot-dependencies`, so omit `<version>` when using the Spring Boot BOM.
+
+=== "PostgreSQL"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+    </dependency>
+    ```
+
+=== "MySQL"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.mysql</groupId>
+        <artifactId>mysql-connector-j</artifactId>
+    </dependency>
+    ```
+
+=== "MariaDB"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>org.mariadb.jdbc</groupId>
+        <artifactId>mariadb-java-client</artifactId>
+    </dependency>
+    ```
+
+=== "Oracle"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.oracle.database.jdbc</groupId>
+        <artifactId>ojdbc11</artifactId>
+    </dependency>
+    ```
+
+=== "SQL Server"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.microsoft.sqlserver</groupId>
+        <artifactId>mssql-jdbc</artifactId>
+    </dependency>
+    ```
+
+=== "H2 (dev / test)"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <scope>test</scope>
+    </dependency>
+    ```
+
 ### Create the Table
 
 ```sql title="create_failover_store.sql"

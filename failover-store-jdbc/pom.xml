@@ -77,20 +77,29 @@
             <artifactId>mariadb</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+          JDBC drivers are NOT compile or runtime dependencies of this module —
+          the application that uses failover-store-jdbc provides its own driver.
+          Listed here as optional so the dialect ITs can reference them;
+          they do NOT propagate to consumers.
+        -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <scope>test</scope>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.mariadb.jdbc</groupId>
             <artifactId>mariadb-java-client</artifactId>
             <scope>test</scope>
+            <optional>true</optional>
         </dependency>
 
     </dependencies>
