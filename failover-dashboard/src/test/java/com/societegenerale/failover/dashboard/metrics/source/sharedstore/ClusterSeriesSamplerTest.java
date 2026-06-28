@@ -16,13 +16,13 @@
 
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
-import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import org.junit.jupiter.api.Test;
 
@@ -38,12 +38,12 @@ class ClusterSeriesSamplerTest {
     private static final class MutableSource implements MetricsSource {
         private final AtomicReference<MetricsSummary> current = new AtomicReference<>();
         void setSuccess(long success) {
-            ApiKpis overall = DashboardKpis.build("__overall__", "__overall__", success, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
+            ApiKpis overall = MetricsKpis.build("__overall__", "__overall__", success, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
             current.set(new MetricsSummary(overall, List.of(), List.of(), 0L));
         }
         void setPerApiFailover(String name, long failover) {
-            ApiKpis k = DashboardKpis.build(name, name, 0, failover, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
-            ApiKpis overall = DashboardKpis.build("__overall__", "__overall__", 0, failover, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
+            ApiKpis k = MetricsKpis.build(name, name, 0, failover, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
+            ApiKpis overall = MetricsKpis.build("__overall__", "__overall__", 0, failover, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
             current.set(new MetricsSummary(overall, List.of(k), List.of(), 0L));
         }
         public MetricsSummary summary() { return current.get(); }

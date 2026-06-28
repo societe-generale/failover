@@ -16,7 +16,7 @@
 
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

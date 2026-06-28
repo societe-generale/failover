@@ -572,6 +572,779 @@ failover:
 
 The app needs `spring-boot-starter-web`, `spring-boot-starter-security`, a `MeterRegistry`, and the `failover-dashboard` (or its starter) dependency. With no failover library there are no `@Failover` methods to discover, so the **Config view is empty** while all metrics/health/trend views work from the backend — a no-op `FailoverScanner` is supplied automatically. (For `shared-store` mode, also add `failover-dashboard-snapshotstore-jdbc` if you want durability.)
 
+## Configuration How-To
+
+Complete, copy-pasteable YAML for every deployment shape. Each scenario shows **two YAML blocks** —
+one for the `@Failover` microservice (the app that uses `@Failover` methods) and one for the dashboard
+service (which may be the same process). Sub-scenarios 2.x cover the snapshot ingest authentication options.
+
+### 1. Single JVM
+
+All-in-one: the same process runs the `@Failover` methods **and** serves the dashboard.
+`cluster.mode` defaults to `local` (reads the in-process `MeterRegistry`); no cluster config is needed.
+
+```
+┌────────────────────────────────────────────────────┐
+│  Single JVM                                        │
+│                                                    │
+│  ┌─────────────────┐    ┌──────────────────────┐   │
+│  │ @Failover beans │───►│  MeterRegistry       │   │
+│  └─────────────────┘    └──────────┬───────────┘   │
+│                                    │               │
+│                          ┌─────────▼────────────┐  │
+│                          │  Dashboard (local)   │  │
+│                          │  /failover-dashboard │  │
+│                          └──────────────────────┘  │
+└────────────────────────────────────────────────────┘
+```
+
+#### 1.1 Minimal — Basic Enable
+
+```yaml title="application.yml"
+failover:
+  dashboard:
+    enabled: true    # everything else defaults; store = whatever failover.store.type is set to
+```
+
+With no `security.allow-insecure`, the dashboard requires Spring Security (bundled by the starter).
+Grant the `FAILOVER_ADMIN` role to your admin user or override the filter chain.
+
+#### 1.2 With InMemory Failover Store (Dev / Test)
+
+No extra deps; store is cleared on restart.
+
+```yaml title="application.yml"
+failover:
+  store:
+    type: inmemory
+  dashboard:
+    enabled: true
+```
+
+#### 1.3 With Caffeine Store (Single-Node Cache)
+
+```yaml title="application.yml"
+failover:
+  store:
+    type: caffeine
+  dashboard:
+    enabled: true
+```
+
+#### 1.4 With JDBC Failover Store (Production)
+
+Persistence across restarts; shared by all methods in this JVM.
+
+```yaml title="application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/myapp
+    username: myapp
+    password: secret
+
+failover:
+  store:
+    type: jdbc
+  dashboard:
+    enabled: true
+```
+
+#### 1.5 With Trend History (Reload-Surviving Charts)
+
+Enables the server-side ring buffer; trend charts survive a browser reload.
+
+```yaml title="application.yml"
+failover:
+  dashboard:
+    enabled: true
+    history:
+      enabled: true
+      samples: 120
+      sample-interval-seconds: 15   # retains ~30 min with these defaults
+```
+
+#### 1.6 With Prometheus Registry
+
+`failover.*` meters flow to Prometheus. The dashboard still reads `local` (in-process registry) — use
+`cluster.mode=prometheus` only when the **dashboard** needs to aggregate meters **across multiple instances**.
+
+```yaml title="application.yml"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health
+
+failover:
+  dashboard:
+    enabled: true
+```
+
+#### 1.7 With OTLP / Elastic / Datadog Registry
+
+Same as 1.6: add the Micrometer registry to export meters to your APM; the dashboard reads `local`.
+For push registries, auto-tagging adds an instance identity (useful when you later scale out).
+
+```yaml title="application.yml"
+management:
+  otlp:
+    metrics:
+      export:
+        url: http://otel-collector:4318/v1/metrics
+        enabled: true
+
+failover:
+  observable:
+    instance:
+      mode: auto                  # auto-tags push registries; skips Prometheus
+      id: ${HOSTNAME:my-service}  # readable stable id on k8s/Docker
+  dashboard:
+    enabled: true
+```
+
+---
+
+### 2. Cluster / Distributed
+
+Multiple JVMs emit `failover.*` metrics; the dashboard must aggregate them.
+**Choose a mode:**
+
+```
+Is Prometheus already in the infra?
+   Yes → cluster.mode=prometheus (large clusters, p95/p99 available)
+   No  → cluster.mode=shared-store (small clusters ≤ ~10, no extra infra)
+
+For shared-store — does the aggregate need to survive a dashboard restart?
+   Yes → store=jdbc (durable)
+   No  → store=inmemory (simple)
+```
+
+In cluster mode the **dashboard host** aggregates metrics from all **peers** (the `@Failover` services).
+They may be the same process (each instance runs the dashboard and pushes to the others) or a dedicated
+standalone app (see scenario 2.7).
+
+The POST endpoint that receives peer snapshots is `/api/cluster/snapshot`; it can be secured with
+**Basic Auth**, **OAuth2 Bearer**, or left **open** (dev only). See the [authentication summary](#snapshot-ingest-authentication-options) below.
+
+---
+
+#### 2.1 In-Memory Shared-Store — Open Ingest (Dev / Trusted Network)
+
+Simplest cluster setup. No auth on the ingest endpoint; peers push without credentials.
+
+```
+  @Failover Service 1          @Failover Service 2
+ ┌───────────────────┐         ┌───────────────────┐
+ │ @Failover beans   │         │ @Failover beans   │
+ │ MeterRegistry     │         │ MeterRegistry     │
+ │ SnapshotPublisher │         │ SnapshotPublisher │
+ └────────┬──────────┘         └────────┬──────────┘
+          │ POST /api/cluster/snapshot  │
+          │ (no credentials)            │
+          └────────────┬────────────────┘
+                       ▼
+          ┌─────────────────────────────┐
+          │  Dashboard Host             │
+          │  SnapshotStore (inmemory)   │
+          │  SharedStoreMetricsSource   │
+          │  /failover-dashboard        │
+          └─────────────────────────────┘
+```
+
+**`@Failover` service YAML (every peer):**
+
+```yaml title="peer-service/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      snapshot:
+        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        interval-seconds: 15
+        allow-insecure-ingest: true   # suppresses the publisher-side no-auth startup WARN
+        # no username / password / oauth2 (matches open ingest on dashboard)
+```
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: inmemory
+        liveness-seconds: 45
+        max-instances: 10
+      snapshot:
+        allow-insecure-ingest: true   # ⚠ dev / trusted-network only — logs startup WARN
+                                      # refused under the 'prod' profile
+```
+
+!!! warning "Open ingest"
+    `allow-insecure-ingest: true` creates a permit-all `POST` endpoint. Use only on a trusted internal
+    network or in development. Refused under the `prod` Spring profile.
+
+---
+
+#### 2.2 In-Memory Shared-Store — Basic Auth (Production, No IdP)
+
+Adds HTTP Basic Auth to the ingest endpoint. Password is plain text on both sides (the dashboard applies
+`{noop}` internally; the publisher sends it as-is in the `Authorization: Basic` header).
+
+```
+  @Failover Service(s)
+ ┌──────────────────────────────────┐
+ │  MeterRegistry                   │
+ │  SnapshotPublisher               │──► POST /api/cluster/snapshot
+ │  (Authorization: Basic user:pwd) │    Authorization: Basic base64(u:p)
+ └──────────────────────────────────┘
+                  │
+                  ▼
+ ┌────────────────────────────────────────┐
+ │  Dashboard Host                        │
+ │  dashboardIngestBasicFilterChain       │── validates username + {noop}password
+ │  SnapshotStore (inmemory)              │
+ │  /failover-dashboard                   │
+ └────────────────────────────────────────┘
+```
+
+**`@Failover` service YAML (every peer):**
+
+```yaml title="peer-service/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      snapshot:
+        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        interval-seconds: 15
+        username: ingest-user   # must match dashboard's snapshot.username
+        password: s3cr3t        # plain text — sent as HTTP Basic
+```
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: inmemory
+        liveness-seconds: 45
+        max-instances: 10
+      snapshot:
+        username: ingest-user   # creates dashboardIngestBasicFilterChain
+        password: s3cr3t        # plain text — {noop} applied internally
+```
+
+!!! warning "Password must be plain text"
+    Do **not** use Spring Security encoded strings (`{bcrypt}…`) as the password. The publisher sends
+    the value as-is in the `Authorization: Basic` header; a `{bcrypt}` hash would be sent literally and
+    never match.
+
+---
+
+#### 2.3 In-Memory Shared-Store — OAuth2 Bearer (Production, Existing IdP)
+
+Uses the consumer's **existing** `OAuth2AuthorizedClientManager`; no new dependencies when the app
+already has `spring-security-oauth2-client`. The dashboard validates the Bearer token via JWT
+(`spring-security-oauth2-resource-server`). Tokens rotate automatically — no shared secret to manage.
+
+```
+  @Failover Service(s)          Identity Provider (IdP)
+ ┌────────────────────────┐     ┌─────────────────────┐
+ │  OAuth2Authorized      │────►│  /token (client_    │
+ │  ClientManager         │◄────│   credentials flow) │
+ │  SnapshotPublisher     │     └─────────────────────┘
+ │  Bearer: <jwt>         │
+ └──────────┬─────────────┘
+            │ POST /api/cluster/snapshot
+            │ Authorization: Bearer <jwt>
+            ▼
+ ┌─────────────────────────────────────────┐
+ │  Dashboard Host                         │
+ │  dashboardIngestOAuth2FilterChain       │── JWT validation (issuer-uri)
+ │  SnapshotStore (inmemory)               │
+ │  /failover-dashboard                    │
+ └─────────────────────────────────────────┘
+```
+
+**`@Failover` service YAML (every peer):**
+
+```yaml title="peer-service/application.yml"
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          failover-dashboard:                  # registration id (your choice)
+            provider: my-idp
+            client-id: failover-peer
+            client-secret: <secret>
+            authorization-grant-type: client_credentials
+            scope: failover:ingest
+        provider:
+          my-idp:
+            token-uri: https://idp.example.com/realms/myrealm/protocol/openid-connect/token
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      snapshot:
+        publish-url: http://dashboard-host:8080/failover-dashboard/api/cluster/snapshot
+        interval-seconds: 15
+        oauth2-client-registration-id: failover-dashboard   # matches the registration above
+```
+
+Add to `peer-service/pom.xml`:
+
+```xml
+<dependency>
+  <groupId>org.springframework.security</groupId>
+  <artifactId>spring-security-oauth2-client</artifactId>
+</dependency>
+```
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://idp.example.com/realms/myrealm
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: inmemory
+        liveness-seconds: 45
+        max-instances: 10
+      # no snapshot.username needed — OAuth2 chain activates from the classpath dep below
+```
+
+Add to `dashboard-host/pom.xml`:
+
+```xml
+<dependency>
+  <groupId>org.springframework.security</groupId>
+  <artifactId>spring-security-oauth2-resource-server</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springframework.security</groupId>
+  <artifactId>spring-security-oauth2-jose</artifactId>
+</dependency>
+```
+
+!!! info "Auth priority on the publisher"
+    When `oauth2-client-registration-id` is set **and** `OAuth2AuthorizedClientManager` is in the Spring
+    context, OAuth2 Bearer takes priority over Basic Auth (even if `username`/`password` are also set).
+    If the `OAuth2AuthorizedClientManager` bean is absent, the publisher falls back to Basic Auth.
+
+---
+
+#### 2.4 JDBC Shared-Store — Basic Auth (Durable, Production)
+
+Same as 2.2 but snapshots persist to a database; the cluster aggregate survives a dashboard restart.
+
+```
+  @Failover Service(s)
+ ┌───────────────────────────┐
+ │  SnapshotPublisher        │──► POST /api/cluster/snapshot
+ │  (Authorization: Basic)   │    Authorization: Basic base64(u:p)
+ └───────────────────────────┘
+                 │
+                 ▼
+ ┌──────────────────────────────────────────┐
+ │  Dashboard Host                          │
+ │  dashboardIngestBasicFilterChain         │
+ │  SnapshotStore (JDBC)                    │──► FAILOVER_DASHBOARD_SNAPSHOT table
+ │  /failover-dashboard                     │
+ └──────────────────────────────────────────┘
+                 │
+                 ▼
+ ┌──────────────────────────┐
+ │  Database                │
+ │  (PostgreSQL / MySQL /   │
+ │   MariaDB / Oracle / H2) │
+ └──────────────────────────┘
+```
+
+**`@Failover` service YAML:** identical to scenario 2.2 (just `publish-url` + `username` + `password`).
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        liveness-seconds: 45
+        max-instances: 10
+        jdbc:
+          table-prefix: ""    # "" → FAILOVER_DASHBOARD_SNAPSHOT
+          auto-ddl: true      # create the table on startup; set false to manage DDL yourself
+      snapshot:
+        username: ingest-user
+        password: s3cr3t
+```
+
+Add to `dashboard-host/pom.xml`:
+
+```xml
+<dependency>
+  <groupId>com.societegenerale.failover</groupId>
+  <artifactId>failover-dashboard-snapshotstore-jdbc</artifactId>
+</dependency>
+```
+
+---
+
+#### 2.5 JDBC Shared-Store — OAuth2 Bearer (Durable, Production, Existing IdP)
+
+Combine JDBC durability (2.4) with OAuth2 auth (2.3).
+
+**`@Failover` service YAML:** identical to scenario 2.3 (OAuth2 client credentials + `oauth2-client-registration-id`).
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://idp.example.com/realms/myrealm
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        liveness-seconds: 45
+        max-instances: 10
+        jdbc:
+          table-prefix: ""
+          auto-ddl: true
+```
+
+Dependencies: `failover-dashboard-snapshotstore-jdbc` + `spring-security-oauth2-resource-server` + `spring-security-oauth2-jose`.
+
+---
+
+#### 2.6 Prometheus Mode (Large Clusters, Prometheus in Infra)
+
+No snapshot push from peers. Prometheus scrapes every instance; the dashboard aggregates with PromQL.
+Per-instance view and p95/p99 latency are available. Falls back to `local` if Prometheus is unreachable.
+
+```
+  @Failover Service 1       @Failover Service 2      @Failover Service 3
+ ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+ │ @Failover beans  │      │ @Failover beans  │      │ @Failover beans  │
+ │ MeterRegistry    │      │ MeterRegistry    │      │ MeterRegistry    │
+ │ /actuator/       │      │ /actuator/       │      │ /actuator/       │
+ │  prometheus      │      │  prometheus      │      │  prometheus      │
+ └────────┬─────────┘      └────────┬─────────┘      └────────┬─────────┘
+          │ scrape                  │ scrape                   │ scrape
+          └────────────────┬────────┘──────────────────────────┘
+                           ▼
+                ┌─────────────────────┐
+                │  Prometheus         │
+                └──────────┬──────────┘
+                           │ PromQL (sum / rate / histogram_quantile)
+                           ▼
+                ┌──────────────────────────┐
+                │  Dashboard Host          │
+                │  PrometheusMetricsSource │
+                │  /failover-dashboard     │
+                └──────────────────────────┘
+```
+
+**`@Failover` service YAML (every instance) — no `cluster.snapshot` needed:**
+
+```yaml title="peer-service/application.yml"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health
+
+# failover config as normal — no dashboard cluster settings required on peers
+```
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: prometheus
+      prometheus:
+        base-url: http://prometheus:9090
+        # token: <bearer>          # optional, when Prometheus is secured
+        # timeout-seconds: 5
+```
+
+**Prometheus scrape config:**
+
+```yaml title="prometheus.yml"
+scrape_configs:
+  - job_name: my-failover-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - app-1:8080
+          - app-2:8080
+          - app-3:8080
+```
+
+!!! tip "No snapshot.publish-url on peers"
+    In `prometheus` mode peers **do not** configure `cluster.snapshot.publish-url`. The dashboard reads
+    directly from Prometheus via PromQL; peers only need to expose `/actuator/prometheus`.
+
+!!! tip "Per-instance label in the Instances tab"
+    Prometheus adds the `instance` label at scrape time; the dashboard's **Instances** tab groups by it
+    automatically. You do **not** need `failover.observable.instance.*` here — that property tags push
+    registries (OTLP, Elastic, Datadog) which Prometheus doesn't use.
+
+---
+
+#### 2.7 Standalone Dashboard (Dedicated App, No @Failover on Dashboard Classpath)
+
+The dashboard runs as its own Spring Boot app; `@Failover` services push snapshots to it.
+The `failover-spring-boot-starter` is **not** required in the dashboard app; a no-op `FailoverScanner`
+is provided automatically (Config view is empty — no `@Failover` methods to discover).
+
+```
+  @Failover Service 1      @Failover Service 2
+ ┌──────────────────┐      ┌──────────────────┐
+ │ @Failover beans  │      │ @Failover beans  │
+ │ SnapshotPublisher│      │ SnapshotPublisher│
+ └────────┬─────────┘      └────────┬─────────┘
+          │ POST /api/cluster/snapshot
+          └──────────────┬───────────────────
+                         ▼
+          ┌──────────────────────────────────────┐
+          │  Standalone Dashboard App            │
+          │  (no failover library required)      │
+          │  Config view: empty (no @Failover)   │
+          │  Metrics / Health / Instances: live  │
+          │  /failover-dashboard                 │
+          └──────────────────────────────────────┘
+```
+
+**Standalone dashboard YAML:**
+
+```yaml title="dashboard-app/application.yml"
+spring:
+  application.name: failover-dashboard
+  # datasource only needed when store=jdbc:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store        # or prometheus
+      shared-store:
+        store: inmemory         # or jdbc (add failover-dashboard-snapshotstore-jdbc)
+        liveness-seconds: 45
+      snapshot:
+        username: ingest-user   # or use oauth2, or allow-insecure-ingest for dev
+        password: s3cr3t
+```
+
+**`@Failover` service YAML (same as scenario 2.2):**
+
+```yaml title="peer-service/application.yml"
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      snapshot:
+        publish-url: http://dashboard-app:8080/failover-dashboard/api/cluster/snapshot
+        interval-seconds: 15
+        username: ingest-user
+        password: s3cr3t
+```
+
+---
+
+### Snapshot Ingest Authentication — Options
+
+The `POST /api/cluster/snapshot` endpoint receives peer metric snapshots. It can be secured three ways.
+Choose one; the dashboard activates the matching filter chain automatically.
+
+#### Option 1 — HTTP Basic Auth
+
+**When to use:** peers can't use OAuth2; a shared secret is acceptable; no IdP in the infra.
+
+```
+Peer                                  Dashboard
+ │──► POST /api/cluster/snapshot           │
+ │    Authorization: Basic base64(u:p)     │
+ │                              dashboardIngestBasicFilterChain
+ │                                         │── InMemoryUserDetailsManager({noop}pwd)
+ │                                         │── 401 if credentials mismatch
+ │◄── 200 OK ──────────────────────────────│
+```
+
+**Dashboard properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        username: ingest-user   # activates dashboardIngestBasicFilterChain
+        password: s3cr3t        # plain text — {noop} applied internally on the dashboard
+```
+
+**Peer properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        publish-url: http://dashboard:8080/failover-dashboard/api/cluster/snapshot
+        username: ingest-user   # must match dashboard's snapshot.username
+        password: s3cr3t        # plain text — sent as-is in Authorization: Basic
+```
+
+---
+
+#### Option 2 — OAuth2 Bearer (Recommended when IdP is available)
+
+**When to use:** peers already have `OAuth2AuthorizedClientManager`; IdP manages tokens; no shared secrets; automatic token rotation.
+
+```
+Peer                  IdP                     Dashboard
+ │──► POST /token ───►│                           │
+ │◄── Bearer JWT ─────│                           │
+ │──► POST /api/cluster/snapshot ────────────────►│
+ │    Authorization: Bearer <jwt>    dashboardIngestOAuth2FilterChain
+ │                                               │── jwt().issuerUri validation
+ │                                               │── 401 if token invalid / expired
+ │◄── 200 OK ────────────────────────────────────│
+```
+
+**Dashboard properties:**
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://idp.example.com/realms/myrealm
+# No snapshot.username needed — OAuth2 chain activates via classpath dep
+```
+
+Dashboard `pom.xml` additions: `spring-security-oauth2-resource-server` + `spring-security-oauth2-jose`.
+
+**Peer properties:**
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          failover-dashboard:
+            client-id: failover-peer
+            client-secret: <secret>
+            authorization-grant-type: client_credentials
+            scope: failover:ingest
+        provider:
+          my-idp:
+            token-uri: https://idp.example.com/realms/myrealm/protocol/openid-connect/token
+
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        publish-url: http://dashboard:8080/failover-dashboard/api/cluster/snapshot
+        oauth2-client-registration-id: failover-dashboard
+```
+
+Peer `pom.xml` addition: `spring-security-oauth2-client`.
+
+---
+
+#### Option 3 — No Auth / Open Ingest (Dev / Trusted Networks Only)
+
+**When to use:** development, or peers and dashboard share an isolated, trusted network. **Never production without network controls.**
+
+**Dashboard properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        allow-insecure-ingest: true   # ⚠ logs WARN at startup; refused under 'prod' profile
+```
+
+**Peer properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        publish-url: http://dashboard:8080/failover-dashboard/api/cluster/snapshot
+        allow-insecure-ingest: true   # suppresses the publisher-side no-auth startup WARN
+        # no username / password / oauth2 needed
+```
+
+Without `allow-insecure-ingest: true` on the peer, the publisher logs a startup `WARN` on every peer
+that no auth is configured — even when the open ingest is intentional. Set this flag to acknowledge
+the insecure choice and silence the warn.
+
+---
+
+#### Auth Priority Summary
+
+| Priority | Active when | Filter chain (dashboard) | Publisher sends |
+|---|---|---|---|
+| **1 — OAuth2 Bearer** | `spring-security-oauth2-resource-server` on dashboard classpath | `dashboardIngestOAuth2FilterChain` `@Order(-10)` | `Authorization: Bearer <jwt>` |
+| **2 — Basic Auth** | `snapshot.username` set on dashboard; OAuth2 chain absent | `dashboardIngestBasicFilterChain` `@Order(-10)` | `Authorization: Basic base64(u:p)` |
+| **3 — Open** | `snapshot.allow-insecure-ingest: true` on dashboard; both above absent | `dashboardIngestOpenFilterChain` `@Order(-10)` (permit-all + WARN) | (none) — set `allow-insecure-ingest: true` on peer too to suppress the publisher-side WARN |
+
+OAuth2 always wins when both OAuth2 and Basic are configured. The dashboard's main UI/API filter chain
+(`dashboardSecurityFilterChain`) operates at `@Order(0)` and is not affected by the ingest chain.
+
+---
+
 ## Exporting Metrics Elsewhere (OTLP / Elastic)
 
 The dashboard reads `failover.*` **meters**; how those meters leave each instance is a plain Micrometer concern — **no failover module is required**. Add the matching Micrometer registry to the application and the `failover.*` meters flow with everything else:

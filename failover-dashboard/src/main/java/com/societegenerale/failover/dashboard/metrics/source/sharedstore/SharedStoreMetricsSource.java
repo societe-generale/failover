@@ -17,15 +17,15 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.ExceptionStat;
-import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
-import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsKpis;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 
 import java.util.ArrayList;
@@ -35,7 +35,7 @@ import java.util.Map;
 
 /**
  * Cluster-wide {@link MetricsSource} for {@code cluster.mode=shared-store}: it merges the live per-instance
- * snapshots held in a {@link SnapshotStore} into one aggregate, using the same {@link DashboardKpis} math as
+ * snapshots held in a {@link SnapshotStore} into one aggregate, using the same {@link MetricsKpis} math as
  * every other source, so the shapes and rates are identical to local / Prometheus.
  *
  * <p>Aggregation is exact for counters (summed per API across instances) and approximate for latency (count-weighted
@@ -70,25 +70,29 @@ public class SharedStoreMetricsSource implements MetricsSource {
 
     @Override
     public MetricsSummary summary() {
-        List<MetricsSummary> live = store.live();
-        return live.isEmpty() ? fallback.summary() : merge(live);
+        List<InstanceMetrics> all = instances();
+        if (all.isEmpty()) {
+            return fallback.summary();
+        }
+        return merge(all.stream().map(InstanceMetrics::summary).toList());
     }
 
     @Override
     public List<ApiHealth> health() {
-        List<MetricsSummary> live = store.live();
-        if (live.isEmpty()) {
+        List<InstanceMetrics> all = instances();
+        if (all.isEmpty()) {
             return fallback.health();
         }
-        return merge(live).perApi().stream()
-                .map(k -> DashboardKpis.classify(k.name(), k.rates().healthyRate(), thresholds))
+        return merge(all.stream().map(InstanceMetrics::summary).toList()).perApi().stream()
+                .map(k -> MetricsKpis.classify(k.name(), k.rates().healthyRate(),
+                        thresholds.degradedThreshold(), thresholds.unhealthyThreshold()))
                 .toList();
     }
 
     @Override
     public SourceInfo info() {
         long newest = store.newestEpochMs();
-        return new SourceInfo("shared-store", store.liveCount(), maxInstances,
+        return new SourceInfo("shared-store", instances().size(), maxInstances,
                 newest > 0 ? newest : System.currentTimeMillis(), false);
     }
 
@@ -98,14 +102,34 @@ public class SharedStoreMetricsSource implements MetricsSource {
         return seriesStore != null ? seriesStore.series(windowSec) : fallback.series(windowSec);
     }
 
+    /**
+     * Returns per-instance metrics. Always includes the dashboard host's own metrics from the
+     * {@code fallback} (local registry), even when the store is empty or the host did not push
+     * a snapshot to itself — so the Instances tab is never blank.
+     *
+     * <p>If the host IS in the store (it pushed to itself), it is not duplicated.
+     */
     @Override
     public List<InstanceMetrics> instances() {
-        return store.liveInstances();
+        List<InstanceMetrics> peers = store.liveInstances();
+        List<InstanceMetrics> local = fallback.instances();
+        if (local.isEmpty()) {
+            return peers;   // standalone app with no @Failover — nothing local to add
+        }
+        String localId = local.getFirst().instanceId();
+        boolean alreadyInStore = peers.stream().anyMatch(m -> localId.equals(m.instanceId()));
+        if (alreadyInStore) {
+            return peers;   // host pushed to itself — already counted, no duplicate
+        }
+        // Prepend the dashboard host (always show "1 of N" minimum)
+        List<InstanceMetrics> result = new ArrayList<>(local);
+        result.addAll(peers);
+        return result;
     }
 
     // ── aggregation ─────────────────────────────────────────────────────────────
 
-    /** Sums per-API counters across instances and rebuilds KPIs/rates via {@link DashboardKpis}. */
+    /** Sums per-API counters across instances and rebuilds KPIs/rates via {@link MetricsKpis}. */
     private MetricsSummary merge(List<MetricsSummary> snapshots) {
         Map<String, long[]> counts = new LinkedHashMap<>();        // [success, recovered, notRecovered, errors, partial, asyncFailed]
         Map<String, String> domainByName = new LinkedHashMap<>();
@@ -134,11 +158,11 @@ public class SharedStoreMetricsSource implements MetricsSource {
         for (Map.Entry<String, long[]> entry : counts.entrySet()) {
             String name = entry.getKey();
             long[] c = entry.getValue();
-            perApi.add(DashboardKpis.build(name, domainByName.getOrDefault(name, name),
+            perApi.add(MetricsKpis.build(name, domainByName.getOrDefault(name, name),
                     c[0], c[1], c[2], c[3], c[4], c[5], toLatency(latency.get(name))));
         }
 
-        ApiKpis overall = DashboardKpis.overall(perApi, overallLatency(perApi));
+        ApiKpis overall = MetricsKpis.overall(perApi, overallLatency(perApi));
         return new MetricsSummary(overall, perApi, topExceptions(exceptions), System.currentTimeMillis());
     }
 

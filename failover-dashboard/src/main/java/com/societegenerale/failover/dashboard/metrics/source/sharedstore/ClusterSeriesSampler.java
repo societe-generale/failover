@@ -16,9 +16,9 @@
 
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import lombok.extern.slf4j.Slf4j;
 
