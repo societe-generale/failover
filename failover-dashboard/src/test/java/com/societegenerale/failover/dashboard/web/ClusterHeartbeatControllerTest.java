@@ -20,6 +20,8 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Heartbe
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -35,15 +37,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("ClusterHeartbeatController — POST /failover-dashboard/api/cluster/heartbeat")
 class ClusterHeartbeatControllerTest {
 
-    @org.springframework.boot.SpringBootConfiguration
-    @org.springframework.boot.autoconfigure.EnableAutoConfiguration
-    static class TestApp { }
-
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
     private HeartbeatStore heartbeatStore;
+
+    @SpringBootConfiguration
+    @EnableAutoConfiguration
+    static class TestApp {
+        // to boot the test beans
+    }
 
     @Test
     @DisplayName("POST /heartbeat records instanceId and returns 202")

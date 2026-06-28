@@ -21,6 +21,7 @@ import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.micrometer.HeartbeatPublisher;
 import com.societegenerale.failover.observable.micrometer.health.FailoverHealthIndicator;
 import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
@@ -284,7 +285,6 @@ class FailoverMonitoringAutoConfigurationTest {
                 .withBean(FailoverExpiryExtractor.class, () -> mock(FailoverExpiryExtractor.class));
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url + username ⇒ ClusterSnapshotPublisher wired (Basic Auth)")
         void publisherWiredWithBasicAuth() {
             runner
@@ -293,7 +293,10 @@ class FailoverMonitoringAutoConfigurationTest {
                     "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL,
                     "failover.dashboard.cluster.snapshot.username=peer",
                     "failover.dashboard.cluster.snapshot.password=secret")
-                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("clusterSnapshotPublisher");
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
         }
 
         @Test
@@ -308,33 +311,36 @@ class FailoverMonitoringAutoConfigurationTest {
                     "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL,
                     "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=failover-dashboard")
                 .run(ctx -> {
-                    assertThat(ctx).hasBean("failoverSnapshotOAuth2Interceptor");
+                    assertThat(ctx).hasBean("clusterSnapshotPublisher");
                     assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
                 });
         }
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url, no auth ⇒ publisher wired in insecure mode")
         void publisherWiredInsecureWhenNoAuthConfigured() {
             runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withPropertyValues(
                     "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL)
-                .run(ctx -> assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("clusterSnapshotPublisher");
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotPublisher.class);
+                });
         }
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("publish-url absent ⇒ ClusterSnapshotPublisher not wired")
         void publisherNotWiredWhenPublishUrlAbsent() {
             runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
-                .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean("clusterSnapshotPublisher");
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class);
+                });
         }
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("heartbeat.enabled=true + publish-url ⇒ HeartbeatPublisher wired")
         void heartbeatPublisherWiredWhenEnabled() {
             runner
@@ -342,20 +348,22 @@ class FailoverMonitoringAutoConfigurationTest {
                 .withPropertyValues(
                     "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL,
                     "failover.dashboard.cluster.snapshot.heartbeat.enabled=true")
-                .run(ctx -> assertThat(ctx).hasSingleBean(
-                        com.societegenerale.failover.observable.micrometer.HeartbeatPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("heartbeatPublisher");
+                    assertThat(ctx).hasSingleBean(HeartbeatPublisher.class);
+                });
         }
 
         @Test
-        @SuppressWarnings("java:S2699")
         @DisplayName("heartbeat.enabled=false (default) ⇒ HeartbeatPublisher not wired")
         void heartbeatPublisherNotWiredByDefault() {
             runner
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withPropertyValues(
                     "failover.dashboard.cluster.snapshot.publish-url=" + PUBLISH_URL)
-                .run(ctx -> assertThat(ctx).doesNotHaveBean(
-                        com.societegenerale.failover.observable.micrometer.HeartbeatPublisher.class));
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(HeartbeatPublisher.class);
+                });
         }
 
     }
