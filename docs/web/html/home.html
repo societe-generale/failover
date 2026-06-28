@@ -100,8 +100,8 @@ body[data-md-color-scheme="default"] .fo-section p { color: #475569 !important; 
 
 <!-- STATS -->
 <div class="fo-stats">
-  {{ stat_item("11", "Modules") }}
-  {{ stat_item("27", "ADRs") }}
+  {{ stat_item("20", "Modules") }}
+  {{ stat_item("64", "ADRs") }}
   {{ stat_item("1",  "Annotation") }}
   {{ stat_item("4",  "Store types") }}
   {{ stat_item("0",  "Boilerplate") }}
@@ -508,10 +508,12 @@ body[data-md-color-scheme="default"] .fo-section p { color: #475569 !important; 
      "<code>TABLE_PREFIX</code> or <code>SCHEMA</code> strategy routes each request to the correct tenant store automatically.") }}
   {{ feat_card("amber",  "⚡", "Async non-blocking writes",
      "Store operations offloaded to a virtual-thread executor. Read path stays synchronous. Zero added latency.") }}
-  {{ feat_card("red",    "📊", "Observable out of the box",
-     "Every store/recover event emits structured SLF4J logs and Micrometer counters. No extra instrumentation.") }}
   {{ feat_card("purple", "🔌", "Resilience4j integration",
      "Circuit-breaker wraps upstream calls when <code>type: resilience</code>. Trips fast on repeated failures.") }}
+  {{ feat_card("red",    "📊", "Observable out of the box",
+     "Every store/recover event emits structured SLF4J logs and Micrometer counters. No extra instrumentation.") }}
+  {{ feat_card("indigo", "🖥️", "Observability dashboard",
+     "Opt-in embedded UI — per-failover metrics, active configurations, and cluster health. Secure by default. Add <code>failover-dashboard-spring-boot-starter</code>.") }}
 </div>
 
 <!-- INTEGRATIONS -->
@@ -548,18 +550,26 @@ body[data-md-color-scheme="default"] .fo-section p { color: #475569 !important; 
   <p>One starter pulls in everything. Pick individual modules when you need fine-grained control.</p>
 </div>
 <div class="fo-module-tree">
-<span class="starter">failover-spring-boot-starter</span>   <span class="tag">← the only dependency you need</span><br>
-├── failover-domain               <span class="tag">@Failover annotation · Referential · ReferentialAware · Metadata</span><br>
-├── failover-core                 <span class="tag">FailoverHandler · KeyGenerator · ExpiryPolicy · PayloadEnricher · ContextPropagator</span><br>
-├── failover-aspect               <span class="tag">Spring AOP @Around interceptor</span><br>
-├── failover-store-inmemory       <span class="tag">ConcurrentHashMap store — dev / test only, not persistent</span><br>
-├── failover-store-caffeine       <span class="tag">Caffeine-backed in-process store</span><br>
-├── failover-store-jdbc           <span class="tag">JDBC store — H2 · PostgreSQL · MySQL · MariaDB · Oracle · SQL Server</span><br>
-├── failover-store-async          <span class="tag">non-blocking write decorator (virtual-thread executor)</span><br>
-├── failover-store-multitenant    <span class="tag">TABLE_PREFIX / SCHEMA per-tenant routing</span><br>
-├── failover-execution-resilience <span class="tag">Resilience4j circuit-breaker integration</span><br>
-├── failover-scheduler            <span class="tag">expiry-cleanup scheduler · report-publisher scheduler</span><br>
-└── failover-spring-boot-autoconfigure  <span class="tag">zero-config Spring Boot auto-configuration assembler</span>
+<span class="starter">failover-spring-boot-starter</span>        <span class="tag">← the only dependency you need</span><br>
+├── failover-domain                    <span class="tag">@Failover annotation · Referential · ReferentialAware · Metadata</span><br>
+├── failover-core                      <span class="tag">FailoverHandler · KeyGenerator · ExpiryPolicy · PayloadEnricher · PayloadSplitter</span><br>
+├── failover-aspect                    <span class="tag">Spring AOP @Around interceptor</span><br>
+├── failover-scanner                   <span class="tag">startup scanner: discovers all @Failover methods in context</span><br>
+├── failover-observable-metrics        <span class="tag">observable metrics SPI</span><br>
+├── failover-observable-micrometer     <span class="tag">Micrometer counters + health indicator</span><br>
+├── failover-store-inmemory            <span class="tag">ConcurrentHashMap store — dev / test only, not persistent</span><br>
+├── failover-store-caffeine            <span class="tag">Caffeine-backed in-process store</span><br>
+├── failover-store-jdbc                <span class="tag">JDBC store — H2 · PostgreSQL · MySQL · MariaDB · Oracle</span><br>
+├── failover-store-async               <span class="tag">non-blocking write decorator (virtual-thread executor)</span><br>
+├── failover-store-multitenant         <span class="tag">TABLE_PREFIX / SCHEMA per-tenant routing</span><br>
+├── failover-execution-resilience      <span class="tag">Resilience4j circuit-breaker integration</span><br>
+├── failover-scheduler                 <span class="tag">expiry-cleanup scheduler · report-publisher scheduler</span><br>
+├── failover-lookup                    <span class="tag">BeanFactory-based lookups for named KeyGenerator / ExpiryPolicy / PayloadSplitter beans</span><br>
+└── failover-spring-boot-autoconfigure <span class="tag">zero-config Spring Boot auto-configuration assembler</span><br>
+<br>
+<span class="starter">failover-dashboard-spring-boot-starter</span> <span class="tag">← opt-in: embedded observability dashboard</span><br>
+├── failover-dashboard                 <span class="tag">embedded observability UI + read-only JSON API · secure by default</span><br>
+└── failover-dashboard-snapshotstore-jdbc <span class="tag">JDBC-backed snapshot store for shared-store cluster mode</span>
 </div>
 
 
@@ -604,7 +614,7 @@ body[data-md-color-scheme="default"] .fo-section p { color: #475569 !important; 
      "Every <code>failover.*</code> property with types, defaults, and full examples.",
      'configuration/properties-reference/' | url, "Browse properties →") }}
   {{ cta_card("🏗️", "ADR Index",
-     "27 architecture decisions — the why behind every design choice in the framework.",
+     "64 architecture decisions — the why behind every design choice in the framework.",
      'adr/' | url, "Browse decisions →") }}
   {{ cta_card("🤝", "Contributing",
      "Bug reports, feature proposals, pull requests — all welcome.",

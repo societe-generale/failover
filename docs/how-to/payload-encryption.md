@@ -152,7 +152,7 @@ failover:
 ```
 
 !!! tip "Contract"
-    * `id()` must be **unique** across all cipher beans and contain neither `:` nor `)` — it is persisted
+    *`id()` must be **unique** across all cipher beans and contain neither `:` nor `)` — it is persisted
       in every encrypted row, so changing it strands existing rows.
     * `encrypt`/`decrypt` must round-trip and be null-safe (`null` → `null`).
     * `decrypt` must **throw** (not return garbage) on input it did not produce, so a misconfiguration

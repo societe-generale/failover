@@ -18,6 +18,53 @@ Durable, shared-state failover store backed by any JDBC-compatible database. Rec
 </dependency>
 ```
 
+!!! warning "Add your own JDBC driver"
+    `failover-store-jdbc` does **not** bundle any database driver. Add the driver for your database — versions are managed by `spring-boot-dependencies`:
+
+    === "PostgreSQL"
+        ```xml
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        ```
+    === "MySQL"
+        ```xml
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+        ```
+    === "MariaDB"
+        ```xml
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+        </dependency>
+        ```
+    === "Oracle"
+        ```xml
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+        </dependency>
+        ```
+    === "SQL Server"
+        ```xml
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+        </dependency>
+        ```
+    === "H2 (dev / test)"
+        ```xml
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        ```
+
 Requires a `DataSource` bean in the Spring context. Spring Boot's auto-configured `DataSource` is used automatically.
 
 ---
