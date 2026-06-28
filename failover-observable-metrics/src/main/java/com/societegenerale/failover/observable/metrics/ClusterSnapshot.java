@@ -14,21 +14,16 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics;
+package com.societegenerale.failover.observable.metrics;
 
 /**
- * Per-API health classification derived from {@link Rates#healthyRate()} against configurable
- * thresholds (design doc §4.4).
+ * The payload one instance pushes to the dashboard in {@code cluster.mode=shared-store}: its own identity plus
+ * the local {@link MetricsSummary} snapshot. The receive time is stamped server-side on ingest (the peer clock
+ * is not trusted for liveness), so it is intentionally not part of this record.
  *
- * @param name        failover name
- * @param status      {@code HEALTHY} | {@code DEGRADED} | {@code UNHEALTHY}
- * @param healthyRate the {@code (S + recovered) / Total} rate the status was derived from
+ * @param instanceId the emitting instance's identifier (e.g. {@code orders-service:host-7})
+ * @param summary    that instance's local KPI snapshot
+ * @author Anand Manissery
  */
-public record ApiHealth(
-        String name,
-        String status,
-        double healthyRate) {
-
-    /** Health status values. */
-    public enum Status { HEALTHY, DEGRADED, UNHEALTHY }
+public record ClusterSnapshot(String instanceId, MetricsSummary summary) {
 }

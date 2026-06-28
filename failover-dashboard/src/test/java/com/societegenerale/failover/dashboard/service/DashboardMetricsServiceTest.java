@@ -17,11 +17,12 @@
 package com.societegenerale.failover.dashboard.service;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.ExceptionStat;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.Rates;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.Rates;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -44,7 +45,8 @@ class DashboardMetricsServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new DashboardMetricsService(registry, new DashboardProperties(true, "/failover-dashboard"));
+        service = new DashboardMetricsService(new FailoverMetricsSnapshotService(registry),
+                new DashboardProperties(true, "/failover-dashboard"));
     }
 
     // ── meter fixtures (mirror MicrometerObservablePublisher's contract) ──────
@@ -326,7 +328,7 @@ class DashboardMetricsServiceTest {
     void customThresholds() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Health(0.80, 0.50));
-        DashboardMetricsService custom = new DashboardMetricsService(registry, props);
+        DashboardMetricsService custom = new DashboardMetricsService(new FailoverMetricsSnapshotService(registry), props);
         store("svc", true, 85);
         outcome("svc", "svc", "not_recovered", 15); // healthyRate 0.85 -> HEALTHY under 0.80 floor
 

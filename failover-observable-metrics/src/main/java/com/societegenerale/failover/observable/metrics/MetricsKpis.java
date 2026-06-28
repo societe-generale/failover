@@ -14,19 +14,12 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics.source;
-
-import com.societegenerale.failover.dashboard.config.DashboardProperties;
-
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.Rates;
+package com.societegenerale.failover.observable.metrics;
 
 import java.util.List;
 
 /**
- * Pure KPI math shared by every {@link MetricsSource}: turning raw per-API counts into {@link ApiKpis}
+ * Pure KPI math shared by every metrics source: turning raw per-API counts into {@link ApiKpis}
  * (with derived {@link Rates}), summing them into the overall aggregate, and classifying health. Kept
  * source-agnostic so the local-registry and cluster (Prometheus / shared-store) sources produce identical
  * shapes from the same formulas (design doc §4.4).
@@ -35,12 +28,12 @@ import java.util.List;
  *
  * @author Anand Manissery
  */
-public final class DashboardKpis {
+public final class MetricsKpis {
 
     /** Name used for the global aggregate row. */
     public static final String OVERALL = "__overall__";
 
-    private DashboardKpis() {
+    private MetricsKpis() {
     }
 
     /** Builds one failover point's KPIs (with derived rates) from its raw counts and latency. */
@@ -69,10 +62,20 @@ public final class DashboardKpis {
         return build(OVERALL, OVERALL, success, recovered, notRecovered, errors, partial, asyncFailed, latency);
     }
 
-    /** Classifies a healthy-rate into {@code HEALTHY} / {@code DEGRADED} / {@code UNHEALTHY}. */
-    public static ApiHealth classify(String name, double healthyRate, DashboardProperties.Health thresholds) {
-        ApiHealth.Status status = healthyRate >= thresholds.degradedThreshold() ? ApiHealth.Status.HEALTHY
-                : healthyRate >= thresholds.unhealthyThreshold() ? ApiHealth.Status.DEGRADED
+    /**
+     * Classifies a healthy-rate into {@code HEALTHY} / {@code DEGRADED} / {@code UNHEALTHY} against
+     * the supplied thresholds.
+     *
+     * @param name               failover name
+     * @param healthyRate        the {@code (S + recovered) / Total} rate
+     * @param degradedThreshold  healthy-rate floor for {@code HEALTHY}
+     * @param unhealthyThreshold healthy-rate floor for {@code DEGRADED}
+     * @return per-API health classification
+     */
+    public static ApiHealth classify(String name, double healthyRate,
+                                     double degradedThreshold, double unhealthyThreshold) {
+        ApiHealth.Status status = healthyRate >= degradedThreshold ? ApiHealth.Status.HEALTHY
+                : healthyRate >= unhealthyThreshold ? ApiHealth.Status.DEGRADED
                 : ApiHealth.Status.UNHEALTHY;
         return new ApiHealth(name, status.name(), healthyRate);
     }
