@@ -21,12 +21,12 @@ import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.RangePoint;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.RangeSeries;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.Sample;
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -177,12 +177,15 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
-    @DisplayName("instances() returns empty (tab hidden) when Prometheus per-instance query fails")
-    void instancesFallsBackEmpty() {
+    @DisplayName("instances() falls back to local instance when Prometheus per-instance query fails")
+    void instancesFallsBackToLocal() {
         when(client.query(argThat(q -> q != null && q.contains("(name, instance)") && q.contains("stored="))))
                 .thenThrow(new PrometheusException("boom", null));
+        InstanceMetrics localInstance = new InstanceMetrics("local-app:host:8080", System.currentTimeMillis(),
+                new MetricsSummary(null, List.of(), List.of(), System.currentTimeMillis()));
+        when(fallback.instances()).thenReturn(List.of(localInstance));
 
-        assertThat(source.instances()).isEmpty();
+        assertThat(source.instances()).containsExactly(localInstance);
     }
 
     @Test

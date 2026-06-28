@@ -101,6 +101,7 @@
         <module>failover-core</module>
         <module>failover-scanner</module>
         <module>failover-observable-micrometer</module>
+        <module>failover-observable-metrics</module>
         <module>failover-store-inmemory</module>
         <module>failover-store-caffeine</module>
         <module>failover-store-jdbc</module>

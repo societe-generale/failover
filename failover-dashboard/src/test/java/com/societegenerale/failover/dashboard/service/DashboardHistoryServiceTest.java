@@ -17,7 +17,8 @@
 package com.societegenerale.failover.dashboard.service;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -32,7 +33,7 @@ class DashboardHistoryServiceTest {
 
     private final MeterRegistry registry = new SimpleMeterRegistry();
     private final DashboardMetricsService metrics =
-            new DashboardMetricsService(registry, new DashboardProperties(true, "/failover-dashboard"));
+            new DashboardMetricsService(new FailoverMetricsSnapshotService(registry), new DashboardProperties(true, "/failover-dashboard"));
 
     private void storeSuccess(int times) {
         Counter.builder("failover.store.total").tag("name", "svc").tag("stored", "true")

@@ -16,10 +16,11 @@
 
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -36,7 +37,7 @@ class SnapshotStoreInmemoryTest {
     }
 
     private static MetricsSummary summaryFor(String name, long success) {
-        ApiKpis k = DashboardKpis.build(name, name, success, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
+        ApiKpis k = MetricsKpis.build(name, name, success, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
         return new MetricsSummary(k, List.of(k), List.of(), 0L);
     }
 

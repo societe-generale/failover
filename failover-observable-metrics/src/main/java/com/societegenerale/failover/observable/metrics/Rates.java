@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics;
+package com.societegenerale.failover.observable.metrics;
 
 /**
  * Derived rate KPIs for a failover point (design doc §4.4). All values are fractions in {@code [0,1]};

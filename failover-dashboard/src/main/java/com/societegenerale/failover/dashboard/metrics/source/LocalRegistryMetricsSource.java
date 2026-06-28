@@ -16,14 +16,15 @@
 
 package com.societegenerale.failover.dashboard.metrics.source;
 
+import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.InstanceMetrics;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.InstanceMetrics;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 
 import java.util.List;
 
@@ -46,13 +47,13 @@ public class LocalRegistryMetricsSource implements MetricsSource {
 
     private final DashboardMetricsService metricsService;
     private final DashboardHistoryService history;   // nullable — present only when history is enabled
-    private final String instanceId;
+    private final InstanceIdResolver instanceIdResolver;
 
     public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
-                                      String instanceId) {
+                                      InstanceIdResolver instanceIdResolver) {
         this.metricsService = metricsService;
         this.history = history;
-        this.instanceId = instanceId;
+        this.instanceIdResolver = instanceIdResolver;
     }
 
     @Override
@@ -77,6 +78,6 @@ public class LocalRegistryMetricsSource implements MetricsSource {
 
     @Override
     public List<InstanceMetrics> instances() {
-        return List.of(new InstanceMetrics(instanceId, System.currentTimeMillis(), summary()));
+        return List.of(new InstanceMetrics(instanceIdResolver.resolve(), System.currentTimeMillis(), summary()));
     }
 }
