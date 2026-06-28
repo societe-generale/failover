@@ -114,7 +114,7 @@ failover:
 | `history.sample-interval-seconds` | `15` | Seconds between samples. |
 | `health.degraded-threshold` | `0.99` | Healthy-rate floor for `HEALTHY`. |
 | `health.unhealthy-threshold` | `0.90` | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`. |
-| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment--scenarios). |
+| `cluster.mode` | `local` | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment-scenarios). |
 | `cluster.prometheus.base-url` | `""` | Prometheus base URL for `mode=prometheus` (e.g. `http://prometheus:9090`). Blank, or unreachable at runtime, falls back to the local registry with a warning. |
 | `cluster.prometheus.token` | `""` | Optional bearer token for Prometheus. |
 | `cluster.prometheus.timeout-seconds` | `5` | Per-query connect/read timeout. |
@@ -724,7 +724,7 @@ They may be the same process (each instance runs the dashboard and pushes to the
 standalone app (see scenario 2.7).
 
 The POST endpoint that receives peer snapshots is `/api/cluster/snapshot`; it can be secured with
-**Basic Auth**, **OAuth2 Bearer**, or left **open** (dev only). See the [authentication summary](#snapshot-ingest-authentication--options) below.
+**Basic Auth**, **OAuth2 Bearer**, or left **open** (dev only). See the [authentication summary](#snapshot-ingest-authentication-options) below.
 
 ---
 

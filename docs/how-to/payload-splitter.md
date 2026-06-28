@@ -402,7 +402,7 @@ protected MergeResult<List<ThirdParty>> mergeSlices(
 ```
 
 The trade-offs (keep positional nulls vs. compact vs. reject-on-any-miss) are the same as for the raw
-interface — see [Partial Recovery — Null Policy](#partial-recovery--null-policy-in-merge).
+interface — see [Partial Recovery — Null Policy](#partial-recovery-null-policy-in-merge).
 
 ---
 
@@ -559,7 +559,7 @@ public RecoverContext<List<Country>> merge(List<RecoverContext<Country>> context
 ```
 
 Use when the caller just wants "whatever is available" and does not correlate results to input
-positions. This is what the [Step 1 example](#step-1--implement-payloadsplitter) does.
+positions. This is what the [Step 1 example](#step-1-implement-payloadsplitter) does.
 
 ### Option C — Reject the whole composite on any miss
 

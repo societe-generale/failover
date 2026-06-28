@@ -2459,7 +2459,7 @@ ___
 
 ### Status
 
-Accepted — supersedes the method-threading mechanism of [ADR 51](#adr-51--per-method-failover-outcome-metric--method-identity-threading) (its metric design is unchanged).
+Accepted — supersedes the method-threading mechanism of [ADR 51](#adr-51-per-method-failover-outcome-metric-method-identity-threading) (its metric design is unchanged).
 
 ### Context
 
@@ -2556,7 +2556,7 @@ ___
 
 ### Status
 
-Accepted — refines [ADR 18](#adr-18--failoverstoreautoconfiguration--central-assembler).
+Accepted — refines [ADR 18](#adr-18-failoverstoreautoconfiguration-central-assembler).
 
 ### Context
 
@@ -2855,7 +2855,7 @@ ___
 
 ### Status
 
-Accepted (audit A2) — extends [ADR 41](#adr-41--async-store-failure-metric--visibility-for-a-silently-degraded-layer) and [ADR 57](#adr-57--async-executor-back-pressure-bounded-concurrency--rejection-policy)
+Accepted (audit A2) — extends [ADR 41](#adr-41-async-store-failure-metric-visibility-for-a-silently-degraded-layer) and [ADR 57](#adr-57-async-executor-back-pressure-bounded-concurrency-rejection-policy)
 
 ### Context
 
@@ -2903,7 +2903,7 @@ ___
 
 ### Status
 
-Accepted (audit A3) — extends [ADR 37](#adr-37--payload-deserialization-allowlist--secure-by-default-class-loading)
+Accepted (audit A3) — extends [ADR 37](#adr-37-payload-deserialization-allowlist-secure-by-default-class-loading)
 
 ### Context
 
@@ -2948,7 +2948,7 @@ ___
 
 ### Status
 
-Accepted (audit A4) — extends [ADR 56](#adr-56--payload-at-rest-encryption-for-the-jdbc-store)
+Accepted (audit A4) — extends [ADR 56](#adr-56-payload-at-rest-encryption-for-the-jdbc-store)
 
 ### Context
 
