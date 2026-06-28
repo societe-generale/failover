@@ -127,9 +127,8 @@ failover:
 | `cluster.snapshot.username` / `.password` | `""` | HTTP Basic Auth credentials for the ingest endpoint. Ignored when `oauth2-client-registration-id` is set. |
 | `cluster.snapshot.oauth2-client-registration-id` | `""` | Spring OAuth2 client id for Bearer auth (takes priority over Basic). |
 | `cluster.snapshot.allow-insecure-ingest` | `false` | Suppress the no-auth startup warning (dev / trusted network only). |
-| `cluster.snapshot.heartbeat.enabled` | `false` | Send lightweight heartbeat pings from this peer. Off by default. `publish-url` must be set (heartbeat URL derived from it), unless `heartbeat.url` is set explicitly. |
+| `cluster.snapshot.heartbeat.enabled` | `false` | Send lightweight heartbeat pings from this peer. Off by default. `publish-url` must be set; heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`. |
 | `cluster.snapshot.heartbeat.interval-seconds` | `60` | Ping cadence. Keep ≤ ⅓ of the dashboard `liveness-seconds`. |
-| `cluster.snapshot.heartbeat.url` | `""` | Explicit heartbeat endpoint URL. Blank → auto-derived from `publish-url` (replaces `/snapshot` with `/heartbeat`). |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
@@ -1239,10 +1238,9 @@ failover:
         heartbeat:
           enabled: true           # off by default — opt in explicitly
           interval-seconds: 60    # ping cadence (default); keep well below liveness-seconds on dashboard
-          # url: ""               # blank → auto-derived: /api/cluster/heartbeat
 ```
 
-The heartbeat uses the **same auth** as the snapshot endpoint (Basic Auth or OAuth2 — whichever is configured). The heartbeat endpoint URL is derived automatically as `{publish-url}/api/cluster/heartbeat`; override `heartbeat.url` only when the dashboard path differs from the default.
+The heartbeat uses the **same auth** as the snapshot endpoint (Basic Auth or OAuth2 — whichever is configured). The heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`.
 
 **Step 2 — Enable liveness tracking on the dashboard:**
 

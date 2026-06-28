@@ -3199,7 +3199,7 @@ Separate liveness tracking into a lightweight heartbeat mechanism decoupled from
 
 3. **`RestClientHeartbeatPushClient`** (`failover-spring-boot-autoconfigure`) — POSTs `{"instanceId": "..."}` to the heartbeat endpoint.
 
-4. **Heartbeat URL** — derived automatically by replacing the `/snapshot` segment in `publish-url` with `/heartbeat`. An explicit `heartbeat.url` overrides derivation.
+4. **Heartbeat URL** — always derived as `{publish-url}/api/cluster/heartbeat`. No explicit override property.
 
 5. **`HeartbeatStore`** / **`HeartbeatStoreInmemory`** (`failover-dashboard`) — records `instanceId → lastSeenMs`; `isLive(instanceId, livenessMillis)` checks the age of the last heartbeat.
 

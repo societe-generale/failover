@@ -130,9 +130,8 @@ Where the dashboard reads metrics from in a multi-instance deployment (see [Dist
 | `failover.dashboard.cluster.snapshot.password` | `String` | `""` | HTTP Basic Auth password. Set together with `username`. |
 | `failover.dashboard.cluster.snapshot.oauth2-client-registration-id` | `String` | `""` | Spring Security OAuth2 client registration id. When set, a Bearer token is fetched via `OAuth2AuthorizedClientManager` and sent as `Authorization: Bearer …`. Takes priority over Basic Auth. Requires `spring-security-oauth2-client` on the classpath. |
 | `failover.dashboard.cluster.snapshot.allow-insecure-ingest` | `boolean` | `false` | Suppress the no-auth startup warning when neither Basic Auth nor OAuth2 is configured. Use only in trusted networks or local dev. |
-| `failover.dashboard.cluster.snapshot.heartbeat.enabled` | `boolean` | `false` | Enable lightweight periodic heartbeat pushes from this instance to the dashboard. Off by default. When enabled, `publish-url` must be set (so the heartbeat endpoint URL can be derived) unless `heartbeat.url` is set explicitly. |
+| `failover.dashboard.cluster.snapshot.heartbeat.enabled` | `boolean` | `false` | Enable lightweight periodic heartbeat pushes from this instance to the dashboard. Off by default. When enabled, `publish-url` must be set; the heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`. |
 | `failover.dashboard.cluster.snapshot.heartbeat.interval-seconds` | `int` | `60` | How often (in seconds) this instance sends a heartbeat ping (instance id only, no metrics payload). Should be ≤ ⅓ of the dashboard `liveness-seconds` window. |
-| `failover.dashboard.cluster.snapshot.heartbeat.url` | `String` | `""` | Explicit heartbeat endpoint URL. If blank, derived automatically as `{publish-url}/api/cluster/heartbeat`. Override only for non-standard dashboard paths. |
 
 ---
 
