@@ -720,7 +720,7 @@ In single-tenant mode, `create(SINGLE_TENANT_ID)` is called once at application 
 
 ___
 
-## ADR 18 — FailoverStoreAutoConfiguration — Central Assembler
+## ADR 18: FailoverStoreAutoConfiguration: Central Assembler
 
 **Date : 02-JUN-2026**
 
@@ -1816,7 +1816,7 @@ The framework applies no deduplication itself — `merge()` has full domain know
 
 ___
 
-## ADR 37 — Payload Deserialization Allowlist — Secure-by-Default Class Loading
+## ADR 37: Payload Deserialization Allowlist: Secure-by-Default Class Loading
 
 **Date : 14-JUN-2026**
 
@@ -1946,7 +1946,7 @@ The configured `default-tenant` is always exempt — routing it to the global ta
 
 ___
 
-## ADR 41 — Async Store Failure Metric — Visibility for a Silently-Degraded Layer
+## ADR 41: Async Store Failure Metric: Visibility for a Silently-Degraded Layer
 
 **Date : 14-JUN-2026**
 
@@ -2386,7 +2386,7 @@ Result (JDK 21, average time, 5 measurement iterations):
 
 ___
 
-## ADR 51 — Per-Method Failover Outcome Metric + Method-Identity Threading
+## ADR 51: Per-Method Failover Outcome Metric: Method-Identity Threading
 
 **Date : 15-JUN-2026**
 
@@ -2661,7 +2661,7 @@ Add a self-contained `failover-dashboard` module plus a dedicated `failover-dash
 
 ___
 
-## ADR 56 — Payload-at-rest Encryption for the JDBC Store
+## ADR 56: Payload-at-rest Encryption for the JDBC Store
 
 **Date : 17-JUN-2026**
 
@@ -2729,7 +2729,7 @@ applied **only** in the JDBC store assembly.
 
 ___
 
-## ADR 57 — Async Executor Back-pressure (bounded concurrency + rejection policy)
+## ADR 57: Async Executor Back-pressure (bounded concurrency, rejection policy)
 
 **Date : 17-JUN-2026**
 

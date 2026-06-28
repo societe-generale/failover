@@ -18,6 +18,16 @@ In-process store backed by the Caffeine cache library. Suitable for single-node 
 </dependency>
 ```
 
+!!! warning "Add the Caffeine library"
+    `failover-store-caffeine` does **not** bundle Caffeine. Add it explicitly — version is managed by `spring-boot-dependencies`:
+
+    ```xml
+    <dependency>
+        <groupId>com.github.ben-manes.caffeine</groupId>
+        <artifactId>caffeine</artifactId>
+    </dependency>
+    ```
+
 ---
 
 ## Configuration
