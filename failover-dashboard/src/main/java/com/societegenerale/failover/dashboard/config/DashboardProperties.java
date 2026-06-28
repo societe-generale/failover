@@ -253,20 +253,41 @@ public record DashboardProperties(
     }
 
     /**
-     * Peer-side push settings for {@code cluster.mode=shared-store}: each instance periodically POSTs its local
-     * {@code MetricsSummary} snapshot to the dashboard's ingest endpoint. Inactive when {@code publishUrl} is blank.
+     * Snapshot push / ingest settings for {@code cluster.mode=shared-store}.
      *
-     * @param publishUrl      dashboard ingest URL, e.g. {@code http://dashboard:8080/failover-dashboard/api/cluster/snapshot}
-     *                        (blank ⇒ this instance does not push)
-     * @param intervalSeconds seconds between snapshot pushes (default {@code 15})
+     * <p><strong>Peer (publisher) side</strong> — each peer instance POSTs its local {@code MetricsSummary} to the
+     * dashboard's ingest endpoint. Inactive when {@code publishUrl} is blank.
+     *
+     * <p><strong>Dashboard (receiver) side</strong> — controls which security gate protects the ingest endpoint:
+     * <ul>
+     *   <li>{@code username} + {@code password} → HTTP Basic, dedicated in-memory user</li>
+     *   <li>{@code oauth2-client-registration-id} → OAuth2 JWT Bearer (requires
+     *       {@code spring-security-oauth2-resource-server} on the classpath)</li>
+     *   <li>{@code allow-insecure-ingest=true} → permit-all (trusted internal network only)</li>
+     * </ul>
+     *
+     * @param publishUrl                 dashboard ingest URL (blank ⇒ this instance does not push)
+     * @param intervalSeconds            seconds between pushes (default {@code 15})
+     * @param username                   ingest Basic-auth username accepted by the dashboard (blank ⇒ Basic disabled)
+     * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})
+     * @param oauth2ClientRegistrationId Spring Security resource-server registration id for JWT validation (blank ⇒ disabled)
+     * @param allowInsecureIngest        {@code true} to allow ingest without any auth gate (not recommended in production)
      */
     public record Snapshot(
         @DefaultValue("") String publishUrl,
-        @DefaultValue("15") int intervalSeconds
+        @DefaultValue("15") int intervalSeconds,
+        @DefaultValue("") String username,
+        @DefaultValue("") String password,
+        @DefaultValue("") String oauth2ClientRegistrationId,
+        @DefaultValue("false") boolean allowInsecureIngest
     ) {
+        @ConstructorBinding
+        public Snapshot {
+        }
+
         /** Convenience with defaults. */
         public Snapshot() {
-            this("", 15);
+            this("", 15, "", "", "", false);
         }
     }
 

@@ -17,14 +17,14 @@
 package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
-import com.societegenerale.failover.dashboard.metrics.ApiHealth;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.ExceptionStat;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.Rates;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
-import com.societegenerale.failover.dashboard.metrics.SourceInfo;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.Rates;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.SourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
