@@ -114,6 +114,7 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
     static final String UNKNOWN              = "unknown";
 
     private final MeterRegistry registry;
+    private final Runnable publishHook;
 
     /** Rolling per-API outcome state behind the health/stale gauges. */
     private final FailoverApiHealthTracker healthTracker = new FailoverApiHealthTracker();
@@ -127,7 +128,19 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
      * @param registry the Micrometer registry to publish meters to
      */
     public MicrometerObservablePublisher(MeterRegistry registry) {
+        this(registry, () -> {});
+    }
+
+    /**
+     * Creates a publisher with a hook invoked after each metric event (store/recover/upstream etc).
+     * Used to trigger event-driven cluster snapshot pushes without polling.
+     *
+     * @param registry    the Micrometer registry to publish meters to
+     * @param publishHook called after each action-based publish; must be non-blocking
+     */
+    public MicrometerObservablePublisher(MeterRegistry registry, Runnable publishHook) {
         this.registry = registry;
+        this.publishHook = publishHook;
     }
 
     @Override
@@ -147,6 +160,7 @@ public class MicrometerObservablePublisher implements ObservablePublisher {
             default        -> { /* unknown action — ignore */ }
         }
         recordDuration(name, action, info);
+        publishHook.run();
     }
 
     private void publishStore(String name, Map<String, String> info) {

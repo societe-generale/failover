@@ -3128,3 +3128,48 @@ single-key; only adopt scatter/gather for genuine per-entity slicing) and that `
   recovery and other scatter semantics remain runtime concerns covered by metrics and docs.
 
 ___
+
+## ADR 65 — Event-Driven Snapshot Publishing with Throttle and Backoff
+
+**Date : 28-JUN-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+Cluster snapshot publishing pushed metric snapshots from each instance to the dashboard's ingest endpoint on a fixed polling schedule (every `interval-seconds`). This created unnecessary traffic when no metric events occurred, and the `ClusterSnapshotPublisher` lived in `failover-spring-boot-autoconfigure` — mixing HTTP transport concerns with publish orchestration in the wrong module.
+
+Additionally, the retry interval on failure was hardcoded to 5 minutes, and there was no clean transport abstraction, making it impossible for consumers to swap RestClient for WebClient or another HTTP client.
+
+### Decision
+
+Replace polling with event-driven, throttled publishing:
+
+1. **`SnapshotPublisher` interface** (`failover-observable-micrometer`) — contract: `push()` never throws; callers fire-and-forget.
+
+2. **`SnapshotPushClient` interface** (`failover-observable-micrometer`) — transport abstraction: `send(ClusterSnapshot)` may throw; the publisher handles exceptions. Allows custom transports (`@ConditionalOnMissingBean(SnapshotPushClient.class)`).
+
+3. **`AbstractSnapshotPublisher`** — holds an injected `Executor`; `onPublish()` dispatches `push()` asynchronously only when `shouldPublish()` returns true.
+
+4. **`ThresholdSnapshotPublisher`** — implements `shouldPublish()` via `AtomicLong lastPushTime` CAS: at most one push per `interval-seconds`, regardless of how many metric events fire concurrently. Zero-interval disables throttle.
+
+5. **`ClusterSnapshotPublisher`** extends `ThresholdSnapshotPublisher` — implements `push()` using the injected `SnapshotPushClient`. Owns backoff state (`AtomicBoolean failing`, `volatile long nextRetryMs`): logs WARN once on first failure, stays silent during backoff, logs INFO on recovery. `retryIntervalSeconds` is configurable (default 300, `failover.dashboard.cluster.snapshot.retry-interval-seconds`).
+
+6. **`RestClientSnapshotPushClient`** stays in `failover-spring-boot-autoconfigure` (the only module with `spring-web` on the classpath).
+
+7. **Hook wiring**: `MicrometerObservablePublisher` gains a `Runnable publishHook` called after each metric action. `FailoverMicrometerAutoConfiguration` injects `AbstractSnapshotPublisher::onPublish` as the hook via `ObjectProvider`. No scheduler; events drive pushes.
+
+8. **Executor strategy**: `BoundedTaskExecutor(limit=1, DISCARD)` wrapping `SimpleAsyncTaskExecutor(virtual threads)` — consistent with the project-wide pattern. A second push while one is in-flight is discarded (the in-flight push will include the latest snapshot anyway).
+
+### Consequences
+
+* No scheduled polling — pushes only fire after real metric events, reducing load on the ingest endpoint.
+* At most one concurrent push per instance — the `DISCARD` policy prevents pile-up under high-frequency events.
+* Failure is contained: backoff is per-instance, logs are not spammed, recovery is visible.
+* Transport is pluggable — consumers can inject a custom `SnapshotPushClient` without touching the publish logic.
+* `failover-observable-micrometer` remains free of `spring-web`; the module boundary is preserved.
+* `interval-seconds` semantics shifted from "polling cadence" to "throttle interval" (maximum push frequency).
+
+___
