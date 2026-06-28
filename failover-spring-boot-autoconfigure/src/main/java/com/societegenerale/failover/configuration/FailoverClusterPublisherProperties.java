@@ -35,6 +35,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * @param publishUrl                 dashboard ingest URL; blank means this instance does not push
  * @param intervalSeconds            seconds between snapshot pushes (default {@code 15})
+ * @param retryIntervalSeconds       seconds to wait before retrying after a push failure (default {@code 300})
  * @param username                   HTTP Basic username for the ingest endpoint (blank ⇒ no Basic Auth)
  * @param password                   HTTP Basic password
  * @param oauth2ClientRegistrationId OAuth2 client registration id for Bearer auth (takes priority over Basic)
@@ -45,6 +46,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record FailoverClusterPublisherProperties(
         @DefaultValue("") String publishUrl,
         @DefaultValue("15") int intervalSeconds,
+        @DefaultValue("300") int retryIntervalSeconds,
         @DefaultValue("") String username,
         @DefaultValue("") String password,
         @DefaultValue("") String oauth2ClientRegistrationId,
@@ -56,6 +58,6 @@ public record FailoverClusterPublisherProperties(
 
     /** Convenience with all defaults (used in tests / programmatic setup). */
     public FailoverClusterPublisherProperties() {
-        this("", 15, "", "", "", false);
+        this("", 15, 300, "", "", "", false);
     }
 }
