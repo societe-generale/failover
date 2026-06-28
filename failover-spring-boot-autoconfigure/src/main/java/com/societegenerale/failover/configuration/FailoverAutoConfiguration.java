@@ -303,6 +303,25 @@ public class FailoverAutoConfiguration {
         return new SpringContextFailoverScanner();
     }
 
+    /**
+     * Logs a single consolidated startup summary covering infrastructure configuration and
+     * all discovered {@code @Failover} endpoints. Fires on {@link org.springframework.boot.context.event.ApplicationReadyEvent}
+     * so the scanner has already completed its scan before the summary is printed.
+     *
+     * @param properties     failover configuration properties
+     * @param applicationContext Spring application context for bean-type detection
+     * @param scannerProvider optional failover scanner for per-endpoint details
+     * @return {@link FailoverStartupSummaryLogger}
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public FailoverStartupSummaryLogger failoverStartupSummaryLogger(
+            FailoverProperties properties,
+            ApplicationContext applicationContext,
+            ObjectProvider<FailoverScanner> scannerProvider) {
+        return new FailoverStartupSummaryLogger(properties, applicationContext, scannerProvider);
+    }
+
     /** Registers the default no-op {@link RecoveredPayloadHandler} that returns the payload unchanged.
      * @return pass-through {@link PassThroughRecoveredPayloadHandler} */
     @ConditionalOnMissingBean
