@@ -110,7 +110,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
     public void store(ReferentialPayload<T> referentialPayload) {
         submit("store", referentialPayload.getName(), () -> {
             try {
-                log.info("Failover Store : Async call for storing information on '{}' for failover. ReferentialPayload : {{}}",
+                log.debug("Failover Store : Async store executing for '{}'. ReferentialPayload : {{}}",
                         referentialPayload.getName(), referentialPayload);
                 failoverStore.store(referentialPayload);
             } catch (Exception e) {
@@ -129,7 +129,7 @@ public class FailoverStoreAsync<T> implements FailoverStore<T>, FailoverStoreSiz
     public void delete(ReferentialPayload<T> referentialPayload) {
         submit("delete", referentialPayload.getName(), () -> {
             try {
-                log.info("Failover Store : Async call for deleting the expired payload on '{}' from failover store. ReferentialPayload : {{}}",
+                log.debug("Failover Store : Async delete executing for '{}'. ReferentialPayload : {{}}",
                         referentialPayload.getName(), referentialPayload);
                 failoverStore.delete(referentialPayload);
             } catch (Exception e) {
