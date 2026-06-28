@@ -65,11 +65,11 @@ class AbstractSnapshotPublisherTest {
 
         AbstractSnapshotPublisher yes = new AbstractSnapshotPublisher(countingExecutor) {
             @Override protected boolean shouldPublish() { return true; }
-            @Override public void push() {}
+            @Override public void push() { /* test verifies executor dispatch count, not push body */ }
         };
         AbstractSnapshotPublisher no = new AbstractSnapshotPublisher(countingExecutor) {
             @Override protected boolean shouldPublish() { return false; }
-            @Override public void push() {}
+            @Override public void push() { /* unreachable — shouldPublish blocks dispatch */ }
         };
 
         yes.onPublish();
