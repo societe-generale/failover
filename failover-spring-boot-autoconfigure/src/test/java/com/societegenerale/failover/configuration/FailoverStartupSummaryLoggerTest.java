@@ -62,22 +62,24 @@ class FailoverStartupSummaryLoggerTest {
 
     @SuppressWarnings("unused")
     static class Fixtures {
+        // Annotation-only fixtures: the method body is intentionally empty;
+        // only the @Failover annotation metadata is used by the tests via reflection.
         @Failover(name = "basic-failover")
-        void basicFailover() {}
+        void basicFailover() { /* annotation fixture */ }
 
         @Failover(name = "full-failover", expiryDuration = 30, expiryUnit = ChronoUnit.MINUTES,
                   domain = "my-domain", keyGenerator = "myKey", expiryPolicy = "myExpiry",
                   payloadSplitter = "mySplitter", recoverAll = true)
-        void fullFailover() {}
+        void fullFailover() { /* annotation fixture */ }
 
         @Failover(name = "expr-failover",
                   expiryDurationExpression = "${expiry.duration:5}",
                   expiryUnitExpression = "${expiry.unit:DAYS}")
-        void expressionFailover() {}
+        void expressionFailover() { /* annotation fixture */ }
 
         @Failover(name = "expr-duration-only",
                   expiryDurationExpression = "${expiry.duration:5}")
-        void expressionDurationOnly() {}
+        void expressionDurationOnly() { /* annotation fixture */ }
     }
 
     private static Failover annotation(String method) throws Exception {
