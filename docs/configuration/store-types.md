@@ -96,6 +96,16 @@ failover:
 </dependency>
 ```
 
+!!! warning "Add the Caffeine library"
+    `failover-store-caffeine` does **not** bundle Caffeine. Add it explicitly — version is managed by `spring-boot-dependencies`:
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.github.ben-manes.caffeine</groupId>
+        <artifactId>caffeine</artifactId>
+    </dependency>
+    ```
+
 Caffeine handles its own eviction using the `expireOn` field from `ReferentialPayload`. Entries are evicted at their configured TTL without needing the cleanup scheduler.
 
 By default the cache is capped at `max-size: 10000` entries (the same default as the in-memory store's
@@ -124,6 +134,66 @@ failover:
     <version>3.0.0</version>
 </dependency>
 ```
+
+### JDBC Driver
+
+!!! warning "Add your own JDBC driver"
+    `failover-store-jdbc` does **not** bundle or force any specific JDBC driver. Add the driver for your database — versions are managed by `spring-boot-dependencies`, so omit `<version>` when using the Spring Boot BOM.
+
+=== "PostgreSQL"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+    </dependency>
+    ```
+
+=== "MySQL"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.mysql</groupId>
+        <artifactId>mysql-connector-j</artifactId>
+    </dependency>
+    ```
+
+=== "MariaDB"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>org.mariadb.jdbc</groupId>
+        <artifactId>mariadb-java-client</artifactId>
+    </dependency>
+    ```
+
+=== "Oracle"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.oracle.database.jdbc</groupId>
+        <artifactId>ojdbc11</artifactId>
+    </dependency>
+    ```
+
+=== "SQL Server"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.microsoft.sqlserver</groupId>
+        <artifactId>mssql-jdbc</artifactId>
+    </dependency>
+    ```
+
+=== "H2 (dev / test)"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <scope>test</scope>
+    </dependency>
+    ```
 
 ### Create the Table
 
@@ -179,12 +249,14 @@ Size the store accordingly, and use the controls the framework already provides:
   cleanup scheduler runs (`failover.scheduler`) — together they bound row count. The `EXPIRE_ON` index
   (above) keeps cleanup an index scan.
 - **Monitor table growth.** Enable the opt-in capacity gauge:
+
   ```yaml
   failover:
     store:
       jdbc:
         live-entries-gauge-enabled: true   # exposes failover.live.entries (SELECT COUNT(*) per scrape)
   ```
+
   Off by default because it issues a `COUNT(*)` per scrape per failover name. When on, the
   `failover.live.entries{name,domain}` gauge reports rows per failover so you can alert on growth. Not
   available in multi-tenant mode (the routing wrapper is not size-aware). See

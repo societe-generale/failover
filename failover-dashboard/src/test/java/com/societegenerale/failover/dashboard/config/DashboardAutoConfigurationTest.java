@@ -83,7 +83,6 @@ class DashboardAutoConfigurationTest {
     // ── instance id resolver ──────────────────────────────────────────────────
 
     @Test
-    @SuppressWarnings("java:S2699")
     @DisplayName("enabled=true ⇒ InstanceIdResolver bean registered (standalone fallback lambda)")
     void instanceIdResolverRegisteredByDefault() {
         runner.withPropertyValues("failover.dashboard.enabled=true")
@@ -94,13 +93,13 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @SuppressWarnings("java:S2699")
     @DisplayName("custom InstanceIdResolver bean ⇒ @ConditionalOnMissingBean — default not created")
     void customInstanceIdResolverHonouredViaMissingBean() {
         InstanceIdResolver custom = () -> "my-pod:10.0.0.1:8080";
         runner.withPropertyValues("failover.dashboard.enabled=true")
                 .withBean(InstanceIdResolver.class, () -> custom)
                 .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(InstanceIdResolver.class);
                     assertThat(ctx.getBean(InstanceIdResolver.class)).isSameAs(custom);
                 });
     }
@@ -392,7 +391,6 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @SuppressWarnings("java:S2699")
     @DisplayName("shared-store mode + username ⇒ Basic Auth ingest filter chain registered")
     void basicIngestChainRegisteredWhenUsernameSet() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -403,11 +401,11 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.cluster.snapshot.password=secret")
                 .run(ctx -> {
                     assertThat(ctx).hasBean("dashboardIngestBasicFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
                 });
     }
 
     @Test
-    @SuppressWarnings("java:S2699")
     @DisplayName("shared-store mode + allow-insecure-ingest=true ⇒ open (permit-all) ingest chain registered")
     void openIngestChainRegisteredWhenAllowInsecureIngest() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -417,11 +415,11 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.cluster.snapshot.allow-insecure-ingest=true")
                 .run(ctx -> {
                     assertThat(ctx).hasBean("dashboardIngestOpenFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
                 });
     }
 
     @Test
-    @SuppressWarnings("java:S2699")
     @DisplayName("allow-insecure-ingest=true + username set ⇒ Basic chain wins, open chain suppressed")
     void basicChainWinsOverOpenChain() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -434,6 +432,7 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx).hasBean("dashboardIngestBasicFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOAuth2FilterChain");
                 });
     }
 
@@ -447,6 +446,7 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.cluster.mode=shared-store")
                 .run(ctx -> {
                     assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardIngestOAuth2FilterChain");
                 });
     }

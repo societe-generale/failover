@@ -33,6 +33,24 @@ Add this to any module that annotates methods or defines referential domain type
 
 ## failover-core
 
+!!! warning "Provide an SLF4J logging implementation"
+    `failover-core` depends on `slf4j-api` for logging but does **not** bundle any SLF4J implementation. Spring Boot users get Logback automatically via `spring-boot-starter-logging`. Without Spring Boot, add one explicitly:
+
+    === "Logback (recommended)"
+        ```xml
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        ```
+    === "Log4j 2"
+        ```xml
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j2-impl</artifactId>
+        </dependency>
+        ```
+
 Contains all SPI interfaces and their default implementations:
 
 | Interface | Default implementation | Purpose |
@@ -77,7 +95,7 @@ Contains `FailoverAspect`, a Spring AOP `@Around` advice:
 
 ```java
 @Around("@annotation(failover)")
-public Object failoverAround(ProceedingJoinPoint pjp, Failover failover) throws Throwable
+public Object failoverAround(ProceedingJoinPoint pjp, Failover failover) throws Throwable { /*...*/ }
 ```
 
 The aspect:
