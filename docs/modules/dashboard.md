@@ -397,7 +397,7 @@ Examples:
 
 ---
 
-## Distributed Deployment — Scenarios
+## Distributed Deployment: Scenarios
 
 The dashboard reads the `failover.*` **meters**; `cluster.mode` chooses *where it reads them from*. Everything else (UI, KPIs, health, security) is identical across modes. The scenarios below are complete, copy-pasteable configs for each.
 
@@ -1198,7 +1198,7 @@ failover:
 
 ---
 
-### Snapshot Ingest Authentication — Options
+### Snapshot Ingest Authentication: Options
 
 The `POST /api/cluster/snapshot` endpoint receives peer metric snapshots. It can be secured three ways.
 Choose one; the dashboard activates the matching filter chain automatically.

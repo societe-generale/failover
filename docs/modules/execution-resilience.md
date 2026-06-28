@@ -18,14 +18,15 @@ icon: material/shield-outline
 </dependency>
 ```
 
-Also requires Spring Cloud Circuit Breaker on the classpath:
+!!! warning "Add the Resilience4j starter"
+    `failover-execution-resilience` does **not** bundle Resilience4j. Add the Spring Cloud Circuit Breaker starter — it provides the Resilience4j circuit-breaker on the classpath:
 
-```xml
-<dependency>
-    <groupId>org.springframework.cloud</groupId>
-    <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-</dependency>
-```
+    ```xml
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+    </dependency>
+    ```
 
 ---
 
