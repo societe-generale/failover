@@ -23,8 +23,11 @@ import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
+import com.societegenerale.failover.observable.micrometer.AbstractSnapshotPublisher;
+import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
+import com.societegenerale.failover.observable.micrometer.SnapshotPushClient;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.Observable;
 import io.micrometer.core.instrument.Meter;
@@ -48,8 +51,13 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
 
+import com.societegenerale.failover.store.async.BoundedTaskExecutor;
+import com.societegenerale.failover.store.async.RejectionPolicy;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.concurrent.Executor;
 
 /**
  * Autoconfiguration for Micrometer-based failover metrics.
@@ -118,8 +126,10 @@ public class FailoverMicrometerAutoConfiguration {
      */
     @ConditionalOnMissingBean(MicrometerObservablePublisher.class)
     @Bean
-    public ObservablePublisher micrometerObservablePublisher(MeterRegistry meterRegistry) {
-        return new MicrometerObservablePublisher(meterRegistry);
+    public ObservablePublisher micrometerObservablePublisher(MeterRegistry meterRegistry,
+            ObjectProvider<AbstractSnapshotPublisher> snapshotPublisher) {
+        return new MicrometerObservablePublisher(meterRegistry,
+                () -> snapshotPublisher.ifAvailable(AbstractSnapshotPublisher::onPublish));
     }
 
     /**
@@ -263,18 +273,32 @@ public class FailoverMicrometerAutoConfiguration {
          *   <li>No auth — insecure; warn unless {@code allow-insecure-ingest=true}.</li>
          * </ol>
          */
-        @Bean(destroyMethod = "close")
+        @Bean
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
+        @ConditionalOnMissingBean(SnapshotPushClient.class)
+        public SnapshotPushClient restClientSnapshotPushClient(
+                FailoverClusterPublisherProperties publisherProperties,
+                @Qualifier("failoverSnapshotOAuth2Interceptor")
+                ObjectProvider<ClientHttpRequestInterceptor> oauth2Interceptor) {
+            RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
+            return new RestClientSnapshotPushClient(client, publisherProperties.publishUrl());
+        }
+
+        @Bean
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
         @ConditionalOnMissingBean(ClusterSnapshotPublisher.class)
         public ClusterSnapshotPublisher clusterSnapshotPublisher(
                 FailoverMetricsSnapshotService metricsSnapshotService,
                 InstanceIdResolver instanceIdResolver,
-                FailoverClusterPublisherProperties publisherProperties,
-                @Qualifier("failoverSnapshotOAuth2Interceptor")
-                ObjectProvider<ClientHttpRequestInterceptor> oauth2Interceptor) {
-            RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
+                SnapshotPushClient snapshotPushClient,
+                FailoverClusterPublisherProperties publisherProperties) {
+            var base = new SimpleAsyncTaskExecutor("failover-snapshot-publisher-");
+            base.setVirtualThreads(true);
+            Executor executor = new BoundedTaskExecutor(base, 1, RejectionPolicy.DISCARD, "failover-snapshot-publisher");
             return new ClusterSnapshotPublisher(metricsSnapshotService, instanceIdResolver,
-                    publisherProperties.publishUrl(), publisherProperties.intervalSeconds(), client);
+                    snapshotPushClient, publisherProperties.publishUrl(),
+                    publisherProperties.intervalSeconds(), publisherProperties.retryIntervalSeconds(),
+                    executor);
         }
 
         private static RestClient buildPublisherClient(FailoverClusterPublisherProperties props,
