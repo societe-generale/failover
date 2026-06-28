@@ -116,16 +116,23 @@ Where the dashboard reads metrics from in a multi-instance deployment (see [Dist
 | `failover.dashboard.cluster.prometheus.token` | `String` | `""` | Optional bearer token sent as `Authorization: Bearer …`. |
 | `failover.dashboard.cluster.prometheus.timeout-seconds` | `int` | `5` | Per-query connect/read timeout. |
 | `failover.dashboard.cluster.shared-store.store` | `String` | `inmemory` | `inmemory` (default) \| `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). Used when `mode=shared-store`. |
-| `failover.dashboard.cluster.shared-store.liveness-seconds` | `int` | `45` | A peer whose latest snapshot is older than this is excluded from the aggregate (treated as silent). |
+| `failover.dashboard.cluster.shared-store.liveness-seconds` | `int` | `180` | **Heartbeat liveness window.** An instance that has not sent a heartbeat within this many seconds is classified as `DOWN`. Always active in shared-store mode; instances that never send a heartbeat remain `UNKNOWN`. Recommended: 3× the peer `heartbeat.interval-seconds`. |
 | `failover.dashboard.cluster.shared-store.max-instances` | `int` | `10` | Supported small-cluster ceiling; exceeding it logs a warning (graduate to `prometheus`). |
 | `failover.dashboard.cluster.shared-store.sample-interval-seconds` | `int` | `30` | Cluster-trend sampling cadence. |
 | `failover.dashboard.cluster.shared-store.retention.max-age` | `Duration` | `7d` | Trend-history age bound; older points evicted. |
 | `failover.dashboard.cluster.shared-store.retention.max-entries` | `int` | `100000` | Trend-history size bound; oldest truncated first. |
 | `failover.dashboard.cluster.shared-store.jdbc.table-prefix` | `String` | `""` | Prefix prepended to base `FAILOVER_DASHBOARD_SNAPSHOT` (validated). Used when `store=jdbc`. |
 | `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` | `boolean` | `true` | Create the snapshot table on startup if missing. |
-| `failover.dashboard.cluster.snapshot.publish-url` | `String` | `""` | Peer-side: dashboard ingest URL each instance POSTs its snapshot to. Blank ⇒ this instance does not push. |
-| `failover.dashboard.cluster.snapshot.interval-seconds` | `int` | `15` | Throttle interval: at most one push per this many seconds. Pushes are event-driven (triggered by metric events), not polled. |
-| `failover.dashboard.cluster.snapshot.retry-interval-seconds` | `int` | `300` | Backoff duration after a push failure. Silent retry after this interval; logs INFO on recovery. |
+| `failover.dashboard.cluster.snapshot.publish-url` | `String` | `""` | Peer-side: the dashboard's base URL (same as `failover.dashboard.base-path` on the dashboard host). Pattern: `http://<dashboard-host>:<port><basePath>`. With the default `basePath=/failover-dashboard` this is `http://<host>:<port>/failover-dashboard`. The snapshot endpoint (`/api/cluster/snapshot`) and heartbeat endpoint (`/api/cluster/heartbeat`) are derived automatically. Blank ⇒ this instance does not push. |
+| `failover.dashboard.cluster.snapshot.interval-seconds` | `int` | `15` | Throttle interval: at most one push per this many seconds. Pushes are event-driven (triggered by metric events), not polled. A high-throughput app firing 1000 req/s still pushes at most once per interval. |
+| `failover.dashboard.cluster.snapshot.retry-interval-seconds` | `int` | `300` | After a push failure, all subsequent push attempts are suppressed for this many seconds. One WARN is logged on first failure; INFO on recovery. Default 5 min keeps noise low. |
+| `failover.dashboard.cluster.snapshot.username` | `String` | `""` | HTTP Basic Auth username for the dashboard ingest endpoint. Set together with `password`. Ignored when `oauth2-client-registration-id` is set. |
+| `failover.dashboard.cluster.snapshot.password` | `String` | `""` | HTTP Basic Auth password. Set together with `username`. |
+| `failover.dashboard.cluster.snapshot.oauth2-client-registration-id` | `String` | `""` | Spring Security OAuth2 client registration id. When set, a Bearer token is fetched via `OAuth2AuthorizedClientManager` and sent as `Authorization: Bearer …`. Takes priority over Basic Auth. Requires `spring-security-oauth2-client` on the classpath. |
+| `failover.dashboard.cluster.snapshot.allow-insecure-ingest` | `boolean` | `false` | Suppress the no-auth startup warning when neither Basic Auth nor OAuth2 is configured. Use only in trusted networks or local dev. |
+| `failover.dashboard.cluster.snapshot.heartbeat.enabled` | `boolean` | `false` | Enable lightweight periodic heartbeat pushes from this instance to the dashboard. Off by default. When enabled, `publish-url` must be set (so the heartbeat endpoint URL can be derived) unless `heartbeat.url` is set explicitly. |
+| `failover.dashboard.cluster.snapshot.heartbeat.interval-seconds` | `int` | `60` | How often (in seconds) this instance sends a heartbeat ping (instance id only, no metrics payload). Should be ≤ ⅓ of the dashboard `liveness-seconds` window. |
+| `failover.dashboard.cluster.snapshot.heartbeat.url` | `String` | `""` | Explicit heartbeat endpoint URL. If blank, derived automatically as `{publish-url}/api/cluster/heartbeat`. Override only for non-standard dashboard paths. |
 
 ---
 

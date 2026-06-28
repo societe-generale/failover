@@ -26,6 +26,8 @@ import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotSe
 import com.societegenerale.failover.observable.micrometer.AbstractSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.FailoverMeterBinder;
+import com.societegenerale.failover.observable.micrometer.HeartbeatPublisher;
+import com.societegenerale.failover.observable.micrometer.HeartbeatPushClient;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import com.societegenerale.failover.observable.micrometer.SnapshotPushClient;
 import com.societegenerale.failover.properties.FailoverProperties;
@@ -281,7 +283,7 @@ public class FailoverMicrometerAutoConfiguration {
                 @Qualifier("failoverSnapshotOAuth2Interceptor")
                 ObjectProvider<ClientHttpRequestInterceptor> oauth2Interceptor) {
             RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
-            return new RestClientSnapshotPushClient(client, publisherProperties.publishUrl());
+            return new RestClientSnapshotPushClient(client, resolveSnapshotUrl(publisherProperties));
         }
 
         @Bean
@@ -296,9 +298,49 @@ public class FailoverMicrometerAutoConfiguration {
             base.setVirtualThreads(true);
             Executor executor = new BoundedTaskExecutor(base, 1, RejectionPolicy.DISCARD, "failover-snapshot-publisher");
             return new ClusterSnapshotPublisher(metricsSnapshotService, instanceIdResolver,
-                    snapshotPushClient, publisherProperties.publishUrl(),
+                    snapshotPushClient, resolveSnapshotUrl(publisherProperties),
                     publisherProperties.intervalSeconds(), publisherProperties.retryIntervalSeconds(),
                     executor);
+        }
+
+        @Bean
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
+        @ConditionalOnMissingBean(HeartbeatPushClient.class)
+        public HeartbeatPushClient restClientHeartbeatPushClient(
+                FailoverClusterPublisherProperties publisherProperties,
+                @Qualifier("failoverSnapshotOAuth2Interceptor")
+                ObjectProvider<ClientHttpRequestInterceptor> oauth2Interceptor) {
+            RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
+            String url = resolveHeartbeatUrl(publisherProperties);
+            return new RestClientHeartbeatPushClient(client, url);
+        }
+
+        @Bean(destroyMethod = "close")
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
+        @ConditionalOnMissingBean(HeartbeatPublisher.class)
+        public HeartbeatPublisher heartbeatPublisher(
+                InstanceIdResolver instanceIdResolver,
+                HeartbeatPushClient heartbeatPushClient,
+                FailoverClusterPublisherProperties publisherProperties) {
+            String url = resolveHeartbeatUrl(publisherProperties);
+            return new HeartbeatPublisher(instanceIdResolver, heartbeatPushClient, url,
+                    publisherProperties.heartbeat().intervalSeconds());
+        }
+
+        private static String resolveSnapshotUrl(FailoverClusterPublisherProperties props) {
+            return stripTrailingSlash(props.publishUrl()) + "/api/cluster/snapshot";
+        }
+
+        private static String resolveHeartbeatUrl(FailoverClusterPublisherProperties props) {
+            String explicit = props.heartbeat().url();
+            if (explicit != null && !explicit.isBlank()) {
+                return explicit;
+            }
+            return stripTrailingSlash(props.publishUrl()) + "/api/cluster/heartbeat";
+        }
+
+        private static String stripTrailingSlash(String url) {
+            return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
         }
 
         private static RestClient buildPublisherClient(FailoverClusterPublisherProperties props,
@@ -321,7 +363,8 @@ public class FailoverMicrometerAutoConfiguration {
             if (!props.allowInsecureIngest()) {
                 log.warn("Failover snapshot publisher '{}' has no auth configured — posting without credentials "
                         + "(insecure). Set snapshot.username+password, snapshot.oauth2-client-registration-id, "
-                        + "or snapshot.allow-insecure-ingest=true to suppress this warning.", props.publishUrl());
+                        + "or snapshot.allow-insecure-ingest=true to suppress this warning.",
+                        stripTrailingSlash(props.publishUrl()));
             }
             return RestClient.create();
         }

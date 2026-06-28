@@ -339,6 +339,45 @@ class FailoverMonitoringAutoConfigurationTest {
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .run(ctx -> assertThat(ctx).doesNotHaveBean(ClusterSnapshotPublisher.class));
         }
+
+        @Test
+        @SuppressWarnings("java:S2699")
+        @DisplayName("heartbeat.enabled=true + publish-url ⇒ HeartbeatPublisher wired")
+        void heartbeatPublisherWiredWhenEnabled() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                    "failover.dashboard.cluster.snapshot.heartbeat.enabled=true")
+                .run(ctx -> assertThat(ctx).hasSingleBean(
+                        com.societegenerale.failover.observable.micrometer.HeartbeatPublisher.class));
+        }
+
+        @Test
+        @SuppressWarnings("java:S2699")
+        @DisplayName("heartbeat.enabled=false (default) ⇒ HeartbeatPublisher not wired")
+        void heartbeatPublisherNotWiredByDefault() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot")
+                .run(ctx -> assertThat(ctx).doesNotHaveBean(
+                        com.societegenerale.failover.observable.micrometer.HeartbeatPublisher.class));
+        }
+
+        @Test
+        @SuppressWarnings("java:S2699")
+        @DisplayName("heartbeat.enabled=true, explicit heartbeat.url ⇒ uses that URL (not derived from snapshot url)")
+        void heartbeatPublisherUsesExplicitUrl() {
+            micrometerRunner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard/api/cluster/snapshot",
+                    "failover.dashboard.cluster.snapshot.heartbeat.enabled=true",
+                    "failover.dashboard.cluster.snapshot.heartbeat.url=http://other:9090/failover-dashboard/api/cluster/heartbeat")
+                .run(ctx -> assertThat(ctx).hasSingleBean(
+                        com.societegenerale.failover.observable.micrometer.HeartbeatPublisher.class));
+        }
     }
 
     // ── @TestConfiguration helpers ────────────────────────────────────────────

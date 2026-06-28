@@ -19,22 +19,16 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SnapshotStoreInmemoryTest {
-
-    private final AtomicLong now = new AtomicLong(10_000);
-
-    private SnapshotStoreInmemory store(long livenessMs, int maxInstances) {
-        return new SnapshotStoreInmemory(livenessMs, maxInstances, now::get);
-    }
 
     private static MetricsSummary summaryFor(String name, long success) {
         ApiKpis k = MetricsKpis.build(name, name, success, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
@@ -43,82 +37,57 @@ class SnapshotStoreInmemoryTest {
 
     @Test
     void upsertKeepsLatestPerInstance() {
-        SnapshotStoreInmemory store = store(60_000, 10);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 5)));   // replaces
 
-        assertThat(store.liveCount()).isEqualTo(1);
-        assertThat(store.live()).singleElement()
-                .satisfies(s -> assertThat(s.perApi().getFirst().upstreamSuccess()).isEqualTo(5));
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(5));
     }
 
     @Test
-    void liveExcludesSnapshotsOlderThanTheLivenessWindow() {
-        SnapshotStoreInmemory store = store(1_000, 10);
-        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));   // at t=10000
-        now.set(10_500);
-        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 2)));   // at t=10500
-        now.set(11_200);                                               // i1 now 1200ms old (> 1000), i2 700ms
-
-        assertThat(store.liveCount()).isEqualTo(1);
-        assertThat(store.live()).singleElement()
-                .satisfies(s -> assertThat(s.perApi().getFirst().upstreamSuccess()).isEqualTo(2));
-        assertThat(store.newestEpochMs()).isEqualTo(10_500);
-    }
-
-    @Test
-    void newestEpochIsZeroWhenNothingLive() {
-        SnapshotStoreInmemory store = store(1_000, 10);
+    void allInstancesReturnsAllWithUnknownStatus() {
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
-        now.addAndGet(5_000);   // expire
+        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 2)));
 
-        assertThat(store.liveCount()).isZero();
-        assertThat(store.newestEpochMs()).isZero();
-        assertThat(store.live()).isEmpty();
+        assertThat(store.allInstances()).hasSize(2)
+                .allMatch(im -> im.liveStatus() == LiveStatus.UNKNOWN);
     }
 
     @Test
     void recordsBeyondMaxInstancesStillStoredAsWarnOnlyGuard() {
-        SnapshotStoreInmemory store = store(60_000, 2);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(2);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
         store.upsert(new ClusterSnapshot("i2", summaryFor("a", 1)));
-        store.upsert(new ClusterSnapshot("i3", summaryFor("a", 1)));   // beyond ceiling
+        store.upsert(new ClusterSnapshot("i3", summaryFor("a", 1)));   // beyond ceiling — warn only
 
-        assertThat(store.liveCount()).isEqualTo(3);
+        assertThat(store.allInstances()).hasSize(3);
     }
 
     @Test
     void reUpsertExistingInstanceAtCeilingDoesNotWarnOrGrow() {
-        SnapshotStoreInmemory store = store(60_000, 1);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(1);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
-        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 2)));   // same id, at ceiling — update, no growth
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 2)));   // same id — update, no growth
 
-        assertThat(store.liveCount()).isEqualTo(1);
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(2));
     }
 
     @Test
-    void liveInstancesCarryIdAndExcludeStale() {
-        SnapshotStoreInmemory store = store(1_000, 10);
-        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));   // t=10000
-        now.set(10_400);
-        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 2)));   // t=10400
-        now.set(11_100);                                               // i1 1100ms old (>1000) → excluded
+    void allInstancesAlwaysIncludesOldSnapshots() {
+        // Old data is retained forever — stale peer still contributes last-known values to the aggregate.
+        // Per-instance staleness is visible through lastSeenEpochMs shown in the Instances tab.
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 42)));
 
-        assertThat(store.liveInstances())
+        assertThat(store.allInstances())
                 .singleElement()
                 .satisfies(im -> {
-                    assertThat(im.instanceId()).isEqualTo("i2");
-                    assertThat(im.lastSeenEpochMs()).isEqualTo(10_400);
-                    assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(2);
+                    assertThat(im.instanceId()).isEqualTo("i1");
+                    assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(42);
+                    assertThat(im.liveStatus()).isEqualTo(LiveStatus.UNKNOWN);
                 });
-    }
-
-    @Test
-    void liveInstancesEmptyWhenAllStale() {
-        SnapshotStoreInmemory store = store(1_000, 10);
-        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));
-        now.addAndGet(5_000);
-
-        assertThat(store.liveInstances()).isEmpty();
     }
 }

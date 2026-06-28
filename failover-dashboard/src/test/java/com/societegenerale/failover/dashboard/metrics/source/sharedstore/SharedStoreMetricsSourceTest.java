@@ -107,16 +107,13 @@ class SharedStoreMetricsSourceTest {
         List<MetricsSummary> list = List.of(live);
         return new SnapshotStore() {
             public void upsert(ClusterSnapshot snapshot) { /* no-op: stub is pre-seeded via the constructor */ }
-            public List<MetricsSummary> live() { return list; }
-            public List<InstanceMetrics> liveInstances() {
+            public List<InstanceMetrics> allInstances() {
                 List<InstanceMetrics> out = new java.util.ArrayList<>();
                 for (int i = 0; i < list.size(); i++) {
                     out.add(new InstanceMetrics("instance-" + i, 100L + i, list.get(i)));
                 }
                 return out;
             }
-            public int liveCount() { return list.size(); }
-            public long newestEpochMs() { return list.isEmpty() ? 0L : 123L; }
         };
     }
 
@@ -149,11 +146,12 @@ class SharedStoreMetricsSourceTest {
         SharedStoreMetricsSource live = new SharedStoreMetricsSource(
                 stubStore(snapshot("country", 1, 0, 0, 0, List.of())), THRESHOLDS, fallback("local"), 10);
         assertThat(live.info().mode()).isEqualTo("shared-store");
-        assertThat(live.info().asOfEpochMs()).isEqualTo(123L);          // stub newestEpochMs() = 123 when non-empty
+        // stub allInstances() returns instance-0 with lastSeenEpochMs=100L (100L + 0)
+        assertThat(live.info().asOfEpochMs()).isEqualTo(100L);
 
         SharedStoreMetricsSource empty = new SharedStoreMetricsSource(
                 stubStore(), THRESHOLDS, fallback("local"), 10);
-        assertThat(empty.info().asOfEpochMs()).isGreaterThan(0L);       // newest==0 → falls back to now
+        assertThat(empty.info().asOfEpochMs()).isGreaterThan(0L);       // no instances → falls back to now
         assertThat(empty.info().instancesReporting()).isZero();
     }
 
@@ -185,51 +183,95 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
-    void instancesAlwaysIncludesDashboardHostEvenWhenStoreIsEmpty() {
-        // Production scenario: no peers have pushed yet (or dashboard just restarted).
-        // The dashboard host must still appear so the Instances tab is never blank.
-        MetricsSummary localSummary = snapshot("country", 5, 0, 0, 0, List.of());
-        MetricsSource fb = fallbackWithInstance("dashboard-host:8080", localSummary);
-        SharedStoreMetricsSource source = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fb, 10);
+    void instancesIsEmptyWhenNoSnapshotsPushed() {
+        // No peers have pushed yet → instances tab empty, not polluted with dashboard host
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.instances()).isEmpty();
+        assertThat(source.info().instancesReporting()).isZero();
+        // summary/health still fall back to local when store empty
+        assertThat(source.summary().perApi()).singleElement()
+                .satisfies(k -> assertThat(k.name()).isEqualTo("local"));
+    }
+
+    @Test
+    void livenessTrackingDisabled_allInstancesHaveUnknownStatus() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, null, 0);
 
         assertThat(source.instances())
-                .extracting(InstanceMetrics::instanceId)
-                .containsExactly("dashboard-host:8080");
+                .extracting(InstanceMetrics::liveStatus)
+                .containsOnly(com.societegenerale.failover.observable.metrics.LiveStatus.UNKNOWN);
+    }
+
+    @Test
+    void livenessTrackingEnabled_liveInstanceMarkedLive() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory();
+        heartbeatStore.record("instance-0");   // fresh heartbeat
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, heartbeatStore, 30_000);
+
+        assertThat(source.instances())
+                .filteredOn(i -> "instance-0".equals(i.instanceId()))
+                .extracting(InstanceMetrics::liveStatus)
+                .containsOnly(com.societegenerale.failover.observable.metrics.LiveStatus.LIVE);
+    }
+
+    @Test
+    void livenessTracking_noHeartbeatReceived_instanceUnknown() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(); // no heartbeat recorded
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, heartbeatStore, 30_000);
+
+        // No heartbeat received → peer has not enabled heartbeat → UNKNOWN (not DOWN)
+        assertThat(source.instances())
+                .filteredOn(i -> "instance-0".equals(i.instanceId()))
+                .extracting(InstanceMetrics::liveStatus)
+                .containsOnly(com.societegenerale.failover.observable.metrics.LiveStatus.UNKNOWN);
+    }
+
+    @Test
+    void downInstanceMetricsStillContributeToAggregate() {
+        // Key invariant: DOWN instance last-known metrics are preserved in cluster total
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000);
+        SnapshotStore store = stubStore(
+                snapshot("country", 100, 0, 0, 0, List.of()),
+                snapshot("country", 50, 0, 0, 0, List.of()));
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(clock::get);
+        heartbeatStore.record("instance-1"); // recorded at t=1000; will be stale when liveness check runs
+        clock.set(40_000);                   // advance 39s — exceeds 30s window → instance-1 DOWN
+        heartbeatStore.record("instance-0"); // fresh at t=40000
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, heartbeatStore, 30_000, clock::get);
+
+        // Both instances contribute to aggregate (150 total calls), even though instance-1 is DOWN
+        assertThat(source.summary().overall().totalCalls()).isEqualTo(150);
+        // Only instance-0 (LIVE) counts as reporting; instance-1 (DOWN) excluded
         assertThat(source.info().instancesReporting()).isEqualTo(1);
     }
 
     @Test
-    void instancesDeduplicatesWhenDashboardHostPushedToItself() {
-        // Host configured publish-url=http://localhost/... → store already contains its snapshot.
-        MetricsSummary localSummary = snapshot("country", 5, 0, 0, 0, List.of());
-        MetricsSource fb = fallbackWithInstance("dashboard-host:8080", localSummary);
-        SnapshotStore storeWithHost = new SnapshotStore() {
-            public void upsert(ClusterSnapshot s) { /* no-op stub */ }
-            public List<MetricsSummary> live() { return List.of(localSummary); }
-            public List<InstanceMetrics> liveInstances() {
-                return List.of(new InstanceMetrics("dashboard-host:8080", 100L, localSummary));
-            }
-            public int liveCount() { return 1; }
-            public long newestEpochMs() { return 123L; }
-        };
-        SharedStoreMetricsSource source = new SharedStoreMetricsSource(storeWithHost, THRESHOLDS, fb, 10);
+    void infoReportingCountExcludesDownInstances() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000);
+        SnapshotStore store = stubStore(
+                snapshot("country", 10, 0, 0, 0, List.of()),
+                snapshot("country", 10, 0, 0, 0, List.of()));
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(clock::get);
+        heartbeatStore.record("instance-1"); // recorded at t=1000; will be stale
+        clock.set(40_000);                   // advance past 30s window → instance-1 DOWN
+        heartbeatStore.record("instance-0"); // fresh at t=40000
 
-        assertThat(source.instances())
-                .extracting(InstanceMetrics::instanceId)
-                .containsExactly("dashboard-host:8080");   // not duplicated
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, heartbeatStore, 30_000, clock::get);
+
+        assertThat(source.info().instancesReporting()).isEqualTo(1); // instance-1 DOWN → not counted
+        assertThat(source.instances()).hasSize(2);                   // but both still visible
     }
 
-    /** Fallback with a real {@code instances()} implementation (simulates {@link com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource}). */
-    private static MetricsSource fallbackWithInstance(String instanceId, MetricsSummary summary) {
-        return new MetricsSource() {
-            @Override public MetricsSummary summary() { return summary; }
-            @Override public List<ApiHealth> health() { return List.of(); }
-            @Override public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false); }
-            @Override public List<SeriesPoint> series(long w) { return List.of(); }
-            @Override
-            public List<InstanceMetrics> instances() {
-                return List.of(new InstanceMetrics(instanceId, currentTimeMillis(), summary));
-            }
-        };
-    }
 }

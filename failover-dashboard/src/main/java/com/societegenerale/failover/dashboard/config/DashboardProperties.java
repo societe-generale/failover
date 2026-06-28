@@ -193,21 +193,25 @@ public record DashboardProperties(
      * where peers push their KPI snapshot to the dashboard and it aggregates them in memory, with no Prometheus.
      * Production-supported for small deployments; data quality/consistency is prioritised over durability.
      *
-     * @param livenessSeconds a snapshot older than this is excluded from the aggregate (peer treated as silent)
-     *                        and surfaced in {@code SourceInfo} (default {@code 45})
-     * @param maxInstances    supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
+     * <p>All snapshots are retained regardless of age. Each instance always contributes its last-known values
+     * to the cluster aggregate. Per-instance staleness is visible through each row's {@code lastSeenEpochMs}
+     * timestamp in the Instances tab.
+     *
+     * @param livenessSeconds  heartbeat age threshold in seconds — an instance is {@code DOWN} when no heartbeat
+     *                         was received within this window; {@code UNKNOWN} if no heartbeat ever received
+     *                         (default {@code 180}; rule of thumb: ≥ 3 × peer {@code heartbeat.interval-seconds})
+     * @param maxInstances     supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
-        @DefaultValue("45") int livenessSeconds,
+        @DefaultValue("180") int livenessSeconds,
         @DefaultValue("10") int maxInstances,
         @DefaultValue Retention retention,
         @DefaultValue("30") int sampleIntervalSeconds,
         @DefaultValue Jdbc jdbc
     ) {
-        /** Convenience with defaults. */
         public SharedStore() {
-            this("inmemory", 45, 10, new Retention(), 30, new Jdbc());
+            this("inmemory", 180, 10, new Retention(), 30, new Jdbc());
         }
     }
 
