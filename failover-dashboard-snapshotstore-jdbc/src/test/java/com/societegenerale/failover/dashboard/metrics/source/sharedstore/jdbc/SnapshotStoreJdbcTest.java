@@ -17,11 +17,11 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.Latency;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.source.DashboardKpis;
-import com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.MetricsKpis;
+import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,7 +61,7 @@ class SnapshotStoreJdbcTest {
     }
 
     private static MetricsSummary summaryFor(String name, long success, long recovered) {
-        ApiKpis k = DashboardKpis.build(name, name, success, recovered, 0, 0, 0, 0, new Latency(1, 2, 3, 4));
+        ApiKpis k = MetricsKpis.build(name, name, success, recovered, 0, 0, 0, 0, new Latency(1, 2, 3, 4));
         return new MetricsSummary(k, List.of(k), List.of(), 0L);
     }
 
