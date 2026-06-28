@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics;
+package com.societegenerale.failover.observable.metrics;
 
 /**
  * Absolute counts plus derived {@link Rates} for one failover point (or {@code "__overall__"} for the

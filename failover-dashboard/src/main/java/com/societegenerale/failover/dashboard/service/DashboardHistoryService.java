@@ -16,9 +16,9 @@
 
 package com.societegenerale.failover.dashboard.service;
 
-import com.societegenerale.failover.dashboard.metrics.ApiKpis;
-import com.societegenerale.failover.dashboard.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.SeriesPoint;
+import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.SeriesPoint;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.ArrayDeque;
