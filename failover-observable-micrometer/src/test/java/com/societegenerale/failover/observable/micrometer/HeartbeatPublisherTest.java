@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -64,7 +65,7 @@ class HeartbeatPublisherTest {
                 "http://dashboard/api/cluster/heartbeat", 1)) {
             started.await(3, TimeUnit.SECONDS);
         }
-        verify(pushClient, atLeastOnce()).send(any()); // fired and did not propagate the exception
+        assertThat(started.getCount()).isZero(); // latch reached zero ⇒ push fired without propagating the exception
     }
 
     @Test
@@ -78,10 +79,6 @@ class HeartbeatPublisherTest {
                 "http://dashboard/api/cluster/heartbeat", 1);
         latch.await(3, TimeUnit.SECONDS);
         publisher.close();
-        verify(pushClient, atLeastOnce()).send(any());
-    }
-
-    private static <T> org.assertj.core.api.ObjectAssert<T> assertThat(T actual) {
-        return org.assertj.core.api.Assertions.assertThat(actual);
+        assertThat(latch.getCount()).isZero(); // heartbeat fired before close
     }
 }

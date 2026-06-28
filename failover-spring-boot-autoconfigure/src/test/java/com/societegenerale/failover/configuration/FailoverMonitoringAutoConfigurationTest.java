@@ -341,6 +341,7 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("heartbeat.enabled=true + publish-url ⇒ HeartbeatPublisher wired")
         void heartbeatPublisherWiredWhenEnabled() {
             runner
@@ -355,6 +356,7 @@ class FailoverMonitoringAutoConfigurationTest {
         }
 
         @Test
+        @SuppressWarnings("java:S2699")
         @DisplayName("heartbeat.enabled=false (default) ⇒ HeartbeatPublisher not wired")
         void heartbeatPublisherNotWiredByDefault() {
             runner

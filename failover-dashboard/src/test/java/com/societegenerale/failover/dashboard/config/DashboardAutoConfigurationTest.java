@@ -202,6 +202,7 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @SuppressWarnings("java:S2699")
     @DisplayName("local mode ⇒ no HeartbeatStore or ClusterHeartbeatController")
     void heartbeatBeansAbsentInLocalMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
