@@ -124,7 +124,8 @@ Where the dashboard reads metrics from in a multi-instance deployment (see [Dist
 | `failover.dashboard.cluster.shared-store.jdbc.table-prefix` | `String` | `""` | Prefix prepended to base `FAILOVER_DASHBOARD_SNAPSHOT` (validated). Used when `store=jdbc`. |
 | `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` | `boolean` | `true` | Create the snapshot table on startup if missing. |
 | `failover.dashboard.cluster.snapshot.publish-url` | `String` | `""` | Peer-side: dashboard ingest URL each instance POSTs its snapshot to. Blank ⇒ this instance does not push. |
-| `failover.dashboard.cluster.snapshot.interval-seconds` | `int` | `15` | Seconds between snapshot pushes. |
+| `failover.dashboard.cluster.snapshot.interval-seconds` | `int` | `15` | Throttle interval: at most one push per this many seconds. Pushes are event-driven (triggered by metric events), not polled. |
+| `failover.dashboard.cluster.snapshot.retry-interval-seconds` | `int` | `300` | Backoff duration after a push failure. Silent retry after this interval; logs INFO on recovery. |
 
 ---
 
