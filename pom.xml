@@ -426,7 +426,6 @@
                         <phase>site</phase>
                         <configuration>
                             <outputDirectory>${project.basedir}/docs/api/javadoc</outputDirectory>
-                            <reportOutputDirectory>${project.basedir}/docs/api/javadoc</reportOutputDirectory>
                         </configuration>
                     </execution>
                 </executions>
