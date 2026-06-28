@@ -179,12 +179,14 @@ Size the store accordingly, and use the controls the framework already provides:
   cleanup scheduler runs (`failover.scheduler`) — together they bound row count. The `EXPIRE_ON` index
   (above) keeps cleanup an index scan.
 - **Monitor table growth.** Enable the opt-in capacity gauge:
+
   ```yaml
   failover:
     store:
       jdbc:
         live-entries-gauge-enabled: true   # exposes failover.live.entries (SELECT COUNT(*) per scrape)
   ```
+
   Off by default because it issues a `COUNT(*)` per scrape per failover name. When on, the
   `failover.live.entries{name,domain}` gauge reports rows per failover so you can alert on growth. Not
   available in multi-tenant mode (the routing wrapper is not size-aware). See
