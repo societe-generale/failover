@@ -323,6 +323,41 @@ class DashboardMetricsServiceTest {
                 .containsEntry("unhealthy", "UNHEALTHY");
     }
 
+    // ── exceptionsByApi ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("exceptionsByApi groups exception counts per endpoint, sorted by count desc")
+    void exceptionsByApiGroupsAndSorts() {
+        exception("country", "java.net.ConnectException", 10);
+        exception("country", "java.util.concurrent.TimeoutException", 3);
+        exception("exchange", "java.net.ConnectException", 7);
+
+        var result = service.exceptionsByApi();
+
+        assertThat(result).containsKey("country").containsKey("exchange");
+        assertThat(result.get("country")).extracting(ExceptionStat::type)
+                .containsExactly("java.net.ConnectException", "java.util.concurrent.TimeoutException");
+        assertThat(result.get("country").getFirst().count()).isEqualTo(10);
+        assertThat(result.get("exchange")).extracting(ExceptionStat::type)
+                .containsExactly("java.net.ConnectException");
+        assertThat(result.get("exchange").getFirst().count()).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("exceptionsByApi skips counters with no name tag and counters with no usable exception type")
+    void exceptionsByApiSkipsUntaggedCounters() {
+        // no name tag → skip
+        Counter.builder("failover.exception.total")
+                .tag("exception_type", "java.lang.RuntimeException")
+                .register(registry).increment(5);
+        // name tag present but no usable exception type tag → skip
+        Counter.builder("failover.exception.total")
+                .tag("name", "svc").tag("exception_type", "").tag("cause_type", "none").tag("final_cause_type", "none")
+                .register(registry).increment(3);
+
+        assertThat(service.exceptionsByApi()).isEmpty();
+    }
+
     @Test
     @DisplayName("custom thresholds shift the classification boundaries")
     void customThresholds() {
