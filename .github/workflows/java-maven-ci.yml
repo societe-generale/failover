@@ -97,3 +97,42 @@ jobs:
         name: pit-reports
         path: failover-core/target/pit-reports
         if-no-files-found: ignore
+
+  # Mandated (blocking) Software Composition Analysis: OWASP Dependency-Check scans the whole
+  # reactor against the NVD and FAILS the build on any dependency with CVSS >= 7 (HIGH/CRITICAL).
+  # Suppressions (audited false positives) live in dependency-check-suppressions.xml.
+  dependency-check:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up JDK 21
+      uses: actions/setup-java@v5
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+    - name: Cache Maven packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    # Cache the NVD data so each run doesn't re-download the full vulnerability database.
+    - name: Cache NVD database
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2/repository/org/owasp/dependency-check-data
+        key: ${{ runner.os }}-dependency-check-data
+        restore-keys: ${{ runner.os }}-dependency-check-data
+    - name: Run OWASP Dependency-Check (fails on CVSS >= 7)
+      env:
+        NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      run: mvn -Pdependency-check verify -DskipTests -Dnvd.api.key="$NVD_API_KEY" --no-transfer-progress
+    - name: Upload Dependency-Check report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-check-report
+        path: '**/target/dependency-check-report.*'
+        if-no-files-found: ignore
