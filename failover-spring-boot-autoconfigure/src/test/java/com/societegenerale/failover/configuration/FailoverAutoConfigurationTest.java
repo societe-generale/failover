@@ -42,43 +42,42 @@ import com.societegenerale.failover.core.observable.FailoverObserver;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.payload.ReferentialPayload;
 import com.societegenerale.failover.core.observable.publisher.ObservablePublisher;
+import com.societegenerale.failover.core.store.DefaultFailoverStore;
+import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.core.store.FailoverStoreException;
 import com.societegenerale.failover.propagator.MicrometerContextPropagator;
 import com.societegenerale.failover.scheduler.ExpiryCleanupScheduler;
 import com.societegenerale.failover.scheduler.ObservableScheduler;
-import com.societegenerale.failover.core.store.DefaultFailoverStore;
-import com.societegenerale.failover.core.store.FailoverStore;
+import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.store.async.FailoverStoreAsync;
 import com.societegenerale.failover.store.inmemory.FailoverStoreInmemory;
 import com.societegenerale.failover.store.multitenant.TenantContextPropagator;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.config.MeterFilter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.Tracer;
 import org.jspecify.annotations.NonNull;
-import org.mockito.Mockito;
-import org.springframework.core.task.TaskExecutor;
-import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.commons.util.ReflectionUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.mockito.Mockito;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.ApplicationContext;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.core.task.TaskExecutor;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBasicBean;
 import static com.societegenerale.failover.configuration.BeanAssertions.assertBeansAreEmpty;
@@ -92,7 +91,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class FailoverAutoConfigurationTest {
 
-    // ── @TestConfiguration ────────────────────────────────────────────────────
+    // One runner shared across all nested classes — 6 failover auto-configurations,
+    // no full Spring Boot app, no DataSource init, no web server startup.
+    private static final ApplicationContextRunner BASE_RUNNER = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                    FailoverAutoConfiguration.class,
+                    FailoverStoreAutoConfiguration.class,
+                    FailoverStoreMultiTenantAutoConfiguration.class,
+                    MicrometerTracingAutoConfiguration.class,
+                    FailoverMicrometerAutoConfiguration.class,
+                    ResilienceFailoverExecutionAutoConfiguration.class
+            ));
+
+    // ── @TestConfiguration helpers ────────────────────────────────────────────
 
     @TestConfiguration
     static class CustomPolicyConfig {
@@ -123,6 +134,63 @@ class FailoverAutoConfigurationTest {
             public Object execute(Failover failover, Supplier<Object> supplier, Method method, List<Object> args) {
                 return supplier.get();
             }
+        }
+    }
+
+    @TestConfiguration
+    static class CustomScatterExecutorConfig {
+
+        static class StubExecutor implements TaskExecutor {
+            @Override public void execute(Runnable task) { task.run(); }
+        }
+
+        @Bean(name = "scatterGatherExecutor")
+        public TaskExecutor scatterGatherExecutor() { return new StubExecutor(); }
+    }
+
+    @TestConfiguration
+    static class CustomContextPropagatorConfig {
+
+        static class StubPropagator implements ContextPropagator {
+            @Override public @NonNull Runnable wrap(@NonNull Runnable task) { return task; }
+        }
+
+        @Bean
+        public ContextPropagator contextPropagator() {
+            return new StubPropagator();
+        }
+    }
+
+    @TestConfiguration
+    static class CustomNamedPropagatorConfig {
+
+        static class MarkerPropagator implements ContextPropagator {
+            final AtomicBoolean wrapped = new AtomicBoolean(false);
+            @Override public @NonNull Runnable wrap(@NonNull Runnable task) {
+                wrapped.set(true);
+                return task;
+            }
+        }
+
+        @Bean("myCustomPropagator")
+        public ContextPropagator myCustomPropagator() {
+            return new MarkerPropagator();
+        }
+    }
+
+    @TestConfiguration
+    static class MockTenantPropagatorConfig {
+        @Bean
+        public TenantContextPropagator tenantContextPropagator() {
+            return new TenantContextPropagator();
+        }
+    }
+
+    @TestConfiguration
+    static class MockTracerConfig {
+        @Bean
+        public Tracer tracer() {
+            return Mockito.mock(Tracer.class);
         }
     }
 
@@ -158,140 +226,81 @@ class FailoverAutoConfigurationTest {
         public void cleanByExpiry(Instant expiry) { delegate.cleanByExpiry(expiry); }
     }
 
+    /** A registry whose simple name contains "Prometheus" so the auto customizer treats it as Prometheus. */
+    static class FakePrometheusMeterRegistry extends SimpleMeterRegistry { }
+
     // ── Default configuration ─────────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
     @DisplayName("when default configuration")
     class WhenDefault {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
-        @Autowired
-        private FailoverStore<Object> failoverStore;
-
         @Test
-        @DisplayName("should load all basic default beans")
-        void shouldLoadAllBasicDefaultBeans() {
-            assertBasicBean(applicationContext);
-        }
+        @DisplayName("all core beans, store chain, schedulers and propagator are wired correctly")
+        void defaultBeanWiring() {
+            BASE_RUNNER.run(ctx -> {
+                assertBasicBean(ctx);
+                assertBeansAreNotNull(ctx, FailoverAspect.class);
+                assertThat(ctx.getBean(BasicFailoverExecution.class)).isNotNull();
+                assertBeansAreNotNull(ctx, MethodExceptionHandler.class);
+                assertThat(ctx.getBean(MethodExceptionPolicy.class))
+                        .isInstanceOf(RethrowIfNoRecoveryMethodExceptionPolicy.class);
 
-        @Test
-        @DisplayName("should load FailoverAspect bean")
-        void shouldLoadFailoverAspectBean() {
-            assertBeansAreNotNull(applicationContext, FailoverAspect.class);
-        }
+                FailoverStore<Object> failoverStore = ctx.getBean(FailoverStore.class);
+                assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
+                FailoverStoreAsync<Object> async = cast(failoverStore);
+                DefaultFailoverStore<Object> defaultStore = cast(requireNonNull(async.getFailoverStore()));
+                assertThat(requireNonNull(defaultStore.getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
 
-        @Test
-        @DisplayName("should load BasicFailoverExecution by default")
-        void shouldLoadBasicFailoverExecutionByDefault() {
-            assertThat(applicationContext.getBean(BasicFailoverExecution.class)).isNotNull();
-        }
-
-        @Test
-        @DisplayName("should load MethodExceptionHandler bean")
-        void shouldLoadMethodExceptionHandlerBean() {
-            assertBeansAreNotNull(applicationContext, MethodExceptionHandler.class);
-        }
-
-        @Test
-        @DisplayName("should load RethrowIfNoRecoveryMethodExceptionPolicy as default")
-        void shouldLoadRethrowPolicyByDefault() {
-            assertThat(applicationContext.getBean(MethodExceptionPolicy.class))
-                    .isInstanceOf(RethrowIfNoRecoveryMethodExceptionPolicy.class);
-        }
-
-        @Test
-        @DisplayName("failoverStore is FailoverStoreAsync(DefaultFailoverStore(FailoverStoreInmemory)) by default")
-        void shouldLoadInmemoryFailoverStoreByDefault() {
-            assertThat(failoverStore).isInstanceOf(FailoverStoreAsync.class);
-            FailoverStore<Object> inner = requireNonNull(((FailoverStoreAsync<Object>) failoverStore).getFailoverStore());
-            assertThat(inner).isInstanceOf(DefaultFailoverStore.class);
-            assertThat(requireNonNull(((DefaultFailoverStore<Object>) inner).getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
-        }
-
-        @Test
-        @DisplayName("innermost store is FailoverStoreInmemory")
-        void innermostShouldBeInmemory() {
-            FailoverStoreAsync<Object> async = cast(failoverStore);
-            DefaultFailoverStore<Object> defaultStore = cast(requireNonNull(async.getFailoverStore()));
-            assertThat(requireNonNull(defaultStore.getFailoverStore())).isInstanceOf(FailoverStoreInmemory.class);
-        }
-
-        @Test
-        @DisplayName("should load ObservableScheduler bean by default")
-        void shouldLoadObservableSchedulerByDefault() {
-            assertThat(applicationContext.getBean(ObservableScheduler.class)).isNotNull();
-        }
-
-        @Test
-        @DisplayName("should load ExpiryCleanupScheduler bean by default")
-        void shouldLoadExpiryCleanupSchedulerByDefault() {
-            assertThat(applicationContext.getBean(ExpiryCleanupScheduler.class)).isNotNull();
-        }
-
-        @Test
-        @DisplayName("contextPropagator is MdcContextPropagator by default — no tenant, no Micrometer")
-        void contextPropagatorIsMdcContextPropagatorByDefault() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(MdcContextPropagator.class);
-        }
-
-        @Test
-        @DisplayName("payloadSplitterLookup is registered")
-        void payloadSplitterLookupIsRegistered() {
-            assertThat(applicationContext.getBean(PayloadSplitterLookup.class)).isNotNull();
-        }
-
-        @Test
-        @DisplayName("scatterGatherExecutor is NOT registered by default — requires failover.scatter.parallel=true")
-        void scatterGatherExecutorNotRegisteredByDefault() {
-            assertThat(applicationContext.containsBean("scatterGatherExecutor")).isFalse();
+                assertThat(ctx.getBean(ObservableScheduler.class)).isNotNull();
+                assertThat(ctx.getBean(ExpiryCleanupScheduler.class)).isNotNull();
+                assertThat(ctx.getBean("contextPropagator", ContextPropagator.class))
+                        .isInstanceOf(MdcContextPropagator.class);
+                assertThat(ctx.getBean(PayloadSplitterLookup.class)).isNotNull();
+                assertThat(ctx.containsBean("scatterGatherExecutor")).isFalse();
+            });
         }
 
         @Test
         @DisplayName("store() executes on a different thread — async write offload confirmed")
-        void storeExecutesOnDifferentThread() throws Exception {
-            String callingThread = Thread.currentThread().getName();
-            AtomicReference<String> storingThread = new AtomicReference<>();
-            CountDownLatch latch = new CountDownLatch(1);
+        void storeExecutesOnDifferentThread() {
+            BASE_RUNNER.run(ctx -> {
+                String callingThread = Thread.currentThread().getName();
+                AtomicReference<String> storingThread = new AtomicReference<>();
+                CountDownLatch latch = new CountDownLatch(1);
 
-            FailoverStoreAsync<Object> async = cast(failoverStore);
-            DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) requireNonNull(async.getFailoverStore());
-            FailoverStore<Object> originalInner = requireNonNull(defaultStore.getFailoverStore());
+                FailoverStore<Object> failoverStore = ctx.getBean(FailoverStore.class);
+                FailoverStoreAsync<Object> async = cast(failoverStore);
+                DefaultFailoverStore<Object> defaultStore = (DefaultFailoverStore<Object>) requireNonNull(async.getFailoverStore());
+                FailoverStore<Object> originalInner = requireNonNull(defaultStore.getFailoverStore());
 
-            Field innerField = DefaultFailoverStore.class.getDeclaredField("failoverStore");
-            ReflectionUtils.makeAccessible(innerField);
-            innerField.set(defaultStore, new ThreadCapturingStore(originalInner, storingThread, latch));
+                Field innerField = DefaultFailoverStore.class.getDeclaredField("failoverStore");
+                ReflectionUtils.makeAccessible(innerField);
+                innerField.set(defaultStore, new ThreadCapturingStore(originalInner, storingThread, latch));
 
-            try {
-                failoverStore.store(new ReferentialPayload<>("async-test", "key1", true,
-                        Instant.now(), Instant.now().plusSeconds(3600), "payload"));
-
-                assertThat(latch.await(5, TimeUnit.SECONDS)).as("store() did not execute within 5 seconds").isTrue();
-                assertThat(storingThread.get()).as("store() must run on a different thread").isNotEqualTo(callingThread);
-            } finally {
-                innerField.set(defaultStore, originalInner);
-            }
+                try {
+                    failoverStore.store(new ReferentialPayload<>("async-test", "key1", true,
+                            Instant.now(), Instant.now().plusSeconds(3600), "payload"));
+                    assertThat(latch.await(5, TimeUnit.SECONDS)).as("store() did not execute within 5 seconds").isTrue();
+                    assertThat(storingThread.get()).as("store() must run on a different thread").isNotEqualTo(callingThread);
+                } finally {
+                    innerField.set(defaultStore, originalInner);
+                }
+            });
         }
     }
 
     // ── failover.enabled=false ────────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.enabled=false"})
     @DisplayName("when failover disabled")
     class WhenFailoverDisabled {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("should not load any failover beans")
+        @DisplayName("no failover beans loaded")
         void shouldNotLoadAnyFailoverBeans() {
-            assertBeansAreEmpty(applicationContext,
+            BASE_RUNNER.withPropertyValues("failover.enabled=false").run(ctx ->
+                assertBeansAreEmpty(ctx,
                     FailoverClock.class, FailoverStore.class,
                     PayloadEnricher.class, RecoveredPayloadHandler.class,
                     FailoverHandler.class, FailoverExecution.class,
@@ -299,536 +308,372 @@ class FailoverAutoConfigurationTest {
                     FailoverExpiryExtractor.class, FailoverScanner.class,
                     CompositeObservablePublisher.class, FailoverObserver.class,
                     ObservablePublisher.class, KeyGenerator.class, ExpiryPolicy.class
-            );
+                ));
         }
     }
 
     // ── failover.aspect.enabled=false ─────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.aspect.enabled=false"})
     @DisplayName("when aspect disabled")
     class WhenAspectDisabled {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("should load all basic default beans")
-        void shouldLoadAllBasicDefaultBeans() {
-            assertBasicBean(applicationContext);
-        }
-
-        @Test
-        @DisplayName("should NOT load FailoverAspect bean")
-        void shouldNotLoadFailoverAspectBean() {
-            assertBeansAreEmpty(applicationContext, FailoverAspect.class);
+        @DisplayName("basic beans present but FailoverAspect absent")
+        void aspectDisabled() {
+            BASE_RUNNER.withPropertyValues("failover.aspect.enabled=false").run(ctx -> {
+                assertBasicBean(ctx);
+                assertBeansAreEmpty(ctx, FailoverAspect.class);
+            });
         }
     }
 
     // ── observable async (non-blocking publish) ───────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.observable.async.enabled=true"})
     @DisplayName("when observable async enabled")
     class WhenObservableAsyncEnabled {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("dispatching publisher is non-blocking (AsyncObservablePublisher)")
-        void dispatchingPublisherIsAsyncWhenEnabled() {
-            ObservablePublisher publisher =
-                    applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
-            assertThat(publisher).isInstanceOf(AsyncObservablePublisher.class);
+        @DisplayName("dispatching publisher is AsyncObservablePublisher")
+        void dispatchingPublisherIsAsync() {
+            BASE_RUNNER.withPropertyValues("failover.observable.async.enabled=true").run(ctx ->
+                assertThat(ctx.getBean("failoverObservablePublisher", ObservablePublisher.class))
+                    .isInstanceOf(AsyncObservablePublisher.class));
         }
     }
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.observable.async.enabled=false"})
     @DisplayName("when observable async disabled")
     class WhenObservableAsyncDisabled {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("dispatching publisher is the synchronous composite")
-        void dispatchingPublisherIsCompositeWhenSync() {
-            ObservablePublisher publisher =
-                    applicationContext.getBean("failoverObservablePublisher", ObservablePublisher.class);
-            assertThat(publisher).isInstanceOf(CompositeObservablePublisher.class);
+        @DisplayName("dispatching publisher is CompositeObservablePublisher")
+        void dispatchingPublisherIsComposite() {
+            BASE_RUNNER.withPropertyValues("failover.observable.async.enabled=false").run(ctx ->
+                assertThat(ctx.getBean("failoverObservablePublisher", ObservablePublisher.class))
+                    .isInstanceOf(CompositeObservablePublisher.class));
         }
     }
 
-    // ── observable instance tag & cardinality guard ───────────────────────────
+    // ── observable instance tag — mode=auto (default) ────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
     @DisplayName("when observable instance/cardinality are default (mode=auto)")
     class WhenObservableTaggingDefault {
 
-        @Autowired
-        private ApplicationContext applicationContext;
+        private final ApplicationContextRunner runner = BASE_RUNNER
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new);
 
         @Test
-        @DisplayName("mode=auto by default ⇒ the per-registry customizer is wired (not the global always-filter); cardinality on")
-        void autoByDefault() {
-            assertThat(applicationContext.containsBean("failoverInstanceMeterRegistryCustomizer")).isTrue();
-            assertThat(applicationContext.containsBean("failoverInstanceMeterFilter")).isFalse();   // global always-filter not used
-            assertThat(applicationContext.containsBean("failoverCardinalityMeterFilter")).isTrue();
+        @DisplayName("per-registry customizer wired; global always-filter absent; cardinality filter on")
+        void autoModeCustomizerWiredAndCardinalityOn() {
+            runner.run(ctx -> {
+                assertThat(ctx.containsBean("failoverInstanceMeterRegistryCustomizer")).isTrue();
+                assertThat(ctx.containsBean("failoverInstanceMeterFilter")).isFalse();
+                assertThat(ctx.containsBean("failoverCardinalityMeterFilter")).isTrue();
+            });
         }
 
         @Test
-        @DisplayName("mode=auto ⇒ customizer tags non-Prometheus registries but skips a Prometheus one")
+        @DisplayName("customizer tags non-Prometheus registries but skips a Prometheus one")
         void autoCustomizerSkipsPrometheus() {
-            @SuppressWarnings("unchecked")
-            org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer<io.micrometer.core.instrument.MeterRegistry> customizer =
-                    applicationContext.getBean("failoverInstanceMeterRegistryCustomizer",
-                            org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer.class);
+            runner.run(ctx -> {
+                @SuppressWarnings("unchecked")
+                org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer<io.micrometer.core.instrument.MeterRegistry> customizer =
+                        ctx.getBean("failoverInstanceMeterRegistryCustomizer",
+                                org.springframework.boot.micrometer.metrics.autoconfigure.MeterRegistryCustomizer.class);
 
-            SimpleMeterRegistry push = new SimpleMeterRegistry();          // not Prometheus → tagged
-            customizer.customize(push);
-            push.counter("failover.store.total").increment();
-            push.counter("other.metric").increment();
-            assertThat(push.find("failover.store.total").tagKeys("instance").counter())
-                    .as("failover.* must carry an instance tag on a non-Prometheus registry").isNotNull();
-            assertThat(push.find("other.metric").tagKeys("instance").counter())
-                    .as("non-failover meters untouched").isNull();
+                SimpleMeterRegistry push = new SimpleMeterRegistry();
+                customizer.customize(push);
+                push.counter("failover.store.total").increment();
+                push.counter("other.metric").increment();
+                assertThat(push.find("failover.store.total").tagKeys("instance").counter())
+                        .as("failover.* must carry instance tag on non-Prometheus registry").isNotNull();
+                assertThat(push.find("other.metric").tagKeys("instance").counter())
+                        .as("non-failover meters untouched").isNull();
 
-            SimpleMeterRegistry prom = new FakePrometheusMeterRegistry();  // simpleName contains "Prometheus" → skipped
-            customizer.customize(prom);
-            prom.counter("failover.store.total").increment();
-            assertThat(prom.find("failover.store.total").tagKeys("instance").counter())
-                    .as("Prometheus registry must NOT get our instance tag").isNull();
+                SimpleMeterRegistry prom = new FakePrometheusMeterRegistry();
+                customizer.customize(prom);
+                prom.counter("failover.store.total").increment();
+                assertThat(prom.find("failover.store.total").tagKeys("instance").counter())
+                        .as("Prometheus registry must NOT get our instance tag").isNull();
+            });
         }
     }
 
-    /** A registry whose simple name contains "Prometheus" so the auto customizer treats it as Prometheus. */
-    static class FakePrometheusMeterRegistry extends SimpleMeterRegistry { }
+    // ── observable instance tag — mode=always ────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {
-            "failover.observable.instance.mode=always",
-            "failover.observable.instance.id=order-svc:node-1"})
     @DisplayName("when instance mode=always")
     class WhenInstanceModeAlways {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("global filter tags failover.* (all registries), leaves other meters untouched")
+        @DisplayName("global filter tags failover.* on all registries; customizer absent")
         void alwaysFilterTagsOnlyFailoverMeters() {
-            assertThat(applicationContext.containsBean("failoverInstanceMeterRegistryCustomizer")).isFalse();
-            MeterFilter filter = applicationContext.getBean("failoverInstanceMeterFilter", MeterFilter.class);
-            SimpleMeterRegistry registry = new SimpleMeterRegistry();
-            registry.config().meterFilter(filter);
-
-            registry.counter("failover.store.total").increment();
-            registry.counter("other.metric").increment();
-
-            assertThat(registry.get("failover.store.total").tag("instance", "order-svc:node-1").counter().count())
-                    .isEqualTo(1.0);
-            assertThat(registry.find("other.metric").tag("instance", "order-svc:node-1").counter()).isNull();
+            BASE_RUNNER
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.observable.instance.mode=always",
+                        "failover.observable.instance.id=order-svc:node-1")
+                .run(ctx -> {
+                    assertThat(ctx.containsBean("failoverInstanceMeterRegistryCustomizer")).isFalse();
+                    MeterFilter filter = ctx.getBean("failoverInstanceMeterFilter", MeterFilter.class);
+                    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+                    registry.config().meterFilter(filter);
+                    registry.counter("failover.store.total").increment();
+                    registry.counter("other.metric").increment();
+                    assertThat(registry.get("failover.store.total").tag("instance", "order-svc:node-1").counter().count())
+                            .isEqualTo(1.0);
+                    assertThat(registry.find("other.metric").tag("instance", "order-svc:node-1").counter()).isNull();
+                });
         }
     }
 
+    // ── observable instance tag — mode=never ─────────────────────────────────
+
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.observable.instance.mode=never"})
     @DisplayName("when instance mode=never")
     class WhenInstanceModeNever {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("neither the customizer nor the global filter is wired")
+        @DisplayName("neither customizer nor global filter wired")
         void neitherInstanceBean() {
-            assertThat(applicationContext.containsBean("failoverInstanceMeterRegistryCustomizer")).isFalse();
-            assertThat(applicationContext.containsBean("failoverInstanceMeterFilter")).isFalse();
+            BASE_RUNNER
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues("failover.observable.instance.mode=never")
+                .run(ctx -> {
+                    assertThat(ctx.containsBean("failoverInstanceMeterRegistryCustomizer")).isFalse();
+                    assertThat(ctx.containsBean("failoverInstanceMeterFilter")).isFalse();
+                });
         }
     }
 
+    // ── cardinality guard ─────────────────────────────────────────────────────
+
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.observable.cardinality.max-apis=2"})
     @DisplayName("when cardinality guard capped")
     class WhenCardinalityGuardCapped {
-
-        @Autowired
-        private ApplicationContext applicationContext;
 
         @Test
         @DisplayName("denies new failover series once the distinct-name cap is reached")
         void capsDistinctFailoverNames() {
-            MeterFilter filter = applicationContext.getBean("failoverCardinalityMeterFilter", MeterFilter.class);
-            SimpleMeterRegistry registry = new SimpleMeterRegistry();
-            registry.config().meterFilter(filter);
-
-            registry.counter("failover.store.total", "name", "a").increment();
-            registry.counter("failover.store.total", "name", "b").increment();
-            registry.counter("failover.store.total", "name", "c").increment(); // beyond cap of 2
-
-            assertThat(registry.find("failover.store.total").tag("name", "a").counter()).isNotNull();
-            assertThat(registry.find("failover.store.total").tag("name", "b").counter()).isNotNull();
-            assertThat(registry.find("failover.store.total").tag("name", "c").counter()).isNull();
+            BASE_RUNNER.withPropertyValues("failover.observable.cardinality.max-apis=2").run(ctx -> {
+                MeterFilter filter = ctx.getBean("failoverCardinalityMeterFilter", MeterFilter.class);
+                SimpleMeterRegistry registry = new SimpleMeterRegistry();
+                registry.config().meterFilter(filter);
+                registry.counter("failover.store.total", "name", "a").increment();
+                registry.counter("failover.store.total", "name", "b").increment();
+                registry.counter("failover.store.total", "name", "c").increment();
+                assertThat(registry.find("failover.store.total").tag("name", "a").counter()).isNotNull();
+                assertThat(registry.find("failover.store.total").tag("name", "b").counter()).isNotNull();
+                assertThat(registry.find("failover.store.total").tag("name", "c").counter()).isNull();
+            });
         }
     }
 
-    // ── exception-policy=never_throw ──────────────────────────────────────────
+    // ── exception-policy ─────────────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.exception-policy=never_throw"})
     @DisplayName("when exception policy is never_throw")
     class WhenExceptionPolicyNeverThrow {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("should load NeverRethrowMethodExceptionPolicy")
+        @DisplayName("NeverRethrowMethodExceptionPolicy loaded")
         void shouldLoadNeverRethrowPolicy() {
-            assertThat(applicationContext.getBean(MethodExceptionPolicy.class))
-                    .isInstanceOf(NeverRethrowMethodExceptionPolicy.class);
+            BASE_RUNNER.withPropertyValues("failover.exception-policy=never_throw").run(ctx ->
+                assertThat(ctx.getBean(MethodExceptionPolicy.class))
+                    .isInstanceOf(NeverRethrowMethodExceptionPolicy.class));
         }
     }
 
-    // ── exception-policy=custom ───────────────────────────────────────────────
-
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, CustomPolicyConfig.class})
-    @TestPropertySource(properties = {"failover.exception-policy=custom"})
     @DisplayName("when exception policy is custom")
     class WhenExceptionPolicyCustom {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
         @DisplayName("custom MethodExceptionPolicy bean overrides auto-configured default")
-        void customPolicyBeanOverridesAutoConfiguredDefault() {
-            assertThat(applicationContext.getBean(MethodExceptionPolicy.class))
-                    .isInstanceOf(CustomPolicyConfig.AlwaysNullPolicy.class);
+        void customPolicyBeanOverridesDefault() {
+            BASE_RUNNER
+                .withPropertyValues("failover.exception-policy=custom")
+                .withUserConfiguration(CustomPolicyConfig.class)
+                .run(ctx ->
+                    assertThat(ctx.getBean(MethodExceptionPolicy.class))
+                        .isInstanceOf(CustomPolicyConfig.AlwaysNullPolicy.class));
         }
     }
 
-    // ── failover.scheduler.enabled=false ─────────────────────────────────────
+    // ── scheduler ────────────────────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.scheduler.enabled=false"})
     @DisplayName("when scheduler disabled")
     class WhenSchedulerDisabled {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("should load all basic default beans")
-        void shouldLoadAllBasicDefaultBeans() {
-            assertBasicBean(applicationContext);
-        }
-
-        @Test
-        @DisplayName("ObservableScheduler should NOT be registered")
-        void observableSchedulerNotRegistered() {
-            assertBeansAreEmpty(applicationContext, ObservableScheduler.class);
-        }
-
-        @Test
-        @DisplayName("ExpiryCleanupScheduler should NOT be registered")
-        void expiryCleanupSchedulerNotRegistered() {
-            assertBeansAreEmpty(applicationContext, ExpiryCleanupScheduler.class);
+        @DisplayName("basic beans present; ObservableScheduler and ExpiryCleanupScheduler absent")
+        void schedulersAbsentWhenDisabled() {
+            BASE_RUNNER.withPropertyValues("failover.scheduler.enabled=false").run(ctx -> {
+                assertBasicBean(ctx);
+                assertBeansAreEmpty(ctx, ObservableScheduler.class);
+                assertBeansAreEmpty(ctx, ExpiryCleanupScheduler.class);
+            });
         }
     }
 
     // ── failover.type=custom ──────────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, CustomFailoverExecutionConfig.class})
-    @TestPropertySource(properties = {"failover.type=custom"})
     @DisplayName("when failover type is custom")
     class WhenFailoverTypeCustom {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("custom FailoverExecution bean is used")
+        @DisplayName("custom FailoverExecution used; BasicFailoverExecution absent")
         void customFailoverExecutionUsed() {
-            assertThat(applicationContext.getBean(FailoverExecution.class))
-                    .isInstanceOf(CustomFailoverExecutionConfig.NoOpFailoverExecution.class);
-        }
-
-        @Test
-        @DisplayName("BasicFailoverExecution should NOT be registered — @ConditionalOnProperty(type=basic) does not match")
-        void basicFailoverExecutionNotRegistered() {
-            assertThat(applicationContext.getBeansOfType(BasicFailoverExecution.class)).isEmpty();
+            BASE_RUNNER
+                .withPropertyValues("failover.type=custom")
+                .withUserConfiguration(CustomFailoverExecutionConfig.class)
+                .run(ctx -> {
+                    assertThat(ctx.getBean(FailoverExecution.class))
+                        .isInstanceOf(CustomFailoverExecutionConfig.NoOpFailoverExecution.class);
+                    assertThat(ctx.getBeansOfType(BasicFailoverExecution.class)).isEmpty();
+                });
         }
     }
 
-    // ── failover.scatter.parallel=true ───────────────────────────────────────
+    // ── failover.scatter.parallel ─────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {"failover.scatter.parallel=true"})
     @DisplayName("when scatter parallel enabled")
     class WhenScatterParallelEnabled {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("scatterGatherExecutor bean is registered with virtual threads")
+        @DisplayName("scatterGatherExecutor registered with virtual threads; propagator unchanged")
         void scatterGatherExecutorRegistered() {
-            assertThat(applicationContext.containsBean("scatterGatherExecutor")).isTrue();
-            assertThat(applicationContext.getBean("scatterGatherExecutor", TaskExecutor.class)).isNotNull();
-        }
-
-        @Test
-        @DisplayName("scatterGatherExecutor is unbounded by default (not wrapped)")
-        void scatterGatherExecutorUnboundedByDefault() {
-            assertThat(applicationContext.getBean("scatterGatherExecutor", TaskExecutor.class))
+            BASE_RUNNER.withPropertyValues("failover.scatter.parallel=true").run(ctx -> {
+                assertThat(ctx.containsBean("scatterGatherExecutor")).isTrue();
+                assertThat(ctx.getBean("scatterGatherExecutor", TaskExecutor.class))
                     .isNotInstanceOf(BoundedTaskExecutor.class);
-        }
-
-        @Test
-        @DisplayName("contextPropagator is still MdcContextPropagator — parallel mode does not change propagator")
-        void contextPropagatorUnchangedWhenParallelEnabled() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(MdcContextPropagator.class);
+                assertThat(ctx.getBean("contextPropagator", ContextPropagator.class))
+                    .isInstanceOf(MdcContextPropagator.class);
+            });
         }
     }
 
-    // ── failover.scatter.concurrency-limit > 0 ──────────────────────────────
-
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class})
-    @TestPropertySource(properties = {
-            "failover.scatter.parallel=true",
-            "failover.scatter.concurrency-limit=4",
-            "failover.scatter.rejection-policy=DISCARD"})
     @DisplayName("when failover.scatter.concurrency-limit > 0")
     class WhenScatterExecutorBounded {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("scatterGatherExecutor is wrapped in a BoundedTaskExecutor")
+        @DisplayName("scatterGatherExecutor wrapped in BoundedTaskExecutor")
         void scatterGatherExecutorBounded() {
-            assertThat(applicationContext.getBean("scatterGatherExecutor", TaskExecutor.class))
-                    .isInstanceOf(BoundedTaskExecutor.class);
+            BASE_RUNNER.withPropertyValues(
+                    "failover.scatter.parallel=true",
+                    "failover.scatter.concurrency-limit=4",
+                    "failover.scatter.rejection-policy=DISCARD")
+                .run(ctx ->
+                    assertThat(ctx.getBean("scatterGatherExecutor", TaskExecutor.class))
+                        .isInstanceOf(BoundedTaskExecutor.class));
         }
     }
 
-    // ── @ConditionalOnMissingBean(name="scatterGatherExecutor") ─────────────
-
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, FailoverAutoConfigurationTest.CustomScatterExecutorConfig.class})
-    @TestPropertySource(properties = {"failover.scatter.parallel=true"})
     @DisplayName("when custom scatterGatherExecutor bean declared")
     class WhenCustomScatterGatherExecutor {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("auto-configured scatterGatherExecutor is NOT registered — custom bean wins")
+        @DisplayName("auto-configured scatterGatherExecutor replaced by custom bean")
         void customScatterGatherExecutorWins() {
-            TaskExecutor executor = applicationContext.getBean("scatterGatherExecutor", TaskExecutor.class);
-            assertThat(executor).isInstanceOf(CustomScatterExecutorConfig.StubExecutor.class);
+            BASE_RUNNER
+                .withPropertyValues("failover.scatter.parallel=true")
+                .withUserConfiguration(CustomScatterExecutorConfig.class)
+                .run(ctx ->
+                    assertThat(ctx.getBean("scatterGatherExecutor", TaskExecutor.class))
+                        .isInstanceOf(CustomScatterExecutorConfig.StubExecutor.class));
         }
     }
 
-    @TestConfiguration
-    static class CustomScatterExecutorConfig {
-
-        static class StubExecutor implements TaskExecutor {
-            @Override public void execute(Runnable task) { task.run(); }
-        }
-
-        @Bean(name = "scatterGatherExecutor")
-        public TaskExecutor scatterGatherExecutor() { return new StubExecutor(); }
-    }
-
-    // ── @ConditionalOnMissingBean(ContextPropagator) ─────────────────────────
+    // ── ContextPropagator wiring ──────────────────────────────────────────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, FailoverAutoConfigurationTest.CustomContextPropagatorConfig.class})
     @DisplayName("when custom ContextPropagator bean declared")
     class WhenCustomContextPropagator {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("auto-configured contextPropagator is NOT registered — custom bean wins via @ConditionalOnMissingBean")
+        @DisplayName("custom bean wins via @ConditionalOnMissingBean; exactly one propagator registered")
         void customContextPropagatorWins() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(CustomContextPropagatorConfig.StubPropagator.class);
-        }
-
-        @Test
-        @DisplayName("exactly one ContextPropagator bean — no auto-composed bean alongside custom")
-        void exactlyOneContextPropagatorBean() {
-            assertThat(applicationContext.getBeansOfType(ContextPropagator.class)).hasSize(1);
+            BASE_RUNNER.withUserConfiguration(CustomContextPropagatorConfig.class).run(ctx -> {
+                assertThat(ctx.getBean("contextPropagator", ContextPropagator.class))
+                    .isInstanceOf(CustomContextPropagatorConfig.StubPropagator.class);
+                assertThat(ctx.getBeansOfType(ContextPropagator.class)).hasSize(1);
+            });
         }
     }
-
-    @TestConfiguration
-    static class CustomContextPropagatorConfig {
-
-        static class StubPropagator implements ContextPropagator {
-            @Override public @NonNull Runnable wrap(@NonNull Runnable task) { return task; }
-        }
-
-        @Bean
-        public ContextPropagator contextPropagator() {
-            return new StubPropagator();
-        }
-    }
-
-    // ── Custom (differently-named) ContextPropagator joins the composed chain ─
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, FailoverAutoConfigurationTest.CustomNamedPropagatorConfig.class})
     @DisplayName("when a custom, differently-named ContextPropagator bean is present")
     class WhenCustomNamedContextPropagatorPresent {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("auto-composed contextPropagator is a Composite that includes the custom propagator in the chain")
+        @DisplayName("auto-composed contextPropagator is Composite containing the custom propagator")
         void customPropagatorJoinsChain() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(CompositeContextPropagator.class);
+            BASE_RUNNER.withUserConfiguration(CustomNamedPropagatorConfig.class).run(ctx -> {
+                ContextPropagator propagator = ctx.getBean("contextPropagator", ContextPropagator.class);
+                assertThat(propagator).isInstanceOf(CompositeContextPropagator.class);
 
-            CustomNamedPropagatorConfig.MarkerPropagator marker =
-                    applicationContext.getBean(CustomNamedPropagatorConfig.MarkerPropagator.class);
-            marker.wrapped.set(false);
-            // Composing the chain must invoke every member propagator's wrap() — proving the custom
-            // bean was gathered into the composite alongside the always-on MdcContextPropagator.
-            propagator.wrap(() -> { });
-            assertThat(marker.wrapped.get()).isTrue();
+                CustomNamedPropagatorConfig.MarkerPropagator marker =
+                        ctx.getBean(CustomNamedPropagatorConfig.MarkerPropagator.class);
+                marker.wrapped.set(false);
+                propagator.wrap(() -> { });
+                assertThat(marker.wrapped.get()).isTrue();
+            });
         }
     }
-
-    @TestConfiguration
-    static class CustomNamedPropagatorConfig {
-
-        static class MarkerPropagator implements ContextPropagator {
-            final AtomicBoolean wrapped = new AtomicBoolean(false);
-            @Override public @NonNull Runnable wrap(@NonNull Runnable task) {
-                wrapped.set(true);
-                return task;
-            }
-        }
-
-        @Bean("myCustomPropagator")
-        public ContextPropagator myCustomPropagator() {
-            return new MarkerPropagator();
-        }
-    }
-
-    // ── TenantContextPropagator present → CompositeContextPropagator ─────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, FailoverAutoConfigurationTest.MockTenantPropagatorConfig.class})
     @DisplayName("when TenantContextPropagator bean present")
     class WhenTenantContextPropagatorPresent {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("contextPropagator is CompositeContextPropagator — wraps TenantContextPropagator + MdcContextPropagator")
-        void contextPropagatorIsCompositeWithTenantAndMdc() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(CompositeContextPropagator.class);
-        }
-
-        @Test
-        @DisplayName("TenantContextPropagator bean is present in context")
-        void tenantContextPropagatorBeanPresent() {
-            assertThat(applicationContext.getBean(TenantContextPropagator.class)).isNotNull();
+        @DisplayName("contextPropagator is CompositeContextPropagator; TenantContextPropagator registered")
+        void tenantPropagatorComposed() {
+            BASE_RUNNER.withUserConfiguration(MockTenantPropagatorConfig.class).run(ctx -> {
+                assertThat(ctx.getBean("contextPropagator", ContextPropagator.class))
+                    .isInstanceOf(CompositeContextPropagator.class);
+                assertThat(ctx.getBean(TenantContextPropagator.class)).isNotNull();
+            });
         }
     }
-
-    @TestConfiguration
-    static class MockTenantPropagatorConfig {
-        @Bean
-        public TenantContextPropagator tenantContextPropagator() {
-            return new TenantContextPropagator();
-        }
-    }
-
-    // ── Tracer bean present → MicrometerContextPropagator + CompositeContextPropagator ──
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class, FailoverAutoConfigurationTest.MockTracerConfig.class})
     @DisplayName("when Micrometer Tracer bean present")
     class WhenMicrometerTracerPresent {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("MicrometerContextPropagator is registered by MicrometerTracingAutoConfiguration")
-        void micrometerContextPropagatorRegistered() {
-            assertThat(applicationContext.getBean(MicrometerContextPropagator.class)).isNotNull();
-        }
-
-        @Test
-        @DisplayName("contextPropagator is CompositeContextPropagator — wraps MicrometerContextPropagator + MdcContextPropagator")
-        void contextPropagatorIsCompositeWithMicrometerAndMdc() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(CompositeContextPropagator.class);
+        @DisplayName("MicrometerContextPropagator registered; contextPropagator is Composite")
+        void micrometerPropagatorComposed() {
+            BASE_RUNNER.withUserConfiguration(MockTracerConfig.class).run(ctx -> {
+                assertThat(ctx.getBean(MicrometerContextPropagator.class)).isNotNull();
+                assertThat(ctx.getBean("contextPropagator", ContextPropagator.class))
+                    .isInstanceOf(CompositeContextPropagator.class);
+            });
         }
     }
-
-    @TestConfiguration
-    static class MockTracerConfig {
-        @Bean
-        public Tracer tracer() {
-            return Mockito.mock(Tracer.class);
-        }
-    }
-
-    // ── Tenant + Micrometer → 3-element CompositeContextPropagator ───────────
 
     @Nested
-    @SpringBootTest(classes = {MyTestApplication.class,
-            FailoverAutoConfigurationTest.MockTenantPropagatorConfig.class,
-            FailoverAutoConfigurationTest.MockTracerConfig.class})
     @DisplayName("when both TenantContextPropagator and Micrometer Tracer present")
     class WhenTenantAndMicrometerBothPresent {
 
-        @Autowired
-        private ApplicationContext applicationContext;
-
         @Test
-        @DisplayName("contextPropagator is CompositeContextPropagator — wraps Tenant + Micrometer + MDC")
-        void contextPropagatorIsThreeElementComposite() {
-            ContextPropagator propagator = applicationContext.getBean("contextPropagator", ContextPropagator.class);
-            assertThat(propagator).isInstanceOf(CompositeContextPropagator.class);
-        }
-
-        @Test
-        @DisplayName("TenantContextPropagator, MicrometerContextPropagator, and contextPropagator beans all registered")
-        void allThreePropagatorBeansRegistered() {
-            assertThat(applicationContext.getBean(TenantContextPropagator.class)).isNotNull();
-            assertThat(applicationContext.getBean(MicrometerContextPropagator.class)).isNotNull();
-            assertThat(applicationContext.getBean("contextPropagator", ContextPropagator.class)).isNotNull();
+        @DisplayName("contextPropagator is Composite; all three propagator beans registered")
+        void threeElementComposite() {
+            BASE_RUNNER
+                .withUserConfiguration(MockTenantPropagatorConfig.class, MockTracerConfig.class)
+                .run(ctx -> {
+                    assertThat(ctx.getBean("contextPropagator", ContextPropagator.class))
+                        .isInstanceOf(CompositeContextPropagator.class);
+                    assertThat(ctx.getBean(TenantContextPropagator.class)).isNotNull();
+                    assertThat(ctx.getBean(MicrometerContextPropagator.class)).isNotNull();
+                });
         }
     }
 }
