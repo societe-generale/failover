@@ -18,11 +18,13 @@ package com.societegenerale.failover.dashboard.service;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Dashboard-level wrapper around {@link FailoverMetricsSnapshotService} that adds
@@ -50,6 +52,10 @@ public class DashboardMetricsService {
      */
     public MetricsSummary metricsSummary() {
         return snapshotService.metricsSummary();
+    }
+
+    public Map<String, List<ExceptionStat>> exceptionsByApi() {
+        return snapshotService.exceptionsByApi();
     }
 
     /**
