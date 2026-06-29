@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.web;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Read-only metrics endpoints, mapped under the same {@code base-path/api} namespace as the config API.
@@ -86,5 +88,14 @@ public class DashboardMetricsController {
     @GetMapping("/instances")
     public List<InstanceMetrics> instances() {
         return metricsSource.instances();
+    }
+
+    /**
+     * Per-failover-endpoint exception breakdown: endpoint name → list of (type, count), sorted by count descending.
+     * Empty map when the backing source cannot provide per-endpoint exception data (e.g. shared-store).
+     */
+    @GetMapping("/metrics/exceptions")
+    public Map<String, List<ExceptionStat>> exceptionsByApi() {
+        return metricsSource.exceptionsByApi();
     }
 }
