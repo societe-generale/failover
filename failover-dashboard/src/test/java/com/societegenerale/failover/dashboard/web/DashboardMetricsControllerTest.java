@@ -34,6 +34,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -97,6 +98,20 @@ class DashboardMetricsControllerTest {
                 .andExpect(jsonPath("$.instancesReporting").value(1))
                 .andExpect(jsonPath("$.instancesExpected").value(-1))
                 .andExpect(jsonPath("$.partial").value(false));
+    }
+
+    @Test
+    @DisplayName("GET /api/metrics/exceptions returns per-API exception breakdown")
+    void exceptionsByApiJson() throws Exception {
+        when(metricsSource.exceptionsByApi()).thenReturn(Map.of(
+                "country", List.of(new ExceptionStat("java.net.ConnectException", 10)),
+                "exchange", List.of(new ExceptionStat("java.net.ConnectException", 7))));
+
+        mockMvc.perform(get("/failover-dashboard/api/metrics/exceptions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.country[0].type").value("java.net.ConnectException"))
+                .andExpect(jsonPath("$.country[0].count").value(10))
+                .andExpect(jsonPath("$.exchange[0].count").value(7));
     }
 
     @Test

@@ -9,6 +9,7 @@
 //   api/config/settings    → { group: { key: value } }
 //   api/failover-health    → FailoverHealth {status, details}
 //   api/metrics/series     → [SeriesPoint]   (only when history.enabled=true; 404 otherwise)
+//   api/metrics/exceptions → { endpointName: [{type, count}] }  (local source only; empty map otherwise)
 
 const charts = {};
 const pct = v => `${(v * 100).toFixed(1)}%`;
@@ -86,18 +87,27 @@ function kpiCards(o, perApi) {
     }).join('');
     const healthStrip = `<div class="health-strip">${overall}<div class="api-health-grid">${apiCards}</div></div>`;
 
-    // Row 2 — the metric strip: rate + actual count.
+    // Row 2 — the metric strip: rate + actual count. 12 cards → 6 per row via .kpis.row2 CSS.
+    const fullRec = Math.max(0, o.recovered - o.partial);
+    const hasFO = o.failoverInvoked > 0;
     const row2 = [
-        { c: 'calls', lbl: 'Overall calls', ic: '∑', val: n(o.totalCalls), sub: 'every intercepted @Failover call' },
-        { c: 'success', lbl: 'Success rate', ic: '✓', val: pct(r.successRate), of: n(o.upstreamSuccess), sub: 'upstream healthy → stored' },
-        { c: 'failover', lbl: 'Failover rate', ic: '⚡', val: pct(r.failoverRate), of: n(o.failoverInvoked), sub: 'upstream failed → failover ran' },
-        { c: 'recovery', lbl: 'Recovery rate', ic: '↺', val: pct(r.recoveryRate), of: n(o.recovered), sub: `failover served a value · ${n(o.partial)} partial` },
-        { c: 'nonrec', lbl: 'Non-recovery rate', ic: '✕', val: pct(r.nonRecoveryRate), of: n(hardFail), sub: 'failover found nothing usable' },
-        { c: 'impact', lbl: 'Users unblocked', ic: '🛡', val: hasCalls ? pct(usable / o.totalCalls) : '—', of: n(usable),
+        // ── Row 1: rates + user impact ────────────────────────────────────────
+        { c: 'success',     lbl: 'Success rate',        ic: '✓',  val: pct(r.successRate),       of: n(o.upstreamSuccess), sub: 'upstream healthy → stored' },
+        { c: 'failover',    lbl: 'Failover rate',       ic: '⚡', val: pct(r.failoverRate),       of: n(o.failoverInvoked), sub: 'upstream failed → failover ran' },
+        { c: 'recovery',    lbl: 'Recovery rate',       ic: '↺',  val: pct(r.recoveryRate),       of: n(o.recovered),       sub: 'failover served a value' },
+        { c: 'nonrec',      lbl: 'Non-recovery rate',   ic: '✕',  val: pct(r.nonRecoveryRate),   of: n(hardFail),           sub: 'of all calls — failover found nothing' },
+        { c: 'blocked',     lbl: 'Users blocked',       ic: '🚫', val: hasCalls ? pct(hardFail / o.totalCalls) : '—', of: n(hardFail),
+            sub: usable > 0 ? `${n(usable)} unblocked — value served` : 'no callers received a value' },
+        { c: 'impact',      lbl: 'Users unblocked',     ic: '🛡', val: hasCalls ? pct(usable / o.totalCalls) : '—', of: n(usable),
             sub: hardFail > 0 ? `${n(hardFail)} blocked — no value served` : 'every caller got a value' },
-        { c: 'async', lbl: 'Persistence failures', ic: '!', val: n(o.asyncFailed),
+        // ── Row 2: counts + recovery breakdown + system health ─────────────────
+        { c: 'calls',       lbl: 'Overall calls',      ic: '∑',  val: n(o.totalCalls),                                   sub: 'every intercepted @Failover call' },
+        { c: 'full-rec',    lbl: 'Full recovery',       ic: '✦',  val: hasFO ? pct(fullRec / o.failoverInvoked) : '—', of: n(fullRec),    sub: 'complete value served — no gaps' },
+        { c: 'partial-rec', lbl: 'Partial recovery',    ic: '◑',  val: hasFO ? pct(o.partial / o.failoverInvoked) : '—', of: n(o.partial), sub: 'incomplete value — some data missing' },
+        { c: 'zero-rec',    lbl: 'Zero recovery',       ic: '⊘',  val: hasFO ? pct(hardFail / o.failoverInvoked) : '—', of: n(hardFail),  sub: 'failover fired but found nothing' },
+        { c: 'async',       lbl: 'Persistence failures', ic: '!', val: n(o.asyncFailed),
             sub: o.asyncFailed > 0 ? '⚠ async writes lost — data NOT saved' : 'all store writes persisted' },
-        { c: 'latency', lbl: 'Recover latency', ic: '◷', val: ms(o.latency.recoverMeanMs), sub: 'mean recover-path time' },
+        { c: 'latency',     lbl: 'Recover latency',     ic: '◷',  val: ms(o.latency.recoverMeanMs),                     sub: 'mean recover-path time' },
     ];
 
     // Rebuilding #kpis replaces the <canvas id="g_health"> node, orphaning the old chart instance —
@@ -177,6 +187,58 @@ function overviewCharts(summary) {
             rate: { type: 'linear', position: 'left', min: 0, max: 100, title: { display: true, text: 'rate %' } },
             cnt: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'calls' } },
         },
+    });
+}
+
+// ── Exceptions per failover endpoint chart ──────────────────────────────────────
+function renderApiExceptionsChart(exByApi) {
+    const wrap = document.getElementById('c_apiex_wrap');
+    if (!exByApi || Object.keys(exByApi).length === 0) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    const p = P();
+    const endpoints = Object.keys(exByApi);
+    const exShort = t => t.split('.').pop();
+
+    // Collect all unique exception types (union), sorted by total count desc, cap at 10.
+    const totals = {};
+    for (const stats of Object.values(exByApi)) {
+        for (const { type, count } of stats) {
+            totals[type] = (totals[type] || 0) + count;
+        }
+    }
+    const topTypes = Object.entries(totals)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([type]) => type);
+
+    const palette = [p.bad, p.warn, p.info, p.accent, p.violet, p.good,
+                     '#e07b39', '#6c8ebf', '#82b366', '#d6b656'];
+    const datasets = topTypes.map((type, i) => {
+        const col = palette[i % palette.length];
+        const countByEndpoint = Object.fromEntries(
+            (exByApi[endpoints.find(ep => exByApi[ep].some(s => s.type === type))] || [])
+                .filter(s => s.type === type).map(s => [s.type, s.count])
+        );
+        const data = endpoints.map(ep => {
+            const stat = (exByApi[ep] || []).find(s => s.type === type);
+            return stat ? stat.count : 0;
+        });
+        return { label: exShort(type), data, backgroundColor: col + '33', borderColor: col, borderWidth: 1.5, borderRadius: 6,
+                 fullType: type };
+    });
+
+    up('c_apiex', 'bar', {
+        labels: endpoints,
+        datasets,
+    }, {
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14, font: { size: 11 } } },
+            tooltip: { callbacks: { title: items => items[0].label,
+                label: ctx => ` ${datasets[ctx.datasetIndex].fullType}: ${ctx.parsed.y}` } },
+        },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'exception count' } } },
     });
 }
 
@@ -447,7 +509,8 @@ async function loadMetrics(quiet = false) {
         renderHealthRollup();
         loadInstances();   // refreshes the Instances tab + toggles its visibility
         markUpdated();
-        fetchJson('api/metrics/source').then(renderSourceBadge).catch(() => {}); // non-fatal
+        fetchJson('api/metrics/source').then(renderSourceBadge).catch(() => {});           // non-fatal
+        fetchJson('api/metrics/exceptions').then(renderApiExceptionsChart).catch(() => {}); // non-fatal
     } catch (e) {
         if (!quiet) showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
     }

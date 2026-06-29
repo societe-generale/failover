@@ -138,6 +138,30 @@ public class FailoverMetricsSnapshotService {
         return new double[]{round2(mean), round2(maxMs), round2(p95), round2(p99)};
     }
 
+    /** Per-failover-point exception counts: name → list of (type, count), sorted by count descending. */
+    public Map<String, List<ExceptionStat>> exceptionsByApi() {
+        Map<String, Map<String, Long>> byNameAndType = new LinkedHashMap<>();
+        for (Counter c : registry.find(EXCEPTION_TOTAL).counters()) {
+            String name = c.getId().getTag("name");
+            if (name == null) continue;
+            String type = firstPresent(
+                    c.getId().getTag("final_cause_type"),
+                    c.getId().getTag("cause_type"),
+                    c.getId().getTag("exception_type"));
+            if (type == null) continue;
+            byNameAndType.computeIfAbsent(name, k -> new LinkedHashMap<>())
+                    .merge(type, (long) c.count(), Long::sum);
+        }
+        Map<String, List<ExceptionStat>> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Long>> entry : byNameAndType.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().entrySet().stream()
+                    .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                    .map(e -> new ExceptionStat(e.getKey(), e.getValue()))
+                    .toList());
+        }
+        return result;
+    }
+
     /** Top {@code limit} root exception types triggering failover, summed across all failover points. */
     private List<ExceptionStat> topExceptions(int limit) {
         Map<String, Long> byType = new LinkedHashMap<>();
