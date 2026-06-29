@@ -20,6 +20,8 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.dashboard.metrics.ConfigEntry;
 import com.societegenerale.failover.dashboard.metrics.FailoverHealth;
+import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
+import com.societegenerale.failover.observable.metrics.ApiHealth;
 import org.springframework.core.env.Environment;
 
 import java.util.Comparator;
@@ -44,10 +46,16 @@ public class DashboardConfigService {
 
     private final FailoverScanner scanner;
     private final Environment environment;
+    private final MetricsSource metricsSource;
 
     public DashboardConfigService(FailoverScanner scanner, Environment environment) {
+        this(scanner, environment, null);
+    }
+
+    public DashboardConfigService(FailoverScanner scanner, Environment environment, MetricsSource metricsSource) {
         this.scanner = scanner;
         this.environment = environment;
+        this.metricsSource = metricsSource;
     }
 
     /**
@@ -66,15 +74,49 @@ public class DashboardConfigService {
     }
 
     /**
-     * Actuator-style overall failover health: {@code UP} when at least one {@code @Failover} is
-     * registered, {@code DOWN} when none are discovered. Details echo the global config (types/flags
-     * only) read from the {@link Environment}, mirroring the {@code /actuator/health/failover} contributor.
+     * Failover-specific health: overall status derived from per-endpoint recovery rates, not from instance liveness
+     * (instance UP/DOWN is already covered by standard app monitoring).
+     *
+     * <p><strong>Primary path</strong> (when {@link MetricsSource} is wired and calls have been made):
+     * status is {@code DOWN} if any endpoint is {@code UNHEALTHY} (recovery rate below the configured
+     * unhealthy threshold), {@code UP} otherwise. Details show each endpoint's
+     * {@code HEALTHY / DEGRADED / UNHEALTHY} classification and healthy-rate percentage. This works
+     * identically in {@code local} and cluster modes — the {@link MetricsSource} already aggregates
+     * cluster-wide data when applicable.
+     *
+     * <p><strong>Cluster cold-start</strong> (cluster mode, no calls recorded yet): returns {@code UP}
+     * with a "no calls yet" note rather than a false {@code DOWN}.
+     *
+     * <p><strong>Fallback</strong> (no {@link MetricsSource} or no calls in local mode): {@code UP} when
+     * at least one {@code @Failover} is registered, {@code DOWN} when none are discovered.
      *
      * @return the failover health snapshot
      */
     public FailoverHealth failoverHealth() {
-        int registered = scanner.findAllFailover().size();
+        String clusterMode = environment.getProperty("failover.dashboard.cluster.mode", "local");
         Map<String, String> details = new LinkedHashMap<>();
+
+        if (metricsSource != null) {
+            List<ApiHealth> apiHealthList = metricsSource.health();
+            if (!apiHealthList.isEmpty()) {
+                boolean anyUnhealthy = apiHealthList.stream()
+                        .anyMatch(h -> ApiHealth.Status.UNHEALTHY.name().equals(h.status()));
+                details.put("endpoints", String.valueOf(apiHealthList.size()));
+                for (ApiHealth api : apiHealthList) {
+                    details.put(api.name(), api.status() + " (" + String.format("%.0f%%", api.healthyRate() * 100) + ")");
+                }
+                return new FailoverHealth(anyUnhealthy ? "DOWN" : "UP", details);
+            }
+            if (!"local".equalsIgnoreCase(clusterMode)) {
+                // Cluster mode, no calls recorded yet — don't show DOWN for a cold start
+                details.put("cluster.mode", clusterMode);
+                details.put("note", "No calls recorded yet");
+                return new FailoverHealth("UP", details);
+            }
+        }
+
+        // Local mode or no MetricsSource: scanner-based fallback
+        int registered = scanner.findAllFailover().size();
         details.put("registered-failovers", Integer.toString(registered));
         details.put("enabled", environment.getProperty("failover.enabled", "true"));
         details.put("type", environment.getProperty("failover.type", "BASIC"));

@@ -14,6 +14,7 @@
     <div><b>FAILOVER</b> <span>dashboard</span></div>
   </a>
   <span class="src-badge tip" id="src-badge" data-tip="Where the metrics come from" hidden></span>
+  <span class="live-track-badge tip" id="live-track-badge"></span>
   <div class="spacer"></div>
   <div class="statuschip" id="statuschip"><span class="dot"></span><span id="statustext">—</span></div>
   <nav class="tabs" role="tablist">
@@ -91,6 +92,14 @@
         <div class="chart"><canvas id="c_latency"></canvas></div>
       </div>
     </div>
+
+    <div id="c_apiex_wrap" style="margin-top:18px;display:none">
+      <div class="card">
+        <h3>Exceptions per failover endpoint</h3>
+        <div class="cap">Exception type counts per failover point — grouped by endpoint</div>
+        <div class="chart tall"><canvas id="c_apiex"></canvas></div>
+      </div>
+    </div>
   </section>
 
   <!-- ══ PER-API ═════════════════════════════════════════════════════════ -->
@@ -132,7 +141,7 @@
           <th>Instance</th>
           <th class="r">Calls</th><th class="r">Success</th><th class="r">Failover</th>
           <th class="r">Recovery</th><th class="r">p95 recover</th>
-          <th>Last seen</th><th>Status</th>
+          <th>Last seen</th><th>Heartbeat</th><th>Status</th>
         </tr></thead>
         <tbody id="instbody"></tbody>
       </table>

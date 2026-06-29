@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.Latency;
+import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
@@ -31,7 +32,6 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,7 +41,6 @@ class SnapshotStoreJdbcTest {
     private EmbeddedDatabase db;
     private JdbcTemplate jdbc;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final AtomicLong now = new AtomicLong(100_000);
 
     @BeforeEach
     void setUp() {
@@ -55,9 +54,8 @@ class SnapshotStoreJdbcTest {
         db.shutdown();
     }
 
-    private SnapshotStoreJdbc store(long livenessMs, int maxInstances) {
-        return new SnapshotStoreJdbc(jdbc, mapper, livenessMs, maxInstances,
-                "", true, now::get);   // empty table-prefix ⇒ base table FAILOVER_DASHBOARD_SNAPSHOT
+    private SnapshotStoreJdbc store(int maxInstances) {
+        return new SnapshotStoreJdbc(jdbc, mapper, maxInstances, "", true);
     }
 
     private static MetricsSummary summaryFor(String name, long success, long recovered) {
@@ -67,14 +65,14 @@ class SnapshotStoreJdbcTest {
 
     @Test
     void autoDdlCreatesTheTable() {
-        store(60_000, 10);
+        store(10);
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
         assertThat(count).isZero();
     }
 
     @Test
     void tablePrefixNamespacesTheTable() {
-        SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 60_000, 10, "DEMO_", true, now::get);
+        SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 10, "DEMO_", true);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
 
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM DEMO_FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
@@ -83,57 +81,62 @@ class SnapshotStoreJdbcTest {
 
     @Test
     void rejectsAnUnsafeTablePrefix() {
-        assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 60_000, 10, "x; DROP TABLE y;--", true, now::get))
+        assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 10, "x; DROP TABLE y;--", true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("table-prefix");
     }
 
     @Test
     void upsertKeepsLatestPerInstanceAndRoundTripsValues() {
-        SnapshotStoreJdbc store = store(60_000, 10);
+        SnapshotStoreJdbc store = store(10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 9, 4)));   // replaces
 
-        assertThat(store.liveCount()).isEqualTo(1);
-        assertThat(store.live()).singleElement().satisfies(s -> {
-            assertThat(s.perApi().getFirst().upstreamSuccess()).isEqualTo(9);
-            assertThat(s.perApi().getFirst().recovered()).isEqualTo(4);
+        assertThat(store.allInstances()).singleElement().satisfies(im -> {
+            assertThat(im.instanceId()).isEqualTo("i1");
+            assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(9);
+            assertThat(im.summary().perApi().getFirst().recovered()).isEqualTo(4);
+            assertThat(im.liveStatus()).isEqualTo(LiveStatus.UNKNOWN);
         });
     }
 
     @Test
-    void liveExcludesSnapshotsOlderThanLivenessAndReportsNewest() {
-        SnapshotStoreJdbc store = store(1_000, 10);
-        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));   // t=100000
-        now.set(100_500);
-        store.upsert(new ClusterSnapshot("i2", summaryFor("country", 2, 0)));   // t=100500
-        now.set(101_200);                                                       // i1 1200ms old (>1000)
+    void allInstancesReturnsAllWithUnknownStatus() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
+        store.upsert(new ClusterSnapshot("i2", summaryFor("country", 2, 0)));
 
-        assertThat(store.liveCount()).isEqualTo(1);
-        assertThat(store.newestEpochMs()).isEqualTo(100_500);
-        assertThat(store.live()).singleElement()
-                .satisfies(s -> assertThat(s.perApi().getFirst().upstreamSuccess()).isEqualTo(2));
+        assertThat(store.allInstances()).hasSize(2)
+                .allMatch(im -> im.liveStatus() == LiveStatus.UNKNOWN);
     }
 
     @Test
-    void newestIsZeroWhenNothingLive() {
-        SnapshotStoreJdbc store = store(1_000, 10);
-        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
-        now.addAndGet(5_000);
+    void allInstancesAlwaysIncludesOldSnapshots() {
+        // Old data is retained — stale peer still contributes last-known values.
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 42, 0)));
 
-        assertThat(store.liveCount()).isZero();
-        assertThat(store.newestEpochMs()).isZero();
-        assertThat(store.live()).isEmpty();
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(42));
     }
 
     @Test
     void survivesANewStoreInstanceOverTheSameTable() {
-        store(60_000, 10).upsert(new ClusterSnapshot("i1", summaryFor("country", 7, 0)));
+        store(10).upsert(new ClusterSnapshot("i1", summaryFor("country", 7, 0)));
         // a "restart": a fresh store object over the same datasource/table still sees the row
-        SnapshotStoreJdbc reopened = store(60_000, 10);
+        SnapshotStoreJdbc reopened = store(10);
 
-        assertThat(reopened.liveCount()).isEqualTo(1);
-        assertThat(reopened.live()).singleElement()
-                .satisfies(s -> assertThat(s.perApi().getFirst().upstreamSuccess()).isEqualTo(7));
+        assertThat(reopened.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(7));
+    }
+
+    @Test
+    void recordsBeyondMaxInstancesStillStoredAsWarnOnlyGuard() {
+        SnapshotStoreJdbc store = store(2);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
+        store.upsert(new ClusterSnapshot("i2", summaryFor("country", 1, 0)));
+        store.upsert(new ClusterSnapshot("i3", summaryFor("country", 1, 0)));   // beyond ceiling — warn only
+
+        assertThat(store.allInstances()).hasSize(3);
     }
 }

@@ -23,6 +23,9 @@ import com.societegenerale.failover.dashboard.web.DashboardController;
 import com.societegenerale.failover.dashboard.web.DashboardMetricsController;
 import com.societegenerale.failover.dashboard.web.DashboardExposureInterceptor;
 import com.societegenerale.failover.dashboard.web.ClusterSnapshotController;
+import com.societegenerale.failover.dashboard.web.ClusterHeartbeatController;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStoreInmemory;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient;
@@ -124,8 +127,9 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
 
     @Bean
     @ConditionalOnMissingBean
-    public DashboardConfigService dashboardConfigService(FailoverScanner scanner, Environment environment) {
-        return new DashboardConfigService(scanner, environment);
+    public DashboardConfigService dashboardConfigService(FailoverScanner scanner, Environment environment,
+                                                         ObjectProvider<MetricsSource> metricsSource) {
+        return new DashboardConfigService(scanner, environment, metricsSource.getIfAvailable());
     }
 
     @Bean
@@ -187,6 +191,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                                        ObjectProvider<DashboardHistoryService> history,
                                        ObjectProvider<SnapshotStore> snapshotStore,
                                        ObjectProvider<ClusterSeriesStore> seriesStore,
+                                       ObjectProvider<HeartbeatStore> heartbeatStoreProvider,
                                        InstanceIdResolver instanceIdResolver) {
         // history is present only when failover.dashboard.history.enabled=true; null otherwise.
         LocalRegistryMetricsSource local = new LocalRegistryMetricsSource(metricsService, history.getIfAvailable(),
@@ -205,10 +210,14 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         } else if ("shared-store".equalsIgnoreCase(mode)) {
             SnapshotStore store = snapshotStore.getIfAvailable();
             if (store != null) {
+                DashboardProperties.SharedStore sharedStore = cluster.sharedStore();
                 log.info("Failover dashboard metrics aggregated cluster-wide via in-memory shared-store "
-                        + "(max-instances={}).", cluster.sharedStore().maxInstances());
+                        + "(max-instances={}).", sharedStore.maxInstances());
+                HeartbeatStore heartbeatStore = heartbeatStoreProvider.getIfAvailable();
+                long livenessMillis = sharedStore.livenessSeconds() * 1000L;
                 return new SharedStoreMetricsSource(store, properties.health(), local,
-                        cluster.sharedStore().maxInstances(), seriesStore.getIfAvailable());
+                        sharedStore.maxInstances(), seriesStore.getIfAvailable(),
+                        heartbeatStore, livenessMillis);
             }
             log.warn("failover.dashboard.cluster.mode=shared-store but no SnapshotStore bean is present; "
                     + "using 'local' (this instance only).");
@@ -230,7 +239,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnMissingBean
     public SnapshotStore snapshotStore() {
         DashboardProperties.SharedStore sharedStore = properties.cluster().sharedStore();
-        return new SnapshotStoreInmemory(sharedStore.livenessSeconds() * 1000L, sharedStore.maxInstances());
+        return new SnapshotStoreInmemory(sharedStore.maxInstances());
     }
 
     /** Ingest controller for peer snapshot pushes; present only in shared-store mode. */
@@ -240,6 +249,22 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnMissingBean
     public ClusterSnapshotController clusterSnapshotController(SnapshotStore snapshotStore) {
         return new ClusterSnapshotController(snapshotStore);
+    }
+
+    /** In-memory heartbeat store — always present in shared-store mode. Instances that never send a heartbeat stay UNKNOWN. */
+    @Bean
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnMissingBean(HeartbeatStore.class)
+    public HeartbeatStore heartbeatStore() {
+        return new HeartbeatStoreInmemory();
+    }
+
+    /** Heartbeat ingest endpoint — always active in shared-store mode; peers opt in by enabling heartbeat on their side. */
+    @Bean
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnMissingBean
+    public ClusterHeartbeatController clusterHeartbeatController(HeartbeatStore heartbeatStore) {
+        return new ClusterHeartbeatController(heartbeatStore);
     }
 
     /** Bounded, retention-pruned ring holding the cluster-wide trend (design §5.4); shared-store mode only. */

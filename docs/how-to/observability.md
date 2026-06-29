@@ -146,6 +146,148 @@ sum by (name, method) (rate(failover_recovery_outcome_total[5m]))
 
 ---
 
+## Kibana Dashboard
+
+`micrometer-registry-elastic` pushes `failover.*` counters and timers to Elasticsearch on a configurable interval. Build native Kibana visualizations directly from that data — no additional instrumentation needed.
+
+### 1. Add the Elastic Registry
+
+```xml title="pom.xml"
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-elastic</artifactId>
+</dependency>
+```
+
+### 2. Configure the Export
+
+```yaml title="application.yml"
+management:
+  elastic:
+    metrics:
+      export:
+        enabled: true
+        host: https://your-elasticsearch:9200
+        index: failover-metrics
+        step: 60s
+        user-name: elastic
+        password: ${ES_PASSWORD}
+        # api-key-credentials: ${ES_API_KEY}  # alternative to user/password
+```
+
+Metrics land in index `failover-metrics-YYYY-MM-DD` by default. Each document contains the metric `name`, its type-specific value fields (`count`, `sum`, `mean`, `max`), the push `@timestamp`, and all Micrometer tags as top-level fields.
+
+### 3. Create a Kibana Data View
+
+In **Kibana → Stack Management → Data Views**, create:
+
+| Field | Value |
+|---|---|
+| Name | `Failover Metrics` |
+| Index pattern | `failover-metrics-*` |
+| Time field | `@timestamp` |
+
+### 4. Key Visualizations (Lens)
+
+Open **Kibana → Dashboards → Create** and add panels using the **Lens** editor.
+
+#### Recovery Rate — line chart over time
+
+| Setting | Value |
+|---|---|
+| X-axis | `@timestamp` (date histogram, auto / 1 min) |
+| Y-axis | `Sum(count)` where `name: failover.recovery.outcome.total AND outcome: recovered` ÷ `Sum(count)` where `name: failover.recovery.outcome.total` |
+| Break by | `name.keyword` |
+
+Ratio formula in Lens `Formula` layer: `count(kql='name: "failover.recovery.outcome.total" AND outcome: "recovered"') / count(kql='name: "failover.recovery.outcome.total"')`.
+
+#### Non-Recovery Events — bar chart (alert target)
+
+| Setting | Value |
+|---|---|
+| X-axis | `@timestamp` (date histogram, 5 min) |
+| Y-axis | `Sum(count)` where `name: failover.recovery.outcome.total AND outcome: not_recovered` |
+| Break by | `name.keyword` |
+
+Every non-zero bar represents a caller that received no value (user blocked).
+
+#### Exception Breakdown per Endpoint — grouped bar
+
+| Setting | Value |
+|---|---|
+| X-axis | `name.keyword` (top 10) |
+| Y-axis | `Sum(count)` where `name: failover.exception.total` |
+| Break by | `exception_type.keyword` |
+
+Shows which endpoint throws which exception type most — aids root-cause triage without navigating logs.
+
+#### Async Store Failures — metric (single value)
+
+| Setting | Value |
+|---|---|
+| Value | `Sum(count)` where `name: failover.store.async.failed` |
+| Time range | Last 1 h |
+
+Any non-zero value means failover data is silently not being persisted.
+
+#### Recovery Latency — line chart
+
+Micrometer timers emit `mean` and `max` per push interval.
+
+| Setting | Value |
+|---|---|
+| X-axis | `@timestamp` |
+| Y-axis | `Avg(mean)` where `name: failover.operation.duration AND action: recover` |
+
+!!! note "True percentiles"
+    Enable histogram publishing to get p95/p99 bucket fields:
+    ```yaml
+    management.elastic.metrics.export.histogramPublish: true
+    ```
+    Then use the `histogram` bucket fields in Kibana TSVB percentile aggregation.
+
+### 5. Recommended Dashboard Layout
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  Recovery Rate (line, per endpoint)  │  Non-Recovery (bar, 5 min) │
+├──────────────────────────────────────┴────────────────────────────┤
+│  Exception Breakdown per Endpoint (grouped bar — full width)       │
+├──────────────────────┬──────────────────────┬─────────────────────┤
+│  Recovery Latency    │  Async Store Failures │  Registered Endpoints │
+└──────────────────────┴──────────────────────┴─────────────────────┘
+```
+
+### 6. Alerting Rules
+
+In **Kibana → Stack Management → Rules → Create rule → Elasticsearch query**:
+
+**Non-recovery spike (user-impacting — page):**
+
+```
+KQL:   name: "failover.recovery.outcome.total" AND outcome: "not_recovered"
+Agg:   Sum(count) over last 5 min
+When:  > 0
+```
+
+**Async store failure (data-loss risk — page):**
+
+```
+KQL:   name: "failover.store.async.failed"
+Agg:   Sum(count) over last 5 min
+When:  > 0
+```
+
+**Recovery rate below threshold (warn):**
+
+```
+KQL:   name: "failover.recovery.outcome.total"
+Agg:   Sum(count, filter: outcome:"recovered") / Sum(count) < 0.7   (10-min window)
+When:  formula result < 0.7
+```
+
+---
+
 ## Actuator Health Indicator
 
 The `FailoverHealthIndicator` is registered at `/actuator/health`:

@@ -187,6 +187,34 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @SuppressWarnings("java:S2699")
+    @DisplayName("shared-store mode ⇒ HeartbeatStore + ClusterHeartbeatController always wired")
+    void heartbeatBeansAlwaysWiredInSharedStoreMode() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class);
+                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.web.ClusterHeartbeatController.class);
+                });
+    }
+
+    @Test
+    @SuppressWarnings("java:S2699")
+    @DisplayName("local mode ⇒ no HeartbeatStore or ClusterHeartbeatController")
+    void heartbeatBeansAbsentInLocalMode() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.web.ClusterHeartbeatController.class);
+                });
+    }
+
+    @Test
     @DisplayName("standalone (no FailoverScanner) ⇒ EmptyFailoverScanner fallback, config view empty")
     void standaloneProvidesEmptyScanner() {
         new WebApplicationContextRunner()
