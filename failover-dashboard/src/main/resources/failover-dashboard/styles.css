@@ -178,7 +178,11 @@ main{padding:24px 26px 60px;max-width:1480px;margin:0 auto}
 
 /* ── KPI hero ─────────────────────────────────────────────────────────── */
 .kpis{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.kpis.row2{grid-template-columns:repeat(6,1fr)}
 .kpis.row2 .kpi .val{font-size:26px}
+@media(max-width:1400px){.kpis.row2{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:960px){.kpis.row2{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.kpis.row2{grid-template-columns:repeat(2,1fr)}}
 /* count shown beside a rate, neatly */
 .numchip{font-family:var(--mono);font-weight:700;color:var(--text);
   background:var(--surface-2);border:1px solid var(--line-soft);
@@ -208,6 +212,10 @@ main{padding:24px 26px 60px;max-width:1480px;margin:0 auto}
 .kpi[data-c="async"]{--kc:var(--bad);--kc-soft:var(--bad-soft)}
 .kpi[data-c="impact"]{--kc:var(--good);--kc-soft:var(--good-soft)}
 .kpi[data-c="impact"].blocked{--kc:var(--bad);--kc-soft:var(--bad-soft)}
+.kpi[data-c="full-rec"]{--kc:var(--good);--kc-soft:var(--good-soft)}
+.kpi[data-c="partial-rec"]{--kc:var(--warn);--kc-soft:var(--warn-soft)}
+.kpi[data-c="zero-rec"]{--kc:var(--bad);--kc-soft:var(--bad-soft)}
+.kpi[data-c="blocked"]{--kc:var(--bad);--kc-soft:var(--bad-soft)}
 
 /* ── Instances tab ─────────────────────────────────────────────────────── */
 .inst-dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle;margin-right:7px}
