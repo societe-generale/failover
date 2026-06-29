@@ -21,12 +21,14 @@ import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
 import com.societegenerale.failover.observable.metrics.SourceInfo;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Default {@link MetricsSource}: the figures come from <em>this</em> instance's in-process
@@ -79,5 +81,10 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     @Override
     public List<InstanceMetrics> instances() {
         return List.of(new InstanceMetrics(instanceIdResolver.resolve(), System.currentTimeMillis(), summary()));
+    }
+
+    @Override
+    public Map<String, List<ExceptionStat>> exceptionsByApi() {
+        return metricsService.exceptionsByApi();
     }
 }
