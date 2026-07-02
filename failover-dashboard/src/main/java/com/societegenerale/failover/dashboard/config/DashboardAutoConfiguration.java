@@ -239,7 +239,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     @ConditionalOnMissingBean
     public SnapshotStore snapshotStore() {
         DashboardProperties.SharedStore sharedStore = properties.cluster().sharedStore();
-        return new SnapshotStoreInmemory(sharedStore.maxInstances());
+        return new SnapshotStoreInmemory(sharedStore.maxInstances(), sharedStore.instanceRetention());
     }
 
     /** Ingest controller for peer snapshot pushes; present only in shared-store mode. */

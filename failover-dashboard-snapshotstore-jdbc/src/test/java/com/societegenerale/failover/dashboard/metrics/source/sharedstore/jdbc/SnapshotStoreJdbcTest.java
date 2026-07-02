@@ -139,4 +139,41 @@ class SnapshotStoreJdbcTest {
 
         assertThat(store.allInstances()).hasSize(3);
     }
+
+    @Test
+    void counterResetFoldsPreviousTotalsIntoBaseline() {
+        // A peer restart resets its counters; the served summary must be baseline + raw, never smaller.
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 100, 0)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 3, 0)));   // 3 < 100 → reset detected
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(103));
+
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 7, 0)));   // same process grows — no re-fold
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(107));
+    }
+
+    @Test
+    void carriedBaselineSurvivesADashboardRestart() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 100, 0)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 3, 0)));   // baseline 100 persisted
+
+        SnapshotStoreJdbc reopened = store(10);                                 // fresh store, same table
+
+        assertThat(reopened.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(103));
+    }
+
+    @Test
+    void autoDdlCreatesTheBaselineColumn() {
+        store(10);
+        // Nullable BASELINE_JSON is part of the base schema — insertable and initially null.
+        Integer baselines = jdbc.queryForObject(
+                "SELECT COUNT(BASELINE_JSON) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
+        assertThat(baselines).isZero();
+    }
 }

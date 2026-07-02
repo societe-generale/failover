@@ -193,25 +193,31 @@ public record DashboardProperties(
      * where peers push their KPI snapshot to the dashboard and it aggregates them in memory, with no Prometheus.
      * Production-supported for small deployments; data quality/consistency is prioritised over durability.
      *
-     * <p>All snapshots are retained regardless of age. Each instance always contributes its last-known values
-     * to the cluster aggregate. Per-instance staleness is visible through each row's {@code lastSeenEpochMs}
-     * timestamp in the Instances tab.
+     * <p>Counts are never dropped from the cluster aggregate: each instance always contributes its last-known
+     * values, and a peer restart (counter reset) folds the pre-restart totals into a carried-forward baseline.
+     * Instances not seen within {@code instanceRetention} are retired from the Instances tab (keeping the
+     * in-memory store bounded under pod churn) while their counts keep contributing to the aggregate.
+     * Per-instance staleness is visible through each row's {@code lastSeenEpochMs} timestamp.
      *
-     * @param livenessSeconds  heartbeat age threshold in seconds — an instance is {@code DOWN} when no heartbeat
-     *                         was received within this window; {@code UNKNOWN} if no heartbeat ever received
-     *                         (default {@code 180}; rule of thumb: ≥ 3 × peer {@code heartbeat.interval-seconds})
-     * @param maxInstances     supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
+     * @param livenessSeconds   heartbeat age threshold in seconds — an instance is {@code DOWN} when no heartbeat
+     *                          was received within this window; {@code UNKNOWN} if no heartbeat ever received
+     *                          (default {@code 180}; rule of thumb: ≥ 3 × peer {@code heartbeat.interval-seconds})
+     * @param maxInstances      supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
+     * @param instanceRetention retire instances not seen for this long from the per-instance view — their counts
+     *                          stay in the aggregate (default {@code 7d}; {@code 0} keeps every instance forever;
+     *                          applies to the in-memory store only — the durable JDBC store retains all rows)
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
         @DefaultValue("180") int livenessSeconds,
         @DefaultValue("10") int maxInstances,
+        @DefaultValue("7d") java.time.Duration instanceRetention,
         @DefaultValue Retention retention,
         @DefaultValue("30") int sampleIntervalSeconds,
         @DefaultValue Jdbc jdbc
     ) {
         public SharedStore() {
-            this("inmemory", 180, 10, new Retention(), 30, new Jdbc());
+            this("inmemory", 180, 10, java.time.Duration.ofDays(7), new Retention(), 30, new Jdbc());
         }
     }
 

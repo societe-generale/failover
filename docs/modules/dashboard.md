@@ -87,6 +87,7 @@ failover:
       shared-store:                  # used when mode=shared-store (peers push snapshots, aggregated in-app)
         store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
         max-instances: 10            # supported ceiling (warns beyond — graduate to prometheus)
+        instance-retention: 7d       # retire unseen instances from the Instances tab (counts stay in the aggregate; 0 ⇒ never)
         sample-interval-seconds: 30  # cluster-trend sampling cadence
         retention:
           max-age: 7d                # trend-history age bound
@@ -120,6 +121,7 @@ failover:
 | `cluster.shared-store.store` | `inmemory` | `inmemory` (default) or `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). |
 | `cluster.shared-store.liveness-seconds` | `180` | Heartbeat age threshold — instance is `DOWN` after this many seconds without a heartbeat ping. Default matches 3 × the peer default `heartbeat.interval-seconds` (60s). |
 | `cluster.shared-store.max-instances` | `10` | Supported small-cluster ceiling; exceeding it logs a warning. |
+| `cluster.shared-store.instance-retention` | `7d` | Retire instances not seen for this long from the Instances tab (their counts stay in the aggregate; `0` keeps every instance forever). |
 | `cluster.shared-store.sample-interval-seconds` | `30` | Cluster-trend sampling cadence. |
 | `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000` | Trend-history age and size bounds (oldest truncated). |
 | `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl` | `""` / `true` | Snapshot table prefix (validated) + auto-create, when `store=jdbc`. |
@@ -178,7 +180,7 @@ Drill-down per failover point.
 - **Per-instance table** — a row per instance: id, live/silent dot, calls, success / failover / recovery %, p95 recover, last-seen, and a status badge. Click a row to drill in.
 - **Drill-down** — the selected instance's *own* KPIs (calls, success, failover, users-unblocked, p95) — not the cluster aggregate.
 
-Data comes from `MetricsSource.instances()`: in `shared-store` from the per-instance snapshots the store already holds; in `prometheus` from `sum by (name, instance) (failover_*)` queries.
+Data comes from `MetricsSource.instances()`: in `shared-store` from the per-instance snapshots the store already holds; in `prometheus` from `sum by (name, instance) (failover_*)` queries. In `shared-store`, instances unseen past `instance-retention` are retired from this tab (their counts remain in the cluster aggregate — see [Instance churn](#instance-churn-bounded-retirement)).
 
 ### Health
 
@@ -348,7 +350,26 @@ flowchart LR
     SS --> UI["Read axis — dashboard service<br/>UI / Instances tab"]
 ```
 
-All instance snapshots are retained regardless of age — last-known values always contribute to the aggregate. Per-instance staleness is visible through each row's last-seen timestamp in the Instances tab. `store: jdbc` makes snapshots survive a dashboard restart.
+Counts are never dropped from the aggregate: last-known values always contribute, and a peer restart (counter reset) folds the pre-restart totals into a carried-forward baseline, so cluster totals never shrink. Instances not seen within `instance-retention` (default 7 days) are retired from the Instances tab — keeping the store bounded under pod churn — while their counts keep contributing to the aggregate; a retired instance that reports again resumes with its history intact. Per-instance staleness is visible through each row's last-seen timestamp. `store: jdbc` makes snapshots (including the carried baseline) survive a dashboard restart.
+
+#### Counter resets — how the aggregate stays monotonic (ADR 67)
+
+Peer snapshots carry **cumulative** Micrometer counter totals, and those totals reset to zero when the peer process restarts. Two mechanisms keep the two cluster views consistent despite that:
+
+- **Trend graph** — `ClusterSeriesSampler` samples the merged aggregate on a schedule and accumulates a *monotonic adjusted* series: per field it adds `max(increase, freshValueAfterReset)`, so a reset never produces a dip or a negative delta.
+- **Instant aggregate (Overview cards, Health tab)** — on every snapshot ingest the store compares the incoming cumulative total against the instance's previous raw snapshot. A drop can only mean a restart, so the previous raw totals are folded into a per-instance **baseline** (`SnapshotBaseline`), and the summary served for that instance is always `baseline + raw`. Repeated restarts accumulate into the same baseline. With `store: jdbc` the baseline is persisted (nullable `BASELINE_JSON` column), so it also survives a dashboard restart.
+
+Both views apply the same detection rule, so cards and graph agree after a peer restart. Known limit: a reset is invisible if the peer regrows past its previous total within one push interval (15 s by default) — the same theoretical window Prometheus `rate()` has; at most one interval of events can be undercounted.
+
+#### Instance churn — bounded retirement
+
+Under Kubernetes-style deploys every new pod is a new `instanceId`, and the tier's invariant is that a dead peer's counts must keep contributing. Retirement reconciles the two:
+
+1. An instance with no snapshot for `instance-retention` (default `7d`) moves out of the active map: gone from the Instances tab and `allInstances()`, but its `baseline + raw` counts keep contributing via `SnapshotStore.retiredAggregate()`.
+2. A retired instance that pushes again (e.g. a StatefulSet pod reusing its name) is promoted back with history intact; normal reset detection then applies.
+3. At most 100 retired entries are kept individually; beyond that the oldest are compacted into a single immutable **tombstone** aggregate — a hard heap bound regardless of churn rate.
+
+Set `instance-retention: 0` to disable retirement (previous retain-forever behaviour). Retirement applies to the in-memory store only — JDBC rows are durable and cheap, so that store retains all instances.
 
 ### Multiple instances — `prometheus` (large clusters)
 
@@ -455,7 +476,7 @@ Prometheus adds the `instance` label at scrape time, so the dashboard's per-inst
 
 ### Scenario C — Cluster via shared-store, in-memory (small clusters, no Prometheus)
 
-Each instance **pushes** its local KPI snapshot to the dashboard; the dashboard aggregates them in memory with the same KPI math. Production-supported for ≤ ~10 instances. **Consistency over durability**: one (latest) snapshot per instance, stale peers excluded by a liveness window, reset-aware monotonic trend, age + size retention.
+Each instance **pushes** its local KPI snapshot to the dashboard; the dashboard aggregates them in memory with the same KPI math. Production-supported for ≤ ~10 instances. **Consistency over durability**: one (latest) snapshot per instance plus a reset-aware carried-forward baseline (totals never shrink on peer restart, ADR 67), stale peers flagged by a liveness window, reset-aware monotonic trend, age + size retention, and bounded instance retirement under pod churn.
 
 ```yaml title="the dashboard host (aggregator + UI)"
 failover:
@@ -466,6 +487,7 @@ failover:
       shared-store:
         store: inmemory          # default
         max-instances: 10        # supported ceiling (warning beyond)
+        instance-retention: 7d   # retire unseen instances (counts stay in the aggregate; 0 = never)
         sample-interval-seconds: 30   # cluster trend sampling cadence
         retention:
           max-age: 7d            # trend history age bound
@@ -488,7 +510,7 @@ Each pushed snapshot is retained per instance, so the **Instances tab** lists ev
 
 ### Scenario D — Cluster via shared-store, JDBC durable
 
-Same as C, but snapshots persist to a database so the aggregate survives a dashboard restart. Add the optional module and flip one property.
+Same as C, but snapshots — including each instance's reset-aware carried baseline (`BASELINE_JSON`, ADR 67) — persist to a database, so the aggregate *and* the restart-correction history survive a dashboard restart. Add the optional module and flip one property.
 
 ```xml title="dashboard host pom.xml"
 <dependency>
@@ -524,37 +546,41 @@ Requires a `DataSource` in the dashboard app (the usual `spring.datasource.*`). 
 
 ```sql title="PostgreSQL"
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT (
-    INSTANCE_ID  VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT  BIGINT       NOT NULL,
-    SUMMARY_JSON TEXT         NOT NULL          -- or JSONB
+    INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT   BIGINT       NOT NULL,
+    SUMMARY_JSON  TEXT         NOT NULL,         -- or JSONB
+    BASELINE_JSON TEXT                           -- reset-aware carried baseline (ADR 67); nullable
 );
 ```
 
 ```sql title="MySQL / MariaDB"
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT (
-    INSTANCE_ID  VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT  BIGINT       NOT NULL,
-    SUMMARY_JSON LONGTEXT     NOT NULL
+    INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT   BIGINT       NOT NULL,
+    SUMMARY_JSON  LONGTEXT     NOT NULL,
+    BASELINE_JSON LONGTEXT
 );
 ```
 
 ```sql title="Oracle"
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT (
-    INSTANCE_ID  VARCHAR2(255) PRIMARY KEY,
-    RECEIVED_AT  NUMBER(19)    NOT NULL,
-    SUMMARY_JSON CLOB          NOT NULL
+    INSTANCE_ID   VARCHAR2(255) PRIMARY KEY,
+    RECEIVED_AT   NUMBER(19)    NOT NULL,
+    SUMMARY_JSON  CLOB          NOT NULL,
+    BASELINE_JSON CLOB
 );
 ```
 
 ```sql title="H2 / generic"
 CREATE TABLE IF NOT EXISTS FAILOVER_DASHBOARD_SNAPSHOT (
-    INSTANCE_ID  VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT  BIGINT       NOT NULL,
-    SUMMARY_JSON CLOB         NOT NULL
+    INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT   BIGINT       NOT NULL,
+    SUMMARY_JSON  CLOB         NOT NULL,
+    BASELINE_JSON CLOB
 );
 ```
 
-Prepend your `table-prefix` to the table name if you set one. One row per instance (upserted on each push); the dashboard reads only rows within the liveness window.
+Prepend your `table-prefix` to the table name if you set one. One row per instance (upserted on each push). `SUMMARY_JSON` holds the latest raw snapshot; `BASELINE_JSON` (nullable) accumulates the pre-restart totals folded in when a counter reset is detected — the dashboard serves `baseline + raw` per instance. Every row contributes its last-known counts to the aggregate; the liveness window only drives the `LIVE`/`DOWN` status shown in the Instances tab.
 
 ### Scenario E — Standalone dashboard (its own app)
 

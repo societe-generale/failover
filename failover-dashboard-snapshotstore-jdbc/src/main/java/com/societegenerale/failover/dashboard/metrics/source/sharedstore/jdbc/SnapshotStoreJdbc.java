@@ -21,6 +21,7 @@ import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotBaseline;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,9 +33,11 @@ import java.util.Objects;
  * Durable {@link SnapshotStore} backed by a single JDBC table — the {@code store=jdbc} option for the shared-store
  * tier, so cluster aggregation survives a dashboard restart. All snapshots are retained regardless of age; the dashboard
  * always shows each instance's last-known values, with staleness visible through the per-instance {@code lastSeenEpochMs}
- * timestamp in the Instances tab. The {@link MetricsSummary} is stored as JSON.
+ * timestamp in the Instances tab. The {@link MetricsSummary} is stored as JSON. Applies the {@link SnapshotBaseline}
+ * reset-aware carry-forward (persisted in the nullable {@code BASELINE_JSON} column), so a peer restart never
+ * shrinks the cluster aggregate — and the carried baseline itself survives a dashboard restart.
  *
- * <p>Table {@code (INSTANCE_ID PK, RECEIVED_AT BIGINT, SUMMARY_JSON CLOB)}, named {@code <tablePrefix> +}
+ * <p>Table {@code (INSTANCE_ID PK, RECEIVED_AT BIGINT, SUMMARY_JSON CLOB, BASELINE_JSON CLOB NULL)}, named {@code <tablePrefix> +}
  * {@link #BASE_TABLE} (the prefix is validated — letters/digits/underscore only — since it is concatenated into
  * SQL). Upsert is a portable update-then-insert (no dialect-specific MERGE); {@code autoDdl} creates the table on
  * startup if missing. Stores only aggregate, non-sensitive failover metrics — never business data — so a single
@@ -68,25 +71,34 @@ public class SnapshotStoreJdbc implements SnapshotStore {
     @Override
     public void upsert(ClusterSnapshot snapshot) {
         String id = snapshot.instanceId();
-        String json = toJson(snapshot.summary());
         long now = System.currentTimeMillis();
-        int updated = jdbc.update("UPDATE " + table + " SET RECEIVED_AT = ?, SUMMARY_JSON = ? WHERE INSTANCE_ID = ?",
-                now, json, id);
-        if (updated == 0) {
+        List<MetricsSummary[]> existing = jdbc.query(
+                "SELECT SUMMARY_JSON, BASELINE_JSON FROM " + table + " WHERE INSTANCE_ID = ?",
+                (rs, rowNum) -> new MetricsSummary[]{fromJson(rs.getString("SUMMARY_JSON")),
+                        fromJsonNullable(rs.getString("BASELINE_JSON"))},
+                id);
+        if (existing.isEmpty()) {
             warnIfOverCeiling();
-            jdbc.update("INSERT INTO " + table + " (INSTANCE_ID, RECEIVED_AT, SUMMARY_JSON) VALUES (?, ?, ?)",
-                    id, now, json);
+            jdbc.update("INSERT INTO " + table + " (INSTANCE_ID, RECEIVED_AT, SUMMARY_JSON, BASELINE_JSON) VALUES (?, ?, ?, ?)",
+                    id, now, toJson(snapshot.summary()), null);
+            return;
         }
+        MetricsSummary baseline = SnapshotBaseline.next(existing.getFirst()[0], existing.getFirst()[1], snapshot.summary());
+        jdbc.update("UPDATE " + table + " SET RECEIVED_AT = ?, SUMMARY_JSON = ?, BASELINE_JSON = ? WHERE INSTANCE_ID = ?",
+                now, toJson(snapshot.summary()), baseline == null ? null : toJson(baseline), id);
     }
 
     @Override
     public List<InstanceMetrics> allInstances() {
         return jdbc.query(
-                "SELECT INSTANCE_ID, RECEIVED_AT, SUMMARY_JSON FROM " + table,
+                "SELECT INSTANCE_ID, RECEIVED_AT, SUMMARY_JSON, BASELINE_JSON FROM " + table,
                 (rs, rowNum) -> {
                     MetricsSummary summary = fromJson(rs.getString("SUMMARY_JSON"));
-                    return summary == null ? null
-                            : new InstanceMetrics(rs.getString("INSTANCE_ID"), rs.getLong("RECEIVED_AT"), summary, LiveStatus.UNKNOWN);
+                    if (summary == null) {
+                        return null;
+                    }
+                    MetricsSummary combined = SnapshotBaseline.combined(fromJsonNullable(rs.getString("BASELINE_JSON")), summary);
+                    return new InstanceMetrics(rs.getString("INSTANCE_ID"), rs.getLong("RECEIVED_AT"), combined, LiveStatus.UNKNOWN);
                 }).stream().filter(Objects::nonNull).toList();
     }
 
@@ -100,7 +112,8 @@ public class SnapshotStoreJdbc implements SnapshotStore {
 
     private void createTableIfMissing() {
         jdbc.execute("CREATE TABLE IF NOT EXISTS " + table
-                + " (INSTANCE_ID VARCHAR(255) PRIMARY KEY, RECEIVED_AT BIGINT NOT NULL, SUMMARY_JSON CLOB NOT NULL)");
+                + " (INSTANCE_ID VARCHAR(255) PRIMARY KEY, RECEIVED_AT BIGINT NOT NULL, SUMMARY_JSON CLOB NOT NULL, "
+                + "BASELINE_JSON CLOB)");
     }
 
     private String toJson(MetricsSummary summary) {
@@ -118,6 +131,10 @@ public class SnapshotStoreJdbc implements SnapshotStore {
             log.warn("Skipping unreadable snapshot row: {}", e.toString());
             return null;
         }
+    }
+
+    private MetricsSummary fromJsonNullable(String json) {
+        return json == null || json.isBlank() ? null : fromJson(json);
     }
 
     /**
