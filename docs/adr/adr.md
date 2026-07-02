@@ -3226,3 +3226,41 @@ Separate liveness tracking into a lightweight heartbeat mechanism decoupled from
 * Polling is correct for heartbeat (unlike event-driven snapshot publishing) — heartbeats must fire on a fixed schedule even when no metric events occur.
 
 ___
+
+## ADR 67 — Reset-Aware Shared-Store Aggregate and Bounded Instance Retirement
+
+**Date : 03-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The `shared-store` cluster tier had two gaps, both rooted in the fact that peer snapshots carry **cumulative** Micrometer counter totals that reset to zero when the peer process restarts:
+
+1. **Instant aggregate not reset-aware.** The cluster trend was already protected — `ClusterSeriesSampler` accumulates a monotonic adjusted total (design §5.3) — but the instant aggregate (`SharedStoreMetricsSource.merge`) was a raw sum of the latest snapshot per instance. A peer restart with a stable `instanceId` overwrote its stored snapshot with near-zero counters, so the Overview cards dropped by that instance's pre-restart counts while the trend graph stayed smooth: two views of the same data disagreeing.
+2. **Unbounded snapshot map.** `SnapshotStoreInmemory` never evicted. Under Kubernetes-style churn (a new pod name = a new `instanceId` per deploy) the map and the Instances tab grew forever; `max-instances` only warned. Naively evicting old entries would violate the tier's core invariant — counts of a dead peer must keep contributing to the cluster totals.
+
+### Decision
+
+1. **`MetricsSummaryAggregator`** (`failover-observable-metrics`) — the summary-merge math (per-API counter sums, count-weighted latency mean, max-of-max, top-8 exception fold) extracted from `SharedStoreMetricsSource` into a shared, pure utility next to `MetricsKpis`. Also provides `cumulativeTotal(summary)` and `isCounterReset(previous, incoming)`: a drop in the cumulative total between two snapshots of the same instance can only mean a process restart.
+
+2. **`SnapshotBaseline`** (`failover-dashboard`, `sharedstore` package) — the carry-forward rule applied by every `SnapshotStore` implementation on upsert: keep the incoming snapshot as the instance's *raw* value; when a reset is detected, fold the previous raw snapshot into a per-instance *baseline* (accumulating across repeated restarts). The summary served for the instance is always `baseline + raw`, so the instant aggregate is monotonic across peer restarts — the same guarantee, produced by the same detection rule, that the series sampler already gave the trend.
+
+3. **`SnapshotStoreInmemory`** applies the baseline in memory and adds **bounded instance retirement**: entries not updated within `failover.dashboard.cluster.shared-store.instance-retention` (default `7d`; `0` disables) move from the active map to a retired map — out of `allInstances()` (Instances tab stays clean, map stays bounded) but still contributing through the new `SnapshotStore.retiredAggregate()` default method. A retired instance that pushes again is promoted back with raw + baseline intact (reset detection then applies as normal). Beyond `MAX_RETIRED` (100) individually retained entries, the oldest are compacted into a single immutable tombstone summary — a hard heap bound regardless of churn rate.
+
+4. **`SnapshotStoreJdbc`** persists the baseline in a nullable `BASELINE_JSON` CLOB column — part of the base schema (the project is unreleased, so no migration path is shipped). The carried-forward totals survive a dashboard restart along with the snapshots. The JDBC store does not retire (rows are cheap and durable; the heap concern is the in-memory default).
+
+5. **`SharedStoreMetricsSource`** merges active instances **plus** `retiredAggregate()` via the shared aggregator; it falls back to the local source only when the store holds nothing at all (no active, no retired).
+
+### Consequences
+
+* Overview cards and the trend graph now agree after a peer restart — one consistency rule (§5.3) applied at both the read path (baseline) and the sampling path (monotonic series).
+* `SnapshotStoreInmemory` heap is bounded: ≤ `max-instances`-ish active + ≤ 100 retired + 1 tombstone, regardless of pod churn.
+* Cluster totals never shrink: not on peer restart (baseline), not on retirement (retired aggregate), not on tombstone compaction (counts folded before dropping per-id state).
+* Reset detection window: a restart is invisible if the peer regrows past its previous cumulative total within one push interval (15s default) — the same theoretical limit as Prometheus `rate()`. Undercounts at most one interval's worth of events in that rare case.
+* After tombstone compaction a reappearing `instanceId` is treated as brand-new; if that same *process* had silently survived past retention **and** 100+ churned peers, its counts would double — accepted as vanishingly rare for the small-cluster tier.
+* `retiredAggregate()` is a `default` method returning `null`, so custom `SnapshotStore` implementations compile unchanged.
+
+___

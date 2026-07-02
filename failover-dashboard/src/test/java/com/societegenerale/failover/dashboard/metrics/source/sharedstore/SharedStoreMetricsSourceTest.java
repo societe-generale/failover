@@ -118,6 +118,41 @@ class SharedStoreMetricsSourceTest {
     }
 
     @Test
+    void retiredAggregateStillContributesToSummary() {
+        MetricsSummary retired = snapshot("country", 20, 0, 0, 0, List.of());
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                withRetired(stubStore(snapshot("country", 10, 0, 0, 0, List.of())), retired),
+                THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.summary().perApi()).singleElement()
+                .satisfies(k -> assertThat(k.upstreamSuccess()).isEqualTo(30));
+    }
+
+    @Test
+    void retiredAggregateAloneServesClusterSummaryNotFallback() {
+        // Every instance retired (e.g. rolling deploy churned all ids) → aggregate still cluster data
+        MetricsSummary retired = snapshot("country", 20, 0, 0, 0, List.of());
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                withRetired(stubStore(), retired), THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.summary().perApi()).singleElement()
+                .satisfies(k -> {
+                    assertThat(k.name()).isEqualTo("country");
+                    assertThat(k.upstreamSuccess()).isEqualTo(20);
+                });
+        assertThat(source.instances()).isEmpty();
+    }
+
+    /** Wraps a stub store with a fixed retired aggregate. */
+    private static SnapshotStore withRetired(SnapshotStore delegate, MetricsSummary retired) {
+        return new SnapshotStore() {
+            public void upsert(ClusterSnapshot snapshot) { delegate.upsert(snapshot); }
+            public List<InstanceMetrics> allInstances() { return delegate.allInstances(); }
+            public MetricsSummary retiredAggregate() { return retired; }
+        };
+    }
+
+    @Test
     void healthClassifiesEachApiWhenInstancesAreLive() {
         SnapshotStore store = stubStore(
                 snapshot("country", 100, 0, 0, 0, List.of()),   // 100% healthy

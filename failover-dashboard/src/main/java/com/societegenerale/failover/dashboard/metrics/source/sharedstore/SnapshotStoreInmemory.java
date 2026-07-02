@@ -20,17 +20,28 @@ import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
+import com.societegenerale.failover.observable.metrics.MetricsSummaryAggregator;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
- * Default {@link SnapshotStore}: latest snapshot per instance in a {@link ConcurrentHashMap}.
- * All snapshots are retained — last-known values are always included in the aggregate so a quiet or
- * crashed peer never silently drops out. Staleness is visible through each instance's {@code lastSeenEpochMs}.
+ * Default {@link SnapshotStore}: latest snapshot per instance in memory, with the {@link SnapshotBaseline}
+ * reset-aware carry-forward — a peer restart (counter reset) folds the pre-restart totals into a per-instance
+ * baseline, so the served summary ({@code baseline + raw}) and the cluster aggregate never shrink.
+ *
+ * <p><strong>Bounded (design §5.4 spirit — this is not a TSDB).</strong> Instances not seen within
+ * {@code instanceRetention} are <em>retired</em>: dropped from {@link #allInstances()} (so churned pod ids do not
+ * grow the map and clutter the Instances tab forever) while their counts keep contributing through
+ * {@link #retiredAggregate()}. A retired instance that reports again is restored with its history intact.
+ * At most {@link #MAX_RETIRED} retired entries are kept individually; beyond that the oldest are compacted
+ * into a single immutable tombstone aggregate. A retention of zero (or negative) disables retirement.
  *
  * <p>The supported small-cluster ceiling {@code maxInstances} is enforced as a loud warning (not a hard reject):
  * pushing beyond it still records, but signals the deployment has outgrown shared-store and should move to
@@ -41,32 +52,109 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class SnapshotStoreInmemory implements SnapshotStore {
 
-    private record Entry(MetricsSummary summary, long receivedAtMs) {
+    /** Retired entries kept individually (for reappearance) before compaction into the tombstone. */
+    static final int MAX_RETIRED = 100;
+
+    private record Entry(MetricsSummary raw, MetricsSummary baseline, long receivedAtMs) {
     }
 
-    private final Map<String, Entry> byInstance = new ConcurrentHashMap<>();
+    /** Insertion-ordered so iteration is stable; retirement order = eviction order. */
+    private final Map<String, Entry> active = new LinkedHashMap<>();
+    private final Map<String, Entry> retired = new LinkedHashMap<>();
+    private MetricsSummary tombstone;
+
     private final int maxInstances;
+    private final long retentionMillis;
+    private final LongSupplier nowMillis;
 
+    /** Retains instances forever (no retirement) — programmatic/test convenience. */
     public SnapshotStoreInmemory(int maxInstances) {
+        this(maxInstances, Duration.ZERO);
+    }
+
+    public SnapshotStoreInmemory(int maxInstances, Duration instanceRetention) {
+        this(maxInstances, instanceRetention, System::currentTimeMillis);
+    }
+
+    /** Test seam: inject a clock to control retirement age. */
+    SnapshotStoreInmemory(int maxInstances, Duration instanceRetention, LongSupplier nowMillis) {
         this.maxInstances = maxInstances;
+        this.retentionMillis = instanceRetention == null ? 0 : instanceRetention.toMillis();
+        this.nowMillis = nowMillis;
     }
 
     @Override
-    public void upsert(ClusterSnapshot snapshot) {
+    public synchronized void upsert(ClusterSnapshot snapshot) {
+        retireExpired();
         String id = snapshot.instanceId();
-        if (!byInstance.containsKey(id) && byInstance.size() >= maxInstances) {
-            log.warn("Failover shared-store has {} reporting instances (max-instances={}); '{}' exceeds the supported "
-                    + "ceiling. Consider cluster.mode=prometheus for clusters this large.", byInstance.size(), maxInstances, id);
+        Entry previous = active.get(id);
+        if (previous == null) {
+            previous = retired.remove(id);   // reappearing peer — resume its history
+            if (previous == null && active.size() >= maxInstances) {
+                log.warn("Failover shared-store has {} reporting instances (max-instances={}); '{}' exceeds the supported "
+                        + "ceiling. Consider cluster.mode=prometheus for clusters this large.", active.size(), maxInstances, id);
+            }
         }
-        byInstance.put(id, new Entry(snapshot.summary(), System.currentTimeMillis()));
+        MetricsSummary baseline = previous == null ? null
+                : SnapshotBaseline.next(previous.raw(), previous.baseline(), snapshot.summary());
+        active.put(id, new Entry(snapshot.summary(), baseline, nowMillis.getAsLong()));
     }
 
     @Override
-    public List<InstanceMetrics> allInstances() {
+    public synchronized List<InstanceMetrics> allInstances() {
+        retireExpired();
         List<InstanceMetrics> out = new ArrayList<>();
-        for (Map.Entry<String, Entry> e : byInstance.entrySet()) {
-            out.add(new InstanceMetrics(e.getKey(), e.getValue().receivedAtMs(), e.getValue().summary(), LiveStatus.UNKNOWN));
+        for (Map.Entry<String, Entry> e : active.entrySet()) {
+            Entry entry = e.getValue();
+            out.add(new InstanceMetrics(e.getKey(), entry.receivedAtMs(),
+                    SnapshotBaseline.combined(entry.baseline(), entry.raw()), LiveStatus.UNKNOWN));
         }
         return out;
+    }
+
+    @Override
+    public synchronized MetricsSummary retiredAggregate() {
+        retireExpired();
+        if (tombstone == null && retired.isEmpty()) {
+            return null;
+        }
+        List<MetricsSummary> parts = new ArrayList<>();
+        if (tombstone != null) {
+            parts.add(tombstone);
+        }
+        for (Entry entry : retired.values()) {
+            parts.add(SnapshotBaseline.combined(entry.baseline(), entry.raw()));
+        }
+        return parts.size() == 1 ? parts.getFirst() : MetricsSummaryAggregator.merge(parts);
+    }
+
+    /** Current number of individually retained retired entries (diagnostics / tests). */
+    synchronized int retiredCount() {
+        return retired.size();
+    }
+
+    /** Moves instances not seen within the retention window to the retired set, compacting beyond the cap. */
+    private void retireExpired() {
+        if (retentionMillis <= 0) {
+            return;
+        }
+        long cutoff = nowMillis.getAsLong() - retentionMillis;
+        Iterator<Map.Entry<String, Entry>> it = active.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, Entry> e = it.next();
+            if (e.getValue().receivedAtMs() < cutoff) {
+                it.remove();
+                retired.put(e.getKey(), e.getValue());
+                log.info("Failover shared-store retired instance '{}' (no snapshot for {}); its counts remain "
+                        + "in the cluster aggregate.", e.getKey(), Duration.ofMillis(retentionMillis));
+            }
+        }
+        while (retired.size() > MAX_RETIRED) {
+            Iterator<Entry> oldest = retired.values().iterator();
+            Entry entry = oldest.next();
+            oldest.remove();
+            MetricsSummary counts = SnapshotBaseline.combined(entry.baseline(), entry.raw());
+            tombstone = tombstone == null ? counts : MetricsSummaryAggregator.merge(List.of(tombstone, counts));
+        }
     }
 }

@@ -62,6 +62,15 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   clusters with no Prometheus). `shared-store` ships an in-memory store plus an optional durable JDBC store
   (**`failover-dashboard-snapshotstore-jdbc`** module) with validated `table-prefix`, age+size retention,
   liveness windowing, and a reset-aware cluster trend.
+- **Reset-aware shared-store aggregate + bounded instance retirement** (ADR 67) — the instant cluster
+  aggregate is now monotonic across peer restarts: on counter reset the store folds the pre-restart totals
+  into a per-instance carried-forward baseline (`SnapshotBaseline`; persisted in the JDBC store's
+  `BASELINE_JSON` column), so Overview cards and the trend graph finally agree. Instances not seen
+  within `failover.dashboard.cluster.shared-store.instance-retention` (default `7d`, `0` = never) are
+  retired from the Instances tab while their counts keep contributing via `SnapshotStore.retiredAggregate()`;
+  beyond 100 retired entries the oldest compact into a tombstone aggregate — the in-memory store stays
+  heap-bounded under Kubernetes pod churn. Summary-merge math extracted to a shared
+  `MetricsSummaryAggregator` (`failover-observable-metrics`) so every consumer uses identical KPI formulas.
 - **Dashboard Instances tab** — per-instance roll-up + table + drill-down (`/api/instances`,
   `MetricsSource.instances()`) for `shared-store` and `prometheus`; answers "one bad node vs all". Plus a
   cluster health roll-up on the Health tab and a metrics-provenance badge (this-instance vs cluster).
