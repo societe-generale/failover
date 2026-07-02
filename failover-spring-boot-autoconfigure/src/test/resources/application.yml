@@ -5,3 +5,7 @@ failover:
       # Synchronous metric publishing so meter assertions are deterministic in tests
       # (mirrors failover.store.async=false). Production default is true (non-blocking).
       enabled: false
+
+logging:
+  level:
+    root: ERROR
