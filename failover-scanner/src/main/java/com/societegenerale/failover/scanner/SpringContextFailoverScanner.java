@@ -19,6 +19,9 @@ package com.societegenerale.failover.scanner;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.scanner.FailoverScannerException;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -63,7 +66,7 @@ public class SpringContextFailoverScanner
 
     private ApplicationContext applicationContext;
 
-    private volatile Map<String, Failover> failoverMap = new ConcurrentHashMap<>();
+    private volatile Map<String, FailoverUnit> failoverMap = new ConcurrentHashMap<>();
 
     private volatile Set<Class<?>> payloadTypes = Set.of();
 
@@ -78,7 +81,7 @@ public class SpringContextFailoverScanner
      */
     @Override
     public void afterSingletonsInstantiated() {
-        Map<String, Failover> discovered = new ConcurrentHashMap<>();
+        Map<String, FailoverUnit> discovered = new ConcurrentHashMap<>();
         Set<Class<?>> discoveredPayloadTypes = new LinkedHashSet<>();
         for (String beanName : applicationContext.getBeanDefinitionNames()) {
             Class<?> type = safeGetType(beanName);
@@ -88,10 +91,12 @@ public class SpringContextFailoverScanner
                 method -> {
                     Failover annotation = AnnotationUtils.findAnnotation(method, Failover.class);
                     if (annotation == null) return;
-                    if (discovered.putIfAbsent(annotation.name(), annotation) != null) {
+                    var failoverUnit = new FailoverUnit(annotation, method);
+                    var previousFailoverUnit = discovered.putIfAbsent(annotation.name(), failoverUnit);
+                    if (previousFailoverUnit != null && !failoverUnit.equals(previousFailoverUnit)) {
                         throw new FailoverScannerException(
-                            "Duplicate @Failover name '%s' found. Each failover must have a unique name."
-                                .formatted(annotation.name()));
+                                    "Duplicate @Failover name '%s' found on methods { {%s} : {%s} }. Each failover must have a unique name."
+                                            .formatted(annotation.name(), previousFailoverUnit, failoverUnit));
                     }
                     warnIfNotAdvisable(userClass, method, annotation);
                     warnIfInvalidScatterConfig(userClass, method, annotation);
@@ -109,12 +114,14 @@ public class SpringContextFailoverScanner
 
     @Override
     public @Nullable Failover findFailoverByName(String name) {
-        return failoverMap.get(name);
+        var fu = failoverMap.get(name);
+        if (fu == null) return null;
+        return fu.getFailover();
     }
 
     @Override
     public List<Failover> findAllFailover() {
-        return new ArrayList<>(failoverMap.values());
+        return new ArrayList<>(failoverMap.values().stream().map(FailoverUnit::getFailover).toList());
     }
 
     @Override
@@ -226,8 +233,9 @@ public class SpringContextFailoverScanner
         }
     }
 
-    private void warnOnDomainExpirtyMismatch(Map<String, Failover> discovered) {
+    private void warnOnDomainExpirtyMismatch(Map<String, FailoverUnit> discovered) {
         discovered.values().stream()
+            .map(FailoverUnit::getFailover)
             .filter(f -> !f.domain().isBlank())
             .collect(Collectors.groupingBy(Failover::domain))
             .forEach((domain, list) -> {
@@ -250,4 +258,12 @@ public class SpringContextFailoverScanner
             return null;
         }
     }
+}
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+class FailoverUnit {
+    private Failover failover;
+    private Method method;
 }
