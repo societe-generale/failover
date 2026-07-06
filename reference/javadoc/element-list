@@ -23,6 +23,7 @@ com.societegenerale.failover.dashboard.metrics.source
 com.societegenerale.failover.dashboard.metrics.source.prometheus
 com.societegenerale.failover.dashboard.metrics.source.sharedstore
 com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc
+com.societegenerale.failover.dashboard.security
 com.societegenerale.failover.dashboard.service
 com.societegenerale.failover.dashboard.web
 com.societegenerale.failover.domain
