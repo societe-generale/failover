@@ -490,7 +490,7 @@ Both views apply the same detection rule, so cards and graph agree after a peer 
 invisible if the peer regrows past its previous total within one push interval (15 s by default) — the same theoretical
 window Prometheus `rate()` has; at most one interval of events can be undercounted.
 
-#### Instance churn — bounded retirement
+#### Instance churn bounded retirement
 
 Under Kubernetes-style deploys every new pod is a new `instanceId`, and the tier's invariant is that a dead peer's
 counts must keep contributing. Retirement reconciles the two:
