@@ -300,7 +300,7 @@ Three further operational signals are surfaced from existing meters (still no ne
 
 ---
 
-## Security - Fail-Closed (§9)
+## Security-Fail-Closed
 
 The dashboard surfaces internal operational data, so the access gate is **not** relaxed by the convenience defaults.
 
