@@ -313,7 +313,7 @@ class DashboardAutoConfigurationTest {
     void uiOffServesNoStatic() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
-                new DashboardProperties.Security("FAILOVER_ADMIN", false),
+                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", false),
                 new DashboardProperties.History(false, 120, 15),
                 new DashboardProperties.Health(0.99, 0.90),
                 new DashboardProperties.Cluster("local"));
