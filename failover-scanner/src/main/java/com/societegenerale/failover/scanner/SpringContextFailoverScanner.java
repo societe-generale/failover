@@ -93,12 +93,10 @@ public class SpringContextFailoverScanner
                     if (annotation == null) return;
                     var failoverUnit = new FailoverUnit(annotation, method);
                     var previousFailoverUnit = discovered.putIfAbsent(annotation.name(), failoverUnit);
-                    if (previousFailoverUnit != null) {
-                        if(!failoverUnit.equals(previousFailoverUnit)) {
-                            throw new FailoverScannerException(
+                    if (previousFailoverUnit != null && !failoverUnit.equals(previousFailoverUnit)) {
+                        throw new FailoverScannerException(
                                     "Duplicate @Failover name '%s' found on methods { {%s} : {%s} }. Each failover must have a unique name."
                                             .formatted(annotation.name(), previousFailoverUnit, failoverUnit));
-                        }
                     }
                     warnIfNotAdvisable(userClass, method, annotation);
                     warnIfInvalidScatterConfig(userClass, method, annotation);
