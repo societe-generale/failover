@@ -50,6 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(properties = {
         "failover.dashboard.enabled=true",
+        "failover.dashboard.security.type=ROLE",
         "failover.store.async=false",                 // synchronous writes ⇒ deterministic assertions
         "failover.observable.async.enabled=false",    // synchronous metric publish ⇒ counters visible before HTTP assert
         "spring.security.user.name=admin",

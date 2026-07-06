@@ -82,14 +82,14 @@ public record DashboardProperties(
     /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90),
+                new Security( SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90),
                 new Cluster("local"));
     }
 
     /** Convenience constructor with custom health, default exposure/security/history/cluster. */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), health, new Cluster("local"));
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", false), new History(false, 120, 15), health, new Cluster("local"));
     }
 
     /**
@@ -125,9 +125,19 @@ public record DashboardProperties(
      *                      ignored/refused under the {@code prod} profile
      */
     public record Security(
+        @DefaultValue("AUTHORITY") SecurityType type,
         @DefaultValue("FAILOVER_ADMIN") String role,
+        @DefaultValue("FAILOVER_ADMIN") String authority,
         @DefaultValue("false") boolean allowInsecure
     ) {
+    }
+
+    /**
+     * Security type for failover, AUTHORITY or ROLE. This is used to determine how the role/authority is interpreted in the security configuration.
+     * if AUTHORITY (by default), it will perform the check on configured authority (hasAuthority(authority)) or else if ROLE, it will perform the check on configured role (hasRole(role)).
+     */
+    public enum SecurityType {
+        ROLE, AUTHORITY
     }
 
     /**

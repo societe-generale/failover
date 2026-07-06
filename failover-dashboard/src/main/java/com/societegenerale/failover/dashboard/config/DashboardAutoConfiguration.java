@@ -16,6 +16,8 @@
 
 package com.societegenerale.failover.dashboard.config;
 
+import com.societegenerale.failover.dashboard.security.DefaultFailoverSecurityProvider;
+import com.societegenerale.failover.dashboard.security.FailoverSecurityProvider;
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
@@ -427,14 +429,20 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @Bean
         @Order(0)
         @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
-        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, DashboardProperties props) {
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
-                    .authorizeHttpRequests(auth -> auth.anyRequest().hasRole(props.security().role()))
+                    .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth, props.security()))
                     .httpBasic(Customizer.withDefaults())
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
             return http.build();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean(FailoverSecurityProvider.class)
+        FailoverSecurityProvider failoverSecurityProvider() {
+            return new DefaultFailoverSecurityProvider();
         }
     }
 
