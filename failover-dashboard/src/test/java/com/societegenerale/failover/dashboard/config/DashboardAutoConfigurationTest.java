@@ -479,7 +479,7 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("addViewControllers forwards bare base-path (and trailing slash) to index.html")
+    @DisplayName("addViewControllers redirects bare base-path to trailing slash, forwards trailing slash to index.html")
     void registersWelcomeForward() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard");
         org.springframework.web.servlet.config.annotation.ViewControllerRegistry registry =
@@ -488,7 +488,7 @@ class DashboardAutoConfigurationTest {
 
         new DashboardAutoConfiguration(props).addViewControllers(registry);
 
-        Mockito.verify(registry).addViewController("/failover-dashboard");
+        Mockito.verify(registry).addRedirectViewController("/failover-dashboard", "/failover-dashboard/");
         Mockito.verify(registry).addViewController("/failover-dashboard/");
     }
 }
