@@ -23,6 +23,7 @@ import com.societegenerale.failover.dashboard.metrics.source.prometheus.Promethe
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.Sample;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -241,6 +242,96 @@ class PrometheusMetricsSourceTest {
         when(fallback.info()).thenReturn(localInfo);
 
         assertThat(source.info()).isSameAs(localInfo);
+    }
+
+    @Test
+    @DisplayName("configEntries() maps the raw expiry+global gauge samples to a ConfigEntry, deduped by name")
+    void configEntriesMapsGaugeSamples() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(7200, "name", "country", "domain", "geo", "unit", "HOURS", "duration", "2",
+                        "recoverAll", "true", "payloadSplitter", "mySplitter", "keyGenerator", "myKeyGen",
+                        "expiryPolicy", "myExpiryPolicy"),
+                // a second instance's identical series (same name, different 'instance' label) — deduped
+                sample(7200, "name", "country", "domain", "geo", "unit", "HOURS", "duration", "2",
+                        "recoverAll", "true", "payloadSplitter", "mySplitter", "keyGenerator", "myKeyGen",
+                        "expiryPolicy", "myExpiryPolicy", "instance", "host-2")));
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of(
+                sample(1, "storeType", "jdbc", "executionType", "resilience",
+                        "exceptionPolicy", "never_throw", "asyncStore", "false")));
+
+        List<ConfigEntry> entries = source.configEntries();
+
+        assertThat(entries).singleElement().satisfies(e -> {
+            assertThat(e.name()).isEqualTo("country");
+            assertThat(e.domain()).isEqualTo("geo");
+            assertThat(e.expiryDuration()).isEqualTo(2L);
+            assertThat(e.expiryUnit()).isEqualTo("HOURS");
+            assertThat(e.recoverAll()).isTrue();
+            assertThat(e.payloadSplitter()).isEqualTo("mySplitter");
+            assertThat(e.keyGenerator()).isEqualTo("myKeyGen");
+            assertThat(e.expiryPolicy()).isEqualTo("myExpiryPolicy");
+            assertThat(e.storeType()).isEqualTo("jdbc");
+            assertThat(e.executionType()).isEqualTo("resilience");
+            assertThat(e.exceptionPolicy()).isEqualTo("never_throw");
+            assertThat(e.asyncStore()).isFalse();
+        });
+    }
+
+    @Test
+    @DisplayName("configEntries() applies framework defaults when no global gauge sample is present")
+    void configEntriesDefaultsWhenGlobalGaugeAbsent() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(3600, "name", "alpha", "domain", "alpha", "unit", "HOURS", "duration", "1",
+                        "recoverAll", "false", "payloadSplitter", "", "keyGenerator", "", "expiryPolicy", "")));
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of());
+
+        ConfigEntry e = source.configEntries().getFirst();
+
+        assertThat(e.payloadSplitter()).isEqualTo("default");
+        assertThat(e.storeType()).isEqualTo("inmemory");
+        assertThat(e.executionType()).isEqualTo("basic");
+        assertThat(e.exceptionPolicy()).isEqualTo("rethrow");
+        assertThat(e.asyncStore()).isTrue();
+    }
+
+    @Test
+    @DisplayName("configEntries() drops samples lacking a name label and falls back to name for a blank domain/unit")
+    void configEntriesDropsUnlabelledAndFallsBackForBlankTags() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(3600, "domain", "geo"),   // no 'name' label → dropped
+                sample(3600, "name", "alpha", "domain", "", "unit", "", "duration", "1",
+                        "recoverAll", "false", "payloadSplitter", "", "keyGenerator", "", "expiryPolicy", "")));
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of());
+
+        List<ConfigEntry> entries = source.configEntries();
+
+        assertThat(entries).singleElement().satisfies(e -> {
+            assertThat(e.name()).isEqualTo("alpha");
+            assertThat(e.domain()).isEqualTo("alpha");   // blank domain tag falls back to the name
+            assertThat(e.expiryUnit()).isEmpty();         // blank unit tag has no name-based fallback
+        });
+    }
+
+    @Test
+    @DisplayName("configEntries() falls back to the local source when Prometheus fails")
+    void configEntriesFallsBack() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenThrow(new PrometheusException("boom", null));
+        ConfigEntry local = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        when(fallback.configEntries()).thenReturn(List.of(local));
+
+        assertThat(source.configEntries()).containsExactly(local);
+    }
+
+    @Test
+    @DisplayName("configEntries() falls back to the local source when only the global-config query fails")
+    void configEntriesFallsBackWhenGlobalQueryFails() {
+        when(client.query(eq("failover_config_global"))).thenThrow(new PrometheusException("boom", null));
+        ConfigEntry local = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        when(fallback.configEntries()).thenReturn(List.of(local));
+
+        assertThat(source.configEntries()).containsExactly(local);
     }
 
     private static RangeSeries range(double... tsValuePairs) {

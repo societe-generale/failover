@@ -45,6 +45,13 @@ public class DefaultInstanceIdResolver implements InstanceIdResolver {
     private final String hostname;
     private final Supplier<String> portSupplier;
 
+    /**
+     * Creates a new resolver.
+     *
+     * @param appName      the application name segment
+     * @param hostname     the host segment, typically from {@link #resolveHostname()}
+     * @param portSupplier lazily resolves the port segment
+     */
     public DefaultInstanceIdResolver(String appName, String hostname, Supplier<String> portSupplier) {
         this.appName = appName;
         this.hostname = hostname;
@@ -60,6 +67,8 @@ public class DefaultInstanceIdResolver implements InstanceIdResolver {
      * Resolves the local hostname, falling back to {@code "unknown-host"} when the network stack
      * is unavailable. Provided as a static helper so callers can use it without duplicating the
      * try/catch.
+     *
+     * @return the local hostname, or {@code "unknown-host"} on failure
      */
     public static String resolveHostname() {
         try {

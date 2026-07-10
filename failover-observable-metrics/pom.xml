@@ -46,6 +46,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Verifies ClusterSnapshot's Jackson (de)serialization contract (the shape peers POST to the
+             dashboard's ingest endpoint) without depending on the web module. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

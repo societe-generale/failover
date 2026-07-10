@@ -41,7 +41,13 @@ import java.util.List;
  *   <li>{@code failover.registered.total} (Gauge) — total number of {@code @Failover} annotations
  *       discovered; sampled lazily so it reflects the live scanner state</li>
  *   <li>{@code failover.config.expiry.seconds} (Gauge) — configured expiry in seconds for each
- *       named failover; tags: {@code name}, {@code unit}</li>
+ *       named failover; tags: {@code name}, {@code domain}, {@code unit}, {@code duration},
+ *       {@code recoverAll}, {@code payloadSplitter}, {@code keyGenerator}, {@code expiryPolicy}.
+ *       Read back by {@code FailoverConfigSnapshotService} to rebuild the dashboard's configuration
+ *       view without depending on {@code FailoverScanner}</li>
+ *   <li>{@code failover.config.global} (Gauge, value {@code 1}) — process-wide framework settings that
+ *       apply to every failover; tags: {@code storeType}, {@code executionType}, {@code exceptionPolicy},
+ *       {@code asyncStore}. Registered only when a {@link GlobalConfig} is supplied</li>
  *   <li>{@code failover.live.entries} (Gauge) — current stored entry count per failover (cache footprint);
  *       tags: {@code name}, {@code domain}. Registered only when the assembled store is
  *       {@link FailoverStoreSizeAware} and supports counting: always for in-memory / Caffeine, and for JDBC
@@ -63,10 +69,24 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
     private final FailoverScanner scanner;
     private final FailoverExpiryExtractor expiryExtractor;
     private final @Nullable FailoverStoreSizeAware sizeAwareStore;
+    private final @Nullable GlobalConfig globalConfig;
     private final List<MeterRegistry> registries = new ArrayList<>();
 
     /**
-     * Creates a binder with the required scanner and expiry extractor (no live-entries gauge).
+     * Process-wide framework settings echoed on the {@code failover.config.global} gauge — the same
+     * values {@code DashboardConfigService} used to read from the {@code Environment} directly, now
+     * emitted so a remote dashboard can read them too.
+     *
+     * @param storeType       {@code failover.store.type} (e.g. {@code inmemory}, {@code jdbc})
+     * @param executionType   {@code failover.type} (e.g. {@code basic}, {@code resilience})
+     * @param exceptionPolicy {@code failover.exception-policy} (e.g. {@code rethrow})
+     * @param asyncStore      {@code failover.store.async}
+     */
+    public record GlobalConfig(String storeType, String executionType, String exceptionPolicy, boolean asyncStore) {
+    }
+
+    /**
+     * Creates a binder with the required scanner and expiry extractor (no live-entries gauge, no global-config gauge).
      *
      * @param scanner         scanner that provides the list of registered failovers
      * @param expiryExtractor extracts expiry configuration from {@code @Failover} annotations
@@ -85,9 +105,25 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
      *                        a {@link FailoverStoreSizeAware} that {@link FailoverStoreSizeAware#liveEntryCountSupported() supports} counting
      */
     public FailoverMeterBinder(FailoverScanner scanner, FailoverExpiryExtractor expiryExtractor, @Nullable Object store) {
+        this(scanner, expiryExtractor, store, null);
+    }
+
+    /**
+     * Creates a binder that additionally exposes the {@code failover.config.global} gauge.
+     *
+     * @param scanner         scanner that provides the list of registered failovers
+     * @param expiryExtractor extracts expiry configuration from {@code @Failover} annotations
+     * @param store           the assembled failover store; the live-entries gauge is registered only when it is
+     *                        a {@link FailoverStoreSizeAware} that {@link FailoverStoreSizeAware#liveEntryCountSupported() supports} counting
+     * @param globalConfig    process-wide framework settings; the {@code failover.config.global} gauge is
+     *                        registered only when this is non-{@code null}
+     */
+    public FailoverMeterBinder(FailoverScanner scanner, FailoverExpiryExtractor expiryExtractor,
+                                @Nullable Object store, @Nullable GlobalConfig globalConfig) {
         this.scanner = scanner;
         this.expiryExtractor = expiryExtractor;
         this.sizeAwareStore = (store instanceof FailoverStoreSizeAware sa && sa.liveEntryCountSupported()) ? sa : null;
+        this.globalConfig = globalConfig;
     }
 
     /**
@@ -100,6 +136,15 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
         Gauge.builder("failover.registered.total", scanner, s -> s.findAllFailover().size())
             .description("Number of @Failover-annotated methods registered")
             .register(registry);
+        if (globalConfig != null) {
+            Gauge.builder("failover.config.global", () -> 1)
+                .description("Process-wide failover framework settings (tags only)")
+                .tag("storeType", globalConfig.storeType())
+                .tag("executionType", globalConfig.executionType())
+                .tag("exceptionPolicy", globalConfig.exceptionPolicy())
+                .tag("asyncStore", String.valueOf(globalConfig.asyncStore()))
+                .register(registry);
+        }
     }
 
     /**
@@ -119,6 +164,11 @@ public class FailoverMeterBinder implements MeterBinder, SmartInitializingSingle
                     .tag("name", failover.name())
                     .tag("domain", domain)
                     .tag("unit", expiryExtractor.expiryUnit(failover).name())
+                    .tag("duration", String.valueOf(expiryExtractor.expiryDuration(failover)))
+                    .tag("recoverAll", String.valueOf(failover.recoverAll()))
+                    .tag("payloadSplitter", failover.payloadSplitter())
+                    .tag("keyGenerator", failover.keyGenerator())
+                    .tag("expiryPolicy", failover.expiryPolicy())
                     .register(registry);
                 if (sizeAwareStore != null) {
                     // The store keys entries under the effective (domain) name; count by that.

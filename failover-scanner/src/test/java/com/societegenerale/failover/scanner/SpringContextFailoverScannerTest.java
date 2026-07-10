@@ -20,6 +20,7 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.scanner.FailoverScannerException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
@@ -235,7 +236,7 @@ class SpringContextFailoverScannerTest {
 
     // ── Advisability warnings (audit A8) ────────────────────────────────────────
 
-    @org.junit.jupiter.api.Nested
+    @Nested
     @DisplayName("warns when @Failover cannot be advised by the proxy")
     class AdvisabilityWarnings {
 

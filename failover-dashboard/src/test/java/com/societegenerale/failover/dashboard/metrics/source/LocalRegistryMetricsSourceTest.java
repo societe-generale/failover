@@ -20,6 +20,8 @@ import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -106,5 +108,24 @@ class LocalRegistryMetricsSourceTest {
         assertThat(inst.instanceId()).isEqualTo(INSTANCE_ID);
         assertThat(inst.summary()).isSameAs(summary);
         assertThat(inst.lastSeenEpochMs()).isGreaterThanOrEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("configEntries() delegates to the config snapshot service when present")
+    void configEntriesDelegatesToConfigSnapshotService() {
+        FailoverConfigSnapshotService configSnapshotService = mock(FailoverConfigSnapshotService.class);
+        ConfigEntry entry = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        when(configSnapshotService.configEntries()).thenReturn(List.of(entry));
+        LocalRegistryMetricsSource withConfig =
+                new LocalRegistryMetricsSource(metricsService, history, RESOLVER, configSnapshotService);
+
+        assertThat(withConfig.configEntries()).containsExactly(entry);
+    }
+
+    @Test
+    @DisplayName("configEntries() is empty when no config snapshot service is present")
+    void configEntriesEmptyWithoutConfigSnapshotService() {
+        assertThat(source.configEntries()).isEmpty();
     }
 }

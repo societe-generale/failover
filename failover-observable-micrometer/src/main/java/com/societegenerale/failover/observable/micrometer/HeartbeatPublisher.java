@@ -47,6 +47,14 @@ public class HeartbeatPublisher implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private final AtomicBoolean failing = new AtomicBoolean(false);
 
+    /**
+     * Creates a new publisher and starts its scheduled heartbeat.
+     *
+     * @param instanceIdResolver resolves this instance's identity for the pushed heartbeat
+     * @param pushClient         transport used to deliver the heartbeat
+     * @param heartbeatUrl       the dashboard's heartbeat ingest endpoint URL
+     * @param intervalSeconds    interval between heartbeats
+     */
     public HeartbeatPublisher(InstanceIdResolver instanceIdResolver,
                               HeartbeatPushClient pushClient,
                               String heartbeatUrl,

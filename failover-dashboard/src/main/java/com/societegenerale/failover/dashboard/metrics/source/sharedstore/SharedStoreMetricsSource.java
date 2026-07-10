@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
@@ -128,6 +129,12 @@ public class SharedStoreMetricsSource implements MetricsSource {
     @Override
     public List<InstanceMetrics> instances() {
         return enrichWithLiveness(store.allInstances());
+    }
+
+    @Override
+    public List<ConfigEntry> configEntries() {
+        List<ConfigEntry> merged = store.configEntries();
+        return merged.isEmpty() ? fallback.configEntries() : merged;
     }
 
     /**

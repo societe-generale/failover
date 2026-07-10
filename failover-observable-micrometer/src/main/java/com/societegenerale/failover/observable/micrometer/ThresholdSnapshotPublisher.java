@@ -36,6 +36,12 @@ public abstract class ThresholdSnapshotPublisher extends AbstractSnapshotPublish
     private final long intervalMs;
     private final AtomicLong lastPushTime = new AtomicLong(0);
 
+    /**
+     * Creates a new threshold-gated publisher.
+     *
+     * @param executor        executor used to dispatch {@link #push()} off the metric-event thread
+     * @param intervalSeconds minimum interval between pushes
+     */
     protected ThresholdSnapshotPublisher(Executor executor, int intervalSeconds) {
         super(executor);
         this.intervalMs = intervalSeconds * 1000L;

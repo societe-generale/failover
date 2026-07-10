@@ -18,8 +18,8 @@ package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
 
-import com.societegenerale.failover.dashboard.metrics.ConfigEntry;
 import com.societegenerale.failover.dashboard.metrics.FailoverHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,9 +34,9 @@ import java.util.Map;
  * <p>The base path resolves the {@code failover.dashboard.base-path} property (default
  * {@code /failover-dashboard}) so the API tracks the configured UI path.
  *
- * <p>Serves the scanner-derived views that need no {@code MeterRegistry}: {@code /api/config} (every
- * {@code @Failover} point + global settings) and {@code /api/failover-health} (actuator-style overall
- * status). The metrics views live on {@link DashboardMetricsController}.
+ * <p>Serves the config views: {@code /api/config} (every {@code @Failover} point, sourced from the
+ * {@code MetricsSource} — never a live {@code FailoverScanner}) and {@code /api/failover-health}
+ * (actuator-style overall status). The metrics views live on {@link DashboardMetricsController}.
  *
  * @author Anand Manissery
  */

@@ -25,6 +25,7 @@ import com.societegenerale.failover.dashboard.metrics.source.prometheus.Promethe
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.Sample;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.Latency;
@@ -37,6 +38,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -70,6 +72,10 @@ public class PrometheusMetricsSource implements MetricsSource {
     private static final String Q_LAT_P99  = "histogram_quantile(0.99, sum by (name, action, le) (failover_operation_duration_seconds_bucket))";
     private static final String Q_EXC      = "sum by (final_cause_type, cause_type, exception_type) (failover_exception_total)";
     private static final String Q_INSTANCES = "count(group by (instance) (failover_store_total))";
+    // PromQL — raw (ungrouped) config gauges; every reporting instance emits an identical series bar the
+    // 'instance' label, so the config view just needs one sample per failover name.
+    private static final String Q_CONFIG_EXPIRY = "failover_config_expiry_seconds";
+    private static final String Q_CONFIG_GLOBAL = "failover_config_global";
 
     // PromQL — per-instance variants (the 'instance' label is kept) for the Instances view.
     private static final String QI_SUCCESS = "sum by (name, instance) (failover_store_total{stored=\"true\"})";
@@ -98,7 +104,7 @@ public class PrometheusMetricsSource implements MetricsSource {
     static java.util.List<String> promQlConstants() {
         return java.util.List.of(
                 Q_SUCCESS, Q_OUTCOME, Q_PARTIAL, Q_ASYNC, Q_LAT_SUM, Q_LAT_CNT, Q_LAT_MAX, Q_LAT_P95, Q_LAT_P99,
-                Q_EXC, Q_INSTANCES,
+                Q_EXC, Q_INSTANCES, Q_CONFIG_EXPIRY, Q_CONFIG_GLOBAL,
                 QI_SUCCESS, QI_OUTCOME, QI_PARTIAL, QI_ASYNC, QI_LAT_SUM, QI_LAT_CNT, QI_LAT_MAX, QI_LAT_P95,
                 QI_LAT_P99, QI_EXC,
                 R_CALLS, R_STORE, R_FAILOVER, R_RECOVERED, R_NOTREC, R_BY_API);
@@ -173,6 +179,73 @@ public class PrometheusMetricsSource implements MetricsSource {
             log.warn("Prometheus per-instance aggregation failed; falling back to local instance. Cause: {}", e.getMessage());
             return fallback.instances();
         }
+    }
+
+    @Override
+    public List<ConfigEntry> configEntries() {
+        try {
+            return buildConfigEntries();
+        } catch (PrometheusException e) {
+            log.warn("Prometheus config aggregation failed; falling back to local. Cause: {}", e.getMessage());
+            return fallback.configEntries();
+        }
+    }
+
+    // ── aggregation (config) ────────────────────────────────────────────────
+
+    private List<ConfigEntry> buildConfigEntries() {
+        GlobalConfigTags global = globalConfigTags(client.query(Q_CONFIG_GLOBAL));
+        Map<String, ConfigEntry> byName = new TreeMap<>();
+        for (Sample s : client.query(Q_CONFIG_EXPIRY)) {
+            String name = s.label("name");
+            if (name == null || byName.containsKey(name)) {
+                continue;   // one series per reporting instance — first sample per name wins
+            }
+            byName.put(name, new ConfigEntry(
+                    name,
+                    orFallback(s.label("domain"), name),
+                    parseLongOrZero(s.label("duration")),
+                    orFallback(s.label("unit"), ""),
+                    Boolean.parseBoolean(s.label("recoverAll")),
+                    orDefaultTag(s.label("payloadSplitter")),
+                    orDefaultTag(s.label("keyGenerator")),
+                    orDefaultTag(s.label("expiryPolicy")),
+                    global.storeType(), global.executionType(), global.exceptionPolicy(), global.asyncStore()));
+        }
+        return List.copyOf(byName.values());
+    }
+
+    private static GlobalConfigTags globalConfigTags(List<Sample> samples) {
+        if (samples.isEmpty()) {
+            return new GlobalConfigTags("inmemory", "basic", "rethrow", true);
+        }
+        Sample s = samples.getFirst();
+        return new GlobalConfigTags(
+                orFallback(s.label("storeType"), "inmemory"),
+                orFallback(s.label("executionType"), "basic"),
+                orFallback(s.label("exceptionPolicy"), "rethrow"),
+                Boolean.parseBoolean(orFallback(s.label("asyncStore"), "true")));
+    }
+
+    private static long parseLongOrZero(String value) {
+        try {
+            return value == null ? 0L : Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private static String orFallback(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    /** Empty per-annotation overrides render as {@code "default"} to signal "framework default". */
+    private static String orDefaultTag(String value) {
+        return value == null || value.isBlank() ? "default" : value;
+    }
+
+    /** Process-wide framework settings echoed on every {@link ConfigEntry} — parsed from {@code failover_config_global}. */
+    private record GlobalConfigTags(String storeType, String executionType, String exceptionPolicy, boolean asyncStore) {
     }
 
     // ── aggregation ───────────────────────────────────────────────────────────

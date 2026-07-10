@@ -23,6 +23,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.ApplicationContext;
@@ -109,7 +110,7 @@ public class SpringContextFailoverScanner
         this.payloadTypes = Set.copyOf(discoveredPayloadTypes);
         log.info("SpringContextFailoverScanner discovered {} @Failover annotation(s) covering {} payload type(s).",
                 failoverMap.size(), payloadTypes.size());
-        warnOnDomainExpirtyMismatch(discovered);
+        warnOnDomainExpiryMismatch(discovered);
     }
 
     @Override
@@ -187,6 +188,15 @@ public class SpringContextFailoverScanner
         if (userClass.isInterface() || java.lang.reflect.Proxy.isProxyClass(userClass)) {
             return;
         }
+        List<String> reasons = listAllReasons(userClass, method);
+        if (!reasons.isEmpty()) {
+            log.warn("Failover '{}' on {}#{} will NOT be applied — the method cannot be intercepted by the Spring AOP proxy: {}. "
+                    + "The annotation has no effect until fixed.",
+                    annotation.name(), userClass.getSimpleName(), method.getName(), String.join("; ", reasons));
+        }
+    }
+
+    private @NonNull List<String> listAllReasons(Class<?> userClass, Method method) {
         List<String> reasons = new ArrayList<>();
         if (!method.isAnnotationPresent(Failover.class)) {
             reasons.add(("@Failover is declared on a supertype/interface, not directly on the concrete method — "
@@ -206,11 +216,7 @@ public class SpringContextFailoverScanner
         if (Modifier.isFinal(userClass.getModifiers())) {
             reasons.add("declaring class '%s' is final (CGLIB cannot subclass it)".formatted(userClass.getSimpleName()));
         }
-        if (!reasons.isEmpty()) {
-            log.warn("Failover '{}' on {}#{} will NOT be applied — the method cannot be intercepted by the Spring AOP proxy: {}. "
-                    + "The annotation has no effect until fixed.",
-                    annotation.name(), userClass.getSimpleName(), method.getName(), String.join("; ", reasons));
-        }
+        return reasons;
     }
 
     /**
@@ -233,7 +239,7 @@ public class SpringContextFailoverScanner
         }
     }
 
-    private void warnOnDomainExpirtyMismatch(Map<String, FailoverUnit> discovered) {
+    private void warnOnDomainExpiryMismatch(Map<String, FailoverUnit> discovered) {
         discovered.values().stream()
             .map(FailoverUnit::getFailover)
             .filter(f -> !f.domain().isBlank())
@@ -254,7 +260,7 @@ public class SpringContextFailoverScanner
         try {
             return applicationContext.getType(beanName);
         } catch (Exception e) {
-            log.debug("Could not determine type for bean '{}', skipping. Cause: {}", beanName, e.getMessage());
+            log.debug("Could not determine type for bean '{}', skipping. Cause: {}", beanName, e.getMessage(), e);
             return null;
         }
     }

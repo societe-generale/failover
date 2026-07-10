@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.Latency;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -150,6 +151,42 @@ class SharedStoreMetricsSourceTest {
             public List<InstanceMetrics> allInstances() { return delegate.allInstances(); }
             public MetricsSummary retiredAggregate() { return retired; }
         };
+    }
+
+    /** Wraps a stub store with fixed config entries (the merged view {@code SnapshotStoreInmemory} would build). */
+    private static SnapshotStore withConfig(SnapshotStore delegate, List<ConfigEntry> configEntries) {
+        return new SnapshotStore() {
+            public void upsert(ClusterSnapshot snapshot) { delegate.upsert(snapshot); }
+            public List<InstanceMetrics> allInstances() { return delegate.allInstances(); }
+            public List<ConfigEntry> configEntries() { return configEntries; }
+        };
+    }
+
+    private static ConfigEntry entry(String name) {
+        return new ConfigEntry(name, name, 24L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+    }
+
+    @Test
+    void configEntriesDelegatesToTheStore() {
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                withConfig(stubStore(), List.of(entry("alpha"))), THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.configEntries()).extracting(ConfigEntry::name).containsExactly("alpha");
+    }
+
+    @Test
+    void configEntriesFallsBackToLocalWhenStoreHasNoneYet() {
+        MetricsSource fb = new MetricsSource() {
+            public MetricsSummary summary() { return null; }
+            public List<ApiHealth> health() { return List.of(); }
+            public SourceInfo info() { return null; }
+            public List<SeriesPoint> series(long w) { return List.of(); }
+            public List<ConfigEntry> configEntries() { return List.of(entry("fallback-entry")); }
+        };
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fb, 10);
+
+        assertThat(source.configEntries()).extracting(ConfigEntry::name).containsExactly("fallback-entry");
     }
 
     @Test

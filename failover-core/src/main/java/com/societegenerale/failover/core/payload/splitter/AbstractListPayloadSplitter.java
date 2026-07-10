@@ -41,6 +41,8 @@ import java.util.List;
 public abstract class AbstractListPayloadSplitter<T> extends AbstractPayloadSplitter<List<T>,T> {
 
     /**
+     * Creates a new splitter for the given slice type.
+     *
      * @param clazz the slice type {@code T}; used to stamp every per-slice {@link RecoverContext} so
      *              the delegate recovers the right type
      */

@@ -31,6 +31,8 @@ import org.jspecify.annotations.Nullable;
 public interface DatabaseResolver {
 
     /**
+     * Resolves the database product name from a live JDBC connection.
+     *
      * @return database product name (e.g. {@code "H2"}, {@code "PostgreSQL"}), or {@code null}
      *         if the name cannot be determined
      */

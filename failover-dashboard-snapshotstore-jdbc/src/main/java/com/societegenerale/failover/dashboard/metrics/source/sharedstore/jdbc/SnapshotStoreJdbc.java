@@ -16,8 +16,10 @@
 
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -26,7 +28,10 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Snapsho
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -37,7 +42,7 @@ import java.util.Objects;
  * reset-aware carry-forward (persisted in the nullable {@code BASELINE_JSON} column), so a peer restart never
  * shrinks the cluster aggregate — and the carried baseline itself survives a dashboard restart.
  *
- * <p>Table {@code (INSTANCE_ID PK, RECEIVED_AT BIGINT, SUMMARY_JSON CLOB, BASELINE_JSON CLOB NULL)}, named {@code <tablePrefix> +}
+ * <p>Table {@code (INSTANCE_ID PK, RECEIVED_AT BIGINT, SUMMARY_JSON CLOB, BASELINE_JSON CLOB NULL, CONFIG_JSON CLOB NULL)}, named {@code <tablePrefix> +}
  * {@link #BASE_TABLE} (the prefix is validated — letters/digits/underscore only — since it is concatenated into
  * SQL). Upsert is a portable update-then-insert (no dialect-specific MERGE); {@code autoDdl} creates the table on
  * startup if missing. Stores only aggregate, non-sensitive failover metrics — never business data — so a single
@@ -77,15 +82,16 @@ public class SnapshotStoreJdbc implements SnapshotStore {
                 (rs, rowNum) -> new MetricsSummary[]{fromJson(rs.getString("SUMMARY_JSON")),
                         fromJsonNullable(rs.getString("BASELINE_JSON"))},
                 id);
+        String configJson = toJsonConfig(snapshot.configEntries());
         if (existing.isEmpty()) {
             warnIfOverCeiling();
-            jdbc.update("INSERT INTO " + table + " (INSTANCE_ID, RECEIVED_AT, SUMMARY_JSON, BASELINE_JSON) VALUES (?, ?, ?, ?)",
-                    id, now, toJson(snapshot.summary()), null);
+            jdbc.update("INSERT INTO " + table + " (INSTANCE_ID, RECEIVED_AT, SUMMARY_JSON, BASELINE_JSON, CONFIG_JSON) VALUES (?, ?, ?, ?, ?)",
+                    id, now, toJson(snapshot.summary()), null, configJson);
             return;
         }
         MetricsSummary baseline = SnapshotBaseline.next(existing.getFirst()[0], existing.getFirst()[1], snapshot.summary());
-        jdbc.update("UPDATE " + table + " SET RECEIVED_AT = ?, SUMMARY_JSON = ?, BASELINE_JSON = ? WHERE INSTANCE_ID = ?",
-                now, toJson(snapshot.summary()), baseline == null ? null : toJson(baseline), id);
+        jdbc.update("UPDATE " + table + " SET RECEIVED_AT = ?, SUMMARY_JSON = ?, BASELINE_JSON = ?, CONFIG_JSON = ? WHERE INSTANCE_ID = ?",
+                now, toJson(snapshot.summary()), baseline == null ? null : toJson(baseline), configJson, id);
     }
 
     @Override
@@ -102,6 +108,24 @@ public class SnapshotStoreJdbc implements SnapshotStore {
                 }).stream().filter(Objects::nonNull).toList();
     }
 
+    /**
+     * The {@code @Failover} configuration, merged across every row (config is expected identical
+     * cluster-wide; when instances disagree the most recently received row per name wins).
+     */
+    @Override
+    public List<ConfigEntry> configEntries() {
+        Map<String, ConfigEntry> byName = new LinkedHashMap<>();
+        List<List<ConfigEntry>> rows = jdbc.query(
+                "SELECT CONFIG_JSON FROM " + table + " ORDER BY RECEIVED_AT ASC",
+                (rs, rowNum) -> fromJsonConfig(rs.getString("CONFIG_JSON")));
+        for (List<ConfigEntry> row : rows) {
+            for (ConfigEntry entry : row) {
+                byName.put(entry.name(), entry);   // last-seen instance wins per name
+            }
+        }
+        return byName.values().stream().sorted(Comparator.comparing(ConfigEntry::name)).toList();
+    }
+
     private void warnIfOverCeiling() {
         Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
         if (total != null && total >= maxInstances) {
@@ -113,7 +137,9 @@ public class SnapshotStoreJdbc implements SnapshotStore {
     private void createTableIfMissing() {
         jdbc.execute("CREATE TABLE IF NOT EXISTS " + table
                 + " (INSTANCE_ID VARCHAR(255) PRIMARY KEY, RECEIVED_AT BIGINT NOT NULL, SUMMARY_JSON CLOB NOT NULL, "
-                + "BASELINE_JSON CLOB)");
+                + "BASELINE_JSON CLOB, CONFIG_JSON CLOB)");
+        // Upgrade path: a table created before CONFIG_JSON existed is missing the column.
+        jdbc.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS CONFIG_JSON CLOB");
     }
 
     private String toJson(MetricsSummary summary) {
@@ -135,6 +161,28 @@ public class SnapshotStoreJdbc implements SnapshotStore {
 
     private MetricsSummary fromJsonNullable(String json) {
         return json == null || json.isBlank() ? null : fromJson(json);
+    }
+
+    private String toJsonConfig(List<ConfigEntry> configEntries) {
+        try {
+            return mapper.writeValueAsString(configEntries);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize snapshot config entries", e);
+        }
+    }
+
+    /** {@code null}/blank (older row, or a peer that pushed no config) reads back as an empty list. */
+    private List<ConfigEntry> fromJsonConfig(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return mapper.readValue(json, new TypeReference<List<ConfigEntry>>() {
+            });
+        } catch (Exception e) {
+            log.warn("Skipping unreadable snapshot config row: {}", e.toString());
+            return List.of();
+        }
     }
 
     /**

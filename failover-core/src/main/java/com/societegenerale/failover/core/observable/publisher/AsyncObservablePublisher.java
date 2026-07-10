@@ -70,6 +70,8 @@ public class AsyncObservablePublisher implements ObservablePublisher, AutoClosea
     private volatile boolean running = true;
 
     /**
+     * Creates a new async publisher and starts its drain worker.
+     *
      * @param delegate     the publisher that does the real fan-out (usually the composite); runs on the drain thread
      * @param queueCapacity bounded queue size; must be {@code > 0}. A full queue drops metrics rather than blocking
      */
@@ -97,12 +99,20 @@ public class AsyncObservablePublisher implements ObservablePublisher, AutoClosea
         }
     }
 
-    /** Total metrics dropped because the queue was full. Bound by the Micrometer layer for visibility. */
+    /**
+     * Total metrics dropped because the queue was full. Bound by the Micrometer layer for visibility.
+     *
+     * @return the cumulative dropped-metric count
+     */
     public long dropped() {
         return dropped.get();
     }
 
-    /** Current number of metrics waiting to be drained (for diagnostics / tests). */
+    /**
+     * Current number of metrics waiting to be drained (for diagnostics / tests).
+     *
+     * @return the current queue size
+     */
     public int queueSize() {
         return queue.size();
     }

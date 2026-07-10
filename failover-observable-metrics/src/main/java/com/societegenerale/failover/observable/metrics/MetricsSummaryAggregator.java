@@ -87,6 +87,9 @@ public final class MetricsSummaryAggregator {
      * The monotonic cumulative total of a summary — every counter this framework publishes, summed. Grows
      * with every metric event within one process lifetime, so a drop between two snapshots of the same
      * instance can only mean the instance restarted and its counters reset.
+     *
+     * @param summary the summary to total
+     * @return the summed cumulative total across every API
      */
     public static long cumulativeTotal(MetricsSummary summary) {
         long total = 0;
@@ -97,6 +100,10 @@ public final class MetricsSummaryAggregator {
     }
 
     /**
+     * Detects a counter reset between two snapshots of the same instance.
+     *
+     * @param previous the instance's previously stored snapshot
+     * @param incoming the snapshot just received
      * @return {@code true} when {@code incoming} is a post-restart snapshot of the instance that produced
      * {@code previous} — i.e. its cumulative total went backwards (counter reset, design §5.3)
      */

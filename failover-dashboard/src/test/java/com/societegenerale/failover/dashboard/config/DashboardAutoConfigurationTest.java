@@ -25,7 +25,7 @@ import com.societegenerale.failover.dashboard.web.DashboardMetricsController;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusMetricsSource;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -44,7 +44,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DashboardAutoConfigurationTest {
 
     private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
-            .withBean(FailoverScanner.class, () -> Mockito.mock(FailoverScanner.class))
             .withConfiguration(AutoConfigurations.of(
                     org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
                     org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration.class,
@@ -215,8 +214,8 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("standalone (no FailoverScanner) ⇒ EmptyFailoverScanner fallback, config view empty")
-    void standaloneProvidesEmptyScanner() {
+    @DisplayName("standalone (no failover.config.* gauges emitted) ⇒ FailoverConfigSnapshotService fallback, config view empty")
+    void standaloneProvidesEmptyConfigSnapshotService() {
         new WebApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(
                         org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
@@ -226,9 +225,9 @@ class DashboardAutoConfigurationTest {
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues("failover.dashboard.enabled=true")
                 .run(ctx -> {
-                    assertThat(ctx).hasSingleBean(FailoverScanner.class);
-                    assertThat(ctx.getBean(FailoverScanner.class)).isInstanceOf(EmptyFailoverScanner.class);
-                    assertThat(ctx.getBean(FailoverScanner.class).findAllFailover()).isEmpty();
+                    assertThat(ctx).hasSingleBean(FailoverConfigSnapshotService.class);
+                    assertThat(ctx.getBean(FailoverConfigSnapshotService.class).configEntries()).isEmpty();
+                    assertThat(ctx.getBean(DashboardConfigService.class).configEntries()).isEmpty();
                 });
     }
 

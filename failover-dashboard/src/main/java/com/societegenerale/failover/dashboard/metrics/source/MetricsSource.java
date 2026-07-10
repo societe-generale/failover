@@ -17,6 +17,7 @@
 package com.societegenerale.failover.dashboard.metrics.source;
 
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -77,5 +78,17 @@ public interface MetricsSource {
      */
     default Map<String, List<ExceptionStat>> exceptionsByApi() {
         return Map.of();
+    }
+
+    /**
+     * The {@code @Failover} configuration view: one {@link ConfigEntry} per registered failover, sourced from
+     * the {@code failover.config.expiry.seconds} / {@code failover.config.global} gauges (never a live
+     * {@code FailoverScanner} reference — see {@code FailoverConfigSnapshotService}).
+     *
+     * <p>The default returns empty (sources with no configuration to report). {@code local} and
+     * {@code shared-store} implement it; {@code prometheus} queries the same gauges over the HTTP API.
+     */
+    default List<ConfigEntry> configEntries() {
+        return List.of();
     }
 }

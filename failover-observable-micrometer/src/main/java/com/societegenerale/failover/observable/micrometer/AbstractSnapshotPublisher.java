@@ -32,6 +32,11 @@ public abstract class AbstractSnapshotPublisher implements SnapshotPublisher {
 
     private final Executor executor;
 
+    /**
+     * Creates a new publisher.
+     *
+     * @param executor executor used to dispatch {@link #push()} off the metric-event thread
+     */
     protected AbstractSnapshotPublisher(Executor executor) {
         this.executor = executor;
     }
