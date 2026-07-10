@@ -572,9 +572,6 @@
                             <timeoutFactor>2.0</timeoutFactor>
                             <!-- ubuntu-latest gives 4 vCPUs; run mutants in parallel instead of PIT's single-thread default. -->
                             <threads>2</threads>
-                            <!-- Skip re-mutating classes unchanged since the last run (cached across CI runs). -->
-                            <historyInputFile>${project.build.directory}/pit-history/pitHistory.txt</historyInputFile>
-                            <historyOutputFile>${project.build.directory}/pit-history/pitHistory.txt</historyOutputFile>
                             <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
                             <mutationThreshold>95</mutationThreshold>
                             <!-- Fail if the target globs ever match zero classes, so the 95% gate can never pass vacuously. -->
