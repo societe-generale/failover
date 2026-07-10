@@ -25,6 +25,7 @@ const classify = h => h >= 0.99 ? 'HEALTHY' : h >= 0.90 ? 'DEGRADED' : 'UNHEALTH
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let lastSummary = null;
+let lastExceptions = {};        // endpointName → [{type, count}], from api/metrics/exceptions (local source only)
 let statusByName = {};          // name → HEALTHY|DEGRADED|UNHEALTHY (from api/health)
 let lastSource = null;          // SourceInfo {mode, instancesReporting, instancesExpected, asOfEpochMs, partial}
 let configRows = [];
@@ -54,7 +55,7 @@ function kpiCard(k) {
         ? `<div class="valrow"><span class="val">${k.val}</span><span class="of">${k.of}</span></div>`
         : `<div class="val">${k.val}</div>`;
     return `<div class="kpi" data-c="${k.c}">
-        <div class="top"><span class="lbl">${k.lbl}</span><span class="ic">${k.ic}</span></div>
+        <div class="top"><span class="lbl tip" data-tip="${k.sub}">${k.lbl}</span><span class="ic">${k.ic}</span></div>
         ${valrow}<div class="sub">${k.sub}</div></div>`;
 }
 
@@ -70,7 +71,7 @@ function kpiCards(o, perApi) {
     const apis = [...perApi].sort((a, b) => effRate(a) - effRate(b));
     const worst = apis.filter(k => effStatus(k) !== 'HEALTHY').length;
     const overall = `<div class="health-overall">
-        <div class="top"><span class="lbl">Overall API Health</span>
+        <div class="top"><span class="lbl tip" data-tip="(Success + Recovered) / Total calls, across every @Failover point">Overall API Health</span>
             <span class="badge ${status.toLowerCase()}">${status}</span></div>
         <div class="gauge-lg"><canvas id="g_health"></canvas><div class="gv">${hasCalls ? pct(oRate) : '—'}</div></div>
         <div class="note">${hasCalls ? `${n(usable)} of ${n(o.totalCalls)} calls usable` : 'no calls yet'}<br>${
@@ -302,6 +303,7 @@ function apiTable(perApi) {
             <td class="r num">${pct(k.rates.successRate)}</td>
             <td class="r num">${pct(k.rates.failoverRate)}</td>
             <td class="r num">${pct(k.rates.recoveryRate)}</td>
+            <td class="r num">${n(k.notRecovered)}</td>
             <td class="r num">${n(k.errors)}</td>
             <td>${sparkSvg(k.name)}</td>
             <td><span class="badge ${st.toLowerCase()}">${st}</span></td>
@@ -507,10 +509,19 @@ async function loadMetrics(quiet = false) {
         if (activeView === 'apis') { apiTable(summary.perApi); apiTrendChart(); perApiChart(summary.perApi); }
         if (!bannerDismissed) showBanner(summary.perApi);
         renderHealthRollup();
+        renderHeroUpstreamMetrics();
+        renderUpstreamHealth();
         loadInstances();   // refreshes the Instances tab + toggles its visibility
         markUpdated();
         fetchJson('api/metrics/source').then(renderSourceBadge).catch(() => {});           // non-fatal
-        fetchJson('api/metrics/exceptions').then(renderApiExceptionsChart).catch(() => {}); // non-fatal
+        fetchJson('api/metrics/exceptions').then(x => {
+            lastExceptions = x;
+            renderApiExceptionsChart(x);
+            renderUpstreamHealth();   // re-render with per-endpoint exception types now available
+        }).catch(() => {}); // non-fatal
+        if (configRows.length === 0) {
+            fetchJson('api/config').then(rows => { configRows = rows; renderUpstreamHealth(); }).catch(() => {}); // non-fatal — powers the expiry hint
+        }
     } catch (e) {
         if (!quiet) showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
     }
@@ -575,6 +586,65 @@ function renderHealthRollup() {
         html += card('instances', src.instancesReporting, 'Instances');
     }
     el.innerHTML = html;
+}
+
+// Hero quick-glance metrics — the UP/DOWN status above is recovery-rate driven, so a fully
+// masked upstream failure (100% recovered) still reads as healthy. These two surface it anyway.
+function renderHeroUpstreamMetrics() {
+    const el = document.getElementById('health-hero-metrics');
+    if (!el) return;
+    const apis = (lastSummary && lastSummary.perApi) || [];
+    const failing = apis.filter(k => k.failoverInvoked > 0);
+    const ex = (lastSummary && lastSummary.topExceptions) || [];
+    const top = ex[0];
+    const exShort = t => t.split('.').pop();
+    el.innerHTML = `
+        <div class="hh-stat"><span class="hh-k">Upstream failing</span>
+            <span class="hh-v ${failing.length ? 'warn' : ''}">${failing.length} of ${apis.length}</span></div>
+        <div class="hh-stat"><span class="hh-k">Top upstream exception</span>
+            <span class="hh-v ${top ? 'warn' : ''}">${top ? `${exShort(top.type)} · ${n(top.count)}` : '—'}</span></div>`;
+}
+
+// Expiry text for a failover point, from the Config API — lazily fetched, see loadMetrics().
+function expiryFor(name) {
+    const cfg = configRows.find(r => r.name === name);
+    return cfg ? `${cfg.expiryDuration} ${String(cfg.expiryUnit).toLowerCase()}` : null;
+}
+
+// Upstream call health (Health tab) — one card per failover point, scored on the upstream call
+// alone (failoverRate). Recovery is deliberately NOT factored in: a card here can be red while
+// every other view reads green, because failover is still masking it. That gap is the early
+// warning — investigate/notify before the cached value expires and it becomes a real outage.
+function upstreamCard(k) {
+    const rate = k.rates.failoverRate;
+    const pctv = (rate * 100).toFixed(1);
+    const cls = rate === 0 ? 'healthy' : rate <= 0.10 ? 'degraded' : 'unhealthy';
+    const lbl = rate === 0 ? 'STABLE' : rate <= 0.10 ? 'WATCH' : 'FAILING';
+    const exShort = t => t.split('.').pop();
+    const exList = (lastExceptions[k.name] || []).slice().sort((a, b) => b.count - a.count);
+    const top = exList[0];
+    const exLine = top ? `${exShort(top.type)} ×${n(top.count)}` : (k.failoverInvoked > 0 ? 'unknown' : '—');
+    const exp = expiryFor(k.name);
+    const note = k.failoverInvoked === 0
+        ? 'no upstream failures'
+        : k.rates.recoveryRate >= 0.999
+            ? `masked by cache — fully recovered so far${exp ? `, expires in ${exp}` : ''}. notify upstream owner before it expires.`
+            : `recovery incomplete — some calls already failing for real, not just masked`;
+    return `<div class="api-hcard ${cls}" title="${k.name} · ${k.domain}">
+        <div class="nm">${k.name}</div><div class="dm">${k.domain}</div>
+        <div class="mid"><span class="hpct">${pctv}%</span><span class="st">${lbl}</span></div>
+        <div class="hbar"><i style="width:${pctv}%"></i></div>
+        <div class="meta"><span>calls <b>${n(k.totalCalls)}</b></span><span>upstream fails <b>${n(k.failoverInvoked)}</b></span></div>
+        <div class="meta"><span>exception <b title="${top ? top.type : ''}">${exLine}</b></span></div>
+        <div class="uh-note">${note}</div>
+    </div>`;
+}
+
+function renderUpstreamHealth() {
+    const el = document.getElementById('upstream-cards');
+    if (!el) return;
+    const apis = [...((lastSummary && lastSummary.perApi) || [])].sort((a, b) => b.rates.failoverRate - a.rates.failoverRate);
+    el.innerHTML = apis.map(upstreamCard).join('');
 }
 
 // ── Instances tab (cluster per-instance metrics) ──────────────────────────────────
