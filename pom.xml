@@ -556,6 +556,14 @@
                             <targetTests>
                                 <param>com.societegenerale.failover.core.*</param>
                             </targetTests>
+                            <!--
+                              CI (ubuntu-latest) runs mutants on a shared, throttled runner with cold JVM
+                              forks per minion; PIT's defaults (timeoutConst=4000ms, timeoutFactor=1.25x)
+                              are too tight there and minions die with TIMED_OUT before running any mutant.
+                              Local runs are unaffected — these only raise the ceiling.
+                            -->
+                            <timeoutConst>12000</timeoutConst>
+                            <timeoutFactor>2.0</timeoutFactor>
                             <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
                             <mutationThreshold>95</mutationThreshold>
                             <!-- Fail if the target globs ever match zero classes, so the 95% gate can never pass vacuously. -->
