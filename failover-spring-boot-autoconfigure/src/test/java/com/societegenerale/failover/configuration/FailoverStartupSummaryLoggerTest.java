@@ -37,6 +37,7 @@ import org.springframework.context.ApplicationContext;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
+import static com.societegenerale.failover.core.util.FailoverUtil.summary;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
@@ -89,20 +90,20 @@ class FailoverStartupSummaryLoggerTest {
     // ── toConfigLine ──────────────────────────────────────────────────────────
 
     @Nested
-    @DisplayName("toConfigLine")
-    class ToConfigLine {
+    @DisplayName("FailoverUtil.summary (per-endpoint line used in the startup summary)")
+    class ConfigLineSummary {
 
         @Test
         @DisplayName("default failover — shows name and expiry only")
         void defaultFailover() throws Exception {
-            assertThat(FailoverStartupSummaryLogger.toConfigLine(annotation("basicFailover")))
+            assertThat(summary(annotation("basicFailover")))
                     .isEqualTo("basic-failover : expiry=1 HOURS");
         }
 
         @Test
         @DisplayName("full config — shows all non-default fields")
         void fullConfig() throws Exception {
-            assertThat(FailoverStartupSummaryLogger.toConfigLine(annotation("fullFailover")))
+            assertThat(summary(annotation("fullFailover")))
                     .isEqualTo("full-failover : expiry=30 MINUTES, domain='my-domain', "
                              + "keyGenerator='myKey', expiryPolicy='myExpiry', splitter='mySplitter', recoverAll=true");
         }
@@ -110,14 +111,14 @@ class FailoverStartupSummaryLoggerTest {
         @Test
         @DisplayName("expression expiry — expression takes precedence over numeric duration")
         void expressionExpiry() throws Exception {
-            assertThat(FailoverStartupSummaryLogger.toConfigLine(annotation("expressionFailover")))
+            assertThat(summary(annotation("expressionFailover")))
                     .isEqualTo("expr-failover : expiry=${expiry.duration:5} ${expiry.unit:DAYS}");
         }
 
         @Test
         @DisplayName("expression duration only — falls back to default expiryUnit")
         void expressionDurationOnly() throws Exception {
-            assertThat(FailoverStartupSummaryLogger.toConfigLine(annotation("expressionDurationOnly")))
+            assertThat(summary(annotation("expressionDurationOnly")))
                     .isEqualTo("expr-duration-only : expiry=${expiry.duration:5} HOURS");
         }
     }
