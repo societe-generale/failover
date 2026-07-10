@@ -87,7 +87,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security( SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90),
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false), new History(false, 120, 15), new Health(0.99, 0.90),
                 new Cluster("local"));
     }
 
@@ -100,7 +100,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", false), new History(false, 120, 15), health, new Cluster("local"));
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false), new History(false, 120, 15), health, new Cluster("local"));
     }
 
     /**
@@ -136,9 +136,13 @@ public record DashboardProperties(
      * (trusted-network / dev only). {@code allowInsecure=true} is rejected outright when the
      * {@code prod} profile is active — production must add Spring Security (I-14).
      *
-     * @param type          {@code AUTHORITY} (default) or {@code ROLE} — which Spring Security check to use
-     * @param role          required role for {@code base-path/**} (default {@code FAILOVER_ADMIN})
+     * @param type          {@code AUTHORITY} (default), {@code ROLE}, or {@code EXPRESSION} — which
+     *                      Spring Security check to use
+     * @param role          required role for {@code base-path/**} when {@code type=ROLE} (default {@code FAILOVER_ADMIN})
      * @param authority     required authority for {@code base-path/**} when {@code type=AUTHORITY} (default {@code FAILOVER_ADMIN})
+     * @param expression    SpEL web-security expression evaluated for {@code base-path/**} when
+     *                      {@code type=EXPRESSION}, e.g. {@code "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"};
+     *                      required (non-blank) when {@code type=EXPRESSION}
      * @param allowInsecure start without an access gate when Spring Security is absent (default {@code false});
      *                      ignored/refused under the {@code prod} profile
      */
@@ -146,19 +150,34 @@ public record DashboardProperties(
         @DefaultValue("AUTHORITY") SecurityType type,
         @DefaultValue("FAILOVER_ADMIN") String role,
         @DefaultValue("FAILOVER_ADMIN") String authority,
+        String expression,
         @DefaultValue("false") boolean allowInsecure
     ) {
+        /** Canonical, binder-targeted constructor — validates the expression is set when required. */
+        @ConstructorBinding
+        public Security {
+            if (type == SecurityType.EXPRESSION && (expression == null || expression.isBlank())) {
+                throw new IllegalArgumentException(
+                    "failover.dashboard.security.expression must be set (non-blank) when "
+                        + "failover.dashboard.security.type=EXPRESSION");
+            }
+        }
     }
 
     /**
-     * Security type for failover, AUTHORITY or ROLE. This is used to determine how the role/authority is interpreted in the security configuration.
-     * if AUTHORITY (by default), it will perform the check on configured authority (hasAuthority(authority)) or else if ROLE, it will perform the check on configured role (hasRole(role)).
+     * Security type for failover — AUTHORITY, ROLE, or EXPRESSION. This is used to determine how the
+     * role/authority/expression is interpreted in the security configuration.
+     * If AUTHORITY (by default), it will perform the check on configured authority (hasAuthority(authority));
+     * if ROLE, it will perform the check on configured role (hasRole(role)); if EXPRESSION, it
+     * will evaluate the configured SpEL web-security expression (e.g. {@code "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"}).
      */
     public enum SecurityType {
         /** Gate checked via {@code hasRole(role)}. */
         ROLE,
         /** Gate checked via {@code hasAuthority(authority)}. */
-        AUTHORITY
+        AUTHORITY,
+        /** Gate checked via evaluating the configured SpEL {@code expression}. */
+        EXPRESSION
     }
 
     /**
