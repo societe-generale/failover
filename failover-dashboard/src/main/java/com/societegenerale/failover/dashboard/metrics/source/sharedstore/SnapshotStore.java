@@ -41,7 +41,11 @@ import java.util.List;
  */
 public interface SnapshotStore {
 
-    /** Records (or replaces) the latest snapshot for the snapshot's instance, stamping the current receive time. */
+    /**
+     * Records (or replaces) the latest snapshot for the snapshot's instance, stamping the current receive time.
+     *
+     * @param snapshot the pushed peer snapshot
+     */
     void upsert(ClusterSnapshot snapshot);
 
     /**

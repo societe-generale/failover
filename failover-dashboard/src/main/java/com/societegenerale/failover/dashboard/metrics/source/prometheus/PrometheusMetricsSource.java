@@ -120,6 +120,13 @@ public class PrometheusMetricsSource implements MetricsSource {
     private final MetricsSource fallback;
     private final DashboardProperties.Health thresholds;
 
+    /**
+     * Creates a new source.
+     *
+     * @param client     the Prometheus HTTP client
+     * @param fallback   the local source to fall back to on any Prometheus failure
+     * @param thresholds health-classification thresholds
+     */
     public PrometheusMetricsSource(PrometheusClient client, MetricsSource fallback,
                                    DashboardProperties.Health thresholds) {
         this.client = client;

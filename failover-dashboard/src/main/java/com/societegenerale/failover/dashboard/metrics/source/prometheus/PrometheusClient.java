@@ -50,7 +50,12 @@ public class PrometheusClient {
         this.http = http;
     }
 
-    /** Builds a client from the configured base URL, optional bearer token, and timeout. */
+    /**
+     * Builds a client from the configured base URL, optional bearer token, and timeout.
+     *
+     * @param cfg the Prometheus connection settings
+     * @return the configured client
+     */
     public static PrometheusClient create(DashboardProperties.Prometheus cfg) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         Duration timeout = Duration.ofSeconds(Math.max(1, cfg.timeoutSeconds()));

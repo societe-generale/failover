@@ -54,11 +54,26 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     private final InstanceIdResolver instanceIdResolver;
     private final FailoverConfigSnapshotService configSnapshotService;   // nullable — absent without a MeterRegistry
 
+    /**
+     * Creates a new source with no {@link FailoverConfigSnapshotService} (config view stays empty).
+     *
+     * @param metricsService     source of this instance's metrics
+     * @param history            optional trend-history ring
+     * @param instanceIdResolver resolves this instance's identity
+     */
     public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
                                       InstanceIdResolver instanceIdResolver) {
         this(metricsService, history, instanceIdResolver, null);
     }
 
+    /**
+     * Creates a new source.
+     *
+     * @param metricsService        source of this instance's metrics
+     * @param history               optional trend-history ring
+     * @param instanceIdResolver    resolves this instance's identity
+     * @param configSnapshotService optional source of this instance's {@code @Failover} configuration
+     */
     public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
                                       InstanceIdResolver instanceIdResolver,
                                       FailoverConfigSnapshotService configSnapshotService) {

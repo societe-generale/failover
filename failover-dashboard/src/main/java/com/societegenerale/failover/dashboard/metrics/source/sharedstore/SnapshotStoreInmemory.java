@@ -69,11 +69,21 @@ public class SnapshotStoreInmemory implements SnapshotStore {
     private final long retentionMillis;
     private final LongSupplier nowMillis;
 
-    /** Retains instances forever (no retirement) — programmatic/test convenience. */
+    /**
+     * Retains instances forever (no retirement) — programmatic/test convenience.
+     *
+     * @param maxInstances supported small-cluster ceiling; beyond it a warning is logged
+     */
     public SnapshotStoreInmemory(int maxInstances) {
         this(maxInstances, Duration.ZERO);
     }
 
+    /**
+     * Creates a new store.
+     *
+     * @param maxInstances      supported small-cluster ceiling; beyond it a warning is logged
+     * @param instanceRetention retire instances not seen for this long; {@code 0} keeps every instance forever
+     */
     public SnapshotStoreInmemory(int maxInstances, Duration instanceRetention) {
         this(maxInstances, instanceRetention, System::currentTimeMillis);
     }

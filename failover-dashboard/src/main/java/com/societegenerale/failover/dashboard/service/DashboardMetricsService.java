@@ -42,23 +42,38 @@ public class DashboardMetricsService {
     private final FailoverMetricsSnapshotService snapshotService;
     private final DashboardProperties properties;
 
+    /**
+     * Creates a new service.
+     *
+     * @param snapshotService source of the current metrics summary
+     * @param properties      the bound {@code failover.dashboard.*} properties (health thresholds)
+     */
     public DashboardMetricsService(FailoverMetricsSnapshotService snapshotService, DashboardProperties properties) {
         this.snapshotService = snapshotService;
         this.properties = properties;
     }
 
     /**
+     * Aggregates the current counter totals.
+     *
      * @return per-API and overall KPIs derived from the current counter totals.
      */
     public MetricsSummary metricsSummary() {
         return snapshotService.metricsSummary();
     }
 
+    /**
+     * Per-failover-point exception counts.
+     *
+     * @return exception counts grouped by failover name
+     */
     public Map<String, List<ExceptionStat>> exceptionsByApi() {
         return snapshotService.exceptionsByApi();
     }
 
     /**
+     * Classifies each API's health against the configured thresholds.
+     *
      * @return per-API health classification, ordered by name.
      */
     public List<ApiHealth> health() {

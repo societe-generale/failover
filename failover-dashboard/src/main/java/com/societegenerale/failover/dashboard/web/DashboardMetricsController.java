@@ -50,21 +50,40 @@ public class DashboardMetricsController {
 
     private final MetricsSource metricsSource;
 
+    /**
+     * Creates a new controller.
+     *
+     * @param metricsSource the assembled metrics source to serve from
+     */
     public DashboardMetricsController(MetricsSource metricsSource) {
         this.metricsSource = metricsSource;
     }
 
+    /**
+     * Global aggregate plus per-API KPIs.
+     *
+     * @return the current metrics summary
+     */
     @GetMapping("/metrics")
     public MetricsSummary metrics() {
         return metricsSource.summary();
     }
 
+    /**
+     * Per-API health classification.
+     *
+     * @return per-API health
+     */
     @GetMapping("/health")
     public List<ApiHealth> health() {
         return metricsSource.health();
     }
 
-    /** Provenance of the metrics (mode, instances reporting, freshness) for the UI source badge. */
+    /**
+     * Provenance of the metrics (mode, instances reporting, freshness) for the UI source badge.
+     *
+     * @return the metrics provenance
+     */
     @GetMapping("/metrics/source")
     public SourceInfo source() {
         return metricsSource.info();
@@ -75,6 +94,7 @@ public class DashboardMetricsController {
      * disabled); Prometheus mode derives a cluster-wide, reload-surviving trend via {@code query_range}.
      *
      * @param windowSec only samples within this many seconds of now ({@code <= 0} ⇒ all retained)
+     * @return trend samples, newest last
      */
     @GetMapping("/metrics/series")
     public List<SeriesPoint> series(@RequestParam(name = "windowSec", defaultValue = "300") long windowSec) {
@@ -84,6 +104,8 @@ public class DashboardMetricsController {
     /**
      * Per-instance metrics for the cluster Instances view — one entry per reporting member. Empty for sources
      * without a per-instance dimension (the UI then hides the Instances tab).
+     *
+     * @return per-instance metrics
      */
     @GetMapping("/instances")
     public List<InstanceMetrics> instances() {
@@ -93,6 +115,8 @@ public class DashboardMetricsController {
     /**
      * Per-failover-endpoint exception breakdown: endpoint name → list of (type, count), sorted by count descending.
      * Empty map when the backing source cannot provide per-endpoint exception data (e.g. shared-store).
+     *
+     * @return exception counts grouped by failover name
      */
     @GetMapping("/metrics/exceptions")
     public Map<String, List<ExceptionStat>> exceptionsByApi() {

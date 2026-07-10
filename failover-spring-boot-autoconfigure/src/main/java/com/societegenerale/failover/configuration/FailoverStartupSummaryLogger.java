@@ -51,6 +51,7 @@ public class FailoverStartupSummaryLogger {
     private final ApplicationContext applicationContext;
     private final ObjectProvider<FailoverScanner> scannerProvider;
 
+    /** Logs the startup configuration summary once the application context is fully ready. */
     @EventListener(ApplicationReadyEvent.class)
     public void logSummary() {
         log.info("{}", buildSummary());

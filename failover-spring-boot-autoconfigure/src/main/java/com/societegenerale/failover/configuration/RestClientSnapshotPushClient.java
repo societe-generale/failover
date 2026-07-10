@@ -34,6 +34,12 @@ public class RestClientSnapshotPushClient implements SnapshotPushClient {
     private final RestClient client;
     private final String publishUrl;
 
+    /**
+     * Creates a new client.
+     *
+     * @param client     the RestClient used to POST snapshots
+     * @param publishUrl the dashboard's snapshot ingest endpoint URL
+     */
     public RestClientSnapshotPushClient(RestClient client, String publishUrl) {
         this.client = client;
         this.publishUrl = publishUrl;

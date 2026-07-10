@@ -57,16 +57,44 @@ public class SharedStoreMetricsSource implements MetricsSource {
     private final long livenessMillis;                  // from liveness-seconds config
     private final LongSupplier nowMillis;
 
+    /**
+     * Creates a new source with no cluster trend and no liveness tracking.
+     *
+     * @param store        the snapshot store to aggregate
+     * @param thresholds   health-classification thresholds
+     * @param fallback     the local source to fall back to when the store is empty
+     * @param maxInstances supported small-cluster ceiling, echoed in {@link #info()}
+     */
     public SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
                                     MetricsSource fallback, int maxInstances) {
         this(store, thresholds, fallback, maxInstances, null, null, 0);
     }
 
+    /**
+     * Creates a new source with no liveness tracking.
+     *
+     * @param store        the snapshot store to aggregate
+     * @param thresholds   health-classification thresholds
+     * @param fallback     the local source to fall back to when the store is empty
+     * @param maxInstances supported small-cluster ceiling, echoed in {@link #info()}
+     * @param seriesStore  the cluster-trend ring to serve {@link #series(long)} from
+     */
     public SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
                                     MetricsSource fallback, int maxInstances, ClusterSeriesStore seriesStore) {
         this(store, thresholds, fallback, maxInstances, seriesStore, null, 0);
     }
 
+    /**
+     * Creates a new source.
+     *
+     * @param store          the snapshot store to aggregate
+     * @param thresholds     health-classification thresholds
+     * @param fallback       the local source to fall back to when the store is empty
+     * @param maxInstances   supported small-cluster ceiling, echoed in {@link #info()}
+     * @param seriesStore    the cluster-trend ring to serve {@link #series(long)} from
+     * @param heartbeatStore the heartbeat store used to classify instance liveness
+     * @param livenessMillis heartbeat age threshold, in millis, beyond which an instance is {@code DOWN}
+     */
     public SharedStoreMetricsSource(SnapshotStore store, DashboardProperties.Health thresholds,
                                     MetricsSource fallback, int maxInstances, ClusterSeriesStore seriesStore,
                                     HeartbeatStore heartbeatStore, long livenessMillis) {

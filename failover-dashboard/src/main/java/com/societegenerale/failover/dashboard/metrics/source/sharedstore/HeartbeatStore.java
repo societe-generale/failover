@@ -26,7 +26,11 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
  */
 public interface HeartbeatStore {
 
-    /** Records a heartbeat for the given instance, stamping the current receive time. */
+    /**
+     * Records a heartbeat for the given instance, stamping the current receive time.
+     *
+     * @param instanceId the pushing instance's identifier
+     */
     void record(String instanceId);
 
     /**
@@ -34,6 +38,9 @@ public interface HeartbeatStore {
      * or {@code null} if no heartbeat has ever been received.
      * <p>A {@code null} return means heartbeat tracking is not active for this instance
      * (the peer has not enabled it) — the instance keeps {@code LiveStatus.UNKNOWN}.
+     *
+     * @param instanceId the instance to look up
+     * @return epoch-millis of the last heartbeat, or {@code null} if none received
      */
     Long lastSeen(String instanceId);
 }

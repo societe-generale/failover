@@ -121,6 +121,7 @@ public class FailoverStoreAutoConfiguration {
      * in-flight writes and applies the configured {@code rejection-policy} on overload (audit R-2);
      * accepted tasks still run on virtual threads.
      *
+     * @param properties failover properties (store async-executor concurrency-limit / rejection-policy)
      * @return virtual-thread {@link SimpleAsyncTaskExecutor} (optionally bounded) named {@code failover-async-*}
      */
     @Bean("failoverTaskExecutor")
