@@ -20,7 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -212,6 +212,65 @@ class CommonsUtilTest {
         void rejectsNullMethod() {
             assertThatThrownBy(() -> CommonsUtil.methodId(null))
                     .isInstanceOf(NullPointerException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("format")
+    class Format {
+
+        @Test
+        @DisplayName("null duration → \"unlimited\"")
+        void nullIsUnlimited() {
+            assertThat(CommonsUtil.format(null)).isEqualTo("unlimited");
+        }
+
+        @Test
+        @DisplayName("zero duration → \"0m\" (whole-minutes branch checked first)")
+        void zeroIsZeroMinutes() {
+            assertThat(CommonsUtil.format(Duration.ZERO)).isEqualTo("0m");
+        }
+
+        @Test
+        @DisplayName("whole minutes → \"Xm\"")
+        void wholeMinutes() {
+            assertThat(CommonsUtil.format(Duration.ofMinutes(5))).isEqualTo("5m");
+        }
+
+        @Test
+        @DisplayName("a duration expressed in seconds that lands on a whole minute → \"Xm\", not \"Xs\"")
+        void wholeMinuteExpressedInSecondsPrefersMinutes() {
+            assertThat(CommonsUtil.format(Duration.ofSeconds(120))).isEqualTo("2m");
+        }
+
+        @Test
+        @DisplayName("whole seconds (not a whole minute) → \"Xs\"")
+        void wholeSecondsNotAWholeMinute() {
+            assertThat(CommonsUtil.format(Duration.ofSeconds(45))).isEqualTo("45s");
+        }
+
+        @Test
+        @DisplayName("one second → \"1s\"")
+        void oneSecond() {
+            assertThat(CommonsUtil.format(Duration.ofSeconds(1))).isEqualTo("1s");
+        }
+
+        @Test
+        @DisplayName("sub-second remainder → \"Xms\"")
+        void subSecondFallsBackToMillis() {
+            assertThat(CommonsUtil.format(Duration.ofMillis(999))).isEqualTo("999ms");
+        }
+
+        @Test
+        @DisplayName("whole seconds plus a millis remainder → \"Xms\" (neither whole-minute nor whole-second)")
+        void secondsWithMillisRemainderFallsBackToMillis() {
+            assertThat(CommonsUtil.format(Duration.ofMillis(1500))).isEqualTo("1500ms");
+        }
+
+        @Test
+        @DisplayName("one millisecond → \"1ms\"")
+        void oneMillisecond() {
+            assertThat(CommonsUtil.format(Duration.ofMillis(1))).isEqualTo("1ms");
         }
     }
 }

@@ -29,7 +29,7 @@ import lombok.experimental.UtilityClass;
  * @author Anand Manissery
  */
 @UtilityClass
-public final class FailoverNameResolver {
+public final class FailoverUtil {
 
     /**
      * Returns {@code failover.domain()} when non-blank, otherwise {@code failover.name()}.
@@ -40,5 +40,28 @@ public final class FailoverNameResolver {
      */
     public static String effectiveName(Failover failover) {
         return failover.domain().isBlank() ? failover.name() : failover.domain();
+    }
+
+    /**
+     * Returns a single-line summary of the failover configuration, suitable for logging.
+     *
+     * @param f the annotation instance
+     * @return a string summarizing the failover configuration
+     */
+    public static String summary(Failover f) {
+        var sb = new StringBuilder(f.name()).append(" : ");
+        if (!f.expiryDurationExpression().isBlank()) {
+            sb.append("expiry=").append(f.expiryDurationExpression()).append(" ")
+                    .append(f.expiryUnitExpression().isBlank() ? f.expiryUnit().name() : f.expiryUnitExpression());
+        } else {
+            sb.append("expiry=").append(f.expiryDuration()).append(" ")
+                    .append(f.expiryUnitExpression().isBlank() ? f.expiryUnit().name() : f.expiryUnitExpression());
+        }
+        if (!f.domain().isBlank())          sb.append(", domain='").append(f.domain()).append("'");
+        if (!f.keyGenerator().isBlank())    sb.append(", keyGenerator='").append(f.keyGenerator()).append("'");
+        if (!f.expiryPolicy().isBlank())    sb.append(", expiryPolicy='").append(f.expiryPolicy()).append("'");
+        if (!f.payloadSplitter().isBlank()) sb.append(", splitter='").append(f.payloadSplitter()).append("'");
+        if (f.recoverAll())                 sb.append(", recoverAll=true");
+        return sb.toString();
     }
 }

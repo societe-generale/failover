@@ -30,7 +30,7 @@ import java.util.List;
 
 import static com.societegenerale.failover.core.observable.Metrics.of;
 import static com.societegenerale.failover.core.util.CommonsUtil.*;
-import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
+import static com.societegenerale.failover.core.util.FailoverUtil.effectiveName;
 
 /**
  * {@link FailoverHandler} decorator that publishes metrics on every store/recover operation

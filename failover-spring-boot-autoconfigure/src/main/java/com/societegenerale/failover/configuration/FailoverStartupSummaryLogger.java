@@ -28,10 +28,12 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.EventListener;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+
+import static com.societegenerale.failover.core.util.CommonsUtil.format;
+import static com.societegenerale.failover.core.util.FailoverUtil.summary;
 
 /**
  * Logs a single consolidated INFO summary of all failover infrastructure and per-endpoint
@@ -98,7 +100,7 @@ public class FailoverStartupSummaryLogger {
 
         // scatter
         sb.append("\n  scatter          : parallel=").append(scatter.isParallel())
-          .append(", timeout=").append(formatTimeout(scatter.getTimeout()));
+          .append(", timeout=").append(format(scatter.getTimeout()));
         if (scatter.getConcurrencyLimit() > 0) {
             sb.append(", concurrencyLimit=").append(scatter.getConcurrencyLimit())
               .append(", rejectionPolicy=").append(scatter.getRejectionPolicy());
@@ -113,7 +115,7 @@ public class FailoverStartupSummaryLogger {
             sb.append("\n\n  [failover endpoints] (").append(failovers.size()).append(")");
             failovers.stream()
                     .sorted(Comparator.comparing(Failover::name))
-                    .forEach(f -> sb.append("\n  ").append(toConfigLine(f)));
+                    .forEach(f -> sb.append("\n  ").append(summary(f)));
         }
 
         return sb.toString();
@@ -151,30 +153,5 @@ public class FailoverStartupSummaryLogger {
         } catch (ClassNotFoundException e) {
             return "n/a";
         }
-    }
-
-    private static String formatTimeout(Duration timeout) {
-        if (timeout == null) return "unlimited";
-        long ms = timeout.toMillis();
-        if (ms % 60_000 == 0) return (ms / 60_000) + "m";
-        if (ms % 1_000 == 0)  return (ms / 1_000) + "s";
-        return ms + "ms";
-    }
-
-    static String toConfigLine(Failover f) {
-        var sb = new StringBuilder(f.name()).append(" : ");
-        if (!f.expiryDurationExpression().isBlank()) {
-            sb.append("expiry=").append(f.expiryDurationExpression()).append(" ")
-              .append(f.expiryUnitExpression().isBlank() ? f.expiryUnit().name() : f.expiryUnitExpression());
-        } else {
-            sb.append("expiry=").append(f.expiryDuration()).append(" ")
-              .append(f.expiryUnitExpression().isBlank() ? f.expiryUnit().name() : f.expiryUnitExpression());
-        }
-        if (!f.domain().isBlank())          sb.append(", domain='").append(f.domain()).append("'");
-        if (!f.keyGenerator().isBlank())    sb.append(", keyGenerator='").append(f.keyGenerator()).append("'");
-        if (!f.expiryPolicy().isBlank())    sb.append(", expiryPolicy='").append(f.expiryPolicy()).append("'");
-        if (!f.payloadSplitter().isBlank()) sb.append(", splitter='").append(f.payloadSplitter()).append("'");
-        if (f.recoverAll())                 sb.append(", recoverAll=true");
-        return sb.toString();
     }
 }

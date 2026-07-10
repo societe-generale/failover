@@ -20,6 +20,7 @@ import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -126,5 +127,22 @@ public class CommonsUtil {
      */
     public static String methodId(@NonNull Method method) {
         return method.getDeclaringClass().getSimpleName() + "#" + method.getName();
+    }
+
+    /**
+     * Formats a {@link Duration} into a human-readable string. If the duration is null, returns "unlimited".
+     * If the duration is a whole number of minutes, returns the number of minutes followed by "m".
+     * If the duration is a whole number of seconds, returns the number of seconds followed by "s".
+     * Otherwise, returns the number of milliseconds followed by "ms".
+     *
+     * @param timeout the duration to format
+     * @return a human-readable string representation of the duration
+     */
+    public static String format(Duration timeout) {
+        if (timeout == null) return "unlimited";
+        long ms = timeout.toMillis();
+        if (ms % 60_000 == 0) return (ms / 60_000) + "m";
+        if (ms % 1_000 == 0)  return (ms / 1_000) + "s";
+        return ms + "ms";
     }
 }

@@ -30,7 +30,7 @@ import java.util.function.Supplier;
 
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static com.societegenerale.failover.core.util.CommonsUtil.methodId;
-import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
+import static com.societegenerale.failover.core.util.FailoverUtil.effectiveName;
 
 /**
  * Basic {@link FailoverExecution} that invokes the supplier, stores the result on success,
