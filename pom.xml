@@ -248,7 +248,10 @@
                 </executions>
                 <configuration>
                     <!-- @{argLine} is set by jacoco:prepare-agent-integration; keep it first so IT coverage is recorded. -->
-                    <argLine>@{argLine} --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.reflect=ALL-UNNAMED -Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Raise the Spring TestContext cache above its default (32): the *IT classes here span many
+                         distinct @TestPropertySource combinations, each a unique context; below this size the cache
+                         thrashes (evict + rebuild) mid-run instead of reusing contexts already started. -->
+                    <argLine>@{argLine} --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.reflect=ALL-UNNAMED -Dnet.bytebuddy.experimental=true -Dspring.test.context.cache.maxSize=64</argLine>
                     <!-- Dialect ITs require Docker (Testcontainers); excluded from the default build, re-enabled by the 'dialect-its' profile in failover-store-jdbc. -->
                     <excludes>
                         <exclude>**/*DialectIT.java</exclude>
@@ -276,7 +279,10 @@
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <!-- @{argLine} is set by jacoco:prepare-agent; keep it first so coverage is recorded. -->
-                    <argLine>@{argLine} --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.reflect=ALL-UNNAMED -Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Same context-cache reasoning as the failsafe argLine above: many *Test classes here
+                         (e.g. FailoverAutoConfigurationTest, FailoverStoreAutoConfigurationTest) carry distinct
+                         @TestPropertySource combos, each a unique Spring context. -->
+                    <argLine>@{argLine} --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.reflect=ALL-UNNAMED -Dnet.bytebuddy.experimental=true -Dspring.test.context.cache.maxSize=64</argLine>
                 </configuration>
             </plugin>
             <plugin>
@@ -564,6 +570,11 @@
                             -->
                             <timeoutConstant>12000</timeoutConstant>
                             <timeoutFactor>2.0</timeoutFactor>
+                            <!-- ubuntu-latest gives 4 vCPUs; run mutants in parallel instead of PIT's single-thread default. -->
+                            <threads>2</threads>
+                            <!-- Skip re-mutating classes unchanged since the last run (cached across CI runs). -->
+                            <historyInputFile>${project.build.directory}/pit-history/pitHistory.txt</historyInputFile>
+                            <historyOutputFile>${project.build.directory}/pit-history/pitHistory.txt</historyOutputFile>
                             <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
                             <mutationThreshold>95</mutationThreshold>
                             <!-- Fail if the target globs ever match zero classes, so the 95% gate can never pass vacuously. -->
