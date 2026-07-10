@@ -562,7 +562,7 @@
                               are too tight there and minions die with TIMED_OUT before running any mutant.
                               Local runs are unaffected — these only raise the ceiling.
                             -->
-                            <timeoutConst>12000</timeoutConst>
+                            <timeoutConstant>12000</timeoutConstant>
                             <timeoutFactor>2.0</timeoutFactor>
                             <!-- Mandated gate: the expiry + key logic must reach 95% mutation coverage. -->
                             <mutationThreshold>95</mutationThreshold>
