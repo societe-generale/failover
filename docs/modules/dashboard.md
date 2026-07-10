@@ -75,9 +75,11 @@ failover:
       api: true                      # serve the JSON API
       include: [ config, failover-health, metrics, health, cluster, instances ]  # which API endpoints are served
     security:
-      type: AUTHORITY                # ROLE (uses hasRole) or AUTHORITY (uses hasAuthority) — default AUTHORITY
+      type: AUTHORITY                # ROLE (hasRole) | AUTHORITY (hasAuthority, default) | EXPRESSION (SpEL)
       role: FAILOVER_ADMIN           # role used when type=ROLE
       authority: FAILOVER_ADMIN      # authority used when type=AUTHORITY (default)
+      expression: ""                 # SpEL used when type=EXPRESSION, e.g. "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"
+      #   required (non-blank) when type=EXPRESSION — fails fast at startup otherwise
       allow-insecure: false          # start unsecured + loud WARN when Spring Security is absent
       #   (dev / trusted-network only; REFUSED under the 'prod' profile)
     history: # opt-in server-side trend ring buffer (see Trend History below)
@@ -116,9 +118,10 @@ failover:
 | `exposure.ui`                                             | `true`                | Serve the static UI. `false` = API-only.                                                                                                                                                                                                                                                                                       |
 | `exposure.api`                                            | `true`                | Serve the JSON API. `false` = UI-only.                                                                                                                                                                                                                                                                                         |
 | `exposure.include`                                        | all of them           | API endpoints served: `config`, `failover-health`, `metrics`, `health`, `cluster`, `instances`. Trim to narrow; an omitted endpoint returns `404`. `/api/metrics/series` is gated with `metrics`; `/api/cluster/snapshot` (shared-store ingest) with `cluster`; `/api/instances` with `instances`.                             |
-| `security.type`                                           | `AUTHORITY`           | Authorization strategy: `ROLE` (role-based, `hasRole`) or `AUTHORITY` (authority-based, `hasAuthority`; default).                                                                                                                                                                                                              |
-| `security.role`                                           | `FAILOVER_ADMIN`      | Role required for `base-path/**` when `type=ROLE` and Spring Security is present. Ignored when `type=AUTHORITY`.                                                                                                                                                                                                               |
-| `security.authority`                                      | `FAILOVER_ADMIN`      | Authority required for `base-path/**` when `type=AUTHORITY` (default) and Spring Security is present. Ignored when `type=ROLE`.                                                                                                                                                                                                |
+| `security.type`                                           | `AUTHORITY`           | Authorization strategy: `ROLE` (role-based, `hasRole`), `AUTHORITY` (authority-based, `hasAuthority`; default), or `EXPRESSION` (SpEL, `WebExpressionAuthorizationManager`).                                                                                                                                                   |
+| `security.role`                                           | `FAILOVER_ADMIN`      | Role required for `base-path/**` when `type=ROLE` and Spring Security is present. Ignored otherwise.                                                                                                                                                                                                                           |
+| `security.authority`                                      | `FAILOVER_ADMIN`      | Authority required for `base-path/**` when `type=AUTHORITY` (default) and Spring Security is present. Ignored otherwise.                                                                                                                                                                                                       |
+| `security.expression`                                     | *(none)*              | SpEL expression evaluated for `base-path/**` when `type=EXPRESSION`. **Required (non-blank) when `type=EXPRESSION`** — the context fails fast at startup otherwise. Ignored otherwise. See [Expression-based access control](#expression-based-access-control) below.                                                        |
 | `security.allow-insecure`                                 | `false`               | When Spring Security is absent: `false` fails fast (fail-closed); `true` starts unsecured with a loud WARN. **Refused under the `prod` profile.**                                                                                                                                                                              |
 | `history.enabled`                                         | `false`               | Turn on the server-side trend ring buffer + `/api/metrics/series`.                                                                                                                                                                                                                                                             |
 | `history.samples`                                         | `120`                 | Retained sample count (ring-buffer capacity).                                                                                                                                                                                                                                                                                  |
@@ -306,19 +309,23 @@ The dashboard surfaces internal operational data, so the access gate is **not** 
 
 ### Access Control Strategy
 
-Two authorization strategies are supported:
+Three authorization strategies are supported, selected via `security.type`:
 
 - **`security.type=ROLE`** — role-based access control. Checks `hasRole(security.role)`. Suitable when roles are the
   primary grouping mechanism. Example: `role=ADMIN`, and the user must have the `ADMIN` role.
 - **`security.type=AUTHORITY`** (default) — authority/permission-based access control. Checks
   `hasAuthority(security.authority)`. Suitable for fine-grained permission models. Example: `authority=FAILOVER_ADMIN`,
   and the user must have the `FAILOVER_ADMIN` authority.
+- **`security.type=EXPRESSION`** — evaluates a SpEL web-security expression via Spring Security's
+  `WebExpressionAuthorizationManager`. Suitable for composite rules (e.g. "role OR authority", IP allow-listing,
+  custom bean-backed checks) that don't fit a single role or authority check. See
+  [Expression-based access control](#expression-based-access-control) below for a full walkthrough and examples.
 
-Both are Spring Security concepts; the choice depends on your authentication scheme. **ROLE is prefixed internally by
-Spring Security; AUTHORITY is not.** So a user with role `ADMIN` has the authority `ROLE_ADMIN`. When using `type=ROLE`,
-set `security.role` to the name without the `ROLE_` prefix (e.g., `ADMIN`); Spring Security adds it automatically. When
-using `type=AUTHORITY`, use the full authority string (e.g., `FAILOVER_ADMIN`, or `ROLE_ADMIN` if your authorities
-include the prefix).
+ROLE and AUTHORITY are both plain Spring Security concepts; the choice depends on your authentication scheme.
+**ROLE is prefixed internally by Spring Security; AUTHORITY is not.** So a user with role `ADMIN` has the authority
+`ROLE_ADMIN`. When using `type=ROLE`, set `security.role` to the name without the `ROLE_` prefix (e.g., `ADMIN`);
+Spring Security adds it automatically. When using `type=AUTHORITY`, use the full authority string (e.g.,
+`FAILOVER_ADMIN`, or `ROLE_ADMIN` if your authorities include the prefix).
 
 ```yaml title="Example — Role-based (RBAC)"
 failover:
@@ -338,11 +345,127 @@ failover:
       # Users with authority FAILOVER_ADMIN can access the dashboard
 ```
 
+```yaml title="Example — Expression-based (SpEL)"
+failover:
+  dashboard:
+    security:
+      type: EXPRESSION
+      expression: "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"
+      # Users with role ADMIN, OR authority WRITE_PRIVILEGE, can access the dashboard
+```
+
+### Expression-based access control
+
+`security.type=EXPRESSION` hands `security.expression` straight to Spring Security's
+`WebExpressionAuthorizationManager`, which parses it as a **Spring Expression Language (SpEL)** authorization
+expression — the same language and function set used by `@PreAuthorize` and the classic
+`.access("...")` DSL. Use it whenever a single `hasRole(...)` or `hasAuthority(...)` check isn't enough.
+
+**Requirements:**
+
+- `security.expression` must be **set and non-blank** when `type=EXPRESSION`. If it is blank, the context **fails fast
+  at startup** with `failover.dashboard.security.expression must be set (non-blank) when
+  failover.dashboard.security.type=EXPRESSION`.
+- `security.role` / `security.authority` are ignored when `type=EXPRESSION` — the expression is the single source of
+  truth for the rule.
+- The expression is evaluated once per request against the current `Authentication` — same runtime semantics as any
+  other Spring Security web-expression, including the standard built-in functions below.
+
+**Built-in expression functions available (non-exhaustive):**
+
+| Function                          | Meaning                                                              |
+|------------------------------------|-----------------------------------------------------------------------|
+| `hasRole('X')`                     | Current user has role `X` (internally checked as authority `ROLE_X`). |
+| `hasAnyRole('X','Y',...)`          | Current user has at least one of the listed roles.                    |
+| `hasAuthority('X')`                | Current user has authority `X` (exact string, no prefix).             |
+| `hasAnyAuthority('X','Y',...)`     | Current user has at least one of the listed authorities.              |
+| `isAuthenticated()`                | Current user is authenticated (not anonymous).                        |
+| `isFullyAuthenticated()`           | Authenticated via credentials in *this* session — not "remember-me".  |
+| `isAnonymous()`                    | Current user is the anonymous (unauthenticated) principal.            |
+| `permitAll` / `denyAll`            | Unconditional allow / deny (rarely needed here — use `allow-insecure` for permit-all instead). |
+| `hasIpAddress('a.b.c.d/mask')`     | Caller's remote address matches the given IP / CIDR range.            |
+| `authentication`                   | The current `Authentication` object — access `.name`, `.principal`, `.authorities`, etc. |
+| `principal`                        | The current principal (often a `UserDetails`) — access custom fields. |
+| `@beanName.method(...)`            | Delegates to a Spring bean's method for custom, arbitrarily complex logic. |
+
+**Example expressions:**
+
+```yaml title="Role OR authority — either grants access"
+security:
+  type: EXPRESSION
+  expression: "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"
+```
+
+```yaml title="Any of several roles"
+security:
+  type: EXPRESSION
+  expression: "hasAnyRole('ADMIN', 'OPS', 'SRE')"
+```
+
+```yaml title="Any of several authorities"
+security:
+  type: EXPRESSION
+  expression: "hasAnyAuthority('FAILOVER_ADMIN', 'FAILOVER_READ')"
+```
+
+```yaml title="Role AND a specific authority — both required"
+security:
+  type: EXPRESSION
+  expression: "hasRole('ADMIN') and hasAuthority('FAILOVER_ADMIN')"
+```
+
+```yaml title="Authenticated, full stop — no specific role/authority required"
+security:
+  type: EXPRESSION
+  expression: "isAuthenticated()"
+```
+
+```yaml title="Role, but only from a trusted internal network"
+security:
+  type: EXPRESSION
+  expression: "hasRole('ADMIN') and hasIpAddress('10.0.0.0/8')"
+```
+
+```yaml title="Exclude anonymous access explicitly, plus a role"
+security:
+  type: EXPRESSION
+  expression: "!isAnonymous() and hasRole('ADMIN')"
+```
+
+```yaml title="Match on the authenticated principal's name (e.g. a dedicated service account)"
+security:
+  type: EXPRESSION
+  expression: "authentication.name == 'ops-svc-account'"
+```
+
+```yaml title="Delegate to a custom Spring bean for arbitrary logic"
+security:
+  type: EXPRESSION
+  expression: "@dashboardAccessPolicy.check(authentication)"
+```
+
+```java title="The bean referenced above — register it like any other @Component"
+@Component("dashboardAccessPolicy")
+public class DashboardAccessPolicy {
+    public boolean check(Authentication authentication) {
+        // arbitrary Java logic: LDAP group lookup, feature flag, business hours, etc.
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("FAILOVER_ADMIN"));
+    }
+}
+```
+
+!!! tip "Prefer the simplest option that fits"
+Reach for `EXPRESSION` only when `ROLE`/`AUTHORITY` alone can't express the rule. A single role or authority check is
+easier to reason about and to audit than a SpEL string. Composite rules (OR/AND across roles and authorities, IP
+scoping, custom bean logic) are exactly what `EXPRESSION` is for.
+
 ### Implementation
 
 - **Spring Security present** (bundled by the starter): the module contributes a `SecurityFilterChain` scoped to
-  `base-path/**`, checking either the role or authority based on `security.type`. Override it with your own
-  `dashboardSecurityFilterChain` bean.
+  `base-path/**`, applying the role, authority, or expression check based on `security.type`. Override it with your own
+  `dashboardSecurityFilterChain` bean, or supply your own `FailoverSecurityProvider` bean to customize just the
+  authorization rule while keeping the rest of the chain (see [`FailoverSecurityProvider`](#custom-failoversecurityprovider) below).
 - **Spring Security absent**: the context **fails fast** at startup — unless
   `failover.dashboard.security.allow-insecure=true`, which starts unsecured with a loud repeated `WARN` (
   trusted-network / dev only). The `allow-insecure` escape hatch is **refused outright when the `prod` profile is active
@@ -354,20 +477,37 @@ are exposed — never payload data, keys, credentials, or connection strings.
 
 ```java title="Consumer override (same as Actuator)"
 // When using type=ROLE
-http.authorizeHttpRequests(a ->a.
-
-requestMatchers("/failover-dashboard/**").
-
-hasRole("ADMIN"));
+http.authorizeHttpRequests(a -> a
+        .requestMatchers("/failover-dashboard/**").hasRole("ADMIN"));
 
 // When using type=AUTHORITY
-        http.
+http.authorizeHttpRequests(a -> a
+        .requestMatchers("/failover-dashboard/**").hasAuthority("FAILOVER_ADMIN"));
 
-authorizeHttpRequests(a ->a.
+// When using type=EXPRESSION
+http.authorizeHttpRequests(a -> a
+        .requestMatchers("/failover-dashboard/**")
+        .access(new WebExpressionAuthorizationManager("hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')")));
+```
 
-requestMatchers("/failover-dashboard/**").
+### Custom `FailoverSecurityProvider`
 
-hasAuthority("FAILOVER_ADMIN"));
+For finer control than a config property (e.g. reading the rule from an external policy service, or applying
+different logic per request beyond what SpEL conveniently expresses), declare your own `FailoverSecurityProvider`
+bean — it's an `@ConditionalOnMissingBean` extension point, so declaring one replaces `DefaultFailoverSecurityProvider`
+without needing to write a whole `SecurityFilterChain`:
+
+```java
+@Bean
+public FailoverSecurityProvider failoverSecurityProvider() {
+    return (auth, context) -> {
+        // context.basePath() — the dashboard's base path (informational; matching is
+        //                       already scoped to base-path/** by the caller — don't re-match it here)
+        // context.security() — the bound DashboardProperties.Security (type/role/authority/expression/allowInsecure)
+        auth.anyRequest().access(new WebExpressionAuthorizationManager(
+                "hasRole('ADMIN') or @myPolicyBean.allow(authentication)"));
+    };
+}
 ```
 
 ---
