@@ -13,11 +13,14 @@ import org.springframework.security.config.annotation.web.configurers.AuthorizeH
  *
  * <p><strong>Security Type Behavior:</strong>
  * <ul>
- *   <li>{@link DashboardProperties.SecurityType#ROLE ROLE}: Checks the configured {@code role} using
- *       {@code hasRole(security.role())}. Suitable for role-based access control (RBAC).</li>
  *   <li>{@link DashboardProperties.SecurityType#AUTHORITY AUTHORITY} (default): Checks the configured
  *       {@code authority} using {@code hasAuthority(security.authority())}. Suitable for fine-grained
  *       authority or permission-based access control.</li>
+ *   <li>{@link DashboardProperties.SecurityType#ROLE ROLE}: Checks the configured {@code role} using
+ *       {@code hasRole(security.role())}. Suitable for role-based access control (RBAC).</li>
+ *   <li>{@link DashboardProperties.SecurityType#EXPRESSION EXPRESSION}: Evaluates the configured SpEL
+ *       {@code expression} (e.g. {@code "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"})
+ *       via {@code WebExpressionAuthorizationManager}. Suitable for composite access rules.</li>
  * </ul>
  */
 public interface FailoverSecurityProvider {
@@ -26,13 +29,17 @@ public interface FailoverSecurityProvider {
      * Applies authorization rules to the provided request matcher registry.
      *
      * <p>Implementations must inspect {@link DashboardProperties.Security#type()} to determine whether
-     * to apply role-based ({@code hasRole}) or authority-based ({@code hasAuthority}) checks to the registry.
+     * to apply role-based ({@code hasRole}), authority-based ({@code hasAuthority}), or SpEL
+     * expression-based checks to the registry.
      *
-     * @param auth the authorization registry used to declare request matchers and access rules
-     * @param security dashboard security configuration properties, including the security type
-     *                  ({@link DashboardProperties.SecurityType#ROLE ROLE} or
-     *                  {@link DashboardProperties.SecurityType#AUTHORITY AUTHORITY}),
-     *                  and the corresponding role or authority value
+     * <p>Request matching for {@code context.basePath() + "/**"} is already applied by the caller
+     * (via {@code HttpSecurity.securityMatcher}) before this method runs — implementations must not
+     * re-match on {@link SecurityContext#basePath()}; it is provided for informational purposes only
+     * (e.g. logging or path-aware SpEL expressions).
+     *
+     * @param auth    the authorization registry used to declare request matchers and access rules
+     * @param context the dashboard's base path and security configuration (type, role, authority,
+     *                expression, allowInsecure)
      */
-    void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth, DashboardProperties.Security security);
+    void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth, SecurityContext context);
 }

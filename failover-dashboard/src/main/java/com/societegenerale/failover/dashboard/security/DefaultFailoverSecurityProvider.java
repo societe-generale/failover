@@ -3,7 +3,9 @@ package com.societegenerale.failover.dashboard.security;
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
+import org.springframework.security.web.access.expression.WebExpressionAuthorizationManager;
 
+import static com.societegenerale.failover.dashboard.config.DashboardProperties.SecurityType.EXPRESSION;
 import static com.societegenerale.failover.dashboard.config.DashboardProperties.SecurityType.ROLE;
 
 /**
@@ -11,12 +13,15 @@ import static com.societegenerale.failover.dashboard.config.DashboardProperties.
  *
  * <p>This provider configures Spring Security authorization based on the dashboard's
  * {@link DashboardProperties.Security} configuration. It applies a single authorization rule
- * to all dashboard requests, choosing between role-based and authority-based access control:
+ * to all dashboard requests, choosing between role-based, authority-based, and SpEL-expression
+ * access control:
  * <ul>
- *   <li>When {@link DashboardProperties.Security#type()} is {@code ROLE}: requires
- *       {@code hasRole(security.role())}</li>
  *   <li>When {@link DashboardProperties.Security#type()} is {@code AUTHORITY} (default): requires
  *       {@code hasAuthority(security.authority())}</li>
+ *   <li>When {@link DashboardProperties.Security#type()} is {@code ROLE}: requires
+ *       {@code hasRole(security.role())}</li>
+ *   <li>When {@link DashboardProperties.Security#type()} is {@code EXPRESSION}: evaluates the
+ *       configured SpEL web-security expression via {@link WebExpressionAuthorizationManager}</li>
  * </ul>
  *
  * <p>The {@code role} property is used for RBAC scenarios (e.g., "ADMIN", "OPERATOR"), while
@@ -25,13 +30,17 @@ import static com.societegenerale.failover.dashboard.config.DashboardProperties.
  *
  * <p>Example configurations:
  * <pre>
+ * # Authority-based (default; requires authority FAILOVER_ADMIN)
+ * failover.dashboard.security.type: AUTHORITY
+ * failover.dashboard.security.authority: FAILOVER_ADMIN
+ *
  * # Role-based (requires role ADMIN)
  * failover.dashboard.security.type: ROLE
  * failover.dashboard.security.role: ADMIN
  *
- * # Authority-based (requires authority FAILOVER_ADMIN)
- * failover.dashboard.security.type: AUTHORITY
- * failover.dashboard.security.authority: FAILOVER_ADMIN
+ * # Expression-based (SpEL)
+ * failover.dashboard.security.type: EXPRESSION
+ * failover.dashboard.security.expression: "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"
  * </pre>
  */
 public class DefaultFailoverSecurityProvider implements FailoverSecurityProvider {
@@ -42,23 +51,27 @@ public class DefaultFailoverSecurityProvider implements FailoverSecurityProvider
      * <p>Implementation logic:
      * <ul>
      *   <li>If type is {@code ROLE}: applies {@code hasRole(security.role())} to all requests</li>
-     *   <li>Otherwise (type is {@code AUTHORITY}): applies {@code hasAuthority(security.authority())} to all requests</li>
+     *   <li>If type is {@code AUTHORITY}: applies {@code hasAuthority(security.authority())} to all requests</li>
+     *   <li>If type is {@code EXPRESSION}: evaluates {@code security.expression()} via
+     *       {@link WebExpressionAuthorizationManager} for all requests</li>
      * </ul>
      *
-     * @param auth the authorization registry used to declare request matchers and access rules
-     * @param security dashboard security configuration with security type (ROLE or AUTHORITY)
-     *                  and the corresponding role/authority name
+     * @param auth    the authorization registry used to declare request matchers and access rules
+     * @param context the dashboard's base path (unused here — matching is already scoped by the
+     *                caller) and security configuration, with security type (ROLE, AUTHORITY, or
+     *                EXPRESSION) and the corresponding role/authority/expression
      */
     @Override
-    public void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth, DashboardProperties.Security security) {
+    public void configure(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth, SecurityContext context) {
+        DashboardProperties.Security security = context.security();
         if(security.allowInsecure()) {
             auth.anyRequest().permitAll();
+        } else if (security.type() == ROLE) {
+            auth.anyRequest().hasRole(security.role());
+        } else if (security.type() == EXPRESSION) {
+            auth.anyRequest().access(new WebExpressionAuthorizationManager(security.expression()));
         } else {
-            if (security.type() == ROLE) {
-                auth.anyRequest().hasRole(security.role());
-            } else {
-                auth.anyRequest().hasAuthority(security.authority());
-            }
+            auth.anyRequest().hasAuthority(security.authority());
         }
     }
 }
