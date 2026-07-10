@@ -388,19 +388,22 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * Welcome mapping: a bare {@code base-path} (and its trailing-slash form) forwards to the static
-     * {@code index.html}, so {@code /failover-dashboard} opens the UI without the explicit file name.
-     * A forward (not redirect) keeps the URL clean and lets the resource handler serve the page.
-     * Skipped when UI exposure is narrowed off.
+     * Welcome mapping: the trailing-slash {@code base-path} forwards to the static {@code index.html},
+     * so {@code /failover-dashboard/} opens the UI without the explicit file name. The bare
+     * {@code base-path} (no trailing slash) redirects to the trailing-slash form instead of forwarding,
+     * so the browser's URL bar actually gains the slash — otherwise index.html's relative asset URLs
+     * (e.g. {@code app.js}) resolve as siblings of the last path segment and are requested from root
+     * (e.g. {@code /app.js}), missing the {@code base-path/**} security matcher entirely and 401'ing
+     * against the consumer's own default security rules. Skipped when UI exposure is narrowed off.
      */
     @Override
     public void addViewControllers(@NonNull ViewControllerRegistry registry) {
         if (!properties.exposure().ui()) {
             return;
         }
-        String forward = "forward:" + properties.basePath() + "/index.html";
-        registry.addViewController(properties.basePath()).setViewName(forward);
-        registry.addViewController(properties.basePath() + "/").setViewName(forward);
+        registry.addRedirectViewController(properties.basePath(), properties.basePath() + "/");
+        registry.addViewController(properties.basePath() + "/")
+                .setViewName("forward:" + properties.basePath() + "/index.html");
     }
 
     /**
