@@ -270,6 +270,8 @@ td.stale{color:var(--bad)}
 .api-hcard .hbar i{display:block;height:100%;border-radius:4px;background:var(--hc)}
 .api-hcard .meta{margin-top:8px;display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
 .api-hcard .meta b{font-family:var(--mono);color:var(--text)}
+.api-hcard .uh-note{margin-top:9px;font-size:10px;line-height:1.45;color:var(--faint)}
+.api-hcard.degraded .uh-note,.api-hcard.unhealthy .uh-note{color:var(--hc)}
 
 /* ── Cards / charts ───────────────────────────────────────────────────── */
 .grid{display:grid;gap:16px}
@@ -353,6 +355,11 @@ td.barcell{min-width:120px}
 .health-hero-lbl{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .health-hero-status{font-size:30px;font-weight:800;color:var(--hh,var(--good));letter-spacing:-.01em}
 .health-hero-note{font-size:12.5px;color:var(--faint)}
+.health-hero-metrics{display:flex;gap:22px;margin-top:8px}
+.hh-stat{display:flex;flex-direction:column;gap:2px}
+.hh-stat .hh-k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.hh-stat .hh-v{font-family:var(--mono);font-weight:700;font-size:14px}
+.hh-stat .hh-v.warn{color:var(--warn)}
 
 /* one small card per health detail */
 .stat-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}

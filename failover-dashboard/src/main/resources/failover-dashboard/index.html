@@ -54,40 +54,40 @@
 <main>
   <!-- ══ OVERVIEW ════════════════════════════════════════════════════════ -->
   <section class="view" data-view="overview" role="tabpanel">
-    <div class="sec"><h2>Signals</h2><span class="hint">since process start · updates live</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Top-line KPIs across every @Failover point, aggregated since process start">Signals</h2><span class="hint">since process start · updates live</span></div>
     <div id="kpis"></div>
 
     <div class="grid cols-3" style="margin-top:18px">
       <div class="card">
-        <h3>Did the caller get a result?</h3>
+        <h3 class="tip" data-tip="Split of every call outcome: value came from upstream, from the failover cache, or nothing usable was found">Did the caller get a result?</h3>
         <div class="cap">Live value, recovered cache, or a hard failure</div>
         <div class="chart"><canvas id="c_outcome"></canvas></div>
       </div>
       <div class="card">
-        <h3>When failover fired, did it recover?</h3>
+        <h3 class="tip" data-tip="Of the calls where upstream failed and failover fired: complete value, partial value, or nothing recovered (missing / expired / error)">When failover fired, did it recover?</h3>
         <div class="cap">Full vs partial recovery, vs nothing usable (missing / expired / error)</div>
         <div class="chart"><canvas id="c_recovery"></canvas></div>
       </div>
       <div class="card">
-        <h3>Successful vs Recovered</h3>
+        <h3 class="tip" data-tip="Raw counts: live upstream values stored vs values served back from the failover cache">Successful vs Recovered</h3>
         <div class="cap">Live values stored vs values recovered from cache</div>
         <div class="chart"><canvas id="c_store"></canvas></div>
       </div>
     </div>
 
-    <div class="sec"><h2>Trend</h2><span class="hint">recent ticks · calls per tick + success / failover / recovery rate</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Rolling window of the most recent polling ticks — one point per refresh">Trend</h2><span class="hint">recent ticks · calls per tick + success / failover / recovery rate</span></div>
     <div class="card">
       <div class="chart tall"><canvas id="c_timeline"></canvas></div>
     </div>
 
     <div class="grid cols-2" style="margin-top:18px">
       <div class="card">
-        <h3>Why did upstream fail?</h3>
+        <h3 class="tip" data-tip="Exception class names that triggered failover, ranked by frequency">Why did upstream fail?</h3>
         <div class="cap">Top exception types triggering failover</div>
         <div class="chart"><canvas id="c_ex"></canvas></div>
       </div>
       <div class="card">
-        <h3>Latency · store vs recover</h3>
+        <h3 class="tip" data-tip="Mean and tail latency (p95/p99, where available) for the store path and the recover path, per failover point">Latency · store vs recover</h3>
         <div class="cap">Mean &amp; tail (p95/p99) milliseconds per failover point</div>
         <div class="chart"><canvas id="c_latency"></canvas></div>
       </div>
@@ -95,7 +95,7 @@
 
     <div id="c_apiex_wrap" style="margin-top:18px;display:none">
       <div class="card">
-        <h3>Exceptions per failover endpoint</h3>
+        <h3 class="tip" data-tip="Same exception breakdown as 'Why did upstream fail?', but split per failover endpoint — local metrics source only">Exceptions per failover endpoint</h3>
         <div class="cap">Exception type counts per failover point — grouped by endpoint</div>
         <div class="chart tall"><canvas id="c_apiex"></canvas></div>
       </div>
@@ -104,44 +104,45 @@
 
   <!-- ══ PER-API ═════════════════════════════════════════════════════════ -->
   <section class="view" data-view="apis" role="tabpanel" hidden>
-    <div class="sec"><h2>Per-API health</h2><span class="hint">click a column header to sort</span></div>
+    <div class="sec"><h2 class="tip" data-tip="One row per @Failover method — sortable, worst-first status at a glance">Per-API health</h2><span class="hint">click a column header to sort</span></div>
     <div class="tablewrap">
       <table id="apitable">
         <thead><tr>
-          <th>Failover point</th>
-          <th class="r sortable" data-key="totalCalls">Calls</th>
-          <th class="sortable" data-key="healthy">Healthy</th>
-          <th class="r sortable" data-key="successRate">Success</th>
-          <th class="r sortable" data-key="failoverRate">Failover</th>
-          <th class="r sortable" data-key="recoveryRate">Recovery</th>
-          <th class="r sortable" data-key="errors">Errors</th>
-          <th>Failover trend</th>
-          <th>Status</th>
+          <th class="tip" data-tip="The @Failover method name and its domain">Failover point</th>
+          <th class="r sortable tip" data-key="totalCalls" data-tip="Every intercepted @Failover call, regardless of outcome">Calls</th>
+          <th class="sortable tip" data-key="healthy" data-tip="(Success + Recovered) / Calls — the same rate that drives the Status column">Healthy</th>
+          <th class="r sortable tip" data-key="successRate" data-tip="Share of calls where upstream responded and the live value was stored">Success</th>
+          <th class="r sortable tip" data-key="failoverRate" data-tip="Share of calls where upstream failed and the failover path ran">Failover</th>
+          <th class="r sortable tip" data-key="recoveryRate" data-tip="Of the calls that failed over, the share that got a stored value back (recovered / failoverInvoked)">Recovery</th>
+          <th class="r sortable tip" data-key="notRecovered" data-tip="Failover attempts that found nothing usable — missing or expired cache entry (outcome=not_recovered)">Not-recovered</th>
+          <th class="r sortable tip" data-key="errors" data-tip="Failover attempts that threw during recovery (outcome=error)">Errors</th>
+          <th class="tip" data-tip="Sparkline of failover invocations per recent tick for this endpoint">Failover trend</th>
+          <th class="tip" data-tip="HEALTHY ≥99% · DEGRADED ≥90% · UNHEALTHY below — based on Healthy rate">Status</th>
         </tr></thead>
         <tbody id="apibody"></tbody>
       </table>
     </div>
 
-    <div class="sec"><h2>Failover trend · all APIs</h2><span class="hint">failover invocations per tick · one line per failover point</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Failover invocation count per tick, one line per failover point — compare which endpoints are failing over most">Failover trend · all APIs</h2><span class="hint">failover invocations per tick · one line per failover point</span></div>
     <div class="card"><div class="chart tall"><canvas id="c_apitrend"></canvas></div></div>
 
-    <div class="sec"><h2>Per-API breakdown</h2><span class="hint">overall vs failover vs recovered vs not-recovered</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Per endpoint: total calls vs how many failed over vs how many recovered vs how many got nothing usable">Per-API breakdown</h2><span class="hint">overall vs failover vs recovered vs not-recovered</span></div>
     <div class="card"><div class="chart tall"><canvas id="c_perapi"></canvas></div></div>
   </section>
 
   <!-- ══ INSTANCES (cluster per-instance metrics) ════════════════════════ -->
   <section class="view" data-view="instances" role="tabpanel" hidden>
-    <div class="sec"><h2>Instances</h2><span class="hint" id="inst-src">—</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Cluster members reporting metrics into the shared store, with a per-instance breakdown">Instances</h2><span class="hint" id="inst-src">—</span></div>
     <div class="rollup" id="inst-rollup"></div>
 
-    <div class="sec"><h2>Per-instance metrics</h2><span class="hint">click a row to drill in · ● live ● silent (beyond liveness window)</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Each cluster instance's own KPIs — click a row to drill into its detail below">Per-instance metrics</h2><span class="hint">click a row to drill in · ● live ● silent (beyond liveness window)</span></div>
     <div class="tablewrap">
       <table id="insttable">
         <thead><tr>
-          <th>Instance</th>
-          <th class="r">Calls</th><th class="r">Success</th><th class="r">Failover</th>
-          <th class="r">Recovery</th><th class="r">p95 recover</th>
-          <th>Last seen</th><th>Heartbeat</th><th>Status</th>
+          <th class="tip" data-tip="Instance identifier reporting into the shared store">Instance</th>
+          <th class="r tip" data-tip="Calls handled by this instance only">Calls</th><th class="r tip" data-tip="This instance's success rate">Success</th><th class="r tip" data-tip="This instance's failover rate">Failover</th>
+          <th class="r tip" data-tip="This instance's recovery rate">Recovery</th><th class="r tip" data-tip="This instance's p95 recover-path latency">p95 recover</th>
+          <th class="tip" data-tip="Time since this instance's last reported snapshot">Last seen</th><th class="tip" data-tip="Heartbeat liveness: on = actively pinging, down = expired, — = tracking disabled">Heartbeat</th><th class="tip" data-tip="This instance's own health classification">Status</th>
         </tr></thead>
         <tbody id="instbody"></tbody>
       </table>
@@ -153,37 +154,41 @@
 
   <!-- ══ HEALTH (actuator-style failover health) ═════════════════════════ -->
   <section class="view" data-view="health" role="tabpanel" hidden>
-    <div class="sec"><h2>Cluster roll-up</h2><span class="hint" id="rollup-src">—</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Count of failover points by status, plus how many cluster instances are reporting">Cluster roll-up</h2><span class="hint" id="rollup-src">—</span></div>
     <div class="rollup" id="rollup"></div>
 
-    <div class="sec"><h2>Failover health</h2><span class="hint">mirrors <code>/actuator/health/failover</code></span></div>
+    <div class="sec"><h2 class="tip" data-tip="Overall UP/DOWN verdict for the failover subsystem — same signal exposed at the actuator endpoint">Failover health</h2><span class="hint">mirrors <code>/actuator/health/failover</code></span></div>
     <div class="health-hero" id="health-hero">
       <div class="health-hero-ic" id="health-hero-ic">●</div>
       <div class="health-hero-main">
         <span class="health-hero-lbl">Failover subsystem</span>
         <span class="health-hero-status" id="health-hero-status">—</span>
         <span class="health-hero-note" id="health-hero-note"></span>
+        <div class="health-hero-metrics" id="health-hero-metrics"></div>
       </div>
     </div>
-    <div class="sec"><h2>Active configuration</h2><span class="hint">types &amp; flags only — never connection strings or payload data</span></div>
+    <div class="sec"><h2 class="tip" data-tip="Which failover types, stores, and flags are active — never secrets, connection strings, or payload data">Active configuration</h2><span class="hint">types &amp; flags only — never connection strings or payload data</span></div>
     <div class="stat-grid" id="health-details"></div>
+
+    <div class="sec"><h2 class="tip" data-tip="Scored on the upstream call alone — recovery is not factored in. A card can be red here while the endpoint reads green everywhere else, because failover is still successfully masking it">Upstream call health</h2><span class="hint">one card per failover point · recovery not factored in · early warning before the cache entry expires</span></div>
+    <div class="api-health-grid" id="upstream-cards"></div>
   </section>
 
   <!-- ══ CONFIG ══════════════════════════════════════════════════════════ -->
   <section class="view" data-view="config" role="tabpanel" hidden>
-    <div class="sec"><h2>Failover configuration</h2><span class="hint" id="cfgcount"></span></div>
+    <div class="sec"><h2 class="tip" data-tip="Every @Failover annotation discovered at startup, one row per failover point">Failover configuration</h2><span class="hint" id="cfgcount"></span></div>
     <div class="toolbar"><input id="cfgfilter" type="search" placeholder="Filter by name, domain, store…" aria-label="Filter configuration"></div>
     <div class="tablewrap">
       <table id="cfgtable">
         <thead><tr>
-          <th>Name</th><th>Domain</th><th class="r">Expiry</th><th>Store</th>
-          <th>Execution</th><th>Recover-all</th><th>Splitter</th><th>Key gen</th><th>Expiry policy</th>
+          <th class="tip" data-tip="The annotated method name">Name</th><th class="tip" data-tip="Domain grouping — failover points sharing a domain share store entries">Domain</th><th class="r tip" data-tip="How long a stored value stays eligible for recovery">Expiry</th><th class="tip" data-tip="Which FailoverStore backs this failover point">Store</th>
+          <th class="tip" data-tip="basic (direct call) or resilience (circuit-breaker wrapped)">Execution</th><th class="tip" data-tip="Whether this failover point recovers all entities on partial upstream failure">Recover-all</th><th class="tip" data-tip="Custom PayloadSplitter bean, if scatter/gather is configured">Splitter</th><th class="tip" data-tip="Custom KeyGenerator bean, if one is configured">Key gen</th><th class="tip" data-tip="Custom ExpiryPolicy bean, if one is configured">Expiry policy</th>
         </tr></thead>
         <tbody id="cfgbody"></tbody>
       </table>
     </div>
 
-    <div class="sec"><h2>Global settings</h2><span class="hint">effective <code>failover.*</code> &amp; <code>failover.dashboard.*</code></span></div>
+    <div class="sec"><h2 class="tip" data-tip="Effective failover.* and failover.dashboard.* property values resolved from the Environment">Global settings</h2><span class="hint">effective <code>failover.*</code> &amp; <code>failover.dashboard.*</code></span></div>
     <div class="settings-grid" id="settings"></div>
   </section>
 </main>
