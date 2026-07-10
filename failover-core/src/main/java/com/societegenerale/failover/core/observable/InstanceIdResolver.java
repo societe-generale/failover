@@ -33,6 +33,10 @@ package com.societegenerale.failover.core.observable;
 @FunctionalInterface
 public interface InstanceIdResolver {
 
-    /** Returns a stable, unique string identifying this instance (e.g. {@code myapp:host-1:8080}). */
+    /**
+     * Returns a stable, unique string identifying this instance (e.g. {@code myapp:host-1:8080}).
+     *
+     * @return the instance identity string
+     */
     String resolve();
 }

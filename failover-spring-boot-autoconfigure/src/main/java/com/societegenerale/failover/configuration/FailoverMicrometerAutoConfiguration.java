@@ -22,6 +22,7 @@ import com.societegenerale.failover.core.observable.publisher.ObservablePublishe
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.micrometer.AbstractSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
@@ -135,12 +136,21 @@ public class FailoverMicrometerAutoConfiguration {
     }
 
     /**
-     * Binds {@code failover.registered.total} and per-failover
-     * {@code failover.config.expiry.seconds} gauges to the registry.
+     * Binds {@code failover.registered.total}, per-failover {@code failover.config.expiry.seconds}, and
+     * {@code failover.config.global} gauges to the registry.
+     *
+     * <p>Calls {@link FailoverMeterBinder#bindTo(MeterRegistry)} explicitly rather than relying solely on
+     * Spring Boot's automatic {@code MeterBinder} discovery: that mechanism is not guaranteed to reach a
+     * {@link MeterRegistry} bean the consuming application declares itself (as opposed to one Boot's own
+     * metrics autoconfiguration creates), which would silently leave the config gauges unregistered. The
+     * call is idempotent — Micrometer returns the existing meter when the same id is registered twice, so
+     * it is harmless if Boot's own mechanism also invokes {@code bindTo} for this registry.
      *
      * @param failoverScanner  scanner providing the list of registered failovers
      * @param expiryExtractor  extracts expiry configuration from each failover
      * @param failoverStore    the assembled store; backs the {@code failover.live.entries} gauge when size-aware
+     * @param properties       failover properties; source of the {@code failover.config.global} gauge tags
+     * @param meterRegistry    the active registry to bind the gauges to immediately
      * @return {@link FailoverMeterBinder}
      */
     @ConditionalOnMissingBean(FailoverMeterBinder.class)
@@ -148,8 +158,18 @@ public class FailoverMicrometerAutoConfiguration {
     public FailoverMeterBinder failoverMeterBinder(
             FailoverScanner failoverScanner,
             FailoverExpiryExtractor expiryExtractor,
-            ObjectProvider<FailoverStore<Object>> failoverStore) {
-        return new FailoverMeterBinder(failoverScanner, expiryExtractor, failoverStore.getIfAvailable());
+            ObjectProvider<FailoverStore<Object>> failoverStore,
+            FailoverProperties properties,
+            MeterRegistry meterRegistry) {
+        FailoverMeterBinder.GlobalConfig globalConfig = new FailoverMeterBinder.GlobalConfig(
+                properties.getStore().getType().name().toLowerCase(),
+                properties.getType().name().toLowerCase(),
+                properties.getExceptionPolicy().name().toLowerCase(),
+                properties.getStore().isAsync());
+        FailoverMeterBinder binder = new FailoverMeterBinder(failoverScanner, expiryExtractor,
+                failoverStore.getIfAvailable(), globalConfig);
+        binder.bindTo(meterRegistry);
+        return binder;
     }
 
     /**
@@ -160,6 +180,17 @@ public class FailoverMicrometerAutoConfiguration {
     @Bean
     public FailoverMetricsSnapshotService failoverMetricsSnapshotService(MeterRegistry registry) {
         return new FailoverMetricsSnapshotService(registry);
+    }
+
+    /**
+     * Rebuilds the {@code @Failover} configuration view from the gauges {@link FailoverMeterBinder} registers.
+     * Used by peer apps to build snapshots for the shared-store cluster tier without a {@code FailoverScanner}
+     * dependency on the dashboard side.
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public FailoverConfigSnapshotService failoverConfigSnapshotService(MeterRegistry registry) {
+        return new FailoverConfigSnapshotService(registry);
     }
 
     // ── instance tag (failover.observable.instance.mode) ──────────────────────────────
@@ -291,13 +322,14 @@ public class FailoverMicrometerAutoConfiguration {
         @ConditionalOnMissingBean(ClusterSnapshotPublisher.class)
         public ClusterSnapshotPublisher clusterSnapshotPublisher(
                 FailoverMetricsSnapshotService metricsSnapshotService,
+                FailoverConfigSnapshotService configSnapshotService,
                 InstanceIdResolver instanceIdResolver,
                 SnapshotPushClient snapshotPushClient,
                 FailoverClusterPublisherProperties publisherProperties) {
             var base = new SimpleAsyncTaskExecutor("failover-snapshot-publisher-");
             base.setVirtualThreads(true);
             Executor executor = new BoundedTaskExecutor(base, 1, RejectionPolicy.DISCARD, "failover-snapshot-publisher");
-            return new ClusterSnapshotPublisher(metricsSnapshotService, instanceIdResolver,
+            return new ClusterSnapshotPublisher(metricsSnapshotService, configSnapshotService, instanceIdResolver,
                     snapshotPushClient, resolveSnapshotUrl(publisherProperties),
                     publisherProperties.intervalSeconds(), publisherProperties.retryIntervalSeconds(),
                     executor);

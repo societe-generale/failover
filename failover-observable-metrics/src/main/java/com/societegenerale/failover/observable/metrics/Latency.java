@@ -42,7 +42,14 @@ public record Latency(
         double recoverP95Ms,
         double recoverP99Ms) {
 
-    /** Convenience for sources that expose only mean/max (e.g. shared-store): percentiles default to {@code 0}. */
+    /**
+     * Convenience for sources that expose only mean/max (e.g. shared-store): percentiles default to {@code 0}.
+     *
+     * @param storeMeanMs   mean store-path latency (ms)
+     * @param storeMaxMs    max store-path latency (ms)
+     * @param recoverMeanMs mean recover-path latency (ms)
+     * @param recoverMaxMs  max recover-path latency (ms)
+     */
     public Latency(double storeMeanMs, double storeMaxMs, double recoverMeanMs, double recoverMaxMs) {
         this(storeMeanMs, storeMaxMs, recoverMeanMs, recoverMaxMs, 0, 0, 0, 0);
     }

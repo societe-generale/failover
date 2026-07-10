@@ -35,30 +35,60 @@ public interface FailoverStoreQueryResolver {
     // Resolved queries
     // -----------------------------------------------------------------
 
-    /** @return the INSERT SQL for a new row */
+    /**
+     * Resolves the INSERT query.
+     *
+     * @return the INSERT SQL for a new row
+     */
     String getInsertQuery();
 
-    /** @return the UPDATE SQL for an existing row (SET columns first, then WHERE predicate) */
+    /**
+     * Resolves the UPDATE query.
+     *
+     * @return the UPDATE SQL for an existing row (SET columns first, then WHERE predicate)
+     */
     String getUpdateQuery();
 
-    /** @return the SELECT SQL that retrieves a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY} */
+    /**
+     * Resolves the SELECT-one query.
+     *
+     * @return the SELECT SQL that retrieves a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY}
+     */
     String getSelectQuery();
 
-    /** @return the SELECT SQL that retrieves all rows for a given {@code FAILOVER_NAME} */
+    /**
+     * Resolves the SELECT-all query.
+     *
+     * @return the SELECT SQL that retrieves all rows for a given {@code FAILOVER_NAME}
+     */
     String getSelectAllByNameQuery();
 
-    /** @return the DELETE SQL that removes a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY} */
+    /**
+     * Resolves the DELETE-one query.
+     *
+     * @return the DELETE SQL that removes a single row by {@code FAILOVER_NAME} and {@code FAILOVER_KEY}
+     */
     String getDeleteQuery();
 
-    /** @return the DELETE SQL that removes all rows with {@code EXPIRE_ON} before a given timestamp */
+    /**
+     * Resolves the cleanup query.
+     *
+     * @return the DELETE SQL that removes all rows with {@code EXPIRE_ON} before a given timestamp
+     */
     String getCleanUpQuery();
 
-    /** @return the {@code SELECT COUNT(*)} SQL counting all rows for a given {@code FAILOVER_NAME} (capacity gauge) */
+    /**
+     * Resolves the count query.
+     *
+     * @return the {@code SELECT COUNT(*)} SQL counting all rows for a given {@code FAILOVER_NAME} (capacity gauge)
+     */
     String getCountByNameQuery();
 
     /**
      * Native merge/upsert query for the detected database dialect, or {@code null} when no
      * known dialect is available — the store falls back to INSERT + UPDATE on duplicate in that case.
+     *
+     * @return the native MERGE/upsert SQL, or {@code null} when unavailable
      */
     @Nullable
     String getMergeQuery();
@@ -70,18 +100,34 @@ public interface FailoverStoreQueryResolver {
     /**
      * Builds the parameter array for INSERT and all MERGE/upsert queries.
      * Column order: FAILOVER_NAME, FAILOVER_KEY, AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS.
+     *
+     * @param <T>     the payload type
+     * @param payload the row to insert/merge
+     * @return the bound parameter array, in column order
      */
     <T> Object[] buildInsertMergeParams(ReferentialPayload<T> payload);
 
-    /** SQL types matching {@link #buildInsertMergeParams} column order. */
+    /**
+     * SQL types matching {@link #buildInsertMergeParams} column order.
+     *
+     * @return the JDBC {@code java.sql.Types} array matching {@link #buildInsertMergeParams}
+     */
     int[] buildInsertMergeTypes();
 
     /**
      * Builds the parameter array for the UPDATE query (SET columns first, then WHERE predicate).
      * Column order: AS_OF, EXPIRE_ON, PAYLOAD, PAYLOAD_CLASS, FAILOVER_NAME, FAILOVER_KEY.
+     *
+     * @param <T>     the payload type
+     * @param payload the row to update
+     * @return the bound parameter array, in column order
      */
     <T> Object[] buildUpdateParams(ReferentialPayload<T> payload);
 
-    /** SQL types matching {@link #buildUpdateParams} column order. */
+    /**
+     * SQL types matching {@link #buildUpdateParams} column order.
+     *
+     * @return the JDBC {@code java.sql.Types} array matching {@link #buildUpdateParams}
+     */
     int[] buildUpdateTypes();
 }

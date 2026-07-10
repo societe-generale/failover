@@ -17,6 +17,7 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 
@@ -65,4 +66,14 @@ public interface SnapshotStore {
      * @return one {@link InstanceMetrics} per known instance, with {@code liveStatus = UNKNOWN}
      */
     List<InstanceMetrics> allInstances();
+
+    /**
+     * The {@code @Failover} configuration, merged across every active instance (config is expected identical
+     * cluster-wide; when instances disagree the most recently pushed value per name wins).
+     *
+     * @return one {@link ConfigEntry} per distinct failover name; empty when nothing has been pushed yet
+     */
+    default List<ConfigEntry> configEntries() {
+        return List.of();
+    }
 }

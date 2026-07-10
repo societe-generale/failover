@@ -41,7 +41,7 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Snapsho
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -98,8 +98,9 @@ import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebA
                 "org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration",
                 "org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration",
                 "org.springframework.boot.micrometer.metrics.autoconfigure.export.simple.SimpleMetricsExportAutoConfiguration",
-                // After the failover library (when present) so its real FailoverScanner wins over the
-                // standalone EmptyFailoverScanner fallback below. Referenced by name — no compile dependency.
+                // After the failover library (when present) so its real FailoverMetricsSnapshotService /
+                // FailoverConfigSnapshotService beans win over the standalone fallbacks below. Referenced by
+                // name — no compile dependency.
                 "com.societegenerale.failover.configuration.FailoverAutoConfiguration"
         })
 @ConditionalOnWebApplication(type = SERVLET)
@@ -115,23 +116,11 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         log.info("Failover dashboard enabled at base path '{}'.", properties.basePath());
     }
 
-    /**
-     * Standalone fallback: when the failover library is absent (the dashboard runs as its own app pointed at a
-     * remote backend), supply an {@link EmptyFailoverScanner} so the config view is empty rather than failing to
-     * start. The real scanner wins whenever the failover library is present (this autoconfig is ordered after it).
-     */
-    @Bean
-    @ConditionalOnMissingBean(FailoverScanner.class)
-    public FailoverScanner failoverScanner() {
-        log.info("No FailoverScanner found — running the dashboard standalone (config view will be empty).");
-        return new EmptyFailoverScanner();
-    }
-
     @Bean
     @ConditionalOnMissingBean
-    public DashboardConfigService dashboardConfigService(FailoverScanner scanner, Environment environment,
+    public DashboardConfigService dashboardConfigService(Environment environment,
                                                          ObjectProvider<MetricsSource> metricsSource) {
-        return new DashboardConfigService(scanner, environment, metricsSource.getIfAvailable());
+        return new DashboardConfigService(environment, metricsSource.getIfAvailable());
     }
 
     @Bean
@@ -170,6 +159,20 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
+     * Standalone fallback {@link FailoverConfigSnapshotService} for dashboard-only deployments where
+     * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover starter
+     * is present, {@code FailoverMicrometerAutoConfiguration} contributes the real service first and this
+     * fallback is skipped. Backs the config view with zero dependency on {@code FailoverScanner} — reads
+     * only the {@code failover.config.*} gauges the running service emits (empty when none present).
+     */
+    @Bean
+    @ConditionalOnBean(MeterRegistry.class)
+    @ConditionalOnMissingBean
+    public FailoverConfigSnapshotService failoverConfigSnapshotService(MeterRegistry registry) {
+        return new FailoverConfigSnapshotService(registry);
+    }
+
+    /**
      * Metrics service + controller — present only when a {@link MeterRegistry} is in the context.
      * Without Micrometer the config view above still works; the metrics view degrades gracefully (§3).
      */
@@ -194,10 +197,11 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                                        ObjectProvider<SnapshotStore> snapshotStore,
                                        ObjectProvider<ClusterSeriesStore> seriesStore,
                                        ObjectProvider<HeartbeatStore> heartbeatStoreProvider,
+                                       ObjectProvider<FailoverConfigSnapshotService> configSnapshotService,
                                        InstanceIdResolver instanceIdResolver) {
         // history is present only when failover.dashboard.history.enabled=true; null otherwise.
         LocalRegistryMetricsSource local = new LocalRegistryMetricsSource(metricsService, history.getIfAvailable(),
-                instanceIdResolver);
+                instanceIdResolver, configSnapshotService.getIfAvailable());
         DashboardProperties.Cluster cluster = properties.cluster();
         String mode = cluster.mode();
         if ("prometheus".equalsIgnoreCase(mode)) {

@@ -47,6 +47,8 @@ public class BoundedTaskExecutor implements TaskExecutor {
     private final String name;
 
     /**
+     * Creates a new bounded executor wrapping {@code delegate}.
+     *
      * @param delegate         the executor that actually runs accepted tasks (its threading model is kept)
      * @param concurrencyLimit max number of concurrently in-flight tasks; must be {@code > 0}
      * @param rejectionPolicy  what to do with a task submitted while at the limit

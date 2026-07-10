@@ -18,6 +18,7 @@ package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ClusterSnapshotPublisher extends ThresholdSnapshotPublisher {
 
     private final FailoverMetricsSnapshotService metricsService;
+    private final FailoverConfigSnapshotService configSnapshotService;
     private final InstanceIdResolver instanceIdResolver;
     private final SnapshotPushClient pushClient;
     private final String publishUrl;
@@ -50,7 +52,20 @@ public class ClusterSnapshotPublisher extends ThresholdSnapshotPublisher {
     private final AtomicBoolean failing = new AtomicBoolean(false);
     private volatile long nextRetryMs = 0;
 
+    /**
+     * Creates a new publisher.
+     *
+     * @param metricsService        source of this instance's metrics snapshot
+     * @param configSnapshotService source of this instance's {@code @Failover} configuration
+     * @param instanceIdResolver    resolves this instance's identity for the pushed snapshot
+     * @param pushClient            transport used to deliver the snapshot
+     * @param publishUrl            the dashboard's ingest endpoint URL (used only for logging here)
+     * @param intervalSeconds       minimum interval between pushes
+     * @param retryIntervalSeconds  backoff duration after a push failure
+     * @param executor              executor used to dispatch pushes off the metric-event thread
+     */
     public ClusterSnapshotPublisher(FailoverMetricsSnapshotService metricsService,
+                                    FailoverConfigSnapshotService configSnapshotService,
                                     InstanceIdResolver instanceIdResolver,
                                     SnapshotPushClient pushClient,
                                     String publishUrl,
@@ -59,6 +74,7 @@ public class ClusterSnapshotPublisher extends ThresholdSnapshotPublisher {
                                     Executor executor) {
         super(executor, intervalSeconds);
         this.metricsService = metricsService;
+        this.configSnapshotService = configSnapshotService;
         this.instanceIdResolver = instanceIdResolver;
         this.pushClient = pushClient;
         this.publishUrl = publishUrl;
@@ -73,7 +89,8 @@ public class ClusterSnapshotPublisher extends ThresholdSnapshotPublisher {
             return;
         }
         try {
-            pushClient.send(new ClusterSnapshot(instanceIdResolver.resolve(), metricsService.metricsSummary()));
+            pushClient.send(new ClusterSnapshot(instanceIdResolver.resolve(), metricsService.metricsSummary(),
+                    configSnapshotService.configEntries()));
             if (failing.getAndSet(false)) {
                 log.info("Failover shared-store snapshot push to '{}' recovered.", publishUrl);
             }

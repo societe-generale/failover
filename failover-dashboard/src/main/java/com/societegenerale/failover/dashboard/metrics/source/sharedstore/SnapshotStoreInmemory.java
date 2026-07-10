@@ -17,6 +17,7 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -25,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,7 +57,7 @@ public class SnapshotStoreInmemory implements SnapshotStore {
     /** Retired entries kept individually (for reappearance) before compaction into the tombstone. */
     static final int MAX_RETIRED = 100;
 
-    private record Entry(MetricsSummary raw, MetricsSummary baseline, long receivedAtMs) {
+    private record Entry(MetricsSummary raw, MetricsSummary baseline, long receivedAtMs, List<ConfigEntry> configEntries) {
     }
 
     /** Insertion-ordered so iteration is stable; retirement order = eviction order. */
@@ -97,7 +99,7 @@ public class SnapshotStoreInmemory implements SnapshotStore {
         }
         MetricsSummary baseline = previous == null ? null
                 : SnapshotBaseline.next(previous.raw(), previous.baseline(), snapshot.summary());
-        active.put(id, new Entry(snapshot.summary(), baseline, nowMillis.getAsLong()));
+        active.put(id, new Entry(snapshot.summary(), baseline, nowMillis.getAsLong(), snapshot.configEntries()));
     }
 
     @Override
@@ -126,6 +128,26 @@ public class SnapshotStoreInmemory implements SnapshotStore {
             parts.add(SnapshotBaseline.combined(entry.baseline(), entry.raw()));
         }
         return parts.size() == 1 ? parts.getFirst() : MetricsSummaryAggregator.merge(parts);
+    }
+
+    @Override
+    public synchronized List<ConfigEntry> configEntries() {
+        retireExpired();
+        Map<String, ConfigEntry> byName = new LinkedHashMap<>();
+        // Retired instances first, active last: config is expected identical cluster-wide, but if it ever
+        // differs, the most recently reporting instance should win — and config must not disappear just
+        // because every instance briefly retired (e.g. a rolling restart), unlike a churned-away tombstone.
+        for (Entry entry : retired.values()) {
+            for (ConfigEntry configEntry : entry.configEntries()) {
+                byName.put(configEntry.name(), configEntry);
+            }
+        }
+        for (Entry entry : active.values()) {
+            for (ConfigEntry configEntry : entry.configEntries()) {
+                byName.put(configEntry.name(), configEntry);   // last-seen instance wins per name
+            }
+        }
+        return byName.values().stream().sorted(Comparator.comparing(ConfigEntry::name)).toList();
     }
 
     /** Current number of individually retained retired entries (diagnostics / tests). */

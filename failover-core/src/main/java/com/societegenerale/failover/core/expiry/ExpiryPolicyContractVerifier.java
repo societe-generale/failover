@@ -67,18 +67,34 @@ public final class ExpiryPolicyContractVerifier<T> {
         this.policy = policy;
     }
 
-    /** Starts a verification for the given policy. */
+    /**
+     * Starts a verification for the given policy.
+     *
+     * @param <T>    the payload type whose expiry the policy governs
+     * @param policy the policy under test
+     * @return a new verifier for {@code policy}
+     */
     public static <T> ExpiryPolicyContractVerifier<T> forPolicy(ExpiryPolicy<T> policy) {
         return new ExpiryPolicyContractVerifier<>(policy);
     }
 
-    /** The {@link Failover} metadata passed to the policy — typically a Mockito mock with the duration/unit stubbed. */
+    /**
+     * The {@link Failover} metadata passed to the policy — typically a Mockito mock with the duration/unit stubbed.
+     *
+     * @param failover the annotation metadata to use for the checks
+     * @return this verifier
+     */
     public ExpiryPolicyContractVerifier<T> withFailover(Failover failover) {
         this.failover = failover;
         return this;
     }
 
-    /** A representative payload instance stored in the synthetic {@link ReferentialPayload} used for the checks. */
+    /**
+     * A representative payload instance stored in the synthetic {@link ReferentialPayload} used for the checks.
+     *
+     * @param samplePayload the payload instance to use for the checks
+     * @return this verifier
+     */
     public ExpiryPolicyContractVerifier<T> withSamplePayload(T samplePayload) {
         this.samplePayload = samplePayload;
         return this;
@@ -93,6 +109,8 @@ public final class ExpiryPolicyContractVerifier<T> {
     /**
      * Verifies only the {@code computeExpiry} contract and returns the computed instant:
      * it must be non-null and strictly in the future (a freshly computed expiry is never already past).
+     *
+     * @return the computed expiry instant
      */
     public Instant verifyComputeExpiry() {
         requireFailover();

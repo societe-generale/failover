@@ -36,7 +36,20 @@ public final class MetricsKpis {
     private MetricsKpis() {
     }
 
-    /** Builds one failover point's KPIs (with derived rates) from its raw counts and latency. */
+    /**
+     * Builds one failover point's KPIs (with derived rates) from its raw counts and latency.
+     *
+     * @param name         failover name
+     * @param domain       effective store namespace
+     * @param success      upstream success count
+     * @param recovered    recovered count
+     * @param notRecovered not-recovered count
+     * @param errors       error count
+     * @param partial      partial-recovery count
+     * @param asyncFailed  async store-write failure count
+     * @param latency      store/recover latency
+     * @return the built KPIs, including derived rates
+     */
     public static ApiKpis build(String name, String domain, long success, long recovered, long notRecovered,
                          long errors, long partial, long asyncFailed, Latency latency) {
         long failover = recovered + notRecovered + errors;
@@ -51,7 +64,13 @@ public final class MetricsKpis {
                 partial, asyncFailed, latency, rates);
     }
 
-    /** Sums per-API KPIs into the global {@link #OVERALL} aggregate, with the supplied overall latency. */
+    /**
+     * Sums per-API KPIs into the global {@link #OVERALL} aggregate, with the supplied overall latency.
+     *
+     * @param perApi  the per-API KPIs to sum
+     * @param latency the overall latency to attach to the aggregate row
+     * @return the summed {@link #OVERALL} row
+     */
     public static ApiKpis overall(List<ApiKpis> perApi, Latency latency) {
         long success = perApi.stream().mapToLong(ApiKpis::upstreamSuccess).sum();
         long recovered = perApi.stream().mapToLong(ApiKpis::recovered).sum();

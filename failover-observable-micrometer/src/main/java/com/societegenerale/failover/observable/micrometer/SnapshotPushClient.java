@@ -30,5 +30,11 @@ import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
  */
 public interface SnapshotPushClient {
 
+    /**
+     * Sends {@code snapshot} to the configured ingest endpoint.
+     *
+     * @param snapshot the snapshot to deliver
+     * @throws Exception on any transport failure; the caller handles and backs off
+     */
     void send(ClusterSnapshot snapshot) throws Exception;
 }

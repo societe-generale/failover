@@ -17,7 +17,7 @@
 package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
-import com.societegenerale.failover.dashboard.metrics.ConfigEntry;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

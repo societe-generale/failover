@@ -37,7 +37,13 @@ package com.societegenerale.failover.observable.metrics;
  */
 public record InstanceMetrics(String instanceId, long lastSeenEpochMs, MetricsSummary summary, LiveStatus liveStatus) {
 
-    /** Backward-compat: liveness unknown (tracking disabled). */
+    /**
+     * Backward-compat: liveness unknown (tracking disabled).
+     *
+     * @param instanceId      the emitting instance's identifier
+     * @param lastSeenEpochMs epoch millis of that instance's most recent data point
+     * @param summary         that instance's own KPI summary
+     */
     public InstanceMetrics(String instanceId, long lastSeenEpochMs, MetricsSummary summary) {
         this(instanceId, lastSeenEpochMs, summary, LiveStatus.UNKNOWN);
     }

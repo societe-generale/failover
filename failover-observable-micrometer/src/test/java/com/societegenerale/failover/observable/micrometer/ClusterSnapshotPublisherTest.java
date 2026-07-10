@@ -18,6 +18,7 @@ package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.concurrent.Executor;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -38,6 +40,7 @@ import static org.mockito.Mockito.*;
 class ClusterSnapshotPublisherTest {
 
     @Mock FailoverMetricsSnapshotService metricsService;
+    @Mock FailoverConfigSnapshotService configSnapshotService;
     @Mock InstanceIdResolver instanceIdResolver;
     @Mock SnapshotPushClient pushClient;
 
@@ -49,8 +52,9 @@ class ClusterSnapshotPublisherTest {
     void setUp() {
         MetricsSummary summary = mock(MetricsSummary.class);
         when(metricsService.metricsSummary()).thenReturn(summary);
+        when(configSnapshotService.configEntries()).thenReturn(List.of());
         when(instanceIdResolver.resolve()).thenReturn("test-instance");
-        publisher = new ClusterSnapshotPublisher(metricsService, instanceIdResolver,
+        publisher = new ClusterSnapshotPublisher(metricsService, configSnapshotService, instanceIdResolver,
                 pushClient, "http://dashboard/api/cluster/snapshot", 15, 300, DIRECT);
     }
 
@@ -71,6 +75,22 @@ class ClusterSnapshotPublisherTest {
             publisher.push();
             // no exception, no recovery log — just verifying it passes
             verify(pushClient, times(1)).send(any());
+        }
+
+        @Test
+        @DisplayName("includes this instance's config entries in the pushed snapshot")
+        void includesConfigEntries() throws Exception {
+            com.societegenerale.failover.observable.metrics.ConfigEntry entry =
+                    new com.societegenerale.failover.observable.metrics.ConfigEntry(
+                            "country-by-code", "country", 24L, "HOURS", false,
+                            "default", "default", "default", "inmemory", "basic", "rethrow", true);
+            when(configSnapshotService.configEntries()).thenReturn(List.of(entry));
+
+            publisher.push();
+
+            org.mockito.ArgumentCaptor<ClusterSnapshot> captor = org.mockito.ArgumentCaptor.forClass(ClusterSnapshot.class);
+            verify(pushClient).send(captor.capture());
+            org.assertj.core.api.Assertions.assertThat(captor.getValue().configEntries()).containsExactly(entry);
         }
     }
 
@@ -94,7 +114,7 @@ class ClusterSnapshotPublisherTest {
         void recoveryAfterBackoff() throws Exception {
             // retryInterval=0 means backoff expires immediately → second push always retries
             ClusterSnapshotPublisher zeroRetryPublisher = new ClusterSnapshotPublisher(
-                    metricsService, instanceIdResolver,
+                    metricsService, configSnapshotService, instanceIdResolver,
                     pushClient, "http://dashboard/api/cluster/snapshot", 15, 0, DIRECT);
 
             doThrow(new RuntimeException("down")).when(pushClient).send(any());

@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.Latency;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -175,5 +176,72 @@ class SnapshotStoreJdbcTest {
         Integer baselines = jdbc.queryForObject(
                 "SELECT COUNT(BASELINE_JSON) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
         assertThat(baselines).isZero();
+    }
+
+    @Test
+    void autoDdlCreatesTheConfigColumn() {
+        store(10);
+        Integer configs = jdbc.queryForObject(
+                "SELECT COUNT(CONFIG_JSON) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
+        assertThat(configs).isZero();
+    }
+
+    private static ConfigEntry entry(String name) {
+        return new ConfigEntry(name, name, 24L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+    }
+
+    @Test
+    void configEntriesRoundTripAndSurviveAStoreRestart() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0), List.of(entry("country-by-code"))));
+
+        SnapshotStoreJdbc reopened = store(10);   // fresh store, same table
+
+        assertThat(reopened.configEntries()).singleElement()
+                .satisfies(e -> {
+                    assertThat(e.name()).isEqualTo("country-by-code");
+                    assertThat(e.expiryDuration()).isEqualTo(24L);
+                });
+    }
+
+    @Test
+    void configEntriesMergedAcrossInstancesUnionedByName() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1, 0), List.of(entry("alpha"))));
+        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 1, 0), List.of(entry("zebra"))));
+
+        assertThat(store.configEntries()).extracting(ConfigEntry::name).containsExactly("alpha", "zebra");
+    }
+
+    @Test
+    void configEntriesReflectsTheLatestPushForAReUpsertedInstance() {
+        SnapshotStoreJdbc store = store(10);
+        ConfigEntry stale = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        ConfigEntry fresh = new ConfigEntry("alpha", "alpha", 2L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1, 0), List.of(stale)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1, 0), List.of(fresh)));   // same instance, re-pushed
+
+        assertThat(store.configEntries()).singleElement()
+                .satisfies(e -> assertThat(e.expiryDuration()).isEqualTo(2L));
+    }
+
+    @Test
+    void configEntriesEmptyWhenNothingPushedYet() {
+        assertThat(store(10).configEntries()).isEmpty();
+    }
+
+    @Test
+    void configEntriesTreatsANullConfigJsonRowAsEmpty() {
+        // Simulates a row written before CONFIG_JSON existed (or by an older peer): NULL in that column,
+        // read back via the ALTER TABLE ... ADD COLUMN IF NOT EXISTS upgrade path.
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0), List.of(entry("alpha"))));
+        jdbc.update("UPDATE FAILOVER_DASHBOARD_SNAPSHOT SET CONFIG_JSON = NULL WHERE INSTANCE_ID = 'i1'");
+
+        assertThat(store.configEntries()).isEmpty();
+        assertThat(store.allInstances()).hasSize(1);   // the row itself (metrics) is unaffected
     }
 }

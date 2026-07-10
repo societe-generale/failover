@@ -137,6 +137,8 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
         }
 
         /**
+         * Sets the executor for parallel slice dispatch.
+         *
          * @param executor executor for parallel slice dispatch; {@code null} = sequential (default)
          * @return this builder
          */
@@ -146,6 +148,8 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
         }
 
         /**
+         * Sets the context propagator carried onto executor threads.
+         *
          * @param contextPropagator context propagator for executor threads; defaults to {@link ContextPropagator#noOp()}
          * @return this builder
          */
@@ -155,6 +159,8 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
         }
 
         /**
+         * Sets the per-slice timeout for the parallel dispatch path.
+         *
          * @param timeout per-slice timeout for the parallel path; {@code null} = wait indefinitely (default).
          *                On timeout a recover slice is treated as not recovered (no data) rather than hanging
          *                the business thread; a store slice surfaces the timeout to the caller. Ignored on the
@@ -167,6 +173,8 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
         }
 
         /**
+         * Sets the sink used to emit the partial-recovery metric.
+         *
          * @param observablePublisher sink the gather side uses to emit a {@code recover-partial} metric when
          *                            some (but not all) slices are recovered (audit I-04); {@code null} = none (default)
          * @return this builder
@@ -177,6 +185,8 @@ public class ScatterGatherFailoverHandler<T, R> implements FailoverHandler<T> {
         }
 
         /**
+         * Builds the handler.
+         *
          * @return a new {@link ScatterGatherFailoverHandler} configured from this builder
          */
         public ScatterGatherFailoverHandler<T, R> build() {

@@ -21,11 +21,6 @@
             <artifactId>failover-core</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.societegenerale.failover</groupId>
-            <artifactId>failover-scanner</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
 
         <!-- Shared metrics data model (ApiKpis, MetricsSummary, MetricsKpis, etc.) + FailoverMetricsSnapshotService -->
         <dependency>

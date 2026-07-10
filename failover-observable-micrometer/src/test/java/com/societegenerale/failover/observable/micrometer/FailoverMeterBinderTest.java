@@ -165,6 +165,60 @@ class FailoverMeterBinderTest {
             .isEqualTo(1800.0);
     }
 
+    @Test
+    @DisplayName("expiry.seconds gauge carries the full config as tags (duration, recoverAll, payloadSplitter, keyGenerator, expiryPolicy)")
+    void expiryGaugeCarriesFullConfigTags() {
+        Failover fo = mock(Failover.class);
+        when(fo.name()).thenReturn("my-fo");
+        when(fo.domain()).thenReturn("my-domain");
+        when(fo.expiryDuration()).thenReturn(2L);
+        when(fo.expiryUnit()).thenReturn(ChronoUnit.HOURS);
+        when(fo.expiryDurationExpression()).thenReturn("");
+        when(fo.expiryUnitExpression()).thenReturn("");
+        when(fo.recoverAll()).thenReturn(true);
+        when(fo.payloadSplitter()).thenReturn("mySplitter");
+        when(fo.keyGenerator()).thenReturn("myKeyGen");
+        when(fo.expiryPolicy()).thenReturn("myExpiryPolicy");
+        when(scanner.findAllFailover()).thenReturn(List.of(fo));
+
+        binder.bindTo(registry);
+        binder.afterSingletonsInstantiated();
+
+        Gauge gauge = registry.get("failover.config.expiry.seconds").tag("name", "my-fo").gauge();
+        assertThat(gauge.getId().getTag("domain")).isEqualTo("my-domain");
+        assertThat(gauge.getId().getTag("duration")).isEqualTo("2");
+        assertThat(gauge.getId().getTag("recoverAll")).isEqualTo("true");
+        assertThat(gauge.getId().getTag("payloadSplitter")).isEqualTo("mySplitter");
+        assertThat(gauge.getId().getTag("keyGenerator")).isEqualTo("myKeyGen");
+        assertThat(gauge.getId().getTag("expiryPolicy")).isEqualTo("myExpiryPolicy");
+    }
+
+    // ── config.global gauge ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("config.global gauge registered with the supplied GlobalConfig tags")
+    void globalConfigGaugeRegisteredWhenSupplied() {
+        FailoverMeterBinder.GlobalConfig globalConfig =
+                new FailoverMeterBinder.GlobalConfig("jdbc", "resilience", "never_throw", false);
+        FailoverMeterBinder b = new FailoverMeterBinder(scanner, new BasicFailoverExpiryExtractor(), null, globalConfig);
+
+        b.bindTo(registry);
+
+        Gauge gauge = registry.get("failover.config.global").gauge();
+        assertThat(gauge.getId().getTag("storeType")).isEqualTo("jdbc");
+        assertThat(gauge.getId().getTag("executionType")).isEqualTo("resilience");
+        assertThat(gauge.getId().getTag("exceptionPolicy")).isEqualTo("never_throw");
+        assertThat(gauge.getId().getTag("asyncStore")).isEqualTo("false");
+    }
+
+    @Test
+    @DisplayName("no config.global gauge when GlobalConfig is not supplied")
+    void noGlobalConfigGaugeWhenNotSupplied() {
+        binder.bindTo(registry);   // binder built in setUp with no GlobalConfig
+
+        assertThat(registry.find("failover.config.global").gauges()).isEmpty();
+    }
+
     // ── live.entries gauge ─────────────────────────────────────────────────────
 
     @Test
@@ -220,6 +274,10 @@ class FailoverMeterBinderTest {
         when(fo.expiryUnit()).thenReturn(unit);
         when(fo.expiryDurationExpression()).thenReturn("");
         when(fo.expiryUnitExpression()).thenReturn("");
+        when(fo.recoverAll()).thenReturn(false);
+        when(fo.payloadSplitter()).thenReturn("");
+        when(fo.keyGenerator()).thenReturn("");
+        when(fo.expiryPolicy()).thenReturn("");
         return fo;
     }
 }

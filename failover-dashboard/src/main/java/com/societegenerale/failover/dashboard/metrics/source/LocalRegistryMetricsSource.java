@@ -21,7 +21,9 @@ import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
 
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -50,12 +52,20 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     private final DashboardMetricsService metricsService;
     private final DashboardHistoryService history;   // nullable — present only when history is enabled
     private final InstanceIdResolver instanceIdResolver;
+    private final FailoverConfigSnapshotService configSnapshotService;   // nullable — absent without a MeterRegistry
 
     public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
                                       InstanceIdResolver instanceIdResolver) {
+        this(metricsService, history, instanceIdResolver, null);
+    }
+
+    public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
+                                      InstanceIdResolver instanceIdResolver,
+                                      FailoverConfigSnapshotService configSnapshotService) {
         this.metricsService = metricsService;
         this.history = history;
         this.instanceIdResolver = instanceIdResolver;
+        this.configSnapshotService = configSnapshotService;
     }
 
     @Override
@@ -86,5 +96,10 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     @Override
     public Map<String, List<ExceptionStat>> exceptionsByApi() {
         return metricsService.exceptionsByApi();
+    }
+
+    @Override
+    public List<ConfigEntry> configEntries() {
+        return configSnapshotService != null ? configSnapshotService.configEntries() : List.of();
     }
 }
