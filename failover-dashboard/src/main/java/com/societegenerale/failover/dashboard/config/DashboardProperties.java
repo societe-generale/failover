@@ -71,8 +71,7 @@ public record DashboardProperties(
     /** Canonical, binder-targeted constructor — validates the base path fail-fast. */
     @ConstructorBinding
     public DashboardProperties {
-        if (basePath == null || basePath.isBlank() || !basePath.startsWith("/")
-                || basePath.equals("/") || basePath.endsWith("/")) {
+        if (basePath == null || basePath.isBlank() || !basePath.startsWith("/") || basePath.endsWith("/")) {
             throw new IllegalArgumentException(
                 "failover.dashboard.base-path must be a dedicated, non-root path starting with '/' "
                     + "and without a trailing '/' (e.g. '/failover-dashboard'), but was '" + basePath + "'");
