@@ -40,11 +40,20 @@ public class ClusterHeartbeatController {
 
     private final HeartbeatStore heartbeatStore;
 
+    /**
+     * Creates a new controller.
+     *
+     * @param heartbeatStore the store to record incoming peer heartbeats into
+     */
     public ClusterHeartbeatController(HeartbeatStore heartbeatStore) {
         this.heartbeatStore = heartbeatStore;
     }
 
-    /** Records a heartbeat. Returns {@code 202 Accepted}; liveness classification happens lazily on read. */
+    /**
+     * Records a heartbeat. Returns {@code 202 Accepted}; liveness classification happens lazily on read.
+     *
+     * @param payload the pushing peer's identity
+     */
     @PostMapping("/heartbeat")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void heartbeat(@RequestBody HeartbeatPayload payload) {

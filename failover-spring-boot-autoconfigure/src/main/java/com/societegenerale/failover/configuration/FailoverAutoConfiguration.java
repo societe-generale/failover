@@ -272,6 +272,7 @@ public class FailoverAutoConfiguration {
      * applies the configured {@code rejection-policy} on overload (audit R-2); accepted slices still
      * run on virtual threads.
      *
+     * @param properties failover properties (scatter concurrency-limit / rejection-policy)
      * @return virtual-thread {@link SimpleAsyncTaskExecutor} (optionally bounded) named {@code failover-scatter-*}
      */
     @ConditionalOnMissingBean(name = "scatterGatherExecutor")

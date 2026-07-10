@@ -109,6 +109,9 @@ public class FailoverMicrometerAutoConfiguration {
      *
      * <p>Declare a custom {@link InstanceIdResolver} bean to override — for example to use a k8s pod
      * name, a Docker container id, or the explicit {@code failover.observable.instance.id} value.
+     *
+     * @param environment resolves {@code spring.application.name} and the server port
+     * @return the default instance id resolver
      */
     @ConditionalOnMissingBean
     @Bean
@@ -124,7 +127,8 @@ public class FailoverMicrometerAutoConfiguration {
      * Emits {@code failover.store.total}, {@code failover.recover.total},
      * {@code failover.exception.total}, and {@code failover.operation.duration} meters.
      *
-     * @param meterRegistry active meter registry
+     * @param meterRegistry     active meter registry
+     * @param snapshotPublisher optional shared-store snapshot publisher notified on every metric event
      * @return {@link MicrometerObservablePublisher}
      */
     @ConditionalOnMissingBean(MicrometerObservablePublisher.class)
@@ -175,6 +179,9 @@ public class FailoverMicrometerAutoConfiguration {
     /**
      * Aggregates the existing {@code failover.*} Micrometer counters into a {@link com.societegenerale.failover.observable.metrics.MetricsSummary}.
      * Used by peer apps to build snapshots for the shared-store cluster tier without dashboard dependencies.
+     *
+     * @param registry the meter registry to read {@code failover.*} meters from
+     * @return the metrics snapshot service
      */
     @ConditionalOnMissingBean
     @Bean
@@ -186,6 +193,9 @@ public class FailoverMicrometerAutoConfiguration {
      * Rebuilds the {@code @Failover} configuration view from the gauges {@link FailoverMeterBinder} registers.
      * Used by peer apps to build snapshots for the shared-store cluster tier without a {@code FailoverScanner}
      * dependency on the dashboard side.
+     *
+     * @param registry the meter registry to read {@code failover.config.*} gauges from
+     * @return the config snapshot service
      */
     @ConditionalOnMissingBean
     @Bean

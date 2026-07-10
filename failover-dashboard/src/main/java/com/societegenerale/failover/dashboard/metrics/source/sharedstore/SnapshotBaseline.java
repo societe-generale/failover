@@ -60,6 +60,10 @@ public final class SnapshotBaseline {
     }
 
     /**
+     * Combines the carried baseline with the current raw snapshot.
+     *
+     * @param baseline the instance's carried baseline, or {@code null} if none accumulated yet
+     * @param raw      the instance's current raw snapshot
      * @return the summary to serve for an instance: {@code baseline + raw} when a baseline exists,
      *         otherwise {@code raw} as-is
      */

@@ -44,16 +44,29 @@ public class DashboardConfigService {
     private final Environment environment;
     private final MetricsSource metricsSource;
 
+    /**
+     * Creates a new service with no {@link MetricsSource} (config view stays empty).
+     *
+     * @param environment source of the {@code failover.*} global settings
+     */
     public DashboardConfigService(Environment environment) {
         this(environment, null);
     }
 
+    /**
+     * Creates a new service.
+     *
+     * @param environment   source of the {@code failover.*} global settings
+     * @param metricsSource source of the {@code @Failover} config entries; {@code null} if none is wired
+     */
     public DashboardConfigService(Environment environment, MetricsSource metricsSource) {
         this.environment = environment;
         this.metricsSource = metricsSource;
     }
 
     /**
+     * Lists every discovered {@code @Failover} configuration entry.
+     *
      * @return one {@link ConfigEntry} per discovered {@code @Failover}, sorted by name; never {@code null}.
      */
     public List<ConfigEntry> configEntries() {

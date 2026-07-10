@@ -61,6 +61,15 @@ public class SnapshotStoreJdbc implements SnapshotStore {
     private final int maxInstances;
     private final String table;
 
+    /**
+     * Creates a new store.
+     *
+     * @param jdbc         the JDBC template to run against
+     * @param mapper       serializes/deserializes the summary/baseline/config JSON columns
+     * @param maxInstances supported small-cluster ceiling; beyond it a warning is logged
+     * @param tablePrefix  prefix prepended to the base table name; letters/digits/underscore only
+     * @param autoDdl      create the table on startup if missing
+     */
     public SnapshotStoreJdbc(JdbcTemplate jdbc, ObjectMapper mapper, int maxInstances,
                              String tablePrefix, boolean autoDdl) {
         this.jdbc = jdbc;

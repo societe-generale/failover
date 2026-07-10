@@ -56,6 +56,13 @@ public class ClusterSeriesSampler implements AutoCloseable {
     private final long[] adjustedOverall = new long[FIELDS];
     private final Map<String, long[]> apiState = new LinkedHashMap<>();   // name -> [lastRaw, adjusted, seen]
 
+    /**
+     * Creates a new sampler and starts its scheduled sampling.
+     *
+     * @param source          the metrics source to sample
+     * @param store           the ring to append samples into
+     * @param intervalSeconds seconds between samples
+     */
     public ClusterSeriesSampler(MetricsSource source, ClusterSeriesStore store, int intervalSeconds) {
         this.source = source;
         this.store = store;

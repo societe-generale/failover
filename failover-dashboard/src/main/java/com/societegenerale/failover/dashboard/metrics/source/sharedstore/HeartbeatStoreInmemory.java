@@ -31,6 +31,7 @@ public class HeartbeatStoreInmemory implements HeartbeatStore {
     private final Map<String, Long> lastSeen = new ConcurrentHashMap<>();
     private final LongSupplier nowMillis;
 
+    /** Creates a new store. */
     public HeartbeatStoreInmemory() {
         this(System::currentTimeMillis);
     }

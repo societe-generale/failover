@@ -40,19 +40,34 @@ import java.util.Map;
  */
 public interface MetricsSource {
 
-    /** Global aggregate plus per-API KPIs. */
+    /**
+     * Global aggregate plus per-API KPIs.
+     *
+     * @return the current metrics summary
+     */
     MetricsSummary summary();
 
-    /** Per-API health classification. */
+    /**
+     * Per-API health classification.
+     *
+     * @return per-API health
+     */
     List<ApiHealth> health();
 
-    /** Provenance of the above (mode, instances reporting, freshness) so the UI can label the figures. */
+    /**
+     * Provenance of the above (mode, instances reporting, freshness) so the UI can label the figures.
+     *
+     * @return the source provenance
+     */
     SourceInfo info();
 
     /**
      * Trend samples for the timeline chart, newest last. {@code windowSec <= 0} means "all retained".
      * Local mode reads the optional in-memory ring (empty when history is disabled); Prometheus mode
      * derives a cluster-wide, reload-surviving trend from {@code query_range}.
+     *
+     * @param windowSec only samples within this many seconds of now ({@code <= 0} ⇒ all retained)
+     * @return trend samples, newest last
      */
     List<SeriesPoint> series(long windowSec);
 
@@ -75,6 +90,8 @@ public interface MetricsSource {
      * Per-failover-endpoint exception counts: endpoint name → list of (type, count), sorted by count descending.
      * Cluster-aware sources that cannot provide per-endpoint exception breakdowns return an empty map —
      * the UI chart is hidden when empty.
+     *
+     * @return exception counts grouped by failover name; never {@code null}
      */
     default Map<String, List<ExceptionStat>> exceptionsByApi() {
         return Map.of();
@@ -87,6 +104,8 @@ public interface MetricsSource {
      *
      * <p>The default returns empty (sources with no configuration to report). {@code local} and
      * {@code shared-store} implement it; {@code prometheus} queries the same gauges over the HTTP API.
+     *
+     * @return the config entries; never {@code null}
      */
     default List<ConfigEntry> configEntries() {
         return List.of();

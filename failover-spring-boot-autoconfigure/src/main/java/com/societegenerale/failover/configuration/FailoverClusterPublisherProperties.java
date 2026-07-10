@@ -54,6 +54,7 @@ public record FailoverClusterPublisherProperties(
         @DefaultValue("false") boolean allowInsecureIngest,
         @DefaultValue Heartbeat heartbeat
 ) {
+    /** Canonical constructor used by Spring Boot's relaxed property binder. */
     @ConstructorBinding
     public FailoverClusterPublisherProperties {
     }
@@ -77,10 +78,12 @@ public record FailoverClusterPublisherProperties(
             @DefaultValue("false") boolean enabled,
             @DefaultValue("60") int intervalSeconds
     ) {
+        /** Canonical constructor used by Spring Boot's relaxed property binder. */
         @ConstructorBinding
         public Heartbeat {
         }
 
+        /** Convenience with all defaults (used in tests / programmatic setup). */
         public Heartbeat() {
             this(false, 60);
         }

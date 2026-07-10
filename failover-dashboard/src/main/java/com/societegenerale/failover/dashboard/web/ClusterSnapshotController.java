@@ -39,11 +39,20 @@ public class ClusterSnapshotController {
 
     private final SnapshotStore snapshotStore;
 
+    /**
+     * Creates a new controller.
+     *
+     * @param snapshotStore the store to record incoming peer snapshots into
+     */
     public ClusterSnapshotController(SnapshotStore snapshotStore) {
         this.snapshotStore = snapshotStore;
     }
 
-    /** Records a pushed snapshot. Returns {@code 202 Accepted}; aggregation happens lazily on read. */
+    /**
+     * Records a pushed snapshot. Returns {@code 202 Accepted}; aggregation happens lazily on read.
+     *
+     * @param snapshot the pushed peer snapshot
+     */
     @PostMapping("/snapshot")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void ingest(@RequestBody ClusterSnapshot snapshot) {

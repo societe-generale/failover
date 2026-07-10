@@ -46,10 +46,20 @@ public class DashboardController {
 
     private final DashboardConfigService configService;
 
+    /**
+     * Creates a new controller.
+     *
+     * @param configService the config service to delegate to
+     */
     public DashboardController(DashboardConfigService configService) {
         this.configService = configService;
     }
 
+    /**
+     * Every discovered {@code @Failover} configuration entry.
+     *
+     * @return the config entries
+     */
     @GetMapping("/config")
     public List<ConfigEntry> config() {
         return configService.configEntries();
@@ -58,12 +68,19 @@ public class DashboardController {
     /**
      * Effective global {@code failover.*} / {@code failover.dashboard.*} settings, grouped for display.
      * Path lives under {@code /config} so the exposure interceptor gates it with the {@code config} view.
+     *
+     * @return the grouped global settings
      */
     @GetMapping("/config/settings")
     public Map<String, Map<String, String>> settings() {
         return configService.globalSettings();
     }
 
+    /**
+     * Actuator-style overall failover health status.
+     *
+     * @return the failover health snapshot
+     */
     @GetMapping("/failover-health")
     public FailoverHealth failoverHealth() {
         return configService.failoverHealth();

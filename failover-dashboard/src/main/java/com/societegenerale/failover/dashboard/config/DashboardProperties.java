@@ -79,14 +79,25 @@ public record DashboardProperties(
         }
     }
 
-    /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
+    /**
+     * Convenience constructor applying all defaults (used in tests/programmatic setup).
+     *
+     * @param enabled  master switch
+     * @param basePath dedicated, non-root base path
+     */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
                 new Security( SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90),
                 new Cluster("local"));
     }
 
-    /** Convenience constructor with custom health, default exposure/security/history/cluster. */
+    /**
+     * Convenience constructor with custom health, default exposure/security/history/cluster.
+     *
+     * @param enabled  master switch
+     * @param basePath dedicated, non-root base path
+     * @param health   health-classification thresholds
+     */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
                 new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", false), new History(false, 120, 15), health, new Cluster("local"));
@@ -107,7 +118,12 @@ public record DashboardProperties(
         @DefaultValue("true") boolean api,
         @DefaultValue({"config", "failover-health", "metrics", "health", "cluster", "instances"}) List<String> include
     ) {
-        /** @return {@code true} if the named API endpoint is exposed. */
+        /**
+         * Checks whether the named API endpoint is exposed.
+         *
+         * @param endpoint the endpoint name (e.g. {@code "config"}, {@code "metrics"})
+         * @return {@code true} if the named API endpoint is exposed.
+         */
         public boolean includes(String endpoint) {
             return api && include.contains(endpoint);
         }
@@ -120,7 +136,9 @@ public record DashboardProperties(
      * (trusted-network / dev only). {@code allowInsecure=true} is rejected outright when the
      * {@code prod} profile is active — production must add Spring Security (I-14).
      *
+     * @param type          {@code AUTHORITY} (default) or {@code ROLE} — which Spring Security check to use
      * @param role          required role for {@code base-path/**} (default {@code FAILOVER_ADMIN})
+     * @param authority     required authority for {@code base-path/**} when {@code type=AUTHORITY} (default {@code FAILOVER_ADMIN})
      * @param allowInsecure start without an access gate when Spring Security is absent (default {@code false});
      *                      ignored/refused under the {@code prod} profile
      */
@@ -137,7 +155,10 @@ public record DashboardProperties(
      * if AUTHORITY (by default), it will perform the check on configured authority (hasAuthority(authority)) or else if ROLE, it will perform the check on configured role (hasRole(role)).
      */
     public enum SecurityType {
-        ROLE, AUTHORITY
+        /** Gate checked via {@code hasRole(role)}. */
+        ROLE,
+        /** Gate checked via {@code hasAuthority(authority)}. */
+        AUTHORITY
     }
 
     /**
@@ -192,7 +213,11 @@ public record DashboardProperties(
         public Cluster {
         }
 
-        /** Convenience: a cluster mode with default sub-settings (used in tests / programmatic setup). */
+        /**
+         * Convenience: a cluster mode with default sub-settings (used in tests / programmatic setup).
+         *
+         * @param mode {@code local} | {@code prometheus} | {@code shared-store}
+         */
         public Cluster(String mode) {
             this(mode, new Prometheus("", "", 5), new SharedStore(), new Snapshot());
         }
@@ -216,6 +241,10 @@ public record DashboardProperties(
      * @param instanceRetention retire instances not seen for this long from the per-instance view — their counts
      *                          stay in the aggregate (default {@code 7d}; {@code 0} keeps every instance forever;
      *                          applies to the in-memory store only — the durable JDBC store retains all rows)
+     * @param store             backing store for pushed snapshots: {@code inmemory} (default) or {@code jdbc}
+     * @param retention         bounded retention for the cluster trend history
+     * @param sampleIntervalSeconds seconds between cluster-trend samples (default {@code 30})
+     * @param jdbc              JDBC durability settings, used when {@code store=jdbc}
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
@@ -226,6 +255,7 @@ public record DashboardProperties(
         @DefaultValue("30") int sampleIntervalSeconds,
         @DefaultValue Jdbc jdbc
     ) {
+        /** Convenience with defaults (used in tests / programmatic setup). */
         public SharedStore() {
             this("inmemory", 180, 10, java.time.Duration.ofDays(7), new Retention(), 30, new Jdbc());
         }
@@ -303,6 +333,7 @@ public record DashboardProperties(
         @DefaultValue("") String oauth2ClientRegistrationId,
         @DefaultValue("false") boolean allowInsecureIngest
     ) {
+        /** Canonical constructor used by Spring Boot's relaxed property binder. */
         @ConstructorBinding
         public Snapshot {
         }

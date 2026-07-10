@@ -111,11 +111,23 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
 
     private final DashboardProperties properties;
 
+    /**
+     * Creates the autoconfiguration, bound to the validated properties.
+     *
+     * @param properties the bound {@code failover.dashboard.*} properties
+     */
     public DashboardAutoConfiguration(DashboardProperties properties) {
         this.properties = properties;
         log.info("Failover dashboard enabled at base path '{}'.", properties.basePath());
     }
 
+    /**
+     * Assembles the config-view service.
+     *
+     * @param environment   the {@code Environment}, source of the {@code failover.*} global settings
+     * @param metricsSource optional source of {@code @Failover} config entries
+     * @return the config service
+     */
     @Bean
     @ConditionalOnMissingBean
     public DashboardConfigService dashboardConfigService(Environment environment,
@@ -123,6 +135,12 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new DashboardConfigService(environment, metricsSource.getIfAvailable());
     }
 
+    /**
+     * Registers the config-view REST controller.
+     *
+     * @param configService the config service to delegate to
+     * @return the controller
+     */
     @Bean
     @ConditionalOnMissingBean
     public DashboardController dashboardController(DashboardConfigService configService) {
@@ -134,6 +152,9 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover
      * starter is present, {@code FailoverMicrometerAutoConfiguration} supplies a
      * {@code DefaultInstanceIdResolver} first and this bean is skipped.
+     *
+     * @param environment resolves {@code spring.application.name} and the server port
+     * @return the default instance id resolver
      */
     @Bean
     @ConditionalOnMissingBean
@@ -150,6 +171,9 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * {@code failover-spring-boot-autoconfigure} is not on the classpath. When the full failover starter
      * is present, {@code FailoverMicrometerAutoConfiguration} contributes the real service first and this
      * fallback is skipped.
+     *
+     * @param registry the meter registry to read {@code failover.*} meters from
+     * @return the metrics snapshot service
      */
     @Bean
     @ConditionalOnBean(MeterRegistry.class)
@@ -164,6 +188,9 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * is present, {@code FailoverMicrometerAutoConfiguration} contributes the real service first and this
      * fallback is skipped. Backs the config view with zero dependency on {@code FailoverScanner} — reads
      * only the {@code failover.config.*} gauges the running service emits (empty when none present).
+     *
+     * @param registry the meter registry to read {@code failover.config.*} gauges from
+     * @return the config snapshot service
      */
     @Bean
     @ConditionalOnBean(MeterRegistry.class)
@@ -175,6 +202,9 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     /**
      * Metrics service + controller — present only when a {@link MeterRegistry} is in the context.
      * Without Micrometer the config view above still works; the metrics view degrades gracefully (§3).
+     *
+     * @param snapshotService source of the current metrics summary
+     * @return the metrics service
      */
     @Bean
     @ConditionalOnBean({MeterRegistry.class, FailoverMetricsSnapshotService.class})
@@ -188,6 +218,15 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * (this instance only); {@code cluster.mode=prometheus} with a {@code base-url} aggregates the
      * {@code failover.*} meters cluster-wide via the Prometheus HTTP API, falling back to local at runtime
      * if Prometheus is unreachable. {@code @ConditionalOnMissingBean} so a consumer can fully override it.
+     *
+     * @param metricsService        source of this instance's metrics summary
+     * @param history               optional trend-history ring, present when {@code history.enabled=true}
+     * @param snapshotStore         optional shared-store snapshot store, present in {@code cluster.mode=shared-store}
+     * @param seriesStore           optional cluster-trend ring, present in {@code cluster.mode=shared-store}
+     * @param heartbeatStoreProvider optional heartbeat store, present in {@code cluster.mode=shared-store}
+     * @param configSnapshotService optional source of this instance's {@code @Failover} configuration
+     * @param instanceIdResolver    resolves this instance's identity for the local/shared-store views
+     * @return the assembled metrics source for the configured {@code cluster.mode}
      */
     @Bean
     @ConditionalOnBean(DashboardMetricsService.class)
@@ -238,6 +277,8 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * In-memory snapshot store for {@code cluster.mode=shared-store} (design §5) — the default {@code store=inmemory}.
      * {@code store=jdbc} instead activates the durable {@code failover-dashboard-snapshotstore-jdbc} module.
      * {@code @ConditionalOnMissingBean} so a consumer can supply a distributed implementation.
+     *
+     * @return the in-memory snapshot store
      */
     @Bean
     @ConditionalOnExpression("'${failover.dashboard.cluster.mode:local}' == 'shared-store' "
@@ -248,7 +289,12 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new SnapshotStoreInmemory(sharedStore.maxInstances(), sharedStore.instanceRetention());
     }
 
-    /** Ingest controller for peer snapshot pushes; present only in shared-store mode. */
+    /**
+     * Ingest controller for peer snapshot pushes; present only in shared-store mode.
+     *
+     * @param snapshotStore the store to record incoming peer snapshots into
+     * @return the ingest controller
+     */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
     @ConditionalOnBean(SnapshotStore.class)
@@ -257,7 +303,11 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new ClusterSnapshotController(snapshotStore);
     }
 
-    /** In-memory heartbeat store — always present in shared-store mode. Instances that never send a heartbeat stay UNKNOWN. */
+    /**
+     * In-memory heartbeat store — always present in shared-store mode. Instances that never send a heartbeat stay UNKNOWN.
+     *
+     * @return the in-memory heartbeat store
+     */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
     @ConditionalOnMissingBean(HeartbeatStore.class)
@@ -265,7 +315,12 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new HeartbeatStoreInmemory();
     }
 
-    /** Heartbeat ingest endpoint — always active in shared-store mode; peers opt in by enabling heartbeat on their side. */
+    /**
+     * Heartbeat ingest endpoint — always active in shared-store mode; peers opt in by enabling heartbeat on their side.
+     *
+     * @param heartbeatStore the store to record incoming peer heartbeats into
+     * @return the heartbeat ingest controller
+     */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
     @ConditionalOnMissingBean
@@ -273,7 +328,11 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         return new ClusterHeartbeatController(heartbeatStore);
     }
 
-    /** Bounded, retention-pruned ring holding the cluster-wide trend (design §5.4); shared-store mode only. */
+    /**
+     * Bounded, retention-pruned ring holding the cluster-wide trend (design §5.4); shared-store mode only.
+     *
+     * @return the cluster series ring
+     */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
     @ConditionalOnMissingBean
@@ -285,6 +344,10 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     /**
      * Reset-aware sampler that feeds the cluster series ring from the merged aggregate; shared-store mode only.
      * Closed on shutdown to stop its scheduler. Depends on the assembled {@link MetricsSource} (the shared source).
+     *
+     * @param metricsSource the assembled cluster-wide metrics source to sample
+     * @param seriesStore   the ring to append samples into
+     * @return the sampler
      */
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
@@ -295,6 +358,12 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                 properties.cluster().sharedStore().sampleIntervalSeconds());
     }
 
+    /**
+     * Registers the metrics-view REST controller.
+     *
+     * @param metricsSource the assembled metrics source to serve from
+     * @return the controller
+     */
     @Bean
     @ConditionalOnBean(MetricsSource.class)
     @ConditionalOnMissingBean

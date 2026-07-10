@@ -49,6 +49,11 @@ public class DashboardExposureInterceptor implements HandlerInterceptor {
     private final DashboardProperties properties;
     private final String apiPrefix;
 
+    /**
+     * Creates a new interceptor.
+     *
+     * @param properties the bound {@code failover.dashboard.*} properties
+     */
     public DashboardExposureInterceptor(DashboardProperties properties) {
         this.properties = properties;
         this.apiPrefix = properties.basePath() + "/api/";
