@@ -615,11 +615,21 @@ function expiryFor(name) {
 // alone (failoverRate). Recovery is deliberately NOT factored in: a card here can be red while
 // every other view reads green, because failover is still masking it. That gap is the early
 // warning — investigate/notify before the cached value expires and it becomes a real outage.
+const UPSTREAM_WATCH_THRESHOLD = 0.10;   // <= this fraction of upstream calls failing is WATCH, above is FAILING
+
+function upstreamSeverity(rate) {
+    // failoverRate arrives via float division (server + JSON round-trip) so a logical 10% can land
+    // a hair either side of 0.10 (e.g. 0.09999999999999998) — round before thresholding so the
+    // colour class and the text label can never land on opposite sides of the same boundary.
+    const r = Math.round(rate * 10000) / 10000;
+    if (r === 0) return { cls: 'healthy', lbl: 'STABLE' };
+    return r <= UPSTREAM_WATCH_THRESHOLD ? { cls: 'degraded', lbl: 'WATCH' } : { cls: 'unhealthy', lbl: 'FAILING' };
+}
+
 function upstreamCard(k) {
     const rate = k.rates.failoverRate;
     const pctv = (rate * 100).toFixed(1);
-    const cls = rate === 0 ? 'healthy' : rate <= 0.10 ? 'degraded' : 'unhealthy';
-    const lbl = rate === 0 ? 'STABLE' : rate <= 0.10 ? 'WATCH' : 'FAILING';
+    const { cls, lbl } = upstreamSeverity(rate);
     const exShort = t => t.split('.').pop();
     const exList = (lastExceptions[k.name] || []).slice().sort((a, b) => b.count - a.count);
     const top = exList[0];
