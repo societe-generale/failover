@@ -18,6 +18,7 @@ package com.societegenerale.failover.observable.micrometer;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -26,12 +27,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.concurrent.Executor;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -80,17 +83,16 @@ class ClusterSnapshotPublisherTest {
         @Test
         @DisplayName("includes this instance's config entries in the pushed snapshot")
         void includesConfigEntries() throws Exception {
-            com.societegenerale.failover.observable.metrics.ConfigEntry entry =
-                    new com.societegenerale.failover.observable.metrics.ConfigEntry(
-                            "country-by-code", "country", 24L, "HOURS", false,
-                            "default", "default", "default", "inmemory", "basic", "rethrow", true);
+            ConfigEntry entry = new ConfigEntry(
+                    "country-by-code", "country", 24L, "HOURS", false,
+                    "default", "default", "default", "inmemory", "basic", "rethrow", true);
             when(configSnapshotService.configEntries()).thenReturn(List.of(entry));
 
             publisher.push();
 
-            org.mockito.ArgumentCaptor<ClusterSnapshot> captor = org.mockito.ArgumentCaptor.forClass(ClusterSnapshot.class);
+            ArgumentCaptor<ClusterSnapshot> captor = ArgumentCaptor.forClass(ClusterSnapshot.class);
             verify(pushClient).send(captor.capture());
-            org.assertj.core.api.Assertions.assertThat(captor.getValue().configEntries()).containsExactly(entry);
+            assertThat(captor.getValue().configEntries()).containsExactly(entry);
         }
     }
 
