@@ -3264,3 +3264,36 @@ The `shared-store` cluster tier had two gaps, both rooted in the fact that peer 
 * `retiredAggregate()` is a `default` method returning `null`, so custom `SnapshotStore` implementations compile unchanged.
 
 ___
+
+## ADR 68 — Rolling-Window Dashboard Health Classification
+
+**Date : 11-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The dashboard's `HEALTHY`/`DEGRADED`/`UNHEALTHY` classification (`DashboardMetricsService.health()`, via `MetricsKpis.classify`) was computed from `ApiKpis.rates().healthyRate()` — a **lifetime-cumulative** rate derived by summing Micrometer `Counter`s since process start. Two operators reported the same symptom from opposite ends: the status correctly degrades the moment upstream starts failing, but never fully recovers afterward — a handful of errors from hours ago keep dragging an endpoint that has been fine for the last 10,000 calls back into `DEGRADED`, because the counters behind it only ever grow.
+
+The codebase already had a rolling-window mechanism for exactly this — `FailoverApiHealthTracker` (`failover-observable-micrometer`) feeds the `failover.api.health` gauge from a fixed-size (`window=200`, hardcoded) ring of per-call outcomes recorded at the point of interception. It was not usable here directly: it lives in an optional module the dashboard does not depend on, its window size isn't configurable, and reading it back out per-name would require the dashboard to depend on Micrometer gauge internals rather than the `MetricsSource` abstraction it already reads through (`FailoverMetricsSnapshotService`, which only *sums* counters — a pure, source-agnostic reader with no event hook).
+
+A second, related gap: the same masking applies to "is the upstream itself healthy" as distinct from "did the caller get a value." An endpoint recovering 100% of calls reads green in the hero, the Per-API table and the banner alike — there was no view scored on the raw upstream failure rate alone.
+
+### Decision
+
+1. **`RollingHealthWindow`** (`failover-dashboard`, package-private) — a per-failover-name last-*N*-calls window reconstructed **without a per-call hook**: each poll it diffs the current cumulative `(upstreamSuccess, recovered, notRecovered+errors)` totals against the previous poll's totals for that name, and folds the delta in as one batch. A bounded `Deque` of batches evicts oldest-first once the running total exceeds capacity; a batch that straddles the boundary is trimmed proportionally (order *within* one poll interval isn't known, only the aggregate counts are — membership in the window is otherwise exact). First observation seeds the window with the full lifetime total, capped at capacity — the only sane estimate with no prior baseline.
+2. **`failover.dashboard.health.sample-size`** (default `100`, validated `> 0`) — sizes the window, alongside the existing `degraded-threshold`/`unhealthy-threshold` in the same `DashboardProperties.Health` record.
+3. **`DashboardMetricsService.health()`** now classifies against the windowed healthy-rate instead of the cumulative one. A new **`DashboardMetricsService.upstreamWindows()`** exposes the same window's `failoverRate`/`recoveryRate` per name (`UpstreamWindow` DTO) via a new default method on `MetricsSource` and a new endpoint, `GET /api/health/upstream` — powering the dashboard's Upstream call health cards (Health tab), scored on the upstream call alone and deliberately not masked by recovery.
+4. Scoped to the `local` source only for now: `MetricsSource.upstreamWindows()` defaults to an empty map, and `prometheus`/`shared-store` do not override it — those tiers aggregate cumulative snapshots differently across instances, and an equivalent windowed signal there (e.g. PromQL `rate()` over a time window) is a different mechanism, left for a later ADR if needed.
+
+### Consequences
+
+* A recovered endpoint reflects as recovered within `sample-size` calls, not never — the "stuck DEGRADED" complaint is fixed for the `local` source, which is the default and the common single-instance case.
+* No new instrumentation: the window is reconstructed entirely from counters the dashboard already reads; existing deployments get the fix by upgrading, no code change needed at the `@Failover` call sites.
+* Precision trade-off: window membership is exact in aggregate, but ordering within a single poll interval is not preserved (a poll interval's worth of calls is folded in as one undifferentiated batch). At typical dashboard poll cadences (seconds) against `sample-size=100`, this is not user-visible; a very slow poll interval relative to `sample-size` would coarsen it.
+* `RollingHealthWindow` intentionally does not reuse `FailoverApiHealthTracker` — different module, different configurability, different read path (`MetricsSource` abstraction vs. direct gauge access). The two mechanisms currently coexist; unifying them is a candidate for a future ADR if the duplication becomes a maintenance cost.
+* `MetricsSource.upstreamWindows()` is a `default` method returning `Map.of()`, so existing custom `MetricsSource` implementations compile unchanged.
+
+___
