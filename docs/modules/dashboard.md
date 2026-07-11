@@ -50,7 +50,9 @@ to opt in to it.
 | `/failover-dashboard/api/failover-health`  | actuator-style overall status + active configuration                                                                           |
 | `/failover-dashboard/api/metrics`          | global + per-API KPIs and rates                                                                                                |
 | `/failover-dashboard/api/metrics/source`   | metrics provenance (mode, instances reporting, freshness) for the UI source badge                                              |
-| `/failover-dashboard/api/health`           | per-API health classification                                                                                                  |
+| `/failover-dashboard/api/health`           | per-API health classification — windowed (last `health.sample-size` calls), not lifetime-cumulative                           |
+| `/failover-dashboard/api/health/upstream`  | rolling last-N-calls rates per failover point, scored on the upstream call alone (not masked by recovery) — powers the Upstream call health cards; empty map on sources with no per-call window (Prometheus / shared-store) |
+| `/failover-dashboard/api/metrics/exceptions` | per-failover-endpoint exception counts (local source only; empty map otherwise) — powers the Overview exceptions-per-endpoint chart and the Health tab's per-card top exception |
 | `/failover-dashboard/api/metrics/series`   | trend samples — local: the in-memory ring (empty unless history is enabled); `mode=prometheus`: cluster-wide via `query_range` |
 | `/failover-dashboard/api/instances`        | per-instance metrics for the Instances tab — empty in `local` (single JVM); populated in `shared-store` / `prometheus`         |
 | `/failover-dashboard/api/cluster/snapshot` | *(shared-store only, POST)* peer snapshot ingest                                                                               |
@@ -89,6 +91,7 @@ failover:
     health: # healthyRate thresholds for the per-API status badge
       degraded-threshold: 0.99       # >= ⇒ HEALTHY; below (down to unhealthy floor) ⇒ DEGRADED
       unhealthy-threshold: 0.90      # >= ⇒ DEGRADED; below ⇒ UNHEALTHY
+      sample-size: 100               # rate computed over only the last N calls per failover point, not the lifetime total (must be > 0)
     cluster: # where metrics are read from across instances (see Distributed Deployment)
       mode: local                    # local (default) | prometheus | shared-store
       prometheus: # used when mode=prometheus (aggregates failover.* across instances)
@@ -97,6 +100,7 @@ failover:
         timeout-seconds: 5           # per-query connect/read timeout
       shared-store: # used when mode=shared-store (peers push snapshots, aggregated in-app)
         store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
+        liveness-seconds: 180        # heartbeat age before an instance is DOWN (≈ 3 × peer heartbeat interval)
         max-instances: 10            # supported ceiling (warns beyond — graduate to prometheus)
         instance-retention: 7d       # retire unseen instances from the Instances tab (counts stay in the aggregate; 0 ⇒ never)
         sample-interval-seconds: 30  # cluster-trend sampling cadence
@@ -108,7 +112,15 @@ failover:
           auto-ddl: true             # create the table on startup if missing
       snapshot: # peer-side push (every instance, incl. non-UI nodes)
         publish-url: ""              # dashboard ingest URL (blank ⇒ this instance does not push)
-        interval-seconds: 15         # seconds between snapshot pushes
+        interval-seconds: 15         # at most one push per interval (event-driven, throttled)
+        retry-interval-seconds: 300  # suppress push attempts for this long after a failure
+        username: ""                 # ingest Basic-auth (set with password; ignored when oauth2 id set)
+        password: ""
+        oauth2-client-registration-id: ""  # Bearer auth via OAuth2 client (takes priority over Basic)
+        allow-insecure-ingest: false # suppress the no-auth ingest warning (trusted networks only)
+        heartbeat:
+          enabled: false             # lightweight liveness pings to the dashboard
+          interval-seconds: 60       # keep ≤ ⅓ of the dashboard liveness-seconds
 ```
 
 | Property                                                  | Default               | Purpose                                                                                                                                                                                                                                                                                                                        |
@@ -128,6 +140,7 @@ failover:
 | `history.sample-interval-seconds`                         | `15`                  | Seconds between samples.                                                                                                                                                                                                                                                                                                       |
 | `health.degraded-threshold`                               | `0.99`                | Healthy-rate floor for `HEALTHY`.                                                                                                                                                                                                                                                                                              |
 | `health.unhealthy-threshold`                              | `0.90`                | Healthy-rate floor for `DEGRADED`; below is `UNHEALTHY`.                                                                                                                                                                                                                                                                       |
+| `health.sample-size`                                      | `100`                 | The healthy-rate above is computed over only the most recent `sample-size` calls per failover point, not the lifetime total — a cumulative rate never fully recovers from an old bad spell. Also sizes the rolling window backing the [Upstream call health](#upstream-call-health) cards. Rejected (context fails fast) if `<= 0`.                                                                                       |
 | `cluster.mode`                                            | `local`               | Where metrics are read from. `local` = this instance's registry (default). `prometheus` aggregates `failover.*` across instances via the Prometheus HTTP API. `shared-store` aggregates pushed per-instance snapshots in-app (small clusters, no Prometheus). See [Distributed Deployment](#distributed-deployment-scenarios). |
 | `cluster.prometheus.base-url`                             | `""`                  | Prometheus base URL for `mode=prometheus` (e.g. `http://prometheus:9090`). Blank, or unreachable at runtime, falls back to the local registry with a warning.                                                                                                                                                                  |
 | `cluster.prometheus.token`                                | `""`                  | Optional bearer token for Prometheus.                                                                                                                                                                                                                                                                                          |
@@ -140,6 +153,7 @@ failover:
 | `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000`       | Trend-history age and size bounds (oldest truncated).                                                                                                                                                                                                                                                                          |
 | `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl`    | `""` / `true`         | Snapshot table prefix (validated) + auto-create, when `store=jdbc`.                                                                                                                                                                                                                                                            |
 | `cluster.snapshot.publish-url` / `.interval-seconds`      | `""` / `15`           | Peer-side push. Set to the dashboard's **base URL** (same as `base-path` on the dashboard host): `http://<host>:<port>/failover-dashboard`. The snapshot and heartbeat endpoints are derived automatically (`/api/cluster/snapshot`, `/api/cluster/heartbeat`). Blank ⇒ this instance does not push.                           |
+| `cluster.snapshot.retry-interval-seconds`                 | `300`                 | After a push failure, further push attempts are suppressed for this many seconds (one WARN on first failure, INFO on recovery).                                                                                                                                                                                                |
 | `cluster.snapshot.username` / `.password`                 | `""`                  | HTTP Basic Auth credentials for the ingest endpoint. Ignored when `oauth2-client-registration-id` is set.                                                                                                                                                                                                                      |
 | `cluster.snapshot.oauth2-client-registration-id`          | `""`                  | Spring OAuth2 client id for Bearer auth (takes priority over Basic).                                                                                                                                                                                                                                                           |
 | `cluster.snapshot.allow-insecure-ingest`                  | `false`               | Suppress the no-auth startup warning (dev / trusted network only).                                                                                                                                                                                                                                                             |
@@ -191,7 +205,9 @@ The at-a-glance health and KPI surface.
 Drill-down per failover point.
 
 - **Per-API health table** — sortable (click any header): calls, healthy-rate bar, success / failover / recovery %,
-  errors, an inline **failover-trend sparkline**, and a `HEALTHY` / `DEGRADED` / `UNHEALTHY` badge.
+  **not-recovered** (missing/expired cache entry) and **errors** (threw during recovery) as separate columns — a row
+  can be `UNHEALTHY` with `errors=0` when every failure is a miss/expiry, not a thrown exception — an inline
+  **failover-trend sparkline**, and a `HEALTHY` / `DEGRADED` / `UNHEALTHY` badge.
 - **Failover trend — all APIs** — one line per failover point, failover invocations per tick.
 - **Per-API breakdown** — grouped bars: overall vs failover vs recovered vs not-recovered.
 - **Latency** (on Overview) shows store/recover **mean** plus **p95/p99** when available (`local` + `prometheus`);
@@ -221,8 +237,38 @@ Actuator-style subsystem health, mirroring the `/actuator/health/failover` contr
 - **Cluster roll-up** — healthy / degraded / unhealthy API counts + instances reporting, with a provenance line (local
   vs cluster aggregate). Cluster-wide via `MetricsSource.health()` across whichever tier is active.
 - **Status hero** — `UP` (at least one `@Failover` registered) or `DOWN` (none discovered — a misconfiguration signal).
+  Two quick-glance metrics sit under the hero note: **Upstream failing** (how many endpoints have had at least one
+  upstream failure) and **Top upstream exception** — both windowed (see below), so they surface even when every
+  failure has been fully recovered and the hero itself still reads `UP`.
 - **Active configuration** — the global config rendered as small stat cards (registered failovers, type, store type,
   async, exception policy, scheduler…). Types and flags only — never credentials or connection strings (§9).
+
+#### Upstream call health
+
+One card per `@Failover` point, sorted worst-first, scored on the **upstream call alone** — recovery is deliberately
+**not** factored in. This exists to close a real blind spot: a `healthyRate`-based status (the hero above, the Per-API
+table, the banner) counts a fully-recovered call as healthy, so an endpoint whose upstream fails 100% of the time but
+is always served from cache reads as green everywhere else in the dashboard. A card here still flags it.
+
+- **Severity** — `STABLE` (no upstream failures), `WATCH` (up to 10% of calls failing upstream), `FAILING` (above
+  10%) — based on `failoverRate` alone, not `healthyRate`.
+- **Composition bar** — a 3-segment strip (fresh / recovered / blocked) showing what the last `health.sample-size`
+  calls actually looked like, derived from the windowed rates — no extra data fetched.
+- **Sparkline** — the windowed `failoverRate` across recent dashboard refreshes (client-accumulated; distinct from the
+  composition bar, which is a snapshot of the current window rather than a trend over time).
+- **Top exception** — from `/api/metrics/exceptions` (local source only).
+- **Expiry hint** — when an endpoint is masked (100% recovered so far), the card names the failover point's configured
+  expiry (from `/api/config`) and prompts notifying the upstream owner before that cache entry ages out and the call
+  starts failing for real.
+
+Both this view and the `healthyRate` used everywhere else in the dashboard are computed over a rolling window of the
+last `failover.dashboard.health.sample-size` calls per failover point (default `100`), not the lifetime-cumulative
+total — see [`health.sample-size`](#configuration) above. Without windowing, a cumulative rate never fully recovers
+from an old bad spell: a handful of errors from hours ago keep dragging an endpoint that has been fine for the last
+10,000 calls into `DEGRADED`. The window is reconstructed server-side from counter deltas on every poll (no per-call
+event hook needed), so it works for any local-source deployment without extra instrumentation. Cluster-aware sources
+(`prometheus`, `shared-store`) do not yet support this window — `/api/health/upstream` returns an empty map for them
+and the card falls back to the cumulative `failoverRate`.
 
 ### Config
 

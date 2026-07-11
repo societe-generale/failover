@@ -45,6 +45,21 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Added
 
+- **Windowed dashboard health classification** (`failover.dashboard.health.sample-size`, default `100`) — the
+  `HEALTHY`/`DEGRADED`/`UNHEALTHY` status (and the Upstream call health cards below) is now computed over only the
+  most recent `sample-size` calls per failover point, not the lifetime-cumulative rate: a handful of errors from
+  hours ago no longer keep a since-recovered endpoint stuck `DEGRADED`. Implemented by `RollingHealthWindow`,
+  reconstructed server-side from counter deltas on every poll — no new instrumentation, local source only for now.
+- **Upstream call health cards** (Health tab) — one card per `@Failover` point, scored on the upstream call alone
+  (`failoverRate`), deliberately not masked by how well failover recovered — a card can read `FAILING` while every
+  other view in the dashboard is green because recovery is still covering for it. Each card shows a
+  `STABLE`/`WATCH`/`FAILING` severity, a composition bar (fresh / recovered / blocked over the current window), a
+  trend sparkline, the top exception, and — when masked — the failover point's configured expiry with a prompt to
+  notify the upstream owner before it ages out. New read-only endpoint `/api/health/upstream`
+  (`MetricsSource.upstreamWindows()`, `UpstreamWindow` DTO); empty on `prometheus`/`shared-store` sources for now.
+- Per-API table: **not-recovered** and **errors** are now separate sortable columns (previously a single `errors`
+  column silently excluded `not_recovered` outcomes — a row could be `UNHEALTHY` while showing `errors=0`).
+- Tooltips (`data-tip`) on every dashboard section header, chart, KPI, and table column.
 - **Non-blocking metric publishing** — `AsyncObservablePublisher` (in `failover-core`) wraps the composite
   publisher so every `ObservablePublisher` (built-in **and** custom) runs off the caller thread; a bounded
   queue with drop-on-full (counted as `failover.metrics.dropped.total`) guarantees metric emission never

@@ -109,6 +109,7 @@ Only active with `failover-dashboard-spring-boot-starter` on the classpath (see 
 | `failover.dashboard.history.sample-interval-seconds` | `int`          | `15`                                                             | Seconds between samples.                                                                                                                                                                                                                                |
 | `failover.dashboard.health.degraded-threshold`       | `double`       | `0.99`                                                           | Healthy-rate floor for `HEALTHY`; below it (down to the unhealthy floor) is `DEGRADED`.                                                                                                                                                                 |
 | `failover.dashboard.health.unhealthy-threshold`      | `double`       | `0.90`                                                           | Healthy-rate floor for `DEGRADED`; below it is `UNHEALTHY`.                                                                                                                                                                                             |
+| `failover.dashboard.health.sample-size`              | `int`          | `100`                                                            | The rate above is computed over only the most recent `sample-size` calls per failover point, not the lifetime total — a cumulative rate never fully recovers from an old bad spell. Rejected (context fails fast) if `<= 0`. Also sizes the rolling window backing the Upstream call health cards (see [Dashboard](../modules/dashboard.md#upstream-call-health)). |
 
 ### Cluster Properties
 
@@ -191,11 +192,13 @@ failover:
     exposure: # defaults expose everything; set flags only to NARROW
       ui: true
       api: true
-      include: [ config, failover-health, metrics, health ]
+      include: [ config, failover-health, metrics, health, cluster, instances ]
     security:
-      type: authority                # role (hasRole) or authority (hasAuthority) — default authority
+      type: authority                # role (hasRole) | authority (hasAuthority, default) | expression (SpEL)
       role: FAILOVER_ADMIN           # role used when type=role
       authority: FAILOVER_ADMIN      # authority used when type=authority
+      expression: ""                 # SpEL used when type=expression, e.g. "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"
+      #   required (non-blank) when type=expression — fails fast at startup otherwise
       allow-insecure: false          # if true, start unsecured + loud WARN (dev/trusted-net ONLY)
       # refused outright when the 'prod' profile is active
     history:
@@ -205,6 +208,36 @@ failover:
     health:
       degraded-threshold: 0.99       # healthy-rate floor for HEALTHY
       unhealthy-threshold: 0.90      # healthy-rate floor for DEGRADED
+      sample-size: 100               # rate computed over only the last N calls per failover point, not the lifetime total (must be > 0)
+    cluster: # where metrics are read from across instances (see Cluster Properties above)
+      mode: local                    # local (default) | prometheus | shared-store
+      prometheus: # used when mode=prometheus
+        base-url: ""                 # e.g. http://prometheus:9090 (blank ⇒ falls back to local)
+        token: ""                    # optional bearer token
+        timeout-seconds: 5
+      shared-store: # used when mode=shared-store (peers push snapshots, aggregated in-app)
+        store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
+        liveness-seconds: 180        # heartbeat age before an instance is DOWN
+        max-instances: 10            # supported small-cluster ceiling (warns beyond)
+        instance-retention: 7d       # retire unseen instances from the Instances tab (0 ⇒ never)
+        sample-interval-seconds: 30  # cluster-trend sampling cadence
+        retention:
+          max-age: 7d                # trend-history age bound
+          max-entries: 100000        # trend-history size bound (oldest truncated)
+        jdbc: # used when store=jdbc
+          table-prefix: ""           # prepended to FAILOVER_DASHBOARD_SNAPSHOT (validated)
+          auto-ddl: true             # create the snapshot table on startup if missing
+      snapshot: # peer-side push (every instance, incl. non-UI nodes)
+        publish-url: ""              # dashboard base URL incl. base-path (blank ⇒ this instance does not push)
+        interval-seconds: 15         # at most one push per interval (event-driven, throttled)
+        retry-interval-seconds: 300  # suppress push attempts for this long after a failure
+        username: ""                 # ingest Basic-auth (set with password; ignored when oauth2 id set)
+        password: ""
+        oauth2-client-registration-id: ""  # Bearer auth via OAuth2 client (takes priority over Basic)
+        allow-insecure-ingest: false # suppress the no-auth ingest warning (trusted networks only)
+        heartbeat:
+          enabled: false             # lightweight liveness pings to the dashboard
+          interval-seconds: 60       # keep ≤ ⅓ of the dashboard liveness-seconds
 ```
 
 ---
