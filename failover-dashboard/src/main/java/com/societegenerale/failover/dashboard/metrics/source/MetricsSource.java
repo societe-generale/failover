@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.dashboard.metrics.source;
 
+import com.societegenerale.failover.dashboard.service.UpstreamWindow;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
@@ -109,5 +110,17 @@ public interface MetricsSource {
      */
     default List<ConfigEntry> configEntries() {
         return List.of();
+    }
+
+    /**
+     * Rolling last-N-calls rates per failover point, scored on the upstream call alone (not masked by
+     * recovery) — see {@code DashboardProperties.Health#sampleSize()}. Powers the Upstream call health
+     * cards. The default returns empty (sources with no per-call window to report, e.g. Prometheus /
+     * shared-store, which aggregate across instances differently); {@code local} implements it.
+     *
+     * @return windowed rates per failover name; never {@code null}
+     */
+    default Map<String, UpstreamWindow> upstreamWindows() {
+        return Map.of();
     }
 }

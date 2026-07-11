@@ -272,6 +272,10 @@ td.stale{color:var(--bad)}
 .api-hcard .meta b{font-family:var(--mono);color:var(--text)}
 .api-hcard .uh-note{margin-top:9px;font-size:10px;line-height:1.45;color:var(--faint)}
 .api-hcard.degraded .uh-note,.api-hcard.unhealthy .uh-note{color:var(--hc)}
+.api-hcard .uh-spark{margin-top:8px}
+.api-hcard .uh-spark .spark{width:100%}
+.api-hcard .uh-comp{display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:9px;background:var(--surface-2)}
+.api-hcard .uh-comp i{display:block;height:100%}
 
 /* ── Cards / charts ───────────────────────────────────────────────────── */
 .grid{display:grid;gap:16px}

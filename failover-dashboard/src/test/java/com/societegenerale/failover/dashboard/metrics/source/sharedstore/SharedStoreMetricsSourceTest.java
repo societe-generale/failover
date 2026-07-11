@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SharedStoreMetricsSourceTest {
 
-    private static final DashboardProperties.Health THRESHOLDS = new DashboardProperties.Health(0.99, 0.90);
+    private static final DashboardProperties.Health THRESHOLDS = new DashboardProperties.Health(0.99, 0.90, 100);
 
     private static MetricsSummary snapshot(String name, long success, long recovered, long notRecovered,
                                            long errors, List<ExceptionStat> exceptions) {

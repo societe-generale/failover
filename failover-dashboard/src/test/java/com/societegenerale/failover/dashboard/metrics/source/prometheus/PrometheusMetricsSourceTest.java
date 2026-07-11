@@ -48,7 +48,7 @@ class PrometheusMetricsSourceTest {
 
     private final PrometheusClient client = mock(PrometheusClient.class);
     private final MetricsSource fallback = mock(MetricsSource.class);
-    private final DashboardProperties.Health thresholds = new DashboardProperties.Health(0.99, 0.90);
+    private final DashboardProperties.Health thresholds = new DashboardProperties.Health(0.99, 0.90, 100);
     private final PrometheusMetricsSource source = new PrometheusMetricsSource(client, fallback, thresholds);
 
     private static Sample sample(double value, String... kv) {

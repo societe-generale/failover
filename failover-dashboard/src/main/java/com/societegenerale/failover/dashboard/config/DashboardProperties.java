@@ -86,7 +86,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false), new History(false, 120, 15), new Health(0.99, 0.90),
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false), new History(false, 120, 15), new Health(0.99, 0.90, 100),
                 new Cluster("local"));
     }
 
@@ -200,13 +200,28 @@ public record DashboardProperties(
      * {@code HEALTHY} when {@code rate >= degradedThreshold}, {@code DEGRADED} when
      * {@code rate >= unhealthyThreshold}, otherwise {@code UNHEALTHY}.
      *
+     * <p>The rate itself is computed over only the most recent {@code sampleSize} calls per failover
+     * point, not the lifetime total: a cumulative rate never fully recovers from an old bad spell (a
+     * handful of errors from hours ago keep dragging a now-healthy endpoint into DEGRADED), so
+     * classification instead uses a bounded trailing window that ages old outcomes out.
+     *
      * @param degradedThreshold  healthy-rate floor for {@code HEALTHY} (default {@code 0.99})
      * @param unhealthyThreshold healthy-rate floor for {@code DEGRADED} (default {@code 0.90})
+     * @param sampleSize         number of most-recent calls, per failover point, considered when
+     *                           computing the rate for classification (default {@code 100}); must be {@code > 0}
      */
     public record Health(
         @DefaultValue("0.99") double degradedThreshold,
-        @DefaultValue("0.90") double unhealthyThreshold
+        @DefaultValue("0.90") double unhealthyThreshold,
+        @DefaultValue("100") int sampleSize
     ) {
+        /** Canonical, binder-targeted constructor — validates the sample size fail-fast. */
+        public Health {
+            if (sampleSize <= 0) {
+                throw new IllegalArgumentException(
+                    "failover.dashboard.health.sample-size must be > 0, but was " + sampleSize);
+            }
+        }
     }
 
     /**

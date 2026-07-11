@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.metrics.source;
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
+import com.societegenerale.failover.dashboard.service.UpstreamWindow;
 
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ConfigEntry;
@@ -116,5 +117,10 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     @Override
     public List<ConfigEntry> configEntries() {
         return configSnapshotService != null ? configSnapshotService.configEntries() : List.of();
+    }
+
+    @Override
+    public Map<String, UpstreamWindow> upstreamWindows() {
+        return metricsService.upstreamWindows();
     }
 }

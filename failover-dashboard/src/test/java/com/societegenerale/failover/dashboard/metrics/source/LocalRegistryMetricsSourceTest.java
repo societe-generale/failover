@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.metrics.source;
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
+import com.societegenerale.failover.dashboard.service.UpstreamWindow;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
@@ -127,5 +128,14 @@ class LocalRegistryMetricsSourceTest {
     @DisplayName("configEntries() is empty when no config snapshot service is present")
     void configEntriesEmptyWithoutConfigSnapshotService() {
         assertThat(source.configEntries()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("upstreamWindows() delegates to the metrics service")
+    void upstreamWindowsDelegates() {
+        Map<String, UpstreamWindow> windows = Map.of("country", new UpstreamWindow(0.1, 0.99, 0.9, 100));
+        when(metricsService.upstreamWindows()).thenReturn(windows);
+
+        assertThat(source.upstreamWindows()).isSameAs(windows);
     }
 }
