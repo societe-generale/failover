@@ -17,6 +17,7 @@
 package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
+import com.societegenerale.failover.dashboard.service.UpstreamWindow;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
@@ -85,6 +86,20 @@ class DashboardMetricsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("country"))
                 .andExpect(jsonPath("$[0].status").value("DEGRADED"));
+    }
+
+    @Test
+    @DisplayName("GET /api/health/upstream returns the rolling upstream-window rates per API")
+    void upstreamHealthJson() throws Exception {
+        when(metricsSource.upstreamWindows()).thenReturn(Map.of(
+                "country", new UpstreamWindow(0.05, 0.99, 0.9, 100)));
+
+        mockMvc.perform(get("/failover-dashboard/api/health/upstream"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.country.failoverRate").value(0.05))
+                .andExpect(jsonPath("$.country.healthyRate").value(0.99))
+                .andExpect(jsonPath("$.country.recoveryRate").value(0.9))
+                .andExpect(jsonPath("$.country.sampleCount").value(100));
     }
 
     @Test

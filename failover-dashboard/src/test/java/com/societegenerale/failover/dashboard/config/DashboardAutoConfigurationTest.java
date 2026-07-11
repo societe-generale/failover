@@ -296,6 +296,25 @@ class DashboardAutoConfigurationTest {
         assertThat(new DashboardProperties(true, basePath).basePath()).isEqualTo(basePath);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, -1, -100})
+    @DisplayName("non-positive health.sample-size is rejected at construction")
+    void nonPositiveSampleSizeRejected(int sampleSize) {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> new DashboardProperties.Health(0.99, 0.90, sampleSize))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sample-size");
+    }
+
+    @Test
+    @DisplayName("non-positive health.sample-size fails the context fast")
+    void nonPositiveSampleSizeFailsContextFast() {
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.health.sample-size=0")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
     @Test
     @DisplayName("addResourceHandlers maps the static UI under the configured base path")
     void registersResourceHandler() {
@@ -314,7 +333,7 @@ class DashboardAutoConfigurationTest {
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
                 new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false),
                 new DashboardProperties.History(false, 120, 15),
-                new DashboardProperties.Health(0.99, 0.90),
+                new DashboardProperties.Health(0.99, 0.90, 100),
                 new DashboardProperties.Cluster("local"));
         ResourceHandlerRegistry resources = Mockito.mock(ResourceHandlerRegistry.class);
         org.springframework.web.servlet.config.annotation.ViewControllerRegistry views =

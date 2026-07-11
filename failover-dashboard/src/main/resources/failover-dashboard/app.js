@@ -26,6 +26,7 @@ const classify = h => h >= 0.99 ? 'HEALTHY' : h >= 0.90 ? 'DEGRADED' : 'UNHEALTH
 // ── State ─────────────────────────────────────────────────────────────────────
 let lastSummary = null;
 let lastExceptions = {};        // endpointName → [{type, count}], from api/metrics/exceptions (local source only)
+let lastUpstreamWindows = {};   // endpointName → {failoverRate, healthyRate, recoveryRate, sampleCount}, from api/health/upstream (local source only)
 let statusByName = {};          // name → HEALTHY|DEGRADED|UNHEALTHY (from api/health)
 let lastSource = null;          // SourceInfo {mode, instancesReporting, instancesExpected, asOfEpochMs, partial}
 let configRows = [];
@@ -37,6 +38,7 @@ let activeView = 'overview';
 const TREND_MAX = 30;
 const timeline = { labels: [], calls: [], succ: [], fail: [], rec: [] };
 const apiTrend = { labels: [], series: {} };
+const upstreamRateTrend = { series: {} };   // name → [windowed failoverRate per tick, 0..1] — feeds the sparkline on each Upstream call health card
 let lastTotal = null;
 let lastApiFailover = {};
 let timelineHydrated = false;
@@ -273,12 +275,15 @@ function perApiChart(perApi) {
     }, { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14, font: { size: 11 } } } }, scales: { y: { beginAtZero: true } } });
 }
 
+function sparkSvgFrom(values, stroke) {
+    const vals = values.length >= 2 ? values : [0, 0];
+    const w = 90, h = 28, max = Math.max(...vals, 1), min = Math.min(...vals, 0), rng = max - min || 1;
+    const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - ((v - min) / rng) * (h - 4) - 2}`).join(' ');
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${pts}"/></svg>`;
+}
+
 function sparkSvg(name) {
-    const series = apiTrend.series[name] || [];
-    const values = series.length >= 2 ? series : [0, 0];
-    const w = 90, h = 28, max = Math.max(...values, 1), min = Math.min(...values, 0), rng = max - min || 1;
-    const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${h - ((v - min) / rng) * (h - 4) - 2}`).join(' ');
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${css('--warn')}" stroke-width="1.6" points="${pts}"/></svg>`;
+    return sparkSvgFrom(apiTrend.series[name] || [], css('--warn'));
 }
 
 let apiSort = { key: 'totalCalls', dir: -1 };
@@ -522,6 +527,11 @@ async function loadMetrics(quiet = false) {
         if (configRows.length === 0) {
             fetchJson('api/config').then(rows => { configRows = rows; renderUpstreamHealth(); }).catch(() => {}); // non-fatal — powers the expiry hint
         }
+        fetchJson('api/health/upstream').then(w => {
+            lastUpstreamWindows = w;
+            pushUpstreamTrendTick(w, summary.perApi);
+            renderUpstreamHealth();   // re-render with the rolling window (severity + sparkline) now available
+        }).catch(() => {}); // non-fatal — local source only; cumulative failoverRate is the fallback
     } catch (e) {
         if (!quiet) showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
     }
@@ -626,8 +636,22 @@ function upstreamSeverity(rate) {
     return r <= UPSTREAM_WATCH_THRESHOLD ? { cls: 'degraded', lbl: 'WATCH' } : { cls: 'unhealthy', lbl: 'FAILING' };
 }
 
+// One tick of the sparkline history — the windowed failoverRate when available (falls back to the
+// cumulative rate for non-local sources, which have no rolling window).
+function pushUpstreamTrendTick(windows, perApi) {
+    for (const k of perApi) {
+        const w = windows[k.name];
+        const rate = w ? w.failoverRate : k.rates.failoverRate;
+        const arr = (upstreamRateTrend.series[k.name] ??= []);
+        arr.push(rate);
+        if (arr.length > TREND_MAX) arr.shift();
+    }
+}
+
 function upstreamCard(k) {
-    const rate = k.rates.failoverRate;
+    const w = lastUpstreamWindows[k.name];
+    const rate = w ? w.failoverRate : k.rates.failoverRate;
+    const recoveryRate = w ? w.recoveryRate : k.rates.recoveryRate;
     const pctv = (rate * 100).toFixed(1);
     const { cls, lbl } = upstreamSeverity(rate);
     const exShort = t => t.split('.').pop();
@@ -635,18 +659,39 @@ function upstreamCard(k) {
     const top = exList[0];
     const exLine = top ? `${exShort(top.type)} ×${n(top.count)}` : (k.failoverInvoked > 0 ? 'unknown' : '—');
     const exp = expiryFor(k.name);
+    const basis = w ? `last ${n(w.sampleCount)} call${w.sampleCount === 1 ? '' : 's'}` : 'lifetime total';
     const note = k.failoverInvoked === 0
         ? 'no upstream failures'
-        : k.rates.recoveryRate >= 0.999
-            ? `masked by cache — fully recovered so far${exp ? `, expires in ${exp}` : ''}. notify upstream owner before it expires.`
+        : recoveryRate >= 0.999
+            ? `masked by cache — fully recovered over the ${basis}${exp ? `, expires in ${exp}` : ''}. notify upstream owner before it expires.`
             : `recovery incomplete — some calls already failing for real, not just masked`;
+    const spark = upstreamRateTrend.series[k.name] && upstreamRateTrend.series[k.name].length >= 2
+        ? sparkSvgFrom(upstreamRateTrend.series[k.name], css(cls === 'healthy' ? '--good' : cls === 'degraded' ? '--warn' : '--bad'))
+        : '';
+    const comp = upstreamComposition(w);
     return `<div class="api-hcard ${cls}" title="${k.name} · ${k.domain}">
         <div class="nm">${k.name}</div><div class="dm">${k.domain}</div>
         <div class="mid"><span class="hpct">${pctv}%</span><span class="st">${lbl}</span></div>
         <div class="hbar"><i style="width:${pctv}%"></i></div>
         <div class="meta"><span>calls <b>${n(k.totalCalls)}</b></span><span>upstream fails <b>${n(k.failoverInvoked)}</b></span></div>
         <div class="meta"><span>exception <b title="${top ? top.type : ''}">${exLine}</b></span></div>
+        ${comp}
+        ${spark ? `<div class="uh-spark tip" data-tip="Windowed upstream-failure rate across recent dashboard refreshes">${spark}</div>` : ''}
         <div class="uh-note">${note}</div>
+    </div>`;
+}
+
+// Composition of the rolling window itself — fresh / recovered / blocked, as fractions of the last
+// w.sampleCount calls. Derived from the three windowed rates already returned by the API (no extra
+// backend field needed): fresh = 1 - failoverRate; of the failoverRate slice, recoveryRate is
+// recovered and the remainder is blocked.
+function upstreamComposition(w) {
+    if (!w || w.sampleCount === 0) return '';
+    const freshPct = Math.max(0, (1 - w.failoverRate) * 100);
+    const stalePct = Math.max(0, w.failoverRate * w.recoveryRate * 100);
+    const blockedPct = Math.max(0, 100 - freshPct - stalePct);
+    return `<div class="uh-comp tip" data-tip="Last ${n(w.sampleCount)} calls — ${freshPct.toFixed(0)}% fresh, ${stalePct.toFixed(0)}% recovered, ${blockedPct.toFixed(0)}% blocked">
+        <i style="width:${freshPct}%;background:var(--good)"></i><i style="width:${stalePct}%;background:var(--info)"></i><i style="width:${blockedPct}%;background:var(--bad)"></i>
     </div>`;
 }
 

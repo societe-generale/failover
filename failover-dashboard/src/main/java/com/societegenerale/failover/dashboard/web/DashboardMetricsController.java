@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 
+import com.societegenerale.failover.dashboard.service.UpstreamWindow;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
@@ -77,6 +78,18 @@ public class DashboardMetricsController {
     @GetMapping("/health")
     public List<ApiHealth> health() {
         return metricsSource.health();
+    }
+
+    /**
+     * Rolling last-N-calls rates per failover point, scored on the upstream call alone — not masked by
+     * how well failover recovered. Powers the Upstream call health cards. Empty map for sources with
+     * no per-call window to report (e.g. Prometheus / shared-store).
+     *
+     * @return windowed rates per failover name
+     */
+    @GetMapping("/health/upstream")
+    public Map<String, UpstreamWindow> upstreamHealth() {
+        return metricsSource.upstreamWindows();
     }
 
     /**

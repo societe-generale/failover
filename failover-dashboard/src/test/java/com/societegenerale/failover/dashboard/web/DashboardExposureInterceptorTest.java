@@ -34,7 +34,7 @@ class DashboardExposureInterceptorTest {
                 new DashboardProperties.Exposure(true, api, include),
                 new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY,"FAILOVER_ADMIN","FAILOVER_ADMIN", null, false),
                 new DashboardProperties.History(false, 120, 15),
-                new DashboardProperties.Health(0.99, 0.90),
+                new DashboardProperties.Health(0.99, 0.90, 100),
                 new DashboardProperties.Cluster("local"));
         return new DashboardExposureInterceptor(props);
     }
