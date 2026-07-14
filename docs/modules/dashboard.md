@@ -558,6 +558,74 @@ for trusted-network/dev use. `security.type=EXPRESSION` only warns instead of fa
 expression might legitimately grant access without real authentication (e.g. an IP-based rule) — something
 that can't be determined statically at startup.
 
+!!! info "Specific 403 messages, not Spring Security's blank default"
+When someone authenticates fine but lacks the required role/authority, the main gate returns a `403` with a
+body naming exactly what's missing — `{"error":"Forbidden","message":"Authorization failed: missing
+required role 'FAILOVER_ADMIN'"}` (or `missing required authority '...'`; `denied by the configured access
+expression` for `type=EXPRESSION`, since a SpEL failure reason can't be introspected generically) — instead
+of Spring Security's default blank `403`. The authenticated principal's name and actual authorities are
+logged server-side (`DashboardAccessDeniedHandler`, `INFO` level) for operator diagnosis, but deliberately
+left out of the client-facing body. Declare your own `DashboardAccessDeniedHandler` (or a plain Spring
+Security `AccessDeniedHandler`) bean to override.
+
+#### If your app has endpoints outside `base-path` — you need your own `SecurityFilterChain` too
+
+This isn't specific to the dashboard — it's how Spring Security works whenever more than one
+`SecurityFilterChain` bean exists. `dashboardSecurityFilterChain` / `dashboardOAuth2SecurityFilterChain`
+only ever call `securityMatcher(base-path + "/**")`. If your app has its **own** endpoints outside that
+namespace (`/`, `/api/**`, `/actuator/health`, `/error`, and — with OAuth2 login — the redirect endpoints
+Spring Security itself exposes like `/oauth2/authorization/<registration-id>`), none of them match the
+dashboard's chain, and **no other chain exists unless you add one**. Spring Security's own catch-all default
+chain only auto-registers when *no* `SecurityFilterChain` bean is present anywhere in the app — the
+dashboard's own bean already counts, so that fallback never kicks in.
+
+Unmatched here doesn't mean "permitted" — it means **not filtered at all**: the request never passes through
+Spring Security, so `SecurityContextHolder` is never populated (an endpoint like `/api/me` reading the
+current principal sees nothing), and `/oauth2/authorization/<registration-id>` — not a real MVC endpoint,
+just a path `OAuth2AuthorizationRequestRedirectFilter` intercepts — 404s as an unmapped static resource
+instead of triggering the IdP redirect, since that filter only runs inside whichever chain configured
+`oauth2Login()`.
+
+**Fix:** add your own `SecurityFilterChain` bean covering everything else. The same `GrantedAuthoritiesMapper`
+bean (above) applies automatically to it too, with no extra wiring — Spring Security's `OAuth2LoginConfigurer`
+looks up any `GrantedAuthoritiesMapper` bean from the application context on its own.
+
+```java title="Example — catch-all chain for the rest of the app (GitHub OAuth2 login)"
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/health", "/api/info", "/error").permitAll()
+                        .anyRequest().authenticated())
+                .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl("/failover-dashboard", true));
+        return http.build();
+    }
+
+    // GitHub hands back its own scopes, never FAILOVER_ADMIN — map it explicitly.
+    // (Optional here since Spring Security auto-detects this bean for oauth2Login() chains anyway —
+    // shown for clarity. A real deployment would check org/team membership, not "any GitHub user".)
+    @Bean
+    public GrantedAuthoritiesMapper failoverAdminAuthoritiesMapper() {
+        return authorities -> {
+            Set<GrantedAuthority> mapped = new HashSet<>(authorities);
+            for (GrantedAuthority authority : authorities) {
+                if (authority instanceof OAuth2UserAuthority || authority instanceof OidcUserAuthority) {
+                    mapped.add(new SimpleGrantedAuthority("ROLE_FAILOVER_ADMIN"));
+                    break;
+                }
+            }
+            return mapped;
+        };
+    }
+}
+```
+
+If the dashboard is the *only* thing your app serves (no other endpoints, [Scenario E — Standalone
+dashboard](#scenario-e-standalone-dashboard-its-own-app)), none of this applies — there's nothing outside
+`base-path` for a second chain to cover.
+
 ### Expression-based access control
 
 `security.type=EXPRESSION` hands `security.expression` straight to Spring Security's

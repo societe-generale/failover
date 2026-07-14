@@ -16,6 +16,7 @@
 
 package com.societegenerale.failover.dashboard.config;
 
+import com.societegenerale.failover.dashboard.security.DashboardAccessDeniedHandler;
 import com.societegenerale.failover.dashboard.security.DashboardAuthBackingValidator;
 import com.societegenerale.failover.dashboard.security.DefaultFailoverSecurityProvider;
 import com.societegenerale.failover.dashboard.security.FailoverSecurityProvider;
@@ -625,11 +626,13 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @Bean
         @Order(0)
         @ConditionalOnMissingBean(name = {"dashboardSecurityFilterChain", "dashboardOAuth2SecurityFilterChain"})
-        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider, DashboardProperties props) {
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
+                                                          DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth,
                             new SecurityContext(props.basePath(), props.security())))
                     .httpBasic(Customizer.withDefaults())
+                    .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler))
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
@@ -640,6 +643,19 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @ConditionalOnMissingBean(FailoverSecurityProvider.class)
         FailoverSecurityProvider failoverSecurityProvider() {
             return new DefaultFailoverSecurityProvider();
+        }
+
+        /**
+         * Reports {@code 403} denials from the main gate with a specific reason ("missing role 'X'" /
+         * "missing authority 'Y'") instead of Spring Security's default blank response. Shared by both the
+         * {@code httpBasic} and {@code oauth2Login} variants of the main gate — declare your own
+         * {@link DashboardAccessDeniedHandler} bean, or a plain Spring Security {@code AccessDeniedHandler},
+         * to override.
+         */
+        @Bean
+        @ConditionalOnMissingBean(DashboardAccessDeniedHandler.class)
+        DashboardAccessDeniedHandler dashboardAccessDeniedHandler(DashboardProperties props) {
+            return new DashboardAccessDeniedHandler(props.security());
         }
     }
 
@@ -668,11 +684,13 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @ConditionalOnProperty(prefix = "failover.dashboard.security", name = "oauth2-client-registration-id")
         @ConditionalOnMissingBean(name = "dashboardOAuth2SecurityFilterChain")
         SecurityFilterChain dashboardOAuth2SecurityFilterChain(
-                HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider, DashboardProperties props) {
+                HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
+                DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth,
                             new SecurityContext(props.basePath(), props.security())))
-                    .oauth2Login(Customizer.withDefaults());
+                    .oauth2Login(Customizer.withDefaults())
+                    .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler));
             log.info("Failover dashboard secured: '{}/**' via OAuth2 login (registration '{}'), requires role '{}'.",
                     props.basePath(), props.security().oauth2ClientRegistrationId(), props.security().role());
             return http.build();
