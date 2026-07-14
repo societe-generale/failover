@@ -56,7 +56,7 @@ class DefaultFailoverSecurityProviderTest {
         var registry = registry();
         var authorizedUrl = authorizedUrl(registry);
 
-        provider.configure(registry, context(new Security(SecurityType.ROLE, "ADMIN", "FAILOVER_ADMIN", null, false)));
+        provider.configure(registry, context(new Security(SecurityType.ROLE, "ADMIN", "FAILOVER_ADMIN", null, false, "")));
 
         verify(authorizedUrl).hasRole("ADMIN");
         verifyNoMoreInteractions(authorizedUrl);
@@ -68,7 +68,7 @@ class DefaultFailoverSecurityProviderTest {
         var registry = registry();
         var authorizedUrl = authorizedUrl(registry);
 
-        provider.configure(registry, context(new Security(SecurityType.AUTHORITY, "ADMIN", "FAILOVER_ADMIN", null, false)));
+        provider.configure(registry, context(new Security(SecurityType.AUTHORITY, "ADMIN", "FAILOVER_ADMIN", null, false, "")));
 
         verify(authorizedUrl).hasAuthority("FAILOVER_ADMIN");
         verifyNoMoreInteractions(authorizedUrl);
@@ -81,7 +81,7 @@ class DefaultFailoverSecurityProviderTest {
         var authorizedUrl = authorizedUrl(registry);
         String expression = "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')";
 
-        provider.configure(registry, context(new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", expression, false)));
+        provider.configure(registry, context(new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", expression, false, "")));
 
         verify(authorizedUrl).access(any(AuthorizationManager.class));
         verifyNoMoreInteractions(authorizedUrl);
@@ -93,7 +93,7 @@ class DefaultFailoverSecurityProviderTest {
         var registry = registry();
         var authorizedUrl = authorizedUrl(registry);
 
-        provider.configure(registry, context(new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", "hasRole('ADMIN')", true)));
+        provider.configure(registry, context(new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", "hasRole('ADMIN')", true, "")));
 
         verify(authorizedUrl).permitAll();
         verifyNoMoreInteractions(authorizedUrl);
@@ -103,7 +103,7 @@ class DefaultFailoverSecurityProviderTest {
     @DisplayName("type=EXPRESSION with blank expression fails fast at construction")
     void blankExpressionRejected() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", "  ", false))
+                new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", "  ", false, ""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("failover.dashboard.security.expression");
     }

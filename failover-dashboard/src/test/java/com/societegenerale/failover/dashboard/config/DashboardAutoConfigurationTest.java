@@ -31,6 +31,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +41,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Autoconfiguration tests for the P0 dashboard skeleton, including the secure-by-default contract
  * (design doc §1a / §13): with {@code failover.dashboard.enabled} unset, nothing is registered.
+ *
+ * <p>The shared {@code runner} wires a trivial {@code UserDetailsService} so the vast majority of tests
+ * here — unrelated to the UI auth-backing check — aren't tripped up by {@code dashboardAuthBackingValidator}
+ * (see "auth-backing validator" tests below, which deliberately use a bare runner without one).
  *
  * @author Anand Manissery
  */
@@ -47,7 +54,9 @@ class DashboardAutoConfigurationTest {
             .withConfiguration(AutoConfigurations.of(
                     org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
                     org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration.class,
-                    DashboardAutoConfiguration.class));
+                    DashboardAutoConfiguration.class))
+            .withBean(UserDetailsService.class, () -> new InMemoryUserDetailsManager(
+                    User.withUsername("test").password("{noop}test").roles("FAILOVER_ADMIN").build()));
 
     @Test
     @DisplayName("secure-by-default — enabled property unset ⇒ no dashboard bean registered")
@@ -174,6 +183,21 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("cluster.mode=shared-store + shared-store.store=jdbc (no SnapshotStore bean) ⇒ falls back to local")
+    void sharedStoreModeWithoutSnapshotStoreBeanFallsBackToLocal() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.shared-store.store=jdbc")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
+                    assertThat(ctx.getBean(MetricsSource.class)).isInstanceOf(LocalRegistryMetricsSource.class);
+                });
+    }
+
+    @Test
     @DisplayName("no SnapshotStore / ingest controller when not in shared-store mode")
     void noSharedStoreBeansInLocalMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -223,6 +247,8 @@ class DashboardAutoConfigurationTest {
                         DashboardAutoConfiguration.class))
                 .withBean(io.micrometer.core.instrument.MeterRegistry.class,
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withBean(UserDetailsService.class, () -> new InMemoryUserDetailsManager(
+                        User.withUsername("test").password("{noop}test").roles("FAILOVER_ADMIN").build()))
                 .withPropertyValues("failover.dashboard.enabled=true")
                 .run(ctx -> {
                     assertThat(ctx).hasSingleBean(FailoverConfigSnapshotService.class);
@@ -327,11 +353,37 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("addInterceptors registers the exposure interceptor for the configured base path")
+    void registersExposureInterceptor() {
+        DashboardProperties props = new DashboardProperties(true, "/failover-dashboard");
+        org.springframework.web.servlet.config.annotation.InterceptorRegistry registry =
+                Mockito.mock(org.springframework.web.servlet.config.annotation.InterceptorRegistry.class,
+                        Mockito.RETURNS_DEEP_STUBS);
+
+        new DashboardAutoConfiguration(props).addInterceptors(registry);
+
+        Mockito.verify(registry).addInterceptor(
+                Mockito.any(com.societegenerale.failover.dashboard.web.DashboardExposureInterceptor.class));
+    }
+
+    @Test
+    @DisplayName("cluster.mode=shared-store + 'cluster' missing from exposure.include ⇒ warns but still starts")
+    void sharedStoreWithoutClusterExposureWarnsButStarts() {
+        runner.withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.exposure.include=config,metrics,health")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx.getBean(DashboardProperties.class).exposure().includes("cluster")).isFalse();
+                });
+    }
+
+    @Test
     @DisplayName("exposure.ui=false ⇒ no static resource handler and no welcome forward")
     void uiOffServesNoStatic() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
-                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false),
+                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false, ""),
                 new DashboardProperties.History(false, 120, 15),
                 new DashboardProperties.Health(0.99, 0.90, 100),
                 new DashboardProperties.Cluster("local"));
@@ -452,6 +504,18 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("shared-store mode + pre-encoded ingest password ({bcrypt}…) ⇒ used verbatim, not double-wrapped in {noop}")
+    void basicIngestChainAcceptsPreEncodedPassword() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password={noop}secret")
+                .run(ctx -> assertThat(ctx).hasBean("dashboardIngestBasicFilterChain"));
+    }
+
+    @Test
     @DisplayName("shared-store mode + allow-insecure-ingest=true ⇒ open (permit-all) ingest chain registered")
     void openIngestChainRegisteredWhenAllowInsecureIngest() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -494,6 +558,32 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardIngestOAuth2FilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("shared-store mode + snapshot.oauth2-client-registration-id ⇒ OAuth2 ingest filter chain registered, matches both ingest paths")
+    void oauth2IngestChainRegisteredWhenRegistrationIdSet() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.jwt.JwtDecoder.class,
+                        () -> Mockito.mock(org.springframework.security.oauth2.jwt.JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=idp")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardIngestOAuth2FilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
+
+                    org.springframework.security.web.SecurityFilterChain chain = ctx.getBean(
+                            "dashboardIngestOAuth2FilterChain", org.springframework.security.web.SecurityFilterChain.class);
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "POST", "/failover-dashboard/api/cluster/snapshot"))).isTrue();
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "POST", "/failover-dashboard/api/cluster/heartbeat"))).isTrue();
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "GET", "/failover-dashboard/api/config"))).isFalse();
                 });
     }
 
@@ -582,5 +672,126 @@ class DashboardAutoConfigurationTest {
 
         Mockito.verify(registry).addRedirectViewController("/failover-dashboard", "/failover-dashboard/");
         Mockito.verify(registry).addViewController("/failover-dashboard/");
+    }
+
+    // --- dashboardAuthBackingValidator (fix-me-2.md Issue 1) ---
+    // Deliberately uses a bare runner (no shared UserDetailsService bean) to control backing-auth precisely.
+
+    private WebApplicationContextRunner bareSecurityRunner() {
+        return new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
+                        org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration.class,
+                        DashboardAutoConfiguration.class));
+    }
+
+    @Test
+    @DisplayName("type=AUTHORITY, no UserDetailsService/AuthenticationProvider, allow-insecure=false ⇒ fail-closed")
+    void authBackingValidatorFailsClosedWithNoBackingAuth() {
+        bareSecurityRunner()
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    @DisplayName("type=AUTHORITY + a UserDetailsService bean present ⇒ starts clean")
+    void authBackingValidatorPassesWithUserDetailsService() {
+        bareSecurityRunner()
+                .withBean(UserDetailsService.class, () -> new InMemoryUserDetailsManager(
+                        User.withUsername("test").password("{noop}test").roles("FAILOVER_ADMIN").build()))
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).hasBean("dashboardAuthBackingValidator");
+                });
+    }
+
+    @Test
+    @DisplayName("type=AUTHORITY + an AuthenticationProvider bean present ⇒ starts clean")
+    void authBackingValidatorPassesWithAuthenticationProvider() {
+        bareSecurityRunner()
+                .withBean(org.springframework.security.authentication.AuthenticationProvider.class,
+                        () -> Mockito.mock(org.springframework.security.authentication.AuthenticationProvider.class))
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("no backing auth + allow-insecure=true ⇒ validator doesn't fire (permitAll needs no authentication)")
+    void authBackingValidatorSkippedWhenAllowInsecure() {
+        bareSecurityRunner()
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.allow-insecure=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("no backing auth + type=EXPRESSION ⇒ starts clean (warns, doesn't fail — expression may not need auth)")
+    void authBackingValidatorWarnsNotFailsForExpressionType() {
+        bareSecurityRunner()
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.type=EXPRESSION",
+                        "failover.dashboard.security.expression=permitAll")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("type=EXPRESSION + a UserDetailsService bean present ⇒ starts clean, no warn needed")
+    void authBackingValidatorSkipsWarnForExpressionTypeWithBackingAuth() {
+        bareSecurityRunner()
+                .withBean(UserDetailsService.class, () -> new InMemoryUserDetailsManager(
+                        User.withUsername("test").password("{noop}test").roles("FAILOVER_ADMIN").build()))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.type=EXPRESSION",
+                        "failover.dashboard.security.expression=permitAll")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("no backing auth + consumer overrides dashboardSecurityFilterChain ⇒ validator not required")
+    void authBackingValidatorSkippedWhenChainOverridden() {
+        bareSecurityRunner()
+                .withUserConfiguration(CustomSecurityFilterChainConfig.class)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).doesNotHaveBean("dashboardAuthBackingValidator");
+                });
+    }
+
+    @Test
+    @DisplayName("no backing auth + security.oauth2-client-registration-id set ⇒ validator doesn't require one (OAuth2 login authenticates instead)")
+    void authBackingValidatorSkippedWhenOAuth2LoginConfigured() {
+        org.springframework.security.oauth2.client.registration.ClientRegistration registration =
+                org.springframework.security.oauth2.client.registration.ClientRegistration.withRegistrationId("github")
+                        .clientId("test-client")
+                        .clientSecret("test-secret")
+                        .authorizationGrantType(org.springframework.security.oauth2.core.AuthorizationGrantType.AUTHORIZATION_CODE)
+                        .redirectUri("https://example.com/login/oauth2/code/github")
+                        .authorizationUri("https://github.com/login/oauth/authorize")
+                        .tokenUri("https://github.com/login/oauth/access_token")
+                        .build();
+
+        bareSecurityRunner()
+                .withBean(org.springframework.security.oauth2.client.registration.ClientRegistrationRepository.class,
+                        () -> new org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository(registration))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-client-registration-id=github")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).hasBean("dashboardOAuth2SecurityFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                });
+    }
+
+    @org.springframework.context.annotation.Configuration
+    static class CustomSecurityFilterChainConfig {
+        @org.springframework.context.annotation.Bean(name = "dashboardSecurityFilterChain")
+        org.springframework.security.web.SecurityFilterChain customChain(
+                org.springframework.security.config.annotation.web.builders.HttpSecurity http) {
+            http.securityMatcher("/failover-dashboard/**")
+                    .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+            return http.build();
+        }
     }
 }

@@ -16,6 +16,8 @@
 
 package com.societegenerale.failover.dashboard.config;
 
+import com.societegenerale.failover.dashboard.security.DashboardAccessDeniedHandler;
+import com.societegenerale.failover.dashboard.security.DashboardAuthBackingValidator;
 import com.societegenerale.failover.dashboard.security.DefaultFailoverSecurityProvider;
 import com.societegenerale.failover.dashboard.security.FailoverSecurityProvider;
 import com.societegenerale.failover.dashboard.security.SecurityContext;
@@ -63,10 +65,12 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -104,7 +108,11 @@ import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebA
                 // After the failover library (when present) so its real FailoverMetricsSnapshotService /
                 // FailoverConfigSnapshotService beans win over the standalone fallbacks below. Referenced by
                 // name — no compile dependency.
-                "com.societegenerale.failover.configuration.FailoverAutoConfiguration"
+                "com.societegenerale.failover.configuration.FailoverAutoConfiguration",
+                // After Boot's own fallback-user auto-configuration so dashboardAuthBackingValidator sees
+                // whether Boot already created a generated-password UserDetailsService before deciding
+                // whether the UI gate has no way to authenticate anyone.
+                "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration"
         })
 @ConditionalOnWebApplication(type = SERVLET)
 @ConditionalOnClass(MeterRegistry.class)
@@ -542,18 +550,89 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
             return http.build();
         }
 
+        /**
+         * Fails fast when the UI gate has no way to authenticate anyone — {@code security.type=ROLE} or
+         * {@code AUTHORITY} requires a non-anonymous authenticated principal, but {@code httpBasic()} alone
+         * doesn't guarantee one exists: without a {@code UserDetailsService} or {@code AuthenticationProvider}
+         * bean anywhere in the app, every credential 401s and there is no correct password to find (a
+         * multi-hour dead-end otherwise, since the app boots clean with no diagnostic).
+         *
+         * <p><b>Must stay declared before {@code dashboardSecurityFilterChain} in this class.</b>
+         * {@code @ConditionalOnMissingBean(name=...)} conditions for {@code @Bean} methods in the same
+         * {@code @Configuration} class are evaluated in source-declaration order — if this method were
+         * declared after {@code dashboardSecurityFilterChain}, the starter's own default bean would already
+         * be registered under that name by the time this condition runs, so the check would always see
+         * "not missing" and silently skip itself even with zero backing auth. Declared first, it only ever
+         * sees a name already registered when a genuine consumer override exists (Spring Boot registers all
+         * user-supplied {@code @Configuration} beans before any {@code @AutoConfiguration} bean, so a real
+         * override is always visible here regardless of order within this class).
+         *
+         * <p>Skipped when a consumer overrides {@code dashboardSecurityFilterChain} by name. Skipped (not
+         * evaluated for the real-auth requirement) when {@code security.oauth2-client-registration-id} is
+         * set — the OAuth2 login variant handles authentication itself and needs no backing
+         * {@code UserDetailsService} — checked directly against the config value rather than the sibling
+         * bean's name, since that bean lives in a different nested {@code @Configuration} class
+         * ({@link OAuth2LoginSecurityConfiguration}) whose relative processing order is not guaranteed.
+         * {@code security.type=EXPRESSION} only warns, not fails: a SpEL expression might legitimately grant
+         * access without real authentication (e.g. an IP-based rule), which we can't determine statically.
+         *
+         * @param props                   the bound {@code failover.dashboard.*} properties
+         * @param userDetailsServices     any {@code UserDetailsService} beans in the context
+         * @param authenticationProviders any {@code AuthenticationProvider} beans in the context
+         * @return a marker confirming the check ran
+         */
+        @Bean
+        @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
+        DashboardAuthBackingValidator dashboardAuthBackingValidator(
+                DashboardProperties props,
+                ObjectProvider<UserDetailsService> userDetailsServices,
+                ObjectProvider<AuthenticationProvider> authenticationProviders) {
+            if (!props.security().oauth2ClientRegistrationId().isBlank()) {
+                return new DashboardAuthBackingValidator(); // OAuth2 login variant authenticates instead
+            }
+            boolean hasBackingAuth = userDetailsServices.stream().findAny().isPresent()
+                    || authenticationProviders.stream().findAny().isPresent();
+            boolean requiresRealAuth = props.security().type() != DashboardProperties.SecurityType.EXPRESSION;
+
+            if (!props.security().allowInsecure() && requiresRealAuth && !hasBackingAuth) {
+                String message = "Failover dashboard security.type=" + props.security().type()
+                        + " requires a UserDetailsService or AuthenticationProvider bean to authenticate "
+                        + "against, but none was found. httpBasic() would prompt for credentials that can "
+                        + "never succeed. Either define one of those beans (e.g. "
+                        + "spring.security.user.name/password for a quick dev user), configure "
+                        + "failover.dashboard.security.oauth2-client-registration-id for OAuth2 login "
+                        + "instead, override the 'dashboardSecurityFilterChain' bean with your own "
+                        + "authentication mechanism, or set failover.dashboard.security.allow-insecure=true "
+                        + "for trusted-network/dev use.";
+                throw new IllegalStateException(message);
+            }
+            if (!props.security().allowInsecure() && !requiresRealAuth && !hasBackingAuth) {
+                log.warn("Failover dashboard security.type=EXPRESSION with no UserDetailsService or "
+                        + "AuthenticationProvider bean found — httpBasic() credentials will never succeed "
+                        + "unless '{}' is written to also grant access without authentication (e.g. an "
+                        + "IP-based rule). If real credentials are expected, define one of those beans.",
+                        props.security().expression());
+            }
+            return new DashboardAuthBackingValidator();
+        }
+
         /** Main dashboard gate: {@code base-path/**} requires the configured role. {@code @Order(0)} ensures
-         * ingest chains at {@code @Order(-10)} are evaluated first for the ingest paths.
+         * ingest chains at {@code @Order(-10)} are evaluated first for the ingest paths. Backs off when a
+         * consumer supplies their own {@code dashboardSecurityFilterChain}, or when
+         * {@code security.oauth2-client-registration-id} activates {@code dashboardOAuth2SecurityFilterChain}
+         * instead (see {@link OAuth2LoginSecurityConfiguration}).
          * Stateless — HTTP Basic auth; no session is created. Dashboard is read-only (GET only), so no
          * state-changing operations exist and CSRF protection uses Spring Security defaults. */
         @Bean
         @Order(0)
-        @ConditionalOnMissingBean(name = "dashboardSecurityFilterChain")
-        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider, DashboardProperties props) {
+        @ConditionalOnMissingBean(name = {"dashboardSecurityFilterChain", "dashboardOAuth2SecurityFilterChain"})
+        SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
+                                                          DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
                     .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth,
                             new SecurityContext(props.basePath(), props.security())))
                     .httpBasic(Customizer.withDefaults())
+                    .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler))
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
             log.info("Failover dashboard secured: '{}/**' requires role '{}'.",
                     props.basePath(), props.security().role());
@@ -564,6 +643,57 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @ConditionalOnMissingBean(FailoverSecurityProvider.class)
         FailoverSecurityProvider failoverSecurityProvider() {
             return new DefaultFailoverSecurityProvider();
+        }
+
+        /**
+         * Reports {@code 403} denials from the main gate with a specific reason ("missing role 'X'" /
+         * "missing authority 'Y'") instead of Spring Security's default blank response. Shared by both the
+         * {@code httpBasic} and {@code oauth2Login} variants of the main gate — declare your own
+         * {@link DashboardAccessDeniedHandler} bean, or a plain Spring Security {@code AccessDeniedHandler},
+         * to override.
+         */
+        @Bean
+        @ConditionalOnMissingBean(DashboardAccessDeniedHandler.class)
+        DashboardAccessDeniedHandler dashboardAccessDeniedHandler(DashboardProperties props) {
+            return new DashboardAccessDeniedHandler(props.security());
+        }
+    }
+
+    /**
+     * Dashboard UI secured with OAuth2 login instead of HTTP Basic. Activated when
+     * {@code failover.dashboard.security.oauth2-client-registration-id} is set. Authorization still goes
+     * through {@link FailoverSecurityProvider} — role/authority/expression — same as the {@code httpBasic}
+     * variant; only the authentication mechanism differs. Isolated in its own inner class so the
+     * oauth2-client API is never loaded when absent from the classpath.
+     *
+     * <p>Deliberately does not set {@code sessionManagement(STATELESS)} — {@code oauth2Login} needs a
+     * session to carry the authorization-code-flow state/PKCE parameters across the IdP redirect. CSRF
+     * stays on Spring Security's default (enabled), appropriate for a session-based browser login flow.
+     *
+     * <p>Mapping IdP claims (e.g. GitHub/OIDC scopes) onto {@code FAILOVER_ADMIN} or another configured
+     * role/authority is done via a standard Spring Security {@code GrantedAuthoritiesMapper} bean — not
+     * something this starter needs to invent. Without one, {@code hasRole()}/{@code hasAuthority()} will
+     * deny an OAuth2-authenticated user whose mapped authorities don't happen to already match.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.security.oauth2.client.registration.ClientRegistrationRepository")
+    static class OAuth2LoginSecurityConfiguration {
+
+        @Bean("dashboardOAuth2SecurityFilterChain")
+        @Order(0)
+        @ConditionalOnProperty(prefix = "failover.dashboard.security", name = "oauth2-client-registration-id")
+        @ConditionalOnMissingBean(name = "dashboardOAuth2SecurityFilterChain")
+        SecurityFilterChain dashboardOAuth2SecurityFilterChain(
+                HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
+                DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
+            http.securityMatcher(props.basePath() + "/**")
+                    .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth,
+                            new SecurityContext(props.basePath(), props.security())))
+                    .oauth2Login(Customizer.withDefaults())
+                    .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler));
+            log.info("Failover dashboard secured: '{}/**' via OAuth2 login (registration '{}'), requires role '{}'.",
+                    props.basePath(), props.security().oauth2ClientRegistrationId(), props.security().role());
+            return http.build();
         }
     }
 
@@ -576,7 +706,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * <p>Isolated in its own inner class so the resource-server API is never loaded when absent.
      */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.BearerTokenAuthenticationToken")
+    @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken")
     static class OAuth2IngestSecurityConfiguration {
 
         @Bean("dashboardIngestOAuth2FilterChain")

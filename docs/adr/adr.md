@@ -3297,3 +3297,64 @@ A second, related gap: the same masking applies to "is the upstream itself healt
 * `MetricsSource.upstreamWindows()` is a `default` method returning `Map.of()`, so existing custom `MetricsSource` implementations compile unchanged.
 
 ___
+
+## ADR 69 — Specific Authorization-Denial Messages for the Dashboard UI Gate
+
+**Date : 15-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The dashboard's main UI/API gate (`dashboardSecurityFilterChain` / `dashboardOAuth2SecurityFilterChain`)
+authorizes via `FailoverSecurityProvider` — `hasRole`/`hasAuthority`/a SpEL expression, per
+`security.type`. When an authenticated caller lacks the required role or authority, Spring Security's
+default `AccessDeniedHandlerImpl` returns a `403` with no body (or a bare Whitelabel error page for
+browser requests) — correct behaviour, but it gives an operator nothing to act on. Distinguishing "wrong
+credentials" (`401`, already actionable — Spring's `WWW-Authenticate` challenge) from "authenticated fine,
+but missing role X" (`403`, previously silent) matters most once OAuth2 login (ADR-adjacent: config-driven
+`security.oauth2-client-registration-id`) is in play — an operator can log in successfully via GitHub/OIDC
+and still be denied because no `GrantedAuthoritiesMapper` maps IdP claims onto the configured role, with no
+indication that mapping is the missing piece.
+
+### Decision
+
+Add `DashboardAccessDeniedHandler` (`failover-dashboard`, package `security`), a Spring Security
+`AccessDeniedHandler` bean wired into both variants of the main gate via
+`.exceptionHandling(exceptions -> exceptions.accessDeniedHandler(...))`:
+
+1. Client-facing response: `403` with a small JSON body naming exactly what's missing —
+   `{"error":"Forbidden","message":"Authorization failed: missing required role 'FAILOVER_ADMIN'"}` for
+   `security.type=ROLE`, `missing required authority '...'` for `AUTHORITY`, and the generic `denied by the
+   configured access expression` for `EXPRESSION` (a SpEL expression's failure reason can't be introspected
+   generically — Spring Security only reports pass/fail, not which sub-clause failed).
+2. Server-side: an `INFO` log line with the authenticated principal's name and actual granted authorities,
+   for operator diagnosis — deliberately **not** included in the client-facing body, since a request that's
+   already been identified and denied doesn't need the extra detail handed back to it.
+3. `@ConditionalOnMissingBean(DashboardAccessDeniedHandler.class)` — a consumer can declare their own
+   `DashboardAccessDeniedHandler` or any plain `AccessDeniedHandler` to override.
+4. Scoped to the main gate only. The peer-ingest chains (`dashboardIngestBasicFilterChain` /
+   `dashboardIngestOAuth2FilterChain` / `dashboardIngestOpenFilterChain`) only ever check
+   `anyRequest().authenticated()` — there is no role/authority to be missing there, so a `403` from ingest
+   is not a scenario this handler needs to explain.
+
+### Consequences
+
+* An operator who authenticates successfully but lacks the configured role/authority now gets a specific,
+  actionable `403` body instead of a blank one — cuts the "authenticated fine, still can't get in" class of
+  support question to a one-line read of the response.
+* The exact required role/authority string is now visible to any caller who reaches the check (i.e. anyone
+  already authenticated) — a minor information disclosure relative to Spring's blank default, judged
+  acceptable since it only reaches principals who are already identified, and it does not reveal the
+  requester's *own* actual authorities (only the log does).
+* `security.type=EXPRESSION` gets a generic message rather than a specific one, by design — the alternative
+  would require either re-evaluating expression sub-clauses (fragile, expression-shape-dependent) or asking
+  consumers to supply their own reason text, which is better served by consumers overriding the handler bean
+  entirely for expression-heavy setups than by the starter guessing.
+* New extension point (`DashboardAccessDeniedHandler`) follows the same `@ConditionalOnMissingBean` shape as
+  `FailoverSecurityProvider` — consistent with the module's existing pattern for pluggable security
+  behaviour rather than introducing a new override mechanism.
+
+___
