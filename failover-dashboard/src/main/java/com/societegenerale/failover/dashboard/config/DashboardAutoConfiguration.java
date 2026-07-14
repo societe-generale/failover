@@ -74,6 +74,8 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.Arrays;
+
 import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET;
 
 /**
@@ -120,6 +122,13 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     public DashboardAutoConfiguration(DashboardProperties properties) {
         this.properties = properties;
         log.info("Failover dashboard enabled at base path '{}'.", properties.basePath());
+        if ("shared-store".equalsIgnoreCase(properties.cluster().mode()) && !properties.exposure().includes("cluster")) {
+            log.warn("cluster.mode=shared-store is enabled but 'cluster' is missing from exposure.include; "
+                            + "this no longer blocks peer snapshot pushes to '{}/api/cluster/snapshot' (the ingest "
+                            + "endpoint is exempt from exposure narrowing), but the cluster read views will 404 "
+                            + "for UI/API consumers until 'cluster' is added to exposure.include.",
+                    properties.basePath());
+        }
     }
 
     /**
@@ -441,43 +450,76 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * to avoid loading the resource-server API when it is absent from the classpath).
      *
      * <p>The main {@code dashboardSecurityFilterChain} is {@code @Order(0)}; ingest chains are
-     * {@code @Order(-10)} so they match {@code /api/cluster/snapshot} before the broad {@code /**} gate.
+     * {@code @Order(-10)} so they match both ingest paths before the broad {@code /**} gate.
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(SecurityFilterChain.class)
     static class SecurityPresentConfiguration {
 
         /**
+         * Fails fast when an insecure escape hatch is left on under the {@code prod} profile — the same
+         * I-14 guarantee {@link SecurityAbsentConfiguration} enforces when Spring Security is absent
+         * entirely, extended to cover the case where Security is present but a consumer explicitly asked
+         * for {@code allow-insecure} (main gate) or {@code allow-insecure-ingest} (peer ingest).
+         *
+         * @param props       the bound {@code failover.dashboard.*} properties
+         * @param environment used to check whether the {@code prod} profile is active
+         */
+        SecurityPresentConfiguration(DashboardProperties props, Environment environment) {
+            boolean prod = environment.acceptsProfiles(Profiles.of("prod"));
+            if (props.security().allowInsecure() && prod) {
+                throw new IllegalStateException(
+                        "Failover dashboard has failover.dashboard.security.allow-insecure=true while the 'prod' "
+                                + "profile is active. The insecure escape hatch is for dev / trusted-network use "
+                                + "only and must never disable the access gate in production. Restrict '"
+                                + props.basePath() + "/**' to role '" + props.security().role()
+                                + "', or remove allow-insecure / the 'prod' profile.");
+            }
+            if (props.cluster().snapshot().allowInsecureIngest() && prod) {
+                throw new IllegalStateException(
+                        "Failover dashboard has failover.dashboard.cluster.snapshot.allow-insecure-ingest=true "
+                                + "while the 'prod' profile is active. The insecure ingest escape hatch is for dev "
+                                + "/ trusted-network use only and must never disable the access gate in "
+                                + "production. Set snapshot.username+password or "
+                                + "snapshot.oauth2-client-registration-id, or remove allow-insecure-ingest / the "
+                                + "'prod' profile.");
+            }
+        }
+
+        /**
          * Ingest secured with HTTP Basic using a dedicated in-memory user (peer credentials from config).
          * Activated when {@code snapshot.username} is set and no OAuth2 ingest chain is registered first.
-         * Stateless — service-to-service only; no session is created, so CSRF does not apply.
+         * Covers both the snapshot and heartbeat paths with one matcher so they can't drift onto
+         * different gates. Stateless — service-to-service only; no session is created, so CSRF does not
+         * apply.
          */
         @Bean
         @Order(-10)
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "username")
         @ConditionalOnMissingBean(name = "dashboardIngestOAuth2FilterChain")
         SecurityFilterChain dashboardIngestBasicFilterChain(HttpSecurity http, DashboardProperties props) {
-            String ingestPath = props.basePath() + "/api/cluster/snapshot";
+            String[] ingestPaths = ingestPaths(props);
             DashboardProperties.Snapshot snapshot = props.cluster().snapshot();
             String password = snapshot.password();
             String encodedPassword = password.startsWith("{") ? password : "{noop}" + password;
             InMemoryUserDetailsManager userDetails = new InMemoryUserDetailsManager(
                     User.builder().username(snapshot.username()).password(encodedPassword)
                             .roles("FAILOVER_PEER").build());
-            http.securityMatcher(ingestPath)
+            http.securityMatcher(ingestPaths)
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .httpBasic(Customizer.withDefaults())
                     .userDetailsService(userDetails)
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPath));
-            log.info("Failover dashboard ingest '{}' secured with HTTP Basic (user: '{}').",
-                    ingestPath, snapshot.username());
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPaths));
+            log.info("Failover dashboard ingest {} secured with HTTP Basic (user: '{}').",
+                    Arrays.toString(ingestPaths), snapshot.username());
             return http.build();
         }
 
         /**
          * Ingest open (permit-all) when {@code snapshot.allow-insecure-ingest=true} is explicitly set.
-         * Not created when Basic or OAuth2 ingest chain is already registered.
+         * Not created when Basic or OAuth2 ingest chain is already registered. Covers both the snapshot
+         * and heartbeat paths.
          */
         @Bean
         @Order(-10)
@@ -485,13 +527,14 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                 havingValue = "true")
         @ConditionalOnMissingBean(name = {"dashboardIngestOAuth2FilterChain", "dashboardIngestBasicFilterChain"})
         SecurityFilterChain dashboardIngestOpenFilterChain(HttpSecurity http, DashboardProperties props) {
-            String ingestPath = props.basePath() + "/api/cluster/snapshot";
-            http.securityMatcher(ingestPath)
+            String[] ingestPaths = ingestPaths(props);
+            http.securityMatcher(ingestPaths)
                     .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPath));
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPaths));
             log.warn("===================================================================================");
-            log.warn("Failover dashboard ingest '{}' is running WITHOUT an access-control gate.", ingestPath);
+            log.warn("Failover dashboard ingest {} is running WITHOUT an access-control gate.",
+                    Arrays.toString(ingestPaths));
             log.warn("(allow-insecure-ingest=true) Set snapshot.username+password or");
             log.warn("snapshot.oauth2-client-registration-id to secure the ingest endpoint.");
             log.warn("Use only on a trusted internal network (k8s namespace, VPC).");
@@ -500,7 +543,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         }
 
         /** Main dashboard gate: {@code base-path/**} requires the configured role. {@code @Order(0)} ensures
-         * ingest chains at {@code @Order(-10)} are evaluated first for {@code /api/cluster/snapshot}.
+         * ingest chains at {@code @Order(-10)} are evaluated first for the ingest paths.
          * Stateless — HTTP Basic auth; no session is created. Dashboard is read-only (GET only), so no
          * state-changing operations exist and CSRF protection uses Spring Security defaults. */
         @Bean
@@ -541,15 +584,29 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "oauth2-client-registration-id")
         @ConditionalOnMissingBean(name = "dashboardIngestOAuth2FilterChain")
         SecurityFilterChain dashboardIngestOAuth2FilterChain(HttpSecurity http, DashboardProperties props) {
-            String ingestPath = props.basePath() + "/api/cluster/snapshot";
-            http.securityMatcher(ingestPath)
+            String[] ingestPaths = ingestPaths(props);
+            http.securityMatcher(ingestPaths)
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                     .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPath));
-            log.info("Failover dashboard ingest '{}' secured with OAuth2 JWT.", ingestPath);
+                    .csrf(csrf -> csrf.ignoringRequestMatchers(ingestPaths));
+            log.info("Failover dashboard ingest {} secured with OAuth2 JWT.", Arrays.toString(ingestPaths));
             return http.build();
         }
+    }
+
+    /**
+     * The two peer-ingest paths — {@code base-path/api/cluster/snapshot} and
+     * {@code base-path/api/cluster/heartbeat} — matched together by every ingest
+     * {@code SecurityFilterChain} so they can never drift onto different gates (one dedicated
+     * {@code securityMatcher(...)} call covers both, instead of one hand-maintained per endpoint).
+     *
+     * @param props the bound {@code failover.dashboard.*} properties
+     * @return the two ingest paths, snapshot first
+     */
+    private static String[] ingestPaths(DashboardProperties props) {
+        String cluster = props.basePath() + "/api/cluster/";
+        return new String[] {cluster + "snapshot", cluster + "heartbeat"};
     }
 
     /**

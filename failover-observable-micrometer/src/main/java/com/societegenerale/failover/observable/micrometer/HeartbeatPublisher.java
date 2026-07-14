@@ -72,11 +72,13 @@ public class HeartbeatPublisher implements AutoCloseable {
     }
 
     private void beat() {
+        String instanceId = instanceIdResolver.resolve();
         try {
-            pushClient.send(instanceIdResolver.resolve());
+            pushClient.send(instanceId);
             if (failing.getAndSet(false)) {
                 log.info("Failover heartbeat to '{}' recovered.", heartbeatUrl);
             }
+            log.debug("Failover heartbeat to '{}' succeeded for instance '{}'.", heartbeatUrl, instanceId);
         } catch (Exception e) {
             if (!failing.getAndSet(true)) {
                 log.warn("Failover heartbeat to '{}' failed: {}.", heartbeatUrl,

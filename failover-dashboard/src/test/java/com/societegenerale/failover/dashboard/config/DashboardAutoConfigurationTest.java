@@ -498,6 +498,79 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("Basic ingest chain matches BOTH the snapshot and heartbeat paths (not just snapshot)")
+    void basicIngestChainMatchesBothIngestPaths() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> {
+                    org.springframework.security.web.SecurityFilterChain chain =
+                            ctx.getBean("dashboardIngestBasicFilterChain", org.springframework.security.web.SecurityFilterChain.class);
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "POST", "/failover-dashboard/api/cluster/snapshot"))).isTrue();
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "POST", "/failover-dashboard/api/cluster/heartbeat"))).isTrue();
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "GET", "/failover-dashboard/api/config"))).isFalse();
+                });
+    }
+
+    @Test
+    @DisplayName("Spring Security present + allow-insecure=true + 'prod' profile ⇒ fail-closed (I-14)")
+    void allowInsecureRefusedUnderProdProfileWhenSecurityPresent() {
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.security.allow-insecure=true",
+                        "spring.profiles.active=prod")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    @DisplayName("Spring Security present + allow-insecure=true + non-prod profile ⇒ starts, main gate permits all")
+    void allowInsecureAllowedOffProdProfileWhenSecurityPresent() {
+        runner.withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.security.allow-insecure=true",
+                        "spring.profiles.active=dev")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).hasBean("dashboardSecurityFilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("Spring Security present + allow-insecure-ingest=true + 'prod' profile ⇒ fail-closed (I-14)")
+    void allowInsecureIngestRefusedUnderProdProfile() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.allow-insecure-ingest=true",
+                        "spring.profiles.active=prod")
+                .run(ctx -> assertThat(ctx).hasFailed());
+    }
+
+    @Test
+    @DisplayName("Spring Security present + allow-insecure-ingest=true + non-prod profile ⇒ starts, open chain registered")
+    void allowInsecureIngestAllowedOffProdProfile() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.allow-insecure-ingest=true",
+                        "spring.profiles.active=dev")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).hasBean("dashboardIngestOpenFilterChain");
+                });
+    }
+
+    @Test
     @DisplayName("addViewControllers redirects bare base-path to trailing slash, forwards trailing slash to index.html")
     void registersWelcomeForward() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard");

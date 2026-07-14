@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,9 +34,10 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * @author Anand Manissery
  */
+@Slf4j
 @RestController
 @RequestMapping("${failover.dashboard.base-path:/failover-dashboard}/api/cluster")
-public class ClusterSnapshotController {
+public class ClusterSnapshotController implements PeerIngestEndpoint {
 
     private final SnapshotStore snapshotStore;
 
@@ -56,6 +58,9 @@ public class ClusterSnapshotController {
     @PostMapping("/snapshot")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void ingest(@RequestBody ClusterSnapshot snapshot) {
+        log.debug("Received cluster snapshot from instance '{}' ({} config entries).",
+                snapshot.instanceId(), snapshot.configEntries().size());
         snapshotStore.upsert(snapshot);
+        log.debug("Cluster snapshot from instance '{}' recorded.", snapshot.instanceId());
     }
 }
