@@ -504,6 +504,18 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("shared-store mode + pre-encoded ingest password ({bcrypt}…) ⇒ used verbatim, not double-wrapped in {noop}")
+    void basicIngestChainAcceptsPreEncodedPassword() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password={noop}secret")
+                .run(ctx -> assertThat(ctx).hasBean("dashboardIngestBasicFilterChain"));
+    }
+
+    @Test
     @DisplayName("shared-store mode + allow-insecure-ingest=true ⇒ open (permit-all) ingest chain registered")
     void openIngestChainRegisteredWhenAllowInsecureIngest() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -717,6 +729,18 @@ class DashboardAutoConfigurationTest {
     @DisplayName("no backing auth + type=EXPRESSION ⇒ starts clean (warns, doesn't fail — expression may not need auth)")
     void authBackingValidatorWarnsNotFailsForExpressionType() {
         bareSecurityRunner()
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.type=EXPRESSION",
+                        "failover.dashboard.security.expression=permitAll")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("type=EXPRESSION + a UserDetailsService bean present ⇒ starts clean, no warn needed")
+    void authBackingValidatorSkipsWarnForExpressionTypeWithBackingAuth() {
+        bareSecurityRunner()
+                .withBean(UserDetailsService.class, () -> new InMemoryUserDetailsManager(
+                        User.withUsername("test").password("{noop}test").roles("FAILOVER_ADMIN").build()))
                 .withPropertyValues("failover.dashboard.enabled=true",
                         "failover.dashboard.security.type=EXPRESSION",
                         "failover.dashboard.security.expression=permitAll")
