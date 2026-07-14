@@ -129,7 +129,7 @@ failover:
 | `base-path`                                               | `/failover-dashboard` | Dedicated namespace for UI + API. Must start with `/`, not be `/`, no trailing `/` — else the context fails fast.                                                                                                                                                                                                              |
 | `exposure.ui`                                             | `true`                | Serve the static UI. `false` = API-only.                                                                                                                                                                                                                                                                                       |
 | `exposure.api`                                            | `true`                | Serve the JSON API. `false` = UI-only.                                                                                                                                                                                                                                                                                         |
-| `exposure.include`                                        | all of them           | API endpoints served: `config`, `failover-health`, `metrics`, `health`, `cluster`, `instances`. Trim to narrow; an omitted endpoint returns `404`. `/api/metrics/series` is gated with `metrics`; `/api/cluster/snapshot` (shared-store ingest) with `cluster`; `/api/instances` with `instances`.                             |
+| `exposure.include`                                        | all of them           | **UI-facing read** API endpoints served: `config`, `failover-health`, `metrics`, `health`, `cluster`, `instances`. Trim to narrow; an omitted endpoint returns `404`. `/api/metrics/series` is gated with `metrics`; `/api/instances` with `instances`; **cluster read views** (e.g. the Instances tab's cluster data) with `cluster`. Does **not** gate `POST /api/cluster/snapshot` (peer ingest) — that write path is exempt from exposure narrowing on purpose and has its own dedicated access control; see [exposure.include vs. ingest access control](#exposureinclude-vs-ingest-access-control). |
 | `security.type`                                           | `AUTHORITY`           | Authorization strategy: `ROLE` (role-based, `hasRole`), `AUTHORITY` (authority-based, `hasAuthority`; default), or `EXPRESSION` (SpEL, `WebExpressionAuthorizationManager`).                                                                                                                                                   |
 | `security.role`                                           | `FAILOVER_ADMIN`      | Role required for `base-path/**` when `type=ROLE` and Spring Security is present. Ignored otherwise.                                                                                                                                                                                                                           |
 | `security.authority`                                      | `FAILOVER_ADMIN`      | Authority required for `base-path/**` when `type=AUTHORITY` (default) and Spring Security is present. Ignored otherwise.                                                                                                                                                                                                       |
@@ -349,11 +349,103 @@ Three further operational signals are surfaced from existing meters (still no ne
 
 ---
 
-## Security-Fail-Closed
+## Security
 
-The dashboard surfaces internal operational data, so the access gate is **not** relaxed by the convenience defaults.
+The dashboard surfaces internal operational data, so the access gate is **not** relaxed by the convenience
+defaults: every request is denied unless explicitly allowed, at every layer, from the first line of config.
 
-### Access Control Strategy
+### Security model at a glance
+
+Two **independent** gates protect the dashboard, plus one **narrowing** filter that isn't a gate at all —
+keeping these three straight is the key to reasoning about who can reach what:
+
+```
+                         ┌─────────────────────────────────────────────┐
+  Browser / API caller   │  1. Main gate — dashboardSecurityFilterChain │
+  GET  base-path/**  ───►│     security.type: ROLE | AUTHORITY |        │───► UI + read API
+                         │     EXPRESSION. Who may VIEW the dashboard.  │
+                         └─────────────────────────────────────────────┘
+
+                         ┌─────────────────────────────────────────────┐
+  Peer instance          │  2. Ingest gate — dashboardIngest*FilterChain│
+  POST base-path/api/    │     Basic | OAuth2 | Open. Who may PUSH a    │───► SnapshotStore /
+       cluster/snapshot  │     snapshot/heartbeat. Independent of #1 —  │     HeartbeatStore
+       cluster/heartbeat │     evaluated first, main gate never runs.   │
+  ───────────────────────┴─────────────────────────────────────────────┘
+
+                         ┌─────────────────────────────────────────────┐
+  (after gate 1 or 2     │  3. exposure.include — NOT a security gate   │
+   already let it in)    │     Narrows which already-authorized reads   │───► 404 if narrowed out
+                         │     are served. Never applies to ingest.     │
+                         └─────────────────────────────────────────────┘
+```
+
+- **Gate 1 — who may *view* the dashboard** (UI + `GET` read API): [Main dashboard access control](#main-dashboard-access-control) below.
+- **Gate 2 — who may *push* a peer snapshot/heartbeat** (`cluster.mode=shared-store` only): [Peer ingest access control](#peer-ingest-access-control) below. Fully independent of gate 1 — a peer never needs UI credentials, and a UI viewer never needs ingest credentials.
+- **Not a gate — `exposure.include`**: narrows which *already-authorized* read endpoints are served; explained in [`exposure.include` vs. ingest access control](#exposureinclude-vs-ingest-access-control) below.
+
+!!! info "Deployment topology: two instances, two different security needs"
+`failover-dashboard` is meant to run as its **own deployment**, separate from the `@Failover`-instrumented
+services it monitors — the dashboard reads metrics from peers over the network (`cluster.mode=shared-store`
+push, or `cluster.mode=prometheus` pull). Gate 1 protects *that* dashboard instance; gate 2 protects it from
+*peer instances* pushing data in. Running the dashboard **in the same JVM** as `@Failover` business logic
+(`cluster.mode=local`) is a supported but rare exception — typically a single-instance app or local dev — not
+the primary scenario. See [Distributed Deployment: Scenarios](#distributed-deployment-scenarios) below for the
+full picture, and [Picking a mode](#picking-a-mode) to choose between `local` / `shared-store` / `prometheus`.
+
+### Fail-closed by construction
+
+- **Spring Security present** (bundled by the starter, the expected case): gate 1 is always registered — there
+  is no configuration that removes it. `security.allow-insecure=true` is a *narrower* escape hatch (below), not
+  an absence of the gate.
+- **Spring Security absent from the classpath**: the context **refuses to start** — enabling the dashboard
+  without any way to gate it is treated as a startup error, not a silent open door. The only way past this is
+  the explicit `allow-insecure=true` escape hatch (dev / trusted-network only).
+- **The `allow-insecure` escape hatches are refused under the `prod` profile** — both
+  `security.allow-insecure` (gate 1) and `cluster.snapshot.allow-insecure-ingest` (gate 2). This holds
+  **regardless of whether Spring Security is present or absent** on the classpath: the context fails fast at
+  startup rather than silently running unsecured in production (I-14).
+- **Never a soft-fail**: every gate either explicitly permits or the request is rejected — there is no code
+  path where a misconfiguration is treated as "allow".
+
+### Should the consuming application secure these endpoints?
+
+**Short answer: yes, in every scenario except local development and CI.** There is no supported production
+topology where either gate is left open. The table below is the concrete "which scenario am I in, what do I
+turn on" reference:
+
+| Scenario                                                              | Gate 1 — main UI/API                                            | Gate 2 — peer ingest (`shared-store` only)                                                    |
+|------------------------------------------------------------------------|-------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| **Production** — any topology, any `cluster.mode`                      | **Must secure.** `security.type=ROLE\|AUTHORITY\|EXPRESSION` with real credentials/IdP integration. `allow-insecure=true` is **refused outright** if `spring.profiles.active` includes `prod` — the app fails to start. | **Must secure**, if `cluster.mode=shared-store` is used at all. `snapshot.username+password` (Basic) or `snapshot.oauth2-client-registration-id` (OAuth2). `allow-insecure-ingest=true` is likewise **refused under `prod`**. |
+| **Staging / pre-prod that mirrors production**                        | Secure it the same way as production — staging environments are routinely reachable from wider networks than assumed. | Same reasoning — secure it.                                                                       |
+| **Local development** (`localhost`, no shared network)                 | `allow-insecure=true` is fine — nothing outside your machine can reach it, and it's not the `prod` profile so the guard doesn't fire. | `allow-insecure-ingest=true` is fine, same reasoning.                                             |
+| **CI / integration tests**                                             | `allow-insecure=true` is the norm — tests assert dashboard behavior without wiring a full auth stack. See the integration tests in `failover-dashboard` for the pattern. | `allow-insecure-ingest=true`, same reasoning.                                                     |
+| **Trusted internal network** (e.g. a Kubernetes namespace with `NetworkPolicy` denying external ingress, peers and dashboard both inside it) | Still recommend securing it — it's cheap (a role check) and defends against lateral movement *within* the trusted zone, which network policy alone doesn't stop. If you accept the risk, `allow-insecure=true` works outside the `prod` profile. | `allow-insecure-ingest=true` is the one place a *reasoned* exception is common — service-to-service traffic fully inside a network boundary you control. Still gated by the same `prod`-profile refusal as a backstop against this reasoning being applied to an internet-facing deployment by mistake. |
+| **Single-JVM co-location** (`cluster.mode=local`, dashboard and `@Failover` in the same app — the rare topology, see [Security model at a glance](#security-model-at-a-glance) above) | **Must secure**, same as any production app — this is still an HTTP endpoint on the same app, reachable by whatever can reach the app. | N/A — no ingest endpoint exists in `local` mode; there's nothing to secure or leave open. |
+
+**How to secure gate 1** (production checklist):
+
+1. Keep `spring-boot-starter-security` (or equivalent) on the classpath — the starter brings it in by default.
+2. Pick a `security.type` — `AUTHORITY` (default) for permission-based systems, `ROLE` for RBAC, `EXPRESSION` for
+   composite rules. See [Main dashboard access control](#main-dashboard-access-control) below for the config and
+   examples for each.
+3. Wire real authentication (the dashboard doesn't provide a login mechanism — it authorizes whatever
+   `Authentication` your app's Spring Security setup already produces: form login, SSO, an upstream gateway
+   injecting a principal, etc.).
+4. Leave `security.allow-insecure` at its default `false`. Never set it `true` under the `prod` profile — the
+   context will refuse to start if you do, by design.
+
+**How to secure gate 2** (production checklist, `cluster.mode=shared-store` only):
+
+1. Pick one: `snapshot.username` + `snapshot.password` (Basic, no IdP needed) or
+   `snapshot.oauth2-client-registration-id` (OAuth2 Bearer, recommended when an IdP is already in play). See
+   [Peer ingest access control](#peer-ingest-access-control) below for both, with peer-side and dashboard-side
+   config pairs.
+2. Leave `cluster.snapshot.allow-insecure-ingest` at its default `false`. Same `prod`-profile refusal as gate 1.
+3. If you're on `cluster.mode=local` or `cluster.mode=prometheus`, there's no ingest endpoint — this checklist
+   doesn't apply; skip straight to gate 1.
+
+### Main dashboard access control
 
 Three authorization strategies are supported, selected via `security.type`:
 
@@ -555,6 +647,215 @@ public FailoverSecurityProvider failoverSecurityProvider() {
     };
 }
 ```
+
+---
+
+### Peer ingest access control
+
+The peer ingest endpoints — `POST /api/cluster/snapshot` (metrics) and `POST /api/cluster/heartbeat` (liveness, opt-in) — receive peer pushes and share one dedicated gate, secured three ways.
+Choose one; the dashboard activates the matching filter chain automatically.
+
+#### Option 1 — HTTP Basic Auth
+
+**When to use:** peers can't use OAuth2; a shared secret is acceptable; no IdP in the infra.
+
+```
+Peer                                  Dashboard
+ │──► POST /api/cluster/snapshot           │
+ │    Authorization: Basic base64(u:p)     │
+ │                              dashboardIngestBasicFilterChain
+ │                                         │── InMemoryUserDetailsManager({noop}pwd)
+ │                                         │── 401 if credentials mismatch
+ │◄── 200 OK ──────────────────────────────│
+```
+
+**Dashboard properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        username: ingest-user   # activates dashboardIngestBasicFilterChain
+        password: s3cr3t        # plain text — {noop} applied internally on the dashboard
+```
+
+**Peer properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        publish-url: http://dashboard:8080/failover-dashboard
+        username: ingest-user   # must match dashboard's snapshot.username
+        password: s3cr3t        # plain text — sent as-is in Authorization: Basic
+```
+
+---
+
+#### Option 2 — OAuth2 Bearer (Recommended when IdP is available)
+
+**When to use:** peers already have `OAuth2AuthorizedClientManager`; IdP manages tokens; no shared secrets; automatic
+token rotation.
+
+```
+Peer                  IdP                     Dashboard
+ │──► POST /token ───►│                           │
+ │◄── Bearer JWT ─────│                           │
+ │──► POST /api/cluster/snapshot ────────────────►│
+ │    Authorization: Bearer <jwt>    dashboardIngestOAuth2FilterChain
+ │                                               │── jwt().issuerUri validation
+ │                                               │── 401 if token invalid / expired
+ │◄── 200 OK ────────────────────────────────────│
+```
+
+**Dashboard properties:**
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://idp.example.com/realms/myrealm
+# No snapshot.username needed — OAuth2 chain activates via classpath dep
+```
+
+Dashboard `pom.xml` additions: `spring-security-oauth2-resource-server` + `spring-security-oauth2-jose`.
+
+**Peer properties:**
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          failover-dashboard:
+            client-id: failover-peer
+            client-secret: <secret>
+            authorization-grant-type: client_credentials
+            scope: failover:ingest
+        provider:
+          my-idp:
+            token-uri: https://idp.example.com/realms/myrealm/protocol/openid-connect/token
+
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        publish-url: http://dashboard:8080/failover-dashboard
+        oauth2-client-registration-id: failover-dashboard
+```
+
+Peer `pom.xml` addition: `spring-security-oauth2-client`.
+
+---
+
+#### Option 3 — No Auth / Open Ingest (Dev / Trusted Networks Only)
+
+**When to use:** development, or peers and dashboard share an isolated, trusted network. **Never production without
+network controls.**
+
+**Dashboard properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        allow-insecure-ingest: true   # ⚠ logs WARN at startup; refused under 'prod' profile
+```
+
+**Peer properties:**
+
+```yaml
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        publish-url: http://dashboard:8080/failover-dashboard
+        allow-insecure-ingest: true   # suppresses the publisher-side no-auth startup WARN
+        # no username / password / oauth2 needed
+```
+
+Without `allow-insecure-ingest: true` on the peer, the publisher logs a startup `WARN` on every peer
+that no auth is configured — even when the open ingest is intentional. Set this flag to acknowledge
+the insecure choice and silence the warn.
+
+---
+
+#### Auth Priority Summary
+
+| Priority              | Active when                                                            | Filter chain (dashboard)                                           | Publisher sends                                                                            |
+|-----------------------|------------------------------------------------------------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| **1 — OAuth2 Bearer** | `spring-security-oauth2-resource-server` on dashboard classpath        | `dashboardIngestOAuth2FilterChain` `@Order(-10)`                   | `Authorization: Bearer <jwt>`                                                              |
+| **2 — Basic Auth**    | `snapshot.username` set on dashboard; OAuth2 chain absent              | `dashboardIngestBasicFilterChain` `@Order(-10)`                    | `Authorization: Basic base64(u:p)`                                                         |
+| **3 — Open**          | `snapshot.allow-insecure-ingest: true` on dashboard; both above absent | `dashboardIngestOpenFilterChain` `@Order(-10)` (permit-all + WARN) | (none) — set `allow-insecure-ingest: true` on peer too to suppress the publisher-side WARN |
+
+OAuth2 always wins when both OAuth2 and Basic are configured. The dashboard's main UI/API filter chain
+(`dashboardSecurityFilterChain`) operates at `@Order(0)` and is not affected by the ingest chain.
+
+---
+
+#### `exposure.include` vs. ingest access control
+
+A request to `POST /api/cluster/snapshot` passes through **two independent gates**, in this order — and it's
+important not to conflate them when reasoning about "who can push a snapshot":
+
+```
+Peer ──► POST /api/cluster/snapshot
+           │
+           ▼
+   1. Spring Security filter chain (authentication / authorization)
+      One of dashboardIngestOAuth2FilterChain | dashboardIngestBasicFilterChain |
+      dashboardIngestOpenFilterChain — @Order(-10), matches the ingest path first,
+      so the main dashboardSecurityFilterChain (@Order(0), UI/API role check) is
+      never consulted for this path. Rejects with 401 on bad/missing credentials.
+           │ authenticated / permitted
+           ▼
+   2. DashboardExposureInterceptor (Spring MVC HandlerInterceptor)
+      Runs after Security has already let the request through. Enforces
+      exposure.include on read endpoints — config / failover-health / metrics /
+      health / cluster / instances. The ClusterSnapshotController handler is
+      explicitly exempted from this check: it is a write/ingest path, not a
+      UI-facing read, and is already governed by gate 1 above.
+           │
+           ▼
+   3. ClusterSnapshotController.ingest() — recorded into SnapshotStore
+```
+
+**Why the exemption exists:** `exposure.include` is meant to narrow what the *dashboard UI and its read API*
+serve — e.g. an operator who only wants the `config` and `metrics` tabs reachable, without `cluster`/`instances`.
+Before this exemption, narrowing `exposure.include` to exclude `cluster` silently 404'd every peer snapshot push
+too, because the interceptor matched the `cluster` path segment in `/api/cluster/snapshot` and treated it as the
+same `cluster` read endpoint. That broke `cluster.mode=shared-store` aggregation as a side effect of an unrelated
+UI-narrowing change, with **no log line anywhere** — the request never reached the controller, so even
+`logging.level.com.societegenerale.failover.dashboard=DEBUG` showed nothing.
+
+**Current behavior:**
+
+- `POST /api/cluster/snapshot` (ingest) is **never** gated by `exposure.include` — only by whichever ingest
+  filter chain from the [Auth Priority Summary](#auth-priority-summary) table above is active. Narrowing
+  `exposure.include` can no longer break cluster aggregation.
+- **Read** endpoints under `/api/cluster/**` (the Instances tab's cluster-aggregated data, `/api/cluster/*`
+  views) are still gated by `cluster` in `exposure.include`, same as before — this exemption only applies to
+  the ingest write path.
+- If `cluster.mode=shared-store` is enabled but `cluster` is missing from `exposure.include`, the dashboard logs
+  a startup `WARN` naming the specific consequence (cluster reads will 404; ingest is unaffected), so the
+  narrowing choice is visible immediately instead of discovered later via a silent push failure.
+- Rejections from the interceptor (for endpoints that *are* still gated) now log at `DEBUG`:
+  `Rejecting <uri> — endpoint '<name>' not in exposure.include=<list>` — set
+  `logging.level.com.societegenerale.failover.dashboard=DEBUG` to see them.
+
+!!! tip "Diagnosing a peer push that silently doesn't show up"
+Enable `DEBUG` logging on **both sides**. On the peer: `ClusterSnapshotPublisher` logs the push attempt, its
+target URL, and success/failure (`RestClientSnapshotPushClient` logs the same at the HTTP-client level). On the
+dashboard: `ClusterSnapshotController` logs each received snapshot's `instanceId` and config-entry count, and
+`DashboardExposureInterceptor` logs any rejection with the reason. If nothing appears on the dashboard side at
+all, check the ingest filter chain's own log line at startup (`Failover dashboard ingest [...] secured with ...`
+or `... is running WITHOUT an access-control gate`) and verify the peer's credentials / `publish-url` match it.
 
 ---
 
@@ -1123,7 +1424,7 @@ standalone app (see scenario 2.7).
 
 The POST endpoint that receives peer snapshots is `/api/cluster/snapshot`; it can be secured with
 **Basic Auth**, **OAuth2 Bearer**, or left **open** (dev only). See
-the [authentication summary](#snapshot-ingest-authentication-options) below.
+the [peer ingest access control](#peer-ingest-access-control) below.
 
 ---
 
@@ -1688,156 +1989,6 @@ marked DOWN before its first ping arrives.
 `POST /api/cluster/heartbeat` is gated by the **same** filter chain as `POST /api/cluster/snapshot`. No extra security
 config is needed; peers authenticate identically to snapshot pushes.
 
----
-
-### Snapshot Ingest Authentication: Options
-
-The `POST /api/cluster/snapshot` endpoint receives peer metric snapshots. It can be secured three ways.
-Choose one; the dashboard activates the matching filter chain automatically.
-
-#### Option 1 — HTTP Basic Auth
-
-**When to use:** peers can't use OAuth2; a shared secret is acceptable; no IdP in the infra.
-
-```
-Peer                                  Dashboard
- │──► POST /api/cluster/snapshot           │
- │    Authorization: Basic base64(u:p)     │
- │                              dashboardIngestBasicFilterChain
- │                                         │── InMemoryUserDetailsManager({noop}pwd)
- │                                         │── 401 if credentials mismatch
- │◄── 200 OK ──────────────────────────────│
-```
-
-**Dashboard properties:**
-
-```yaml
-failover:
-  dashboard:
-    cluster:
-      snapshot:
-        username: ingest-user   # activates dashboardIngestBasicFilterChain
-        password: s3cr3t        # plain text — {noop} applied internally on the dashboard
-```
-
-**Peer properties:**
-
-```yaml
-failover:
-  dashboard:
-    cluster:
-      snapshot:
-        publish-url: http://dashboard:8080/failover-dashboard
-        username: ingest-user   # must match dashboard's snapshot.username
-        password: s3cr3t        # plain text — sent as-is in Authorization: Basic
-```
-
----
-
-#### Option 2 — OAuth2 Bearer (Recommended when IdP is available)
-
-**When to use:** peers already have `OAuth2AuthorizedClientManager`; IdP manages tokens; no shared secrets; automatic
-token rotation.
-
-```
-Peer                  IdP                     Dashboard
- │──► POST /token ───►│                           │
- │◄── Bearer JWT ─────│                           │
- │──► POST /api/cluster/snapshot ────────────────►│
- │    Authorization: Bearer <jwt>    dashboardIngestOAuth2FilterChain
- │                                               │── jwt().issuerUri validation
- │                                               │── 401 if token invalid / expired
- │◄── 200 OK ────────────────────────────────────│
-```
-
-**Dashboard properties:**
-
-```yaml
-spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: https://idp.example.com/realms/myrealm
-# No snapshot.username needed — OAuth2 chain activates via classpath dep
-```
-
-Dashboard `pom.xml` additions: `spring-security-oauth2-resource-server` + `spring-security-oauth2-jose`.
-
-**Peer properties:**
-
-```yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          failover-dashboard:
-            client-id: failover-peer
-            client-secret: <secret>
-            authorization-grant-type: client_credentials
-            scope: failover:ingest
-        provider:
-          my-idp:
-            token-uri: https://idp.example.com/realms/myrealm/protocol/openid-connect/token
-
-failover:
-  dashboard:
-    cluster:
-      snapshot:
-        publish-url: http://dashboard:8080/failover-dashboard
-        oauth2-client-registration-id: failover-dashboard
-```
-
-Peer `pom.xml` addition: `spring-security-oauth2-client`.
-
----
-
-#### Option 3 — No Auth / Open Ingest (Dev / Trusted Networks Only)
-
-**When to use:** development, or peers and dashboard share an isolated, trusted network. **Never production without
-network controls.**
-
-**Dashboard properties:**
-
-```yaml
-failover:
-  dashboard:
-    cluster:
-      snapshot:
-        allow-insecure-ingest: true   # ⚠ logs WARN at startup; refused under 'prod' profile
-```
-
-**Peer properties:**
-
-```yaml
-failover:
-  dashboard:
-    cluster:
-      snapshot:
-        publish-url: http://dashboard:8080/failover-dashboard
-        allow-insecure-ingest: true   # suppresses the publisher-side no-auth startup WARN
-        # no username / password / oauth2 needed
-```
-
-Without `allow-insecure-ingest: true` on the peer, the publisher logs a startup `WARN` on every peer
-that no auth is configured — even when the open ingest is intentional. Set this flag to acknowledge
-the insecure choice and silence the warn.
-
----
-
-#### Auth Priority Summary
-
-| Priority              | Active when                                                            | Filter chain (dashboard)                                           | Publisher sends                                                                            |
-|-----------------------|------------------------------------------------------------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
-| **1 — OAuth2 Bearer** | `spring-security-oauth2-resource-server` on dashboard classpath        | `dashboardIngestOAuth2FilterChain` `@Order(-10)`                   | `Authorization: Bearer <jwt>`                                                              |
-| **2 — Basic Auth**    | `snapshot.username` set on dashboard; OAuth2 chain absent              | `dashboardIngestBasicFilterChain` `@Order(-10)`                    | `Authorization: Basic base64(u:p)`                                                         |
-| **3 — Open**          | `snapshot.allow-insecure-ingest: true` on dashboard; both above absent | `dashboardIngestOpenFilterChain` `@Order(-10)` (permit-all + WARN) | (none) — set `allow-insecure-ingest: true` on peer too to suppress the publisher-side WARN |
-
-OAuth2 always wins when both OAuth2 and Basic are configured. The dashboard's main UI/API filter chain
-(`dashboardSecurityFilterChain`) operates at `@Order(0)` and is not affected by the ingest chain.
-
----
 
 ## Exporting Metrics Elsewhere (OTLP / Elastic)
 

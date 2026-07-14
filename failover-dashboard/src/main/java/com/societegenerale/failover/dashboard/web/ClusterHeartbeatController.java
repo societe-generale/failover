@@ -30,13 +30,16 @@ import org.springframework.web.bind.annotation.RestController;
  * it to classify instances as {@code LIVE} or {@code DOWN}.
  *
  * <p>Present only when {@code failover.dashboard.cluster.shared-store.liveness.enabled=true}. Mapped under
- * the same {@code base-path/api/cluster} namespace as the snapshot ingest, covered by the same auth gate.
+ * the same {@code base-path/api/cluster} namespace as the snapshot ingest, and matched by the same
+ * dedicated ingest {@code SecurityFilterChain} (see {@code DashboardAutoConfiguration}) — both
+ * {@code /api/cluster/snapshot} and {@code /api/cluster/heartbeat} are covered by one
+ * {@code securityMatcher(...)} call so they can never drift onto different gates.
  *
  * @author Anand Manissery
  */
 @RestController
 @RequestMapping("${failover.dashboard.base-path:/failover-dashboard}/api/cluster")
-public class ClusterHeartbeatController {
+public class ClusterHeartbeatController implements PeerIngestEndpoint {
 
     private final HeartbeatStore heartbeatStore;
 
