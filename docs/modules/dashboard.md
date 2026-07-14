@@ -492,6 +492,72 @@ failover:
       # Users with role ADMIN, OR authority WRITE_PRIVILEGE, can access the dashboard
 ```
 
+#### Authentication mechanism: HTTP Basic (default) vs. OAuth2 login
+
+`security.type` (above) controls **authorization** — who's allowed in. It's independent of **authentication** —
+how someone proves who they are — which is a separate choice:
+
+- **HTTP Basic** (default) — a native browser credential prompt, checked against whatever
+  `UserDetailsService` / `AuthenticationProvider` your app supplies.
+- **OAuth2 login** — browser redirects to an IdP (GitHub, Okta, Azure AD, your own OIDC provider, etc.) for a
+  proper login page, session, and logout, instead of a native Basic-Auth prompt. Activate it by setting
+  `security.oauth2-client-registration-id` to a registration under the standard
+  `spring.security.oauth2.client.registration.<id>` map:
+
+```yaml title="Example — OAuth2 login (e.g. GitHub) with ROLE-based authorization"
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: <github-oauth-app-id>
+            client-secret: <github-oauth-app-secret>
+            authorization-grant-type: authorization_code
+            scope: read:user
+
+failover:
+  dashboard:
+    security:
+      type: ROLE                            # or AUTHORITY / EXPRESSION — unchanged
+      role: ADMIN
+      oauth2-client-registration-id: github  # switches httpBasic() → oauth2Login()
+```
+
+Whichever mechanism you pick, `security.type`/`role`/`authority`/`expression` still decide who's authorized —
+only the login mechanism changes. Requires `spring-security-oauth2-client` on the classpath (already an
+optional dependency of `failover-dashboard`).
+
+!!! warning "Map IdP claims to your role/authority — or every login will be denied"
+An OAuth2/OIDC login doesn't automatically grant `FAILOVER_ADMIN` or any other configured role/authority —
+GitHub, Okta, etc. hand back their own scopes (`SCOPE_read:user`, `OAUTH2_USER`, ...), which won't match
+`hasRole('ADMIN')`/`hasAuthority('FAILOVER_ADMIN')` by default. Supply a standard Spring Security
+`GrantedAuthoritiesMapper` bean to map IdP claims/scopes onto the role or authority `security.type` checks —
+this is a normal Spring Security extension point, not something the dashboard invents. Without one, every
+successfully-authenticated OAuth2 user is still denied (`403`, not `401` — authentication succeeded,
+authorization didn't).
+
+!!! note "Not the same property as the peer-ingest OAuth2 setting"
+`security.oauth2-client-registration-id` (above) is for **browsers logging into the UI** — a human,
+`authorization_code` grant. It is a different property from
+`cluster.snapshot.oauth2-client-registration-id` (see [Peer ingest access control](#peer-ingest-access-control)
+below), which is for **peer instances pushing snapshots** — machine-to-machine, `client_credentials` grant.
+Both reference registrations under the same `spring.security.oauth2.client.registration.<id>` map, but they
+identify different registrations for different purposes — there's no reason they'd share a value, and most
+deployments that use both will point them at two entirely different IdP configurations (or even different
+IdPs).
+
+!!! info "Fail-fast if HTTP Basic has no way to authenticate anyone"
+With the default HTTP Basic mechanism and `security.type=ROLE` or `AUTHORITY` (either requires a real,
+non-anonymous authenticated principal), the dashboard **fails to start** unless a `UserDetailsService` or
+`AuthenticationProvider` bean exists somewhere in the app — without one, every credential 401s and there is
+no correct password to find. This is deliberately fail-fast rather than a silent dead end: define one of
+those beans (`spring.security.user.name`/`password` is enough for a quick dev user), switch to OAuth2 login
+above, override `dashboardSecurityFilterChain` with your own mechanism, or set `security.allow-insecure=true`
+for trusted-network/dev use. `security.type=EXPRESSION` only warns instead of failing, since a SpEL
+expression might legitimately grant access without real authentication (e.g. an IP-based rule) — something
+that can't be determined statically at startup.
+
 ### Expression-based access control
 
 `security.type=EXPRESSION` hands `security.expression` straight to Spring Security's

@@ -69,9 +69,9 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- OAuth2 client — provided/optional: snapshot publisher uses the consumer's existing
-             OAuth2AuthorizedClientManager to obtain Bearer tokens for the ingest endpoint. Only
-             activates when the consumer already has spring-security-oauth2-client on the classpath. -->
+        <!-- OAuth2 client — provided/optional: backs the dashboard UI's OAuth2 login gate
+             (dashboardOAuth2SecurityFilterChain, activated by security.oauth2-client-registration-id).
+             Only activates when the consumer already has spring-security-oauth2-client on the classpath. -->
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-oauth2-client</artifactId>
