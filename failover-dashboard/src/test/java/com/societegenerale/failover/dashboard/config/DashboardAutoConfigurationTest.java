@@ -183,6 +183,21 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("cluster.mode=shared-store + shared-store.store=jdbc (no SnapshotStore bean) ⇒ falls back to local")
+    void sharedStoreModeWithoutSnapshotStoreBeanFallsBackToLocal() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.shared-store.store=jdbc")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
+                    assertThat(ctx.getBean(MetricsSource.class)).isInstanceOf(LocalRegistryMetricsSource.class);
+                });
+    }
+
+    @Test
     @DisplayName("no SnapshotStore / ingest controller when not in shared-store mode")
     void noSharedStoreBeansInLocalMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
@@ -335,6 +350,32 @@ class DashboardAutoConfigurationTest {
         new DashboardAutoConfiguration(props).addResourceHandlers(registry);
 
         Mockito.verify(registry).addResourceHandler("/failover-dashboard/**");
+    }
+
+    @Test
+    @DisplayName("addInterceptors registers the exposure interceptor for the configured base path")
+    void registersExposureInterceptor() {
+        DashboardProperties props = new DashboardProperties(true, "/failover-dashboard");
+        org.springframework.web.servlet.config.annotation.InterceptorRegistry registry =
+                Mockito.mock(org.springframework.web.servlet.config.annotation.InterceptorRegistry.class,
+                        Mockito.RETURNS_DEEP_STUBS);
+
+        new DashboardAutoConfiguration(props).addInterceptors(registry);
+
+        Mockito.verify(registry).addInterceptor(
+                Mockito.any(com.societegenerale.failover.dashboard.web.DashboardExposureInterceptor.class));
+    }
+
+    @Test
+    @DisplayName("cluster.mode=shared-store + 'cluster' missing from exposure.include ⇒ warns but still starts")
+    void sharedStoreWithoutClusterExposureWarnsButStarts() {
+        runner.withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.exposure.include=config,metrics,health")
+                .run(ctx -> {
+                    assertThat(ctx).hasNotFailed();
+                    assertThat(ctx.getBean(DashboardProperties.class).exposure().includes("cluster")).isFalse();
+                });
     }
 
     @Test
@@ -505,6 +546,32 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardIngestOAuth2FilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("shared-store mode + snapshot.oauth2-client-registration-id ⇒ OAuth2 ingest filter chain registered, matches both ingest paths")
+    void oauth2IngestChainRegisteredWhenRegistrationIdSet() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withBean(org.springframework.security.oauth2.jwt.JwtDecoder.class,
+                        () -> Mockito.mock(org.springframework.security.oauth2.jwt.JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.oauth2-client-registration-id=idp")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardIngestOAuth2FilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestBasicFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardIngestOpenFilterChain");
+
+                    org.springframework.security.web.SecurityFilterChain chain = ctx.getBean(
+                            "dashboardIngestOAuth2FilterChain", org.springframework.security.web.SecurityFilterChain.class);
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "POST", "/failover-dashboard/api/cluster/snapshot"))).isTrue();
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "POST", "/failover-dashboard/api/cluster/heartbeat"))).isTrue();
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "GET", "/failover-dashboard/api/config"))).isFalse();
                 });
     }
 

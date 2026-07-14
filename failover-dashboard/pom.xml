@@ -119,6 +119,13 @@
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- oauth2ResourceServer().jwt() needs JwtDecoder, shipped in oauth2-jose rather than
+             oauth2-resource-server itself; exercises the dashboardIngestOAuth2FilterChain bean in tests. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

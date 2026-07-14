@@ -622,9 +622,8 @@ public class SecurityConfig {
 }
 ```
 
-If the dashboard is the *only* thing your app serves (no other endpoints, [Scenario E — Standalone
-dashboard](#scenario-e-standalone-dashboard-its-own-app)), none of this applies — there's nothing outside
-`base-path` for a second chain to cover.
+If the dashboard is the *only* thing your app serves (no other endpoints, [Scenario E — Standalone dashboard](#scenario-e-standalone-dashboard-its-own-app)), 
+none of this applies — there's nothing outside`base-path` for a second chain to cover.
 
 ### Expression-based access control
 

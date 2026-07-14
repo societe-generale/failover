@@ -706,7 +706,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
      * <p>Isolated in its own inner class so the resource-server API is never loaded when absent.
      */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.BearerTokenAuthenticationToken")
+    @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken")
     static class OAuth2IngestSecurityConfiguration {
 
         @Bean("dashboardIngestOAuth2FilterChain")
