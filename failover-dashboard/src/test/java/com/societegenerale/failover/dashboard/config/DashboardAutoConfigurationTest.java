@@ -17,6 +17,7 @@
 package com.societegenerale.failover.dashboard.config;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
+import com.societegenerale.failover.dashboard.security.DashboardAuthenticationConfigurer;
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
@@ -31,8 +32,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 
@@ -383,7 +388,7 @@ class DashboardAutoConfigurationTest {
     void uiOffServesNoStatic() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
-                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false, ""),
+                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false, "", false),
                 new DashboardProperties.History(false, 120, 15),
                 new DashboardProperties.Health(0.99, 0.90, 100),
                 new DashboardProperties.Cluster("local"));
@@ -782,6 +787,73 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx).hasBean("dashboardOAuth2SecurityFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
                 });
+    }
+
+    // --- DashboardAuthenticationConfigurer seam ---
+
+    @Test
+    @DisplayName("DashboardAuthenticationConfigurer bean present ⇒ custom auth chain registered, built-ins back off")
+    void customAuthenticationConfigurerTakesPriority() {
+        runner.withUserConfiguration(CustomAuthenticationConfigurerConfig.class)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardCustomAuthFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardOAuth2SecurityFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardOAuth2ResourceServerFilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("DashboardAuthenticationConfigurer bean present ⇒ auth-backing validator not required")
+    void authBackingValidatorSkippedWhenCustomConfigurerPresent() {
+        bareSecurityRunner()
+                .withUserConfiguration(CustomAuthenticationConfigurerConfig.class)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("security.oauth2-resource-server=true ⇒ OAuth2 resource-server filter chain registered")
+    void oauth2ResourceServerChainRegistered() {
+        runner.withBean(JwtDecoder.class, () -> Mockito.mock(JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-resource-server=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardOAuth2ResourceServerFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("no backing auth + security.oauth2-resource-server=true ⇒ validator doesn't require one (resource server authenticates instead)")
+    void authBackingValidatorSkippedWhenResourceServerConfigured() {
+        bareSecurityRunner()
+                .withBean(JwtDecoder.class, () -> Mockito.mock(JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-resource-server=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("security.oauth2-resource-server=true takes lower priority than a custom DashboardAuthenticationConfigurer")
+    void customConfigurerTakesPriorityOverResourceServer() {
+        runner.withUserConfiguration(CustomAuthenticationConfigurerConfig.class)
+                .withBean(JwtDecoder.class, () -> Mockito.mock(JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-resource-server=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardCustomAuthFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardOAuth2ResourceServerFilterChain");
+                });
+    }
+
+    @Configuration
+    static class CustomAuthenticationConfigurerConfig {
+        @Bean
+        DashboardAuthenticationConfigurer dashboardAuthenticationConfigurer() {
+            return (http, context) -> http.httpBasic(Customizer.withDefaults());
+        }
     }
 
     @org.springframework.context.annotation.Configuration

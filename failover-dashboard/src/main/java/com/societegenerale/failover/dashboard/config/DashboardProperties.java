@@ -86,7 +86,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, ""), new History(false, 120, 15), new Health(0.99, 0.90, 100),
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, "", false), new History(false, 120, 15), new Health(0.99, 0.90, 100),
                 new Cluster("local"));
     }
 
@@ -99,7 +99,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, ""), new History(false, 120, 15), health, new Cluster("local"));
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, "", false), new History(false, 120, 15), health, new Cluster("local"));
     }
 
     /**
@@ -150,6 +150,13 @@ public record DashboardProperties(
      *                      through {@code type}/{@code role}/{@code authority}/{@code expression} — only the
      *                      authentication mechanism changes. See the {@code GrantedAuthoritiesMapper} note in
      *                      the dashboard security docs for mapping IdP claims onto {@code FAILOVER_ADMIN}.
+     * @param oauth2ResourceServer secure the dashboard UI/API with OAuth2 resource-server (JWT Bearer)
+     *                      validation instead of a browser login (default {@code false}); for consumers whose
+     *                      SSO is terminated upstream (gateway/sidecar) and forwards a validated JWT on every
+     *                      request. Requires {@code spring-security-oauth2-resource-server} on the classpath
+     *                      and the standard {@code spring.security.oauth2.resourceserver.jwt.*} properties.
+     *                      Ignored when {@code oauth2ClientRegistrationId} is set or a
+     *                      {@code DashboardAuthenticationConfigurer} bean is present.
      */
     public record Security(
         @DefaultValue("AUTHORITY") SecurityType type,
@@ -157,7 +164,8 @@ public record DashboardProperties(
         @DefaultValue("FAILOVER_ADMIN") String authority,
         String expression,
         @DefaultValue("false") boolean allowInsecure,
-        @DefaultValue("") String oauth2ClientRegistrationId
+        @DefaultValue("") String oauth2ClientRegistrationId,
+        @DefaultValue("false") boolean oauth2ResourceServer
     ) {
         /** Canonical, binder-targeted constructor — validates the expression is set when required. */
         @ConstructorBinding

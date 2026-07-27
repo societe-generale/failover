@@ -492,17 +492,23 @@ failover:
       # Users with role ADMIN, OR authority WRITE_PRIVILEGE, can access the dashboard
 ```
 
-#### Authentication mechanism: HTTP Basic (default) vs. OAuth2 login
+#### Authentication mechanism: HTTP Basic, OAuth2 login, OAuth2 resource server, or bring your own
 
 `security.type` (above) controls **authorization** — who's allowed in. It's independent of **authentication** —
-how someone proves who they are — which is a separate choice:
+how someone proves who they are — which is a separate choice, and one of **four** mechanisms, tried in this
+priority order (each backs off cleanly when a higher-priority one is active):
 
-- **HTTP Basic** (default) — a native browser credential prompt, checked against whatever
-  `UserDetailsService` / `AuthenticationProvider` your app supplies.
-- **OAuth2 login** — browser redirects to an IdP (GitHub, Okta, Azure AD, your own OIDC provider, etc.) for a
-  proper login page, session, and logout, instead of a native Basic-Auth prompt. Activate it by setting
-  `security.oauth2-client-registration-id` to a registration under the standard
-  `spring.security.oauth2.client.registration.<id>` map:
+1. **A custom [`DashboardAuthenticationConfigurer`](#bring-your-own-mechanism-dashboardauthenticationconfigurer)
+   bean** — bring any mechanism the other three don't cover.
+2. **OAuth2 login** — a browser-native SSO redirect flow (session-based).
+3. **OAuth2 resource server** — stateless JWT Bearer validation, for SSO terminated upstream of the dashboard.
+4. **HTTP Basic** (default) — a native browser credential prompt, checked against whatever
+   `UserDetailsService` / `AuthenticationProvider` your app supplies.
+
+**OAuth2 login** — browser redirects to an IdP (GitHub, Okta, Azure AD, your own OIDC provider, etc.) for a
+proper login page, session, and logout, instead of a native Basic-Auth prompt. Activate it by setting
+`security.oauth2-client-registration-id` to a registration under the standard
+`spring.security.oauth2.client.registration.<id>` map:
 
 ```yaml title="Example — OAuth2 login (e.g. GitHub) with ROLE-based authorization"
 spring:
@@ -524,9 +530,63 @@ failover:
       oauth2-client-registration-id: github  # switches httpBasic() → oauth2Login()
 ```
 
+**OAuth2 resource server** — validates a JWT `Authorization: Bearer` header on every request, including the
+initial page load. No session, no login page — this only works when whatever sits in front of the dashboard
+(an API gateway, service-mesh sidecar, or reverse proxy such as oauth2-proxy) has already done SSO and
+forwards a validated token on the browser's behalf. A bare browser navigating straight to the dashboard has
+no token to attach and will just 401 — use OAuth2 login instead for that case. Activate with
+`security.oauth2-resource-server=true` plus the standard Spring Boot resource-server properties:
+
+```yaml title="Example — OAuth2 resource server (JWT) with AUTHORITY-based authorization"
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://idp.example.com/realms/internal   # or jwk-set-uri
+
+failover:
+  dashboard:
+    security:
+      type: AUTHORITY
+      authority: FAILOVER_ADMIN
+      oauth2-resource-server: true   # switches httpBasic() → oauth2ResourceServer().jwt()
+```
+
 Whichever mechanism you pick, `security.type`/`role`/`authority`/`expression` still decide who's authorized —
-only the login mechanism changes. Requires `spring-security-oauth2-client` on the classpath (already an
-optional dependency of `failover-dashboard`).
+only the authentication mechanism changes. OAuth2 login requires `spring-security-oauth2-client` on the
+classpath; OAuth2 resource server requires `spring-security-oauth2-resource-server` — both already optional
+dependencies of `failover-dashboard`.
+
+#### Bring your own mechanism: `DashboardAuthenticationConfigurer`
+
+The three mechanisms above cover HTTP Basic, browser SSO, and gateway-forwarded JWTs — but not everything.
+Declare a `DashboardAuthenticationConfigurer` bean to plug in **any** other mechanism — a trusted-header
+identity forwarded by a reverse proxy (oauth2-proxy, Envoy), SAML, mTLS-derived principals, an existing
+enterprise `AuthenticationProvider`, or a shop whose only OAuth2 registration is `client_credentials` and
+wants the dashboard to sit entirely behind its own gateway's authentication — without re-implementing the
+`securityMatcher(base-path + "/**")`, the `security.type`/`role`/`authority`/`expression` authorization check,
+or the `403` error handling every built-in mechanism already shares:
+
+```java title="Example — trusted-header identity forwarded by an upstream gateway"
+@Configuration
+public class DashboardAuthConfig {
+
+    @Bean
+    public DashboardAuthenticationConfigurer dashboardAuthenticationConfigurer() {
+        return (http, context) -> http.addFilterBefore(
+                new TrustedHeaderAuthenticationFilter("X-Authenticated-User", "X-Authenticated-Roles"),
+                UsernamePasswordAuthenticationFilter.class);
+    }
+}
+```
+
+`configure(http, context)` is called after `securityMatcher` and `authorizeHttpRequests` are already applied
+to `http` — add only the authentication step (`http.oauth2ResourceServer(...)`, `http.addFilterBefore(...)`,
+`http.x509(...)`, etc.); don't call `securityMatcher` or `authorizeHttpRequests` again. A
+`DashboardAuthenticationConfigurer` bean takes priority over every built-in mechanism — including OAuth2
+login and OAuth2 resource server, if either is also configured — and, like both of those, is exempt from the
+"fail-fast if HTTP Basic has no way to authenticate anyone" check below (it authenticates on its own terms).
 
 !!! warning "Map IdP claims to your role/authority — or every login will be denied"
 An OAuth2/OIDC login doesn't automatically grant `FAILOVER_ADMIN` or any other configured role/authority —
@@ -553,10 +613,13 @@ non-anonymous authenticated principal), the dashboard **fails to start** unless 
 `AuthenticationProvider` bean exists somewhere in the app — without one, every credential 401s and there is
 no correct password to find. This is deliberately fail-fast rather than a silent dead end: define one of
 those beans (`spring.security.user.name`/`password` is enough for a quick dev user), switch to OAuth2 login
-above, override `dashboardSecurityFilterChain` with your own mechanism, or set `security.allow-insecure=true`
-for trusted-network/dev use. `security.type=EXPRESSION` only warns instead of failing, since a SpEL
-expression might legitimately grant access without real authentication (e.g. an IP-based rule) — something
-that can't be determined statically at startup.
+or OAuth2 resource server above, declare a `DashboardAuthenticationConfigurer` bean, override
+`dashboardSecurityFilterChain` with your own mechanism, or set `security.allow-insecure=true` for
+trusted-network/dev use. `security.type=EXPRESSION` only warns instead of failing, since a SpEL expression
+might legitimately grant access without real authentication (e.g. an IP-based rule) — something that can't
+be determined statically at startup. OAuth2 login, OAuth2 resource server, and a custom
+`DashboardAuthenticationConfigurer` are all exempt from this check — each authenticates on its own terms and
+needs no `UserDetailsService`.
 
 !!! info "Specific 403 messages, not Spring Security's blank default"
 When someone authenticates fine but lacks the required role/authority, the main gate returns a `403` with a
@@ -571,13 +634,15 @@ Security `AccessDeniedHandler`) bean to override.
 #### If your app has endpoints outside `base-path` — you need your own `SecurityFilterChain` too
 
 This isn't specific to the dashboard — it's how Spring Security works whenever more than one
-`SecurityFilterChain` bean exists. `dashboardSecurityFilterChain` / `dashboardOAuth2SecurityFilterChain`
-only ever call `securityMatcher(base-path + "/**")`. If your app has its **own** endpoints outside that
-namespace (`/`, `/api/**`, `/actuator/health`, `/error`, and — with OAuth2 login — the redirect endpoints
-Spring Security itself exposes like `/oauth2/authorization/<registration-id>`), none of them match the
-dashboard's chain, and **no other chain exists unless you add one**. Spring Security's own catch-all default
-chain only auto-registers when *no* `SecurityFilterChain` bean is present anywhere in the app — the
-dashboard's own bean already counts, so that fallback never kicks in.
+`SecurityFilterChain` bean exists. Whichever of `dashboardSecurityFilterChain`,
+`dashboardOAuth2SecurityFilterChain`, `dashboardOAuth2ResourceServerFilterChain`, or
+`dashboardCustomAuthFilterChain` is active only ever calls `securityMatcher(base-path + "/**")`. If your app
+has its **own** endpoints outside that namespace (`/`, `/api/**`, `/actuator/health`, `/error`, and — with
+OAuth2 login — the redirect endpoints Spring Security itself exposes like
+`/oauth2/authorization/<registration-id>`), none of them match the dashboard's chain, and **no other chain
+exists unless you add one**. Spring Security's own catch-all default chain only auto-registers when *no*
+`SecurityFilterChain` bean is present anywhere in the app — the dashboard's own bean already counts, so that
+fallback never kicks in.
 
 Unmatched here doesn't mean "permitted" — it means **not filtered at all**: the request never passes through
 Spring Security, so `SecurityContextHolder` is never populated (an endpoint like `/api/me` reading the
