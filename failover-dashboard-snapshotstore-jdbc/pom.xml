@@ -45,6 +45,13 @@
             <artifactId>spring-boot-starter-jdbc</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Test-only: lets us stand up the real, servlet-conditional DashboardAutoConfiguration
+             alongside SnapshotStoreJdbcAutoConfiguration, to test their auto-configuration ordering. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

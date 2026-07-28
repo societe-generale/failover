@@ -28,6 +28,8 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Snapsho
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,11 +44,16 @@ import java.util.Objects;
  * reset-aware carry-forward (persisted in the nullable {@code BASELINE_JSON} column), so a peer restart never
  * shrinks the cluster aggregate — and the carried baseline itself survives a dashboard restart.
  *
- * <p>Table {@code (INSTANCE_ID PK, RECEIVED_AT BIGINT, SUMMARY_JSON CLOB, BASELINE_JSON CLOB NULL, CONFIG_JSON CLOB NULL)}, named {@code <tablePrefix> +}
- * {@link #BASE_TABLE} (the prefix is validated — letters/digits/underscore only — since it is concatenated into
- * SQL). Upsert is a portable update-then-insert (no dialect-specific MERGE); {@code autoDdl} creates the table on
- * startup if missing. Stores only aggregate, non-sensitive failover metrics — never business data — so a single
- * shared table is sufficient (no multi-tenancy; use {@code tablePrefix} to namespace).
+ * <p>Table {@code (INSTANCE_ID PK, RECEIVED_AT TIMESTAMP WITH TIME ZONE, SUMMARY_JSON CLOB, BASELINE_JSON CLOB NULL,
+ * CONFIG_JSON CLOB NULL)}, named {@code <tablePrefix> +} {@link #BASE_TABLE} (the prefix is validated —
+ * letters/digits/underscore only — since it is concatenated into SQL). {@code RECEIVED_AT} is read/written as
+ * {@link OffsetDateTime} (always {@link ZoneOffset#UTC}) via {@code setObject}/{@code getObject}, the portable JDBC
+ * 4.2 mapping for a time-zone-aware column, and converted to/from epoch-millis at this boundary — the rest of the
+ * codebase (e.g. {@code InstanceMetrics.lastSeenEpochMs}) stays in epoch-millis. Upsert is a portable
+ * update-then-insert (no dialect-specific MERGE). The table is never created or altered by this store — schema
+ * management is the consuming service's responsibility; see the module docs for the DDL to run per dialect. Stores
+ * only aggregate, non-sensitive failover metrics — never business data — so a single shared table is sufficient
+ * (no multi-tenancy; use {@code tablePrefix} to namespace).
  *
  * @author Anand Manissery
  */
@@ -68,24 +75,19 @@ public class SnapshotStoreJdbc implements SnapshotStore {
      * @param mapper       serializes/deserializes the summary/baseline/config JSON columns
      * @param maxInstances supported small-cluster ceiling; beyond it a warning is logged
      * @param tablePrefix  prefix prepended to the base table name; letters/digits/underscore only
-     * @param autoDdl      create the table on startup if missing
      */
-    public SnapshotStoreJdbc(JdbcTemplate jdbc, ObjectMapper mapper, int maxInstances,
-                             String tablePrefix, boolean autoDdl) {
+    public SnapshotStoreJdbc(JdbcTemplate jdbc, ObjectMapper mapper, int maxInstances, String tablePrefix) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.maxInstances = maxInstances;
-        this.table = validatePrefix(tablePrefix) + BASE_TABLE;
-        if (autoDdl) {
-            createTableIfMissing();
-        }
+        this.table = TablePrefix.validate(tablePrefix) + BASE_TABLE;
         log.info("Failover shared-store using durable JDBC snapshot store (table='{}').", this.table);
     }
 
     @Override
     public void upsert(ClusterSnapshot snapshot) {
         String id = snapshot.instanceId();
-        long now = System.currentTimeMillis();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<MetricsSummary[]> existing = jdbc.query(
                 "SELECT SUMMARY_JSON, BASELINE_JSON FROM " + table + " WHERE INSTANCE_ID = ?",
                 (rs, rowNum) -> new MetricsSummary[]{fromJson(rs.getString("SUMMARY_JSON")),
@@ -113,7 +115,8 @@ public class SnapshotStoreJdbc implements SnapshotStore {
                         return null;
                     }
                     MetricsSummary combined = SnapshotBaseline.combined(fromJsonNullable(rs.getString("BASELINE_JSON")), summary);
-                    return new InstanceMetrics(rs.getString("INSTANCE_ID"), rs.getLong("RECEIVED_AT"), combined, LiveStatus.UNKNOWN);
+                    long receivedAt = rs.getObject("RECEIVED_AT", OffsetDateTime.class).toInstant().toEpochMilli();
+                    return new InstanceMetrics(rs.getString("INSTANCE_ID"), receivedAt, combined, LiveStatus.UNKNOWN);
                 }).stream().filter(Objects::nonNull).toList();
     }
 
@@ -141,14 +144,6 @@ public class SnapshotStoreJdbc implements SnapshotStore {
             log.warn("Failover shared-store (JDBC) has {} instances (max-instances={}); consider cluster.mode=prometheus "
                     + "for clusters this large.", total, maxInstances);
         }
-    }
-
-    private void createTableIfMissing() {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS " + table
-                + " (INSTANCE_ID VARCHAR(255) PRIMARY KEY, RECEIVED_AT BIGINT NOT NULL, SUMMARY_JSON CLOB NOT NULL, "
-                + "BASELINE_JSON CLOB, CONFIG_JSON CLOB)");
-        // Upgrade path: a table created before CONFIG_JSON existed is missing the column.
-        jdbc.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS CONFIG_JSON CLOB");
     }
 
     private String toJson(MetricsSummary summary) {
@@ -192,22 +187,5 @@ public class SnapshotStoreJdbc implements SnapshotStore {
             log.warn("Skipping unreadable snapshot config row: {}", e.toString());
             return List.of();
         }
-    }
-
-    /**
-     * Validates the table prefix — it is concatenated into SQL, so it must be a safe SQL identifier fragment:
-     * empty, or letters/digits/underscore only (no whitespace, quotes, or punctuation). Prevents SQL injection
-     * via the prefix. A {@code null} prefix is treated as empty.
-     *
-     * @param prefix the configured {@code table-prefix} ({@code ""} ⇒ the base table name is used as-is)
-     * @return the validated prefix
-     */
-    private static String validatePrefix(String prefix) {
-        String p = prefix == null ? "" : prefix;
-        if (!p.matches("[A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException(
-                    "Illegal snapshot table-prefix '" + prefix + "' — only letters, digits and underscore are allowed.");
-        }
-        return p;
     }
 }

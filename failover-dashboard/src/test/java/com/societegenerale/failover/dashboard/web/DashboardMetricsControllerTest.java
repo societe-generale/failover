@@ -105,7 +105,7 @@ class DashboardMetricsControllerTest {
     @Test
     @DisplayName("GET /api/metrics/source returns the metrics provenance")
     void sourceJson() throws Exception {
-        when(metricsSource.info()).thenReturn(new SourceInfo("local", 1, -1, 123L, false));
+        when(metricsSource.info()).thenReturn(new SourceInfo("local", 1, -1, 123L, false, false));
 
         mockMvc.perform(get("/failover-dashboard/api/metrics/source"))
                 .andExpect(status().isOk())

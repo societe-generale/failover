@@ -140,7 +140,7 @@ public class SharedStoreMetricsSource implements MetricsSource {
         long newest = all.stream().mapToLong(InstanceMetrics::lastSeenEpochMs).max().orElse(0L);
         long reporting = all.stream().filter(i -> i.liveStatus() != LiveStatus.DOWN).count();
         return new SourceInfo("shared-store", (int) reporting, maxInstances,
-                newest > 0 ? newest : System.currentTimeMillis(), false);
+                newest > 0 ? newest : System.currentTimeMillis(), false, heartbeatStore != null);
     }
 
     @Override

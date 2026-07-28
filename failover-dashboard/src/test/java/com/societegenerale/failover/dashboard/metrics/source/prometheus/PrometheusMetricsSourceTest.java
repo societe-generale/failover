@@ -238,7 +238,7 @@ class PrometheusMetricsSourceTest {
     void infoFallsBack() {
         when(client.query(argThat(q -> q != null && q.contains("group by (instance)"))))
                 .thenThrow(new PrometheusException("boom", null));
-        SourceInfo localInfo = new SourceInfo("local", 1, -1, 1L, false);
+        SourceInfo localInfo = new SourceInfo("local", 1, -1, 1L, false, false);
         when(fallback.info()).thenReturn(localInfo);
 
         assertThat(source.info()).isSameAs(localInfo);

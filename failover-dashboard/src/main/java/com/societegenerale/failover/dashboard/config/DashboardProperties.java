@@ -20,6 +20,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -293,19 +294,26 @@ public record DashboardProperties(
      * @param retention         bounded retention for the cluster trend history
      * @param sampleIntervalSeconds seconds between cluster-trend samples (default {@code 30})
      * @param jdbc              JDBC durability settings, used when {@code store=jdbc}
+     * @param liveness          dashboard-side toggle for heartbeat liveness tracking (ADR 66); off by default
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
         @DefaultValue("180") int livenessSeconds,
         @DefaultValue("10") int maxInstances,
-        @DefaultValue("7d") java.time.Duration instanceRetention,
+        @DefaultValue("7d") Duration instanceRetention,
         @DefaultValue Retention retention,
         @DefaultValue("30") int sampleIntervalSeconds,
-        @DefaultValue Jdbc jdbc
+        @DefaultValue Jdbc jdbc,
+        @DefaultValue Liveness liveness
     ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public SharedStore {
+        }
+
         /** Convenience with defaults (used in tests / programmatic setup). */
         public SharedStore() {
-            this("inmemory", 180, 10, java.time.Duration.ofDays(7), new Retention(), 30, new Jdbc());
+            this("inmemory", 180, 10, Duration.ofDays(7), new Retention(), 30, new Jdbc(), new Liveness());
         }
     }
 
@@ -318,17 +326,51 @@ public record DashboardProperties(
      * FAILOVER_DASHBOARD_SNAPSHOT}. The prefix is validated (letters/digits/underscore only) since it is
      * concatenated into SQL — use it to namespace per environment or per tenant (one table per tenant).
      *
+     * <p>The snapshot table is never created or altered by the failover module — schema management (including
+     * upgrades when new columns are added) is the consuming service's responsibility. See the module docs for the
+     * DDL to run per dialect.
+     *
      * @param tablePrefix prefix prepended to the base table {@code FAILOVER_DASHBOARD_SNAPSHOT} (default {@code ""});
      *                    letters/digits/underscore only
-     * @param autoDdl     create the table on startup if missing (default {@code true}); disable to manage the schema yourself
      */
     public record Jdbc(
-        @DefaultValue("") String tablePrefix,
-        @DefaultValue("true") boolean autoDdl
+        @DefaultValue("") String tablePrefix
     ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Jdbc {
+        }
+
         /** Convenience with defaults. */
         public Jdbc() {
-            this("", true);
+            this("");
+        }
+    }
+
+    /**
+     * Dashboard-side toggle for heartbeat liveness tracking (ADR 66), separate from the peer-side
+     * {@code cluster.snapshot.heartbeat.enabled} push flag. Off by default: when disabled, no
+     * {@code HeartbeatStore} bean is created at all (neither the in-memory default nor, under
+     * {@code store=jdbc}, the durable JDBC one) — the ingest endpoint ({@code /api/cluster/heartbeat}) is
+     * not mapped, {@code SharedStoreMetricsSource} never queries the store (every instance stays
+     * {@code LiveStatus.UNKNOWN}), and — critically for {@code store=jdbc} — the
+     * {@code FAILOVER_DASHBOARD_HEARTBEAT} table is never required to exist. Enable only when at least one
+     * peer also sets {@code cluster.snapshot.heartbeat.enabled=true}; enabling one side without the other
+     * leaves every instance at {@code UNKNOWN} (dashboard side) or wastes pushes nobody reads (peer side).
+     *
+     * @param enabled turn on dashboard-side heartbeat liveness tracking (default {@code false})
+     */
+    public record Liveness(
+        @DefaultValue("false") boolean enabled
+    ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Liveness {
+        }
+
+        /** Convenience with defaults. */
+        public Liveness() {
+            this(false);
         }
     }
 
@@ -341,12 +383,12 @@ public record DashboardProperties(
      * @param maxEntries hard cap on retained points; oldest truncated first (default {@code 100000})
      */
     public record Retention(
-        @DefaultValue("7d") java.time.Duration maxAge,
+        @DefaultValue("7d") Duration maxAge,
         @DefaultValue("100000") int maxEntries
     ) {
         /** Convenience with defaults. */
         public Retention() {
-            this(java.time.Duration.ofDays(7), 100_000);
+            this(Duration.ofDays(7), 100_000);
         }
     }
 

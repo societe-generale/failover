@@ -21,11 +21,15 @@ import com.societegenerale.failover.dashboard.security.DashboardAuthenticationCo
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
+import com.societegenerale.failover.dashboard.web.ClusterHeartbeatController;
 import com.societegenerale.failover.dashboard.web.DashboardController;
 import com.societegenerale.failover.dashboard.web.DashboardMetricsController;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusMetricsSource;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
+import com.societegenerale.failover.dashboard.web.ClusterSnapshotController;
 import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -179,8 +183,8 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx.getBean(MetricsSource.class))
                             .isInstanceOf(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SharedStoreMetricsSource.class);
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.web.ClusterSnapshotController.class);
+                    assertThat(ctx).hasSingleBean(SnapshotStore.class);
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotController.class);
                     assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesStore.class);
                     assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesSampler.class);
                     assertThat(ctx.getBean(MetricsSource.class).info().mode()).isEqualTo("shared-store");
@@ -197,7 +201,7 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.cluster.shared-store.store=jdbc")
                 .run(ctx -> {
                     assertThat(ctx).hasNotFailed();
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
+                    assertThat(ctx).doesNotHaveBean(SnapshotStore.class);
                     assertThat(ctx.getBean(MetricsSource.class)).isInstanceOf(LocalRegistryMetricsSource.class);
                 });
     }
@@ -209,23 +213,39 @@ class DashboardAutoConfigurationTest {
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues("failover.dashboard.enabled=true")
                 .run(ctx -> {
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.web.ClusterSnapshotController.class);
+                    assertThat(ctx).doesNotHaveBean(SnapshotStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotController.class);
                 });
     }
 
     @Test
     @SuppressWarnings("java:S2699")
-    @DisplayName("shared-store mode ⇒ HeartbeatStore + ClusterHeartbeatController always wired")
-    void heartbeatBeansAlwaysWiredInSharedStoreMode() {
+    @DisplayName("shared-store mode, liveness.enabled unset ⇒ off by default, no HeartbeatStore or ClusterHeartbeatController (ADR 66)")
+    void heartbeatBeansAbsentByDefaultInSharedStoreMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues(
                         "failover.dashboard.enabled=true",
                         "failover.dashboard.cluster.mode=shared-store")
                 .run(ctx -> {
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class);
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.web.ClusterHeartbeatController.class);
+                    assertThat(ctx).doesNotHaveBean(HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterHeartbeatController.class);
+                });
+    }
+
+    @Test
+    @SuppressWarnings("java:S2699")
+    @DisplayName("shared-store mode + liveness.enabled=true ⇒ HeartbeatStore + ClusterHeartbeatController wired")
+    void heartbeatBeansWiredWhenLivenessExplicitlyEnabled() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.shared-store.liveness.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(HeartbeatStore.class);
+                    assertThat(ctx).hasSingleBean(ClusterHeartbeatController.class);
                 });
     }
 
@@ -237,8 +257,8 @@ class DashboardAutoConfigurationTest {
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues("failover.dashboard.enabled=true")
                 .run(ctx -> {
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class);
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.web.ClusterHeartbeatController.class);
+                    assertThat(ctx).doesNotHaveBean(HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterHeartbeatController.class);
                 });
     }
 

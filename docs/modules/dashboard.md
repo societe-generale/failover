@@ -107,9 +107,8 @@ failover:
         retention:
           max-age: 7d                # trend-history age bound
           max-entries: 100000        # trend-history size bound (oldest truncated)
-        jdbc: # used when store=jdbc
+        jdbc: # used when store=jdbc; table must be created by the consuming service — see Scenario D for DDL
           table-prefix: ""           # prepended to FAILOVER_DASHBOARD_SNAPSHOT (validated)
-          auto-ddl: true             # create the table on startup if missing
       snapshot: # peer-side push (every instance, incl. non-UI nodes)
         publish-url: ""              # dashboard ingest URL (blank ⇒ this instance does not push)
         interval-seconds: 15         # at most one push per interval (event-driven, throttled)
@@ -146,12 +145,13 @@ failover:
 | `cluster.prometheus.token`                                | `""`                  | Optional bearer token for Prometheus.                                                                                                                                                                                                                                                                                          |
 | `cluster.prometheus.timeout-seconds`                      | `5`                   | Per-query connect/read timeout.                                                                                                                                                                                                                                                                                                |
 | `cluster.shared-store.store`                              | `inmemory`            | `inmemory` (default) or `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`).                                                                                                                                                                                                           |
-| `cluster.shared-store.liveness-seconds`                   | `180`                 | Heartbeat age threshold — instance is `DOWN` after this many seconds without a heartbeat ping. Default matches 3 × the peer default `heartbeat.interval-seconds` (60s).                                                                                                                                                        |
+| `cluster.shared-store.liveness.enabled`                   | `false`               | Dashboard-side toggle for heartbeat liveness tracking (ADR 66) — off by default, independent of the peer-side `cluster.snapshot.heartbeat.enabled`. See [Instance Live Tracking](#28-instance-live-tracking-heartbeat).                                                                                                        |
+| `cluster.shared-store.liveness-seconds`                   | `180`                 | Heartbeat age threshold — instance is `DOWN` after this many seconds without a heartbeat ping. Default matches 3 × the peer default `heartbeat.interval-seconds` (60s). Only relevant when `liveness.enabled=true`.                                                                                                            |
 | `cluster.shared-store.max-instances`                      | `10`                  | Supported small-cluster ceiling; exceeding it logs a warning.                                                                                                                                                                                                                                                                  |
 | `cluster.shared-store.instance-retention`                 | `7d`                  | Retire instances not seen for this long from the Instances tab (their counts stay in the aggregate; `0` keeps every instance forever).                                                                                                                                                                                         |
 | `cluster.shared-store.sample-interval-seconds`            | `30`                  | Cluster-trend sampling cadence.                                                                                                                                                                                                                                                                                                |
 | `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000`       | Trend-history age and size bounds (oldest truncated).                                                                                                                                                                                                                                                                          |
-| `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl`    | `""` / `true`         | Snapshot table prefix (validated) + auto-create, when `store=jdbc`.                                                                                                                                                                                                                                                            |
+| `cluster.shared-store.jdbc.table-prefix`                  | `""`                  | Snapshot table prefix (validated), when `store=jdbc`. The table is never created or altered by the module — see Scenario D for the DDL to provision it yourself.                                                                                                                                                              |
 | `cluster.snapshot.publish-url` / `.interval-seconds`      | `""` / `15`           | Peer-side push. Set to the dashboard's **base URL** (same as `base-path` on the dashboard host): `http://<host>:<port>/failover-dashboard`. The snapshot and heartbeat endpoints are derived automatically (`/api/cluster/snapshot`, `/api/cluster/heartbeat`). Blank ⇒ this instance does not push.                           |
 | `cluster.snapshot.retry-interval-seconds`                 | `300`                 | After a push failure, further push attempts are suppressed for this many seconds (one WARN on first failure, INFO on recovery).                                                                                                                                                                                                |
 | `cluster.snapshot.username` / `.password`                 | `""`                  | HTTP Basic Auth credentials for the ingest endpoint. Ignored when `oauth2-client-registration-id` is set.                                                                                                                                                                                                                      |
@@ -1378,11 +1378,11 @@ failover:
         max-instances: 10
         jdbc:
           table-prefix: ""       # prepended to the base table name; "" ⇒ FAILOVER_DASHBOARD_SNAPSHOT
-          auto-ddl: true         # create the table on startup if missing
 ```
 
-Requires a `DataSource` in the dashboard app (the usual `spring.datasource.*`). Peers are configured exactly as in
-Scenario C (`cluster.snapshot.publish-url`).
+Requires a `DataSource` in the dashboard app (the usual `spring.datasource.*`), **and the snapshot table already
+created** (see DDL below) — the module never creates or alters it; that is the consuming service's responsibility.
+Peers are configured exactly as in Scenario C (`cluster.snapshot.publish-url`).
 
 !!! question "Is multi-tenancy required for the snapshot store?"
 **No.** The snapshot store holds only **aggregate, non-sensitive failover metrics** (counts, rates, latency
@@ -1395,16 +1395,24 @@ is correct and simplest.
 **Table name.** `table-prefix` + the base `FAILOVER_DASHBOARD_SNAPSHOT` (e.g. prefix `DEMO_` →
 `DEMO_FAILOVER_DASHBOARD_SNAPSHOT`). The prefix is validated as a safe SQL identifier fragment (no injection).
 
-**DDL.** With `auto-ddl: true` the table is created automatically. To manage the schema yourself (`auto-ddl: false`),
-create it with the dialect-appropriate type for the JSON column:
+**DDL.** The failover module never creates or alters this table — create it yourself with the dialect-appropriate
+type for the JSON columns before starting the dashboard:
+
+`RECEIVED_AT` (and, below, `LAST_SEEN`) is a time-zone-aware timestamp — the store reads/writes it as
+`OffsetDateTime` (always UTC) via JDBC 4.2 `setObject`/`getObject`, converting to/from epoch-millis at that
+boundary (the rest of the codebase, e.g. `InstanceMetrics.lastSeenEpochMs`, stays in epoch-millis). Declared
+precision is capped per dialect below — PostgreSQL and H2 differ, and MySQL/MariaDB have no `WITH TIME ZONE`
+syntax at all (their `TIMESTAMP` always stores/converts via the session time zone; since the store always
+writes UTC, this is lossless in practice):
 
 ```sql title="PostgreSQL"
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
     INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT   BIGINT NOT NULL,
+    RECEIVED_AT   TIMESTAMP(6) WITH TIME ZONE NOT NULL, -- Postgres caps fractional precision at 6
     SUMMARY_JSON  TEXT   NOT NULL, -- or JSONB
-    BASELINE_JSON TEXT             -- reset-aware carried baseline (ADR 67); nullable
+    BASELINE_JSON TEXT,            -- reset-aware carried baseline (ADR 67); nullable
+    CONFIG_JSON   TEXT             -- pushed @Failover config entries; nullable
 );
 ```
 
@@ -1412,9 +1420,10 @@ CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
     INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT   BIGINT   NOT NULL,
+    RECEIVED_AT   TIMESTAMP(6) NOT NULL, -- no WITH TIME ZONE syntax; max fractional precision is 6
     SUMMARY_JSON  LONGTEXT NOT NULL,
-    BASELINE_JSON LONGTEXT
+    BASELINE_JSON LONGTEXT,
+    CONFIG_JSON   LONGTEXT
 );
 ```
 
@@ -1422,30 +1431,81 @@ CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
     INSTANCE_ID   VARCHAR2(255) PRIMARY KEY,
-    RECEIVED_AT   NUMBER(19)    NOT NULL,
+    RECEIVED_AT   TIMESTAMP(9) WITH TIME ZONE NOT NULL,
     SUMMARY_JSON  CLOB NOT NULL,
-    BASELINE_JSON CLOB
+    BASELINE_JSON CLOB,
+    CONFIG_JSON   CLOB
 );
 ```
 
 ```sql title="H2 / generic"
-CREATE TABLE IF NOT EXISTS FAILOVER_DASHBOARD_SNAPSHOT
+CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
-    INSTANCE_ID
-    VARCHAR
-(
-    255
-) PRIMARY KEY,
-    RECEIVED_AT BIGINT NOT NULL,
-    SUMMARY_JSON CLOB NOT NULL,
-    BASELINE_JSON CLOB
-    );
+    INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT   TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+    SUMMARY_JSON  CLOB NOT NULL,
+    BASELINE_JSON CLOB,
+    CONFIG_JSON   CLOB
+);
 ```
 
 Prepend your `table-prefix` to the table name if you set one. One row per instance (upserted on each push).
 `SUMMARY_JSON` holds the latest raw snapshot; `BASELINE_JSON` (nullable) accumulates the pre-restart totals folded in
 when a counter reset is detected — the dashboard serves `baseline + raw` per instance. Every row contributes its
 last-known counts to the aggregate; the liveness window only drives the `LIVE`/`DOWN` status shown in the Instances tab.
+
+**Heartbeat durability.** When [liveness tracking](#28-instance-live-tracking-heartbeat) is on
+(`cluster.shared-store.liveness.enabled=true`), `store=jdbc` also swaps the heartbeat store from
+`HeartbeatStoreInmemory` to a JDBC-backed one, on the same `DataSource`. This matters beyond restart-survival:
+it's what keeps `LIVE`/`DOWN` status correct when the dashboard is **embedded in more than one `@Failover`
+instance** pointed at the same database (rather than run standalone, Scenario E) — each peer's heartbeat push
+normally lands on whichever single dashboard it's configured to push to, so an in-memory store on each embedded
+dashboard would only ever see its *own* loopback heartbeat and show every other peer stuck at `UNKNOWN`. The
+JDBC table makes liveness visible to every embedded dashboard, not just the one that received the ping. If you
+plan to use liveness tracking, create this table alongside the snapshot table up front:
+
+```sql title="PostgreSQL"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(6) WITH TIME ZONE NOT NULL
+);
+```
+
+```sql title="MySQL / MariaDB"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(6) NOT NULL
+);
+```
+
+```sql title="Oracle"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR2(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(9) WITH TIME ZONE NOT NULL
+);
+```
+
+```sql title="H2 / generic"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(9) WITH TIME ZONE NOT NULL
+);
+```
+
+Same `table-prefix` as the snapshot table (e.g. `DEMO_` → `DEMO_FAILOVER_DASHBOARD_HEARTBEAT`).
+
+!!! note "Only required when `cluster.shared-store.liveness.enabled=true`"
+    This table (and the `HeartbeatStore` bean, and the `/api/cluster/heartbeat` ingest endpoint) only exist
+    when the dashboard-side `cluster.shared-store.liveness.enabled` toggle (default **`false`**, ADR 66) is
+    explicitly turned on — see [Instance Live Tracking](#28-instance-live-tracking-heartbeat). With `store=jdbc`
+    and liveness left off (the default), the dashboard never queries this table at all, so it does **not**
+    need to exist. Turning liveness on without creating the table first fails every dashboard read with
+    `BadSqlGrammarException` / `Table "...FAILOVER_DASHBOARD_HEARTBEAT" not found` — create it before setting
+    `liveness.enabled=true`, not after.
 
 ### Scenario E — Standalone dashboard (its own app)
 
@@ -1897,8 +1957,7 @@ failover:
         store: jdbc
         max-instances: 10
         jdbc:
-          table-prefix: ""    # "" → FAILOVER_DASHBOARD_SNAPSHOT
-          auto-ddl: true      # create the table on startup; set false to manage DDL yourself
+          table-prefix: ""    # "" → FAILOVER_DASHBOARD_SNAPSHOT (table must already exist — see Scenario D)
       snapshot:
         username: ingest-user
         password: s3cr3t
@@ -1946,7 +2005,6 @@ failover:
         max-instances: 10
         jdbc:
           table-prefix: ""
-          auto-ddl: true
 ```
 
 Dependencies: `failover-dashboard-snapshotstore-jdbc` + `spring-security-oauth2-resource-server` +
@@ -2109,13 +2167,22 @@ classifies instances as `LIVE` or `DOWN`. The dot colour in the Instances tab ch
 
 **Key design decisions:**
 
-- **Off by default** — zero overhead unless you opt in on both sides.
+- **Off by default on both sides, independently** (ADR 66) — zero overhead unless you opt in on *both*: peers
+  won't push unless `cluster.snapshot.heartbeat.enabled=true`, and the dashboard won't create a `HeartbeatStore`,
+  map `/api/cluster/heartbeat`, or query liveness at all unless `cluster.shared-store.liveness.enabled=true`.
+  These are deliberately separate flags on separate processes — the dashboard usually runs as its own
+  deployment (Scenario E) and has no way to read a peer's configuration, and one peer's setting can't speak
+  for the whole cluster's. Both need to be `true` for the feature to do anything: peer-only leaves pushes
+  landing nowhere useful; dashboard-only leaves every instance at `UNKNOWN` forever.
 - **Metrics of DOWN instances are preserved** — last-known values still contribute to the cluster aggregate. Only the
   dot turns red; the numbers are not zeroed.
 - **Liveness ≠ snapshot freshness** — a healthy instance with no upstream calls (quiet period) keeps its heartbeat green
   even if no snapshots arrive.
 - **Heartbeat URL is auto-derived** — `/api/cluster/snapshot` → `/api/cluster/heartbeat`; override only for non-standard
   paths.
+- **`store=jdbc` never requires the heartbeat table unless liveness is on** — with `liveness.enabled=false` (the
+  default), the dashboard never touches `FAILOVER_DASHBOARD_HEARTBEAT` even if `store=jdbc`; see the note in
+  Scenario D.
 
 **Recommended timing rule:** set `liveness-seconds` ≥ 3 × `heartbeat.interval-seconds` so an instance must miss three
 pings before it is classified as DOWN.
@@ -2165,6 +2232,8 @@ failover:
       shared-store:
         store: inmemory
         liveness-seconds: 180    # heartbeat age threshold: DOWN after 180s without a ping (= 3 × peer interval-seconds of 60s)
+        liveness:
+          enabled: true          # off by default — without this, no HeartbeatStore bean, no ingest endpoint, no queries
       snapshot:
         username: ingest-user
         password: s3cr3t
@@ -2178,16 +2247,19 @@ marked DOWN before its first ping arrives.
 
 **What you see in the UI:**
 
-| Instance state                 | Dot colour            | Topbar badge                   |
-|--------------------------------|-----------------------|--------------------------------|
-| Tracking disabled              | light green (unknown) | `instance live tracking · off` |
-| Tracking on, heartbeat fresh   | green pulse           | `instance live tracking · on`  |
-| Tracking on, heartbeat expired | red                   | `instance live tracking · on`  |
+| Instance state                                                   | Dot colour             | Topbar badge                          |
+|--------------------------------------------------------------------|-----------------------|----------------------------------------|
+| `shared-store.liveness.enabled=false` (dashboard-side, default)     | light green (unknown) | `instance live tracking · disabled`   |
+| Dashboard-side enabled, but no peer has sent a heartbeat yet        | light green (unknown) | `instance live tracking · waiting`    |
+| Dashboard-side enabled, peer heartbeat fresh                        | green pulse           | `instance live tracking · on`         |
+| Dashboard-side enabled, peer heartbeat expired                      | red                   | `instance live tracking · on`         |
+
+The topbar badge's tooltip names the exact property to set for the `disabled`/`waiting` states, so there's no
+need to cross-reference this table from the running dashboard.
 
 !!! note "Heartbeat endpoint security"
 `POST /api/cluster/heartbeat` is gated by the **same** filter chain as `POST /api/cluster/snapshot`. No extra security
 config is needed; peers authenticate identically to snapshot pushes.
-
 
 ## Exporting Metrics Elsewhere (OTLP / Elastic)
 

@@ -113,7 +113,13 @@ import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebA
                 // After Boot's own fallback-user auto-configuration so dashboardAuthBackingValidator sees
                 // whether Boot already created a generated-password UserDetailsService before deciding
                 // whether the UI gate has no way to authenticate anyone.
-                "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration"
+                "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration",
+                // After the optional JDBC shared-store module (when present) so its SnapshotStore/HeartbeatStore
+                // beans exist by the time snapshotStore()/heartbeatStore() (@ConditionalOnExpression, store=inmemory)
+                // and clusterSnapshotController/clusterHeartbeatController (@ConditionalOnBean) evaluate — without
+                // this, @ConditionalOnBean unreliably sees "no bean" regardless of declaration order between two
+                // independently-conditioned @AutoConfiguration classes, and the ingest endpoints silently never map.
+                "com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc.SnapshotStoreJdbcAutoConfiguration"
         })
 @ConditionalOnWebApplication(type = SERVLET)
 @ConditionalOnClass(MeterRegistry.class)
@@ -323,25 +329,40 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * In-memory heartbeat store — always present in shared-store mode. Instances that never send a heartbeat stay UNKNOWN.
+     * In-memory heartbeat store for {@code cluster.mode=shared-store} — the default {@code store=inmemory}.
+     * {@code store=jdbc} instead activates the durable {@code failover-dashboard-snapshotstore-jdbc} module's
+     * {@code HeartbeatStoreJdbc}, so liveness stays consistent across dashboards embedded in multiple instances
+     * sharing one database. {@code @ConditionalOnMissingBean} so a consumer can supply their own implementation.
+     * Instances that never send a heartbeat stay {@code UNKNOWN}.
+     *
+     * <p>Gated on {@code shared-store.liveness.enabled} (default {@code false}, {@link DashboardProperties.Liveness}) —
+     * off by default, no bean at all until explicitly enabled, so no consumer is ever forced to run the
+     * heartbeat ingest endpoint or (under {@code store=jdbc}) provision {@code FAILOVER_DASHBOARD_HEARTBEAT}
+     * just because shared-store mode is on.
      *
      * @return the in-memory heartbeat store
      */
     @Bean
-    @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnExpression("'${failover.dashboard.cluster.mode:local}' == 'shared-store' "
+            + "and '${failover.dashboard.cluster.shared-store.store:inmemory}' == 'inmemory' "
+            + "and '${failover.dashboard.cluster.shared-store.liveness.enabled:false}' == 'true'")
     @ConditionalOnMissingBean(HeartbeatStore.class)
     public HeartbeatStore heartbeatStore() {
         return new HeartbeatStoreInmemory();
     }
 
     /**
-     * Heartbeat ingest endpoint — always active in shared-store mode; peers opt in by enabling heartbeat on their side.
+     * Heartbeat ingest endpoint; present only in shared-store mode with a {@link HeartbeatStore} bean available
+     * (mirrors {@link #clusterSnapshotController}'s guard — e.g. {@code store=jdbc} without the JDBC module on
+     * the classpath leaves no {@link HeartbeatStore} bean, and this controller must not be wired then either).
+     * Peers opt in by enabling heartbeat on their side.
      *
      * @param heartbeatStore the store to record incoming peer heartbeats into
      * @return the heartbeat ingest controller
      */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnBean(HeartbeatStore.class)
     @ConditionalOnMissingBean
     public ClusterHeartbeatController clusterHeartbeatController(HeartbeatStore heartbeatStore) {
         return new ClusterHeartbeatController(heartbeatStore);
