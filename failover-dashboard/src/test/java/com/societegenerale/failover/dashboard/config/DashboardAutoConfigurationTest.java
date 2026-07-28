@@ -92,6 +92,7 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx).hasSingleBean(DashboardProperties.class);
                     assertThat(ctx).hasSingleBean(DashboardConfigService.class);
                     assertThat(ctx).hasSingleBean(DashboardController.class);
+                    assertThat(ctx).hasSingleBean(DashboardStartupSummaryLogger.class);
                     assertThat(ctx.getBean(DashboardProperties.class).basePath())
                             .isEqualTo("/failover-dashboard");
                 });
@@ -261,6 +262,23 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx).hasSingleBean(HeartbeatStore.class);
                     assertThat(ctx).hasSingleBean(ClusterHeartbeatController.class);
+                });
+    }
+
+    @Test
+    @DisplayName("shared-store mode + liveness.enabled=true + snapshot.ingest.enabled=false ⇒ HeartbeatStore wired, ClusterHeartbeatController absent")
+    void heartbeatControllerAbsentWhenIngestDisabledEvenWithLivenessOn() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.shared-store.liveness.enabled=true",
+                        "failover.dashboard.cluster.snapshot.ingest.enabled=false")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterHeartbeatController.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotController.class);
                 });
     }
 

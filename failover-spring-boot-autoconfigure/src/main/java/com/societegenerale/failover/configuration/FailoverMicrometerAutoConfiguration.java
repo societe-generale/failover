@@ -336,6 +336,38 @@ public class FailoverMicrometerAutoConfiguration {
     }
 
     /**
+     * Peer-side heartbeat publisher: periodically pings the dashboard via whichever {@link HeartbeatPushClient}
+     * transport is in context — HTTP ({@link PublisherConfiguration}) or JDBC-direct
+     * ({@link JdbcPublisherConfiguration}). Transport-agnostic for the same reason as
+     * {@link #clusterSnapshotPublisher}: the polling schedule and log-once-on-failure policy don't depend
+     * on delivery mechanism.
+     *
+     * @param instanceIdResolver  resolves this instance's identity for the pushed heartbeat
+     * @param heartbeatPushClient the active transport (HTTP or JDBC-direct)
+     * @param publisherProperties source of the configured heartbeat interval
+     * @return the publisher
+     */
+    @Bean(destroyMethod = "close")
+    @ConditionalOnBean(HeartbeatPushClient.class)
+    @ConditionalOnMissingBean(HeartbeatPublisher.class)
+    public HeartbeatPublisher heartbeatPublisher(
+            InstanceIdResolver instanceIdResolver,
+            HeartbeatPushClient heartbeatPushClient,
+            FailoverClusterPublisherProperties publisherProperties) {
+        return new HeartbeatPublisher(instanceIdResolver, heartbeatPushClient, resolveHeartbeatTarget(publisherProperties),
+                publisherProperties.heartbeat().intervalSeconds());
+    }
+
+    /** Logging-only description of where heartbeats are delivered — an HTTP URL or, in JDBC-direct mode, the target table. */
+    private static String resolveHeartbeatTarget(FailoverClusterPublisherProperties props) {
+        if (props.jdbc().enabled()) {
+            String prefix = props.jdbc().tablePrefix();
+            return "jdbc:" + (prefix == null || prefix.isBlank() ? "" : prefix) + JdbcHeartbeatPushClient.BASE_TABLE;
+        }
+        return PublisherConfiguration.resolveHeartbeatUrl(props);
+    }
+
+    /**
      * Snapshot publisher configuration — active only when {@code spring-web} is on the classpath
      * (RestClient is in spring-web). Isolated in a nested class so that the RestClient type is only
      * referenced when it is actually available — ASM-evaluated condition means no runtime failure
@@ -372,7 +404,13 @@ public class FailoverMicrometerAutoConfiguration {
             return new RestClientSnapshotPushClient(client, resolveSnapshotUrl(publisherProperties));
         }
 
+        /**
+         * HTTP heartbeat transport. Requires {@code publish-url} (the heartbeat URL is derived from it) in
+         * addition to {@code heartbeat.enabled} — without this guard, enabling heartbeat in JDBC-direct mode
+         * (where {@code publish-url} is blank) would build a relative URL and fail on every ping.
+         */
         @Bean
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
         @ConditionalOnMissingBean(HeartbeatPushClient.class)
         public HeartbeatPushClient restClientHeartbeatPushClient(
@@ -382,18 +420,6 @@ public class FailoverMicrometerAutoConfiguration {
             RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
             String url = resolveHeartbeatUrl(publisherProperties);
             return new RestClientHeartbeatPushClient(client, url);
-        }
-
-        @Bean(destroyMethod = "close")
-        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
-        @ConditionalOnMissingBean(HeartbeatPublisher.class)
-        public HeartbeatPublisher heartbeatPublisher(
-                InstanceIdResolver instanceIdResolver,
-                HeartbeatPushClient heartbeatPushClient,
-                FailoverClusterPublisherProperties publisherProperties) {
-            String url = resolveHeartbeatUrl(publisherProperties);
-            return new HeartbeatPublisher(instanceIdResolver, heartbeatPushClient, url,
-                    publisherProperties.heartbeat().intervalSeconds());
         }
 
         private static String resolveSnapshotUrl(FailoverClusterPublisherProperties props) {
@@ -497,6 +523,24 @@ public class FailoverMicrometerAutoConfiguration {
                                                           FailoverClusterPublisherProperties publisherProperties) {
             return new JdbcSnapshotPushClient(new JdbcTemplate(dataSource), mapper.getIfAvailable(ObjectMapper::new),
                     publisherProperties.jdbc().tablePrefix());
+        }
+
+        /**
+         * JDBC-direct heartbeat transport — active alongside {@link #jdbcSnapshotPushClient} when
+         * {@code snapshot.heartbeat.enabled=true} is also set. Same {@code DataSource}, same
+         * {@code table-prefix}, sibling table.
+         *
+         * @param dataSource          this instance's datasource, pointed at the dashboard's database
+         * @param publisherProperties source of the configured {@code table-prefix}
+         * @return the JDBC-direct heartbeat transport
+         */
+        @Bean
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
+        @ConditionalOnBean(DataSource.class)
+        @ConditionalOnMissingBean(HeartbeatPushClient.class)
+        public HeartbeatPushClient jdbcHeartbeatPushClient(DataSource dataSource,
+                                                           FailoverClusterPublisherProperties publisherProperties) {
+            return new JdbcHeartbeatPushClient(new JdbcTemplate(dataSource), publisherProperties.jdbc().tablePrefix());
         }
     }
 }

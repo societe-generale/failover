@@ -368,6 +368,18 @@ class FailoverMonitoringAutoConfigurationTest {
                 });
         }
 
+        @Test
+        @DisplayName("heartbeat.enabled=true without publish-url and without jdbc.enabled ⇒ no transport, no publisher (regression: no relative-URL HTTP client)")
+        void heartbeatNotWiredWithoutAnyTransport() {
+            runner
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.cluster.snapshot.heartbeat.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.observable.micrometer.HeartbeatPushClient.class);
+                    assertThat(ctx).doesNotHaveBean(HeartbeatPublisher.class);
+                });
+        }
+
     }
 
     // ── cluster snapshot publisher — JDBC-direct transport ───────────────────
@@ -416,6 +428,35 @@ class FailoverMonitoringAutoConfigurationTest {
                     "failover.dashboard.cluster.snapshot.jdbc.enabled=true",
                     "failover.dashboard.cluster.snapshot.publish-url=http://dashboard:8080/failover-dashboard")
                 .run(ctx -> assertThat(ctx).hasFailed());
+        }
+
+        @Test
+        @SuppressWarnings("java:S2699")
+        @DisplayName("jdbc.enabled=true + heartbeat.enabled=true + DataSource ⇒ JdbcHeartbeatPushClient + HeartbeatPublisher wired")
+        void jdbcHeartbeatWiredWhenDataSourcePresent() {
+            runner
+                .withBean(javax.sql.DataSource.class, () -> mock(javax.sql.DataSource.class))
+                .withPropertyValues(
+                    "failover.dashboard.cluster.snapshot.jdbc.enabled=true",
+                    "failover.dashboard.cluster.snapshot.heartbeat.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.observable.micrometer.HeartbeatPushClient.class);
+                    assertThat(ctx.getBean(com.societegenerale.failover.observable.micrometer.HeartbeatPushClient.class))
+                            .isInstanceOf(JdbcHeartbeatPushClient.class);
+                    assertThat(ctx).hasSingleBean(HeartbeatPublisher.class);
+                });
+        }
+
+        @Test
+        @DisplayName("jdbc.enabled=true, heartbeat.enabled=false (default) ⇒ no heartbeat transport, snapshot transport still wired")
+        void jdbcHeartbeatNotWiredByDefault() {
+            runner
+                .withBean(javax.sql.DataSource.class, () -> mock(javax.sql.DataSource.class))
+                .withPropertyValues("failover.dashboard.cluster.snapshot.jdbc.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.observable.micrometer.HeartbeatPushClient.class);
+                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.observable.micrometer.SnapshotPushClient.class);
+                });
         }
     }
 

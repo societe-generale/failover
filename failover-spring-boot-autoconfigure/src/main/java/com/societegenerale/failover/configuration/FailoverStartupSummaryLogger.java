@@ -19,6 +19,8 @@ package com.societegenerale.failover.configuration;
 import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
+import com.societegenerale.failover.observable.micrometer.HeartbeatPublisher;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import com.societegenerale.failover.properties.FailoverProperties;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +54,7 @@ public class FailoverStartupSummaryLogger {
     private final FailoverProperties properties;
     private final ApplicationContext applicationContext;
     private final ObjectProvider<FailoverScanner> scannerProvider;
+    private final ObjectProvider<FailoverClusterPublisherProperties> clusterPublisherPropertiesProvider;
 
     /** Logs the startup configuration summary once the application context is fully ready. */
     @EventListener(ApplicationReadyEvent.class)
@@ -108,6 +111,7 @@ public class FailoverStartupSummaryLogger {
 
         sb.append("\n  publisher        : ").append(detectPublisher());
         sb.append("\n  snapshot-store   : ").append(detectSnapshotStore());
+        sb.append("\n  cluster-publisher: ").append(detectClusterPublisher());
 
         FailoverScanner scanner = scannerProvider.getIfAvailable();
         if (scanner != null) {
@@ -153,5 +157,38 @@ public class FailoverStartupSummaryLogger {
         } catch (ClassNotFoundException e) {
             return "n/a";
         }
+    }
+
+    /**
+     * Reports this instance's shared-store peer transport (Scenario C/D via {@code publish-url}, or D2's
+     * JDBC-direct via {@code snapshot.jdbc.enabled}) and whether it actually wired up. A configured transport
+     * that fails to wire (missing {@code DataSource}, missing {@code spring-web}, etc.) is otherwise
+     * completely silent — {@code @ConditionalOnBean} just no-ops — so this is the one place that surfaces it.
+     */
+    private String detectClusterPublisher() {
+        FailoverClusterPublisherProperties props = clusterPublisherPropertiesProvider.getIfAvailable();
+        if (props == null) {
+            return "none";
+        }
+        boolean jdbcConfigured = props.jdbc().enabled();
+        boolean httpConfigured = props.publishUrl() != null && !props.publishUrl().isBlank();
+        if (!jdbcConfigured && !httpConfigured) {
+            return "none";
+        }
+
+        String transport = jdbcConfigured
+                ? "jdbc-direct [table-prefix='" + (props.jdbc().tablePrefix().isBlank() ? "(none)" : props.jdbc().tablePrefix()) + "']"
+                : "http -> " + props.publishUrl();
+        var sb = new StringBuilder(transport);
+        if (applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class).length == 0) {
+            sb.append(" — NOT WIRED (check ").append(jdbcConfigured ? "for a DataSource bean" : "for spring-web on the classpath").append(")");
+        }
+        if (props.heartbeat().enabled()) {
+            sb.append(", heartbeat=on");
+            if (applicationContext.getBeanNamesForType(HeartbeatPublisher.class).length == 0) {
+                sb.append(" — NOT WIRED");
+            }
+        }
+        return sb.toString();
     }
 }

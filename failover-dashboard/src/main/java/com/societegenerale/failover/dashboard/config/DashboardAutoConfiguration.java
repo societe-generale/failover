@@ -60,6 +60,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClas
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -144,6 +145,21 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                             + "for UI/API consumers until 'cluster' is added to exposure.include.",
                     properties.basePath());
         }
+    }
+
+    /**
+     * Logs a single consolidated startup summary of the dashboard's own configuration — base path,
+     * exposure, security posture, cluster mode, and (for {@code shared-store}) whether the configured
+     * store/ingest/liveness actually wired up. Fires on {@code ApplicationReadyEvent}, after every other
+     * bean in this class has had a chance to register.
+     *
+     * @param applicationContext Spring application context for bean-type detection
+     * @return {@link DashboardStartupSummaryLogger}
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public DashboardStartupSummaryLogger dashboardStartupSummaryLogger(ApplicationContext applicationContext) {
+        return new DashboardStartupSummaryLogger(properties, applicationContext);
     }
 
     /**
@@ -359,14 +375,18 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     /**
      * Heartbeat ingest endpoint; present only in shared-store mode with a {@link HeartbeatStore} bean available
      * (mirrors {@link #clusterSnapshotController}'s guard — e.g. {@code store=jdbc} without the JDBC module on
-     * the classpath leaves no {@link HeartbeatStore} bean, and this controller must not be wired then either).
-     * Peers opt in by enabling heartbeat on their side.
+     * the classpath leaves no {@link HeartbeatStore} bean, and this controller must not be wired then either),
+     * and only when the HTTP ingest path is wanted at all ({@code cluster.snapshot.ingest.enabled}, same flag
+     * that gates {@link #clusterSnapshotController} — both endpoints share one on/off switch so a JDBC-direct
+     * deployment that turns ingest off doesn't leave the heartbeat path mapped by itself). Peers opt in by
+     * enabling heartbeat on their side.
      *
      * @param heartbeatStore the store to record incoming peer heartbeats into
      * @return the heartbeat ingest controller
      */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.ingest", name = "enabled", havingValue = "true", matchIfMissing = true)
     @ConditionalOnBean(HeartbeatStore.class)
     @ConditionalOnMissingBean
     public ClusterHeartbeatController clusterHeartbeatController(HeartbeatStore heartbeatStore) {
