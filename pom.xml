@@ -57,7 +57,7 @@
         <sonar.coverage.jacoco.xmlReportPaths>../failover-test-report/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
         <!-- Security CVE patches — explicit overrides, no spring-boot-parent -->
         <tomcat.embed.version>11.0.22</tomcat.embed.version>
-        <postgresql.override.version>42.7.11</postgresql.override.version>
+        <postgresql.override.version>42.7.12</postgresql.override.version>
         <jackson-databind-2.version>2.22.0</jackson-databind-2.version>
         <jackson-databind-3.version>3.1.4</jackson-databind-3.version>
         <bouncycastle.version>1.84</bouncycastle.version>
