@@ -315,13 +315,18 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * Ingest controller for peer snapshot pushes; present only in shared-store mode.
+     * Ingest controller for peer snapshot pushes; present only in shared-store mode, and only when the HTTP
+     * ingest path is wanted at all ({@code cluster.snapshot.ingest.enabled}, default {@code true}). Turn it
+     * off once every peer writes directly to the shared JDBC table instead — the dashboard still reads from
+     * {@link SnapshotStore} either way, this only stops mapping the HTTP path (and its ingest security gate)
+     * into it.
      *
      * @param snapshotStore the store to record incoming peer snapshots into
      * @return the ingest controller
      */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.ingest", name = "enabled", havingValue = "true", matchIfMissing = true)
     @ConditionalOnBean(SnapshotStore.class)
     @ConditionalOnMissingBean
     public ClusterSnapshotController clusterSnapshotController(SnapshotStore snapshotStore) {

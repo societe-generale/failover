@@ -192,6 +192,21 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("cluster.mode=shared-store + snapshot.ingest.enabled=false ⇒ no ClusterSnapshotController, SnapshotStore still wired")
+    void sharedStoreModeWithIngestDisabledSkipsController() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.ingest.enabled=false")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotController.class);
+                    assertThat(ctx).hasSingleBean(SnapshotStore.class);
+                    assertThat(ctx.getBean(MetricsSource.class).info().mode()).isEqualTo("shared-store");
+                });
+    }
+
+    @Test
     @DisplayName("cluster.mode=shared-store + shared-store.store=jdbc (no SnapshotStore bean) ⇒ falls back to local")
     void sharedStoreModeWithoutSnapshotStoreBeanFallsBackToLocal() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,

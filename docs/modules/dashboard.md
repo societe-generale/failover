@@ -120,6 +120,13 @@ failover:
         heartbeat:
           enabled: false             # lightweight liveness pings to the dashboard
           interval-seconds: 60       # keep ≤ ⅓ of the dashboard liveness-seconds
+        ingest:
+          enabled: true              # dashboard-side: map POST /api/cluster/snapshot at all.
+          #   set false once every peer writes JDBC-direct instead (see Scenario D2) — the
+          #   dashboard still reads from SnapshotStore, this only stops mapping the HTTP path.
+        jdbc:                        # peer-side JDBC-direct transport (Scenario D2) — mutually
+          enabled: false             # exclusive with publish-url; requires this peer's own DataSource
+          table-prefix: ""           # MUST match the dashboard's shared-store.jdbc.table-prefix
 ```
 
 | Property                                                  | Default               | Purpose                                                                                                                                                                                                                                                                                                                        |
@@ -159,6 +166,9 @@ failover:
 | `cluster.snapshot.allow-insecure-ingest`                  | `false`               | Suppress the no-auth startup warning (dev / trusted network only).                                                                                                                                                                                                                                                             |
 | `cluster.snapshot.heartbeat.enabled`                      | `false`               | Send lightweight heartbeat pings from this peer. Off by default. `publish-url` must be set; heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`.                                                                                                                                                          |
 | `cluster.snapshot.heartbeat.interval-seconds`             | `60`                  | Ping cadence. Keep ≤ ⅓ of the dashboard `liveness-seconds`.                                                                                                                                                                                                                                                                    |
+| `cluster.snapshot.ingest.enabled` *(dashboard-side)*      | `true`                | Whether `POST /api/cluster/snapshot` (`ClusterSnapshotController`) is mapped at all. Set `false` once every peer writes JDBC-direct instead (Scenario D2) — the dashboard still reads from `SnapshotStore`, this only stops mapping the HTTP path (and its ingest security gate). Not read by peers.                        |
+| `cluster.snapshot.jdbc.enabled` *(peer-side)*             | `false`               | JDBC-direct transport (Scenario D2): this peer writes its snapshot straight into `FAILOVER_DASHBOARD_SNAPSHOT` instead of POSTing. Requires this peer's own `DataSource` pointed at the dashboard's database. **Mutually exclusive with `publish-url`** — setting both fails fast at startup. Not read by the dashboard.    |
+| `cluster.snapshot.jdbc.table-prefix` *(peer-side)*        | `""`                  | Table prefix for JDBC-direct writes; **must match** the dashboard's `cluster.shared-store.jdbc.table-prefix` — both sides read/write the same table. Not read by the dashboard.                                                                                                                                                |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
@@ -1507,6 +1517,81 @@ Same `table-prefix` as the snapshot table (e.g. `DEMO_` → `DEMO_FAILOVER_DASHB
     `BadSqlGrammarException` / `Table "...FAILOVER_DASHBOARD_HEARTBEAT" not found` — create it before setting
     `liveness.enabled=true`, not after.
 
+### Scenario D2 — Cluster via shared-store, JDBC direct (no ingest endpoint)
+
+Same durable `store=jdbc` backend as Scenario D, but peers **write straight to the table** instead of POSTing to
+`/api/cluster/snapshot`. Trades the ingest endpoint — and its HTTP auth gate — for a DB credential/network
+dependency: worth it only when peers already share the dashboard's database (e.g. both point
+`failover.store.type=jdbc` / `cluster.shared-store.store=jdbc` at the same schema). Not a fit when peers sit on
+a different network segment than the DB but can reach the dashboard over HTTP — use Scenario D instead.
+
+```
+  @Failover Service(s)                       Dashboard Host
+ ┌────────────────────────────┐              ┌───────────────────────────┐
+ │  ClusterSnapshotPublisher  │              │  (no ClusterSnapshot-     │
+ │  JdbcSnapshotPushClient    │─┐            │   Controller mapped)      │
+ └────────────────────────────┘ │            │  SnapshotStore (JDBC)     │
+                                 │            │  /failover-dashboard      │
+                                 ▼            └─────────────┬─────────────┘
+                     ┌─────────────────────────┐            │
+                     │  Database               │◄───────────┘
+                     │  FAILOVER_DASHBOARD_     │
+                     │  SNAPSHOT (shared table) │
+                     └─────────────────────────┘
+```
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        max-instances: 10
+        jdbc:
+          table-prefix: ""
+      snapshot:
+        ingest:
+          enabled: false   # no POST /api/cluster/snapshot mapped — nothing to secure
+```
+
+**`@Failover` service YAML (every peer, own DataSource pointed at the same DB):**
+
+```yaml title="peer-service/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard   # same DB the dashboard host uses
+    username: peer_writer
+    password: secret
+
+failover:
+  dashboard:
+    enabled: false           # this peer doesn't need to serve its own dashboard UI
+    cluster:
+      snapshot:
+        jdbc:
+          enabled: true
+          table-prefix: ""   # MUST match the dashboard's shared-store.jdbc.table-prefix
+```
+
+No `publish-url`, `username`/`password`, or `oauth2-client-registration-id` on the peer — setting `jdbc.enabled`
+and `publish-url` together fails fast at startup (`FailoverClusterPublisherProperties`), since the two transports
+are mutually exclusive. The reset-aware baseline carry-forward (ADR 67) is identical to Scenario D — same table,
+same upsert logic, applied by whichever side wrote last.
+
+!!! tip "DDL and credentials"
+Same table as Scenario D — see the DDL there. Grant the peer's DB user `INSERT`/`UPDATE`/`SELECT` on
+`FAILOVER_DASHBOARD_SNAPSHOT` (it reads its own previous row to compute the baseline before writing).
+
 ### Scenario E — Standalone dashboard (its own app)
 
 Run the dashboard as its own small Spring Boot app pointed at a backend, so a cluster has **one** dashboard rather than
@@ -1675,6 +1760,10 @@ Is Prometheus already in the infra?
 For shared-store — does the aggregate need to survive a dashboard restart?
    Yes → store=jdbc (durable)
    No  → store=inmemory (simple)
+
+For store=jdbc — do peers already share the dashboard's database?
+   Yes → snapshot.jdbc.enabled=true on peers (no ingest endpoint, Scenario D2 / 2.9)
+   No  → snapshot.publish-url on peers (HTTP push, Scenario D / 2.4-2.5)
 ```
 
 In cluster mode the **dashboard host** aggregates metrics from all **peers** (the `@Failover` services).
@@ -2260,6 +2349,60 @@ need to cross-reference this table from the running dashboard.
 !!! note "Heartbeat endpoint security"
 `POST /api/cluster/heartbeat` is gated by the **same** filter chain as `POST /api/cluster/snapshot`. No extra security
 config is needed; peers authenticate identically to snapshot pushes.
+
+---
+
+#### 2.9 JDBC Shared-Store — Direct Write (No Ingest Endpoint)
+
+See [Scenario D2](#scenario-d2--cluster-via-shared-store-jdbc-direct-no-ingest-endpoint) above for the full
+picture. Same durable `store=jdbc` backend as 2.4/2.5, but peers write straight into
+`FAILOVER_DASHBOARD_SNAPSHOT` instead of POSTing — no ingest endpoint, no ingest auth config, no
+`ClusterSnapshotController` mapped at all.
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        jdbc:
+          table-prefix: ""
+      snapshot:
+        ingest:
+          enabled: false
+```
+
+**`@Failover` service YAML (every peer):**
+
+```yaml title="peer-service/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard   # same DB as the dashboard host
+    username: peer_writer
+    password: secret
+
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        jdbc:
+          enabled: true
+          table-prefix: ""   # must match shared-store.jdbc.table-prefix above
+```
+
+!!! warning "Mutually exclusive with publish-url"
+`cluster.snapshot.jdbc.enabled=true` and `cluster.snapshot.publish-url` cannot both be set on a peer — the
+context fails fast at startup (`FailoverClusterPublisherProperties`). Pick one transport per peer.
 
 ## Exporting Metrics Elsewhere (OTLP / Elastic)
 

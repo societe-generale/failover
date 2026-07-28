@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
+package com.societegenerale.failover.observable.metrics;
 
 /**
- * Validates the {@code table-prefix} configured for the JDBC shared-store tier, shared by
- * {@link SnapshotStoreJdbc} and {@link HeartbeatStoreJdbc} — both concatenate it directly into SQL.
+ * Validates the {@code table-prefix} configured for the JDBC shared-store tier, shared by every side that
+ * concatenates it directly into SQL against {@code FAILOVER_DASHBOARD_SNAPSHOT} / {@code FAILOVER_DASHBOARD_HEARTBEAT}:
+ * the dashboard's {@code SnapshotStoreJdbc} / {@code HeartbeatStoreJdbc}, and a peer's JDBC-direct publisher.
  *
  * @author Anand Manissery
  */
-final class TablePrefix {
+public final class SnapshotTablePrefix {
 
-    private TablePrefix() {
+    private SnapshotTablePrefix() {
     }
 
     /**
@@ -35,7 +36,7 @@ final class TablePrefix {
      * @param prefix the configured {@code table-prefix} ({@code ""} ⇒ the base table name is used as-is)
      * @return the validated prefix
      */
-    static String validate(String prefix) {
+    public static String validate(String prefix) {
         String p = prefix == null ? "" : prefix;
         if (!p.matches("[A-Za-z0-9_]*")) {
             throw new IllegalArgumentException(

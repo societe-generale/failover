@@ -23,7 +23,8 @@ import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
-import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotBaseline;
+import com.societegenerale.failover.observable.metrics.SnapshotBaseline;
+import com.societegenerale.failover.observable.metrics.SnapshotTablePrefix;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -80,7 +81,7 @@ public class SnapshotStoreJdbc implements SnapshotStore {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.maxInstances = maxInstances;
-        this.table = TablePrefix.validate(tablePrefix) + BASE_TABLE;
+        this.table = SnapshotTablePrefix.validate(tablePrefix) + BASE_TABLE;
         log.info("Failover shared-store using durable JDBC snapshot store (table='{}').", this.table);
     }
 
@@ -181,7 +182,7 @@ public class SnapshotStoreJdbc implements SnapshotStore {
             return List.of();
         }
         try {
-            return mapper.readValue(json, new TypeReference<List<ConfigEntry>>() {
+            return mapper.readValue(json, new TypeReference<>() {
             });
         } catch (Exception e) {
             log.warn("Skipping unreadable snapshot config row: {}", e.toString());

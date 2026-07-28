@@ -17,6 +17,7 @@
 package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore;
+import com.societegenerale.failover.observable.metrics.SnapshotTablePrefix;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
@@ -71,7 +72,7 @@ public class HeartbeatStoreJdbc implements HeartbeatStore {
      */
     public HeartbeatStoreJdbc(JdbcTemplate jdbc, String tablePrefix) {
         this.jdbc = jdbc;
-        this.table = TablePrefix.validate(tablePrefix) + BASE_TABLE;
+        this.table = SnapshotTablePrefix.validate(tablePrefix) + BASE_TABLE;
         log.info("Failover shared-store using durable JDBC heartbeat store (table='{}').", this.table);
     }
 

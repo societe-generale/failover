@@ -414,6 +414,8 @@ public record DashboardProperties(
      * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})
      * @param oauth2ClientRegistrationId Spring Security resource-server registration id for JWT validation (blank ⇒ disabled)
      * @param allowInsecureIngest        {@code true} to allow ingest without any auth gate (not recommended in production)
+     * @param ingest                     controls whether the HTTP ingest endpoint ({@code ClusterSnapshotController})
+     *                                    is mapped at all — turn off when every peer writes via JDBC-direct instead
      */
     public record Snapshot(
         @DefaultValue("") String publishUrl,
@@ -421,16 +423,48 @@ public record DashboardProperties(
         @DefaultValue("") String username,
         @DefaultValue("") String password,
         @DefaultValue("") String oauth2ClientRegistrationId,
-        @DefaultValue("false") boolean allowInsecureIngest
+        @DefaultValue("false") boolean allowInsecureIngest,
+        @DefaultValue Ingest ingest
     ) {
         /** Canonical constructor used by Spring Boot's relaxed property binder. */
         @ConstructorBinding
         public Snapshot {
         }
 
+        /** Convenience with all defaults (used in tests / programmatic setup). */
+        public Snapshot(String publishUrl, int intervalSeconds, String username, String password,
+                         String oauth2ClientRegistrationId, boolean allowInsecureIngest) {
+            this(publishUrl, intervalSeconds, username, password, oauth2ClientRegistrationId, allowInsecureIngest,
+                    new Ingest());
+        }
+
         /** Convenience with defaults. */
         public Snapshot() {
             this("", 15, "", "", "", false);
+        }
+    }
+
+    /**
+     * Toggle for the HTTP snapshot-ingest endpoint ({@code ClusterSnapshotController}, mapped at
+     * {@code base-path/api/cluster/snapshot}). On by default — turning it off does not disable
+     * {@code cluster.mode=shared-store} itself, only the HTTP path into it; the dashboard still reads
+     * from whichever {@code SnapshotStore} is configured (in-memory or JDBC). Set {@code false} once every
+     * peer writes directly to the shared JDBC table ({@code failover.dashboard.cluster.snapshot.jdbc.enabled=true}
+     * on the peer side) so the endpoint — and its ingest security config — is never mapped at all.
+     *
+     * @param enabled map the ingest endpoint (default {@code true})
+     */
+    public record Ingest(
+        @DefaultValue("true") boolean enabled
+    ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Ingest {
+        }
+
+        /** Convenience with defaults. */
+        public Ingest() {
+            this(true);
         }
     }
 
