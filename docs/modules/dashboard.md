@@ -107,9 +107,8 @@ failover:
         retention:
           max-age: 7d                # trend-history age bound
           max-entries: 100000        # trend-history size bound (oldest truncated)
-        jdbc: # used when store=jdbc
+        jdbc: # used when store=jdbc; table must be created by the consuming service — see Scenario D for DDL
           table-prefix: ""           # prepended to FAILOVER_DASHBOARD_SNAPSHOT (validated)
-          auto-ddl: true             # create the table on startup if missing
       snapshot: # peer-side push (every instance, incl. non-UI nodes)
         publish-url: ""              # dashboard ingest URL (blank ⇒ this instance does not push)
         interval-seconds: 15         # at most one push per interval (event-driven, throttled)
@@ -121,6 +120,13 @@ failover:
         heartbeat:
           enabled: false             # lightweight liveness pings to the dashboard
           interval-seconds: 60       # keep ≤ ⅓ of the dashboard liveness-seconds
+        ingest:
+          enabled: true              # dashboard-side: map POST /api/cluster/snapshot at all.
+          #   set false once every peer writes JDBC-direct instead (see Scenario D2) — the
+          #   dashboard still reads from SnapshotStore, this only stops mapping the HTTP path.
+        jdbc:                        # peer-side JDBC-direct transport (Scenario D2) — mutually
+          enabled: false             # exclusive with publish-url; requires this peer's own DataSource
+          table-prefix: ""           # MUST match the dashboard's shared-store.jdbc.table-prefix
 ```
 
 | Property                                                  | Default               | Purpose                                                                                                                                                                                                                                                                                                                        |
@@ -146,12 +152,13 @@ failover:
 | `cluster.prometheus.token`                                | `""`                  | Optional bearer token for Prometheus.                                                                                                                                                                                                                                                                                          |
 | `cluster.prometheus.timeout-seconds`                      | `5`                   | Per-query connect/read timeout.                                                                                                                                                                                                                                                                                                |
 | `cluster.shared-store.store`                              | `inmemory`            | `inmemory` (default) or `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`).                                                                                                                                                                                                           |
-| `cluster.shared-store.liveness-seconds`                   | `180`                 | Heartbeat age threshold — instance is `DOWN` after this many seconds without a heartbeat ping. Default matches 3 × the peer default `heartbeat.interval-seconds` (60s).                                                                                                                                                        |
+| `cluster.shared-store.liveness.enabled`                   | `false`               | Dashboard-side toggle for heartbeat liveness tracking (ADR 66) — off by default, independent of the peer-side `cluster.snapshot.heartbeat.enabled`. See [Instance Live Tracking](#28-instance-live-tracking-heartbeat).                                                                                                        |
+| `cluster.shared-store.liveness-seconds`                   | `180`                 | Heartbeat age threshold — instance is `DOWN` after this many seconds without a heartbeat ping. Default matches 3 × the peer default `heartbeat.interval-seconds` (60s). Only relevant when `liveness.enabled=true`.                                                                                                            |
 | `cluster.shared-store.max-instances`                      | `10`                  | Supported small-cluster ceiling; exceeding it logs a warning.                                                                                                                                                                                                                                                                  |
 | `cluster.shared-store.instance-retention`                 | `7d`                  | Retire instances not seen for this long from the Instances tab (their counts stay in the aggregate; `0` keeps every instance forever).                                                                                                                                                                                         |
 | `cluster.shared-store.sample-interval-seconds`            | `30`                  | Cluster-trend sampling cadence.                                                                                                                                                                                                                                                                                                |
 | `cluster.shared-store.retention.max-age` / `.max-entries` | `7d` / `100000`       | Trend-history age and size bounds (oldest truncated).                                                                                                                                                                                                                                                                          |
-| `cluster.shared-store.jdbc.table-prefix` / `.auto-ddl`    | `""` / `true`         | Snapshot table prefix (validated) + auto-create, when `store=jdbc`.                                                                                                                                                                                                                                                            |
+| `cluster.shared-store.jdbc.table-prefix`                  | `""`                  | Snapshot table prefix (validated), when `store=jdbc`. The table is never created or altered by the module — see Scenario D for the DDL to provision it yourself.                                                                                                                                                              |
 | `cluster.snapshot.publish-url` / `.interval-seconds`      | `""` / `15`           | Peer-side push. Set to the dashboard's **base URL** (same as `base-path` on the dashboard host): `http://<host>:<port>/failover-dashboard`. The snapshot and heartbeat endpoints are derived automatically (`/api/cluster/snapshot`, `/api/cluster/heartbeat`). Blank ⇒ this instance does not push.                           |
 | `cluster.snapshot.retry-interval-seconds`                 | `300`                 | After a push failure, further push attempts are suppressed for this many seconds (one WARN on first failure, INFO on recovery).                                                                                                                                                                                                |
 | `cluster.snapshot.username` / `.password`                 | `""`                  | HTTP Basic Auth credentials for the ingest endpoint. Ignored when `oauth2-client-registration-id` is set.                                                                                                                                                                                                                      |
@@ -159,6 +166,9 @@ failover:
 | `cluster.snapshot.allow-insecure-ingest`                  | `false`               | Suppress the no-auth startup warning (dev / trusted network only).                                                                                                                                                                                                                                                             |
 | `cluster.snapshot.heartbeat.enabled`                      | `false`               | Send lightweight heartbeat pings from this peer. Off by default. `publish-url` must be set; heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`.                                                                                                                                                          |
 | `cluster.snapshot.heartbeat.interval-seconds`             | `60`                  | Ping cadence. Keep ≤ ⅓ of the dashboard `liveness-seconds`.                                                                                                                                                                                                                                                                    |
+| `cluster.snapshot.ingest.enabled` *(dashboard-side)*      | `true`                | Whether `POST /api/cluster/snapshot` **and** `POST /api/cluster/heartbeat` (`ClusterSnapshotController` / `ClusterHeartbeatController` — one switch, both endpoints) are mapped at all. Set `false` once every peer writes JDBC-direct instead (Scenario D2) — the dashboard still reads from `SnapshotStore` / `HeartbeatStore`, this only stops mapping the HTTP paths (and their ingest security gate). Not read by peers.  |
+| `cluster.snapshot.jdbc.enabled` *(peer-side)*             | `false`               | JDBC-direct transport (Scenario D2): this peer writes its snapshot straight into `FAILOVER_DASHBOARD_SNAPSHOT` instead of POSTing. When `snapshot.heartbeat.enabled=true` is also set, the heartbeat rides the same transport into `FAILOVER_DASHBOARD_HEARTBEAT`. Requires this peer's own `DataSource` pointed at the dashboard's database. **Mutually exclusive with `publish-url`** — setting both fails fast at startup. Not read by the dashboard. |
+| `cluster.snapshot.jdbc.table-prefix` *(peer-side)*        | `""`                  | Table prefix for JDBC-direct writes (both the snapshot and, when enabled, the heartbeat table); **must match** the dashboard's `cluster.shared-store.jdbc.table-prefix` — both sides read/write the same tables. Not read by the dashboard.                                                                                    |
 
 See the [Properties Reference](../configuration/properties-reference.md#dashboard-properties) for the canonical table.
 
@@ -492,17 +502,23 @@ failover:
       # Users with role ADMIN, OR authority WRITE_PRIVILEGE, can access the dashboard
 ```
 
-#### Authentication mechanism: HTTP Basic (default) vs. OAuth2 login
+#### Authentication mechanism: HTTP Basic, OAuth2 login, OAuth2 resource server, or bring your own
 
 `security.type` (above) controls **authorization** — who's allowed in. It's independent of **authentication** —
-how someone proves who they are — which is a separate choice:
+how someone proves who they are — which is a separate choice, and one of **four** mechanisms, tried in this
+priority order (each backs off cleanly when a higher-priority one is active):
 
-- **HTTP Basic** (default) — a native browser credential prompt, checked against whatever
-  `UserDetailsService` / `AuthenticationProvider` your app supplies.
-- **OAuth2 login** — browser redirects to an IdP (GitHub, Okta, Azure AD, your own OIDC provider, etc.) for a
-  proper login page, session, and logout, instead of a native Basic-Auth prompt. Activate it by setting
-  `security.oauth2-client-registration-id` to a registration under the standard
-  `spring.security.oauth2.client.registration.<id>` map:
+1. **A custom [`DashboardAuthenticationConfigurer`](#bring-your-own-mechanism-dashboardauthenticationconfigurer)
+   bean** — bring any mechanism the other three don't cover.
+2. **OAuth2 login** — a browser-native SSO redirect flow (session-based).
+3. **OAuth2 resource server** — stateless JWT Bearer validation, for SSO terminated upstream of the dashboard.
+4. **HTTP Basic** (default) — a native browser credential prompt, checked against whatever
+   `UserDetailsService` / `AuthenticationProvider` your app supplies.
+
+**OAuth2 login** — browser redirects to an IdP (GitHub, Okta, Azure AD, your own OIDC provider, etc.) for a
+proper login page, session, and logout, instead of a native Basic-Auth prompt. Activate it by setting
+`security.oauth2-client-registration-id` to a registration under the standard
+`spring.security.oauth2.client.registration.<id>` map:
 
 ```yaml title="Example — OAuth2 login (e.g. GitHub) with ROLE-based authorization"
 spring:
@@ -524,9 +540,63 @@ failover:
       oauth2-client-registration-id: github  # switches httpBasic() → oauth2Login()
 ```
 
+**OAuth2 resource server** — validates a JWT `Authorization: Bearer` header on every request, including the
+initial page load. No session, no login page — this only works when whatever sits in front of the dashboard
+(an API gateway, service-mesh sidecar, or reverse proxy such as oauth2-proxy) has already done SSO and
+forwards a validated token on the browser's behalf. A bare browser navigating straight to the dashboard has
+no token to attach and will just 401 — use OAuth2 login instead for that case. Activate with
+`security.oauth2-resource-server=true` plus the standard Spring Boot resource-server properties:
+
+```yaml title="Example — OAuth2 resource server (JWT) with AUTHORITY-based authorization"
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://idp.example.com/realms/internal   # or jwk-set-uri
+
+failover:
+  dashboard:
+    security:
+      type: AUTHORITY
+      authority: FAILOVER_ADMIN
+      oauth2-resource-server: true   # switches httpBasic() → oauth2ResourceServer().jwt()
+```
+
 Whichever mechanism you pick, `security.type`/`role`/`authority`/`expression` still decide who's authorized —
-only the login mechanism changes. Requires `spring-security-oauth2-client` on the classpath (already an
-optional dependency of `failover-dashboard`).
+only the authentication mechanism changes. OAuth2 login requires `spring-security-oauth2-client` on the
+classpath; OAuth2 resource server requires `spring-security-oauth2-resource-server` — both already optional
+dependencies of `failover-dashboard`.
+
+#### Bring your own mechanism: `DashboardAuthenticationConfigurer`
+
+The three mechanisms above cover HTTP Basic, browser SSO, and gateway-forwarded JWTs — but not everything.
+Declare a `DashboardAuthenticationConfigurer` bean to plug in **any** other mechanism — a trusted-header
+identity forwarded by a reverse proxy (oauth2-proxy, Envoy), SAML, mTLS-derived principals, an existing
+enterprise `AuthenticationProvider`, or a shop whose only OAuth2 registration is `client_credentials` and
+wants the dashboard to sit entirely behind its own gateway's authentication — without re-implementing the
+`securityMatcher(base-path + "/**")`, the `security.type`/`role`/`authority`/`expression` authorization check,
+or the `403` error handling every built-in mechanism already shares:
+
+```java title="Example — trusted-header identity forwarded by an upstream gateway"
+@Configuration
+public class DashboardAuthConfig {
+
+    @Bean
+    public DashboardAuthenticationConfigurer dashboardAuthenticationConfigurer() {
+        return (http, context) -> http.addFilterBefore(
+                new TrustedHeaderAuthenticationFilter("X-Authenticated-User", "X-Authenticated-Roles"),
+                UsernamePasswordAuthenticationFilter.class);
+    }
+}
+```
+
+`configure(http, context)` is called after `securityMatcher` and `authorizeHttpRequests` are already applied
+to `http` — add only the authentication step (`http.oauth2ResourceServer(...)`, `http.addFilterBefore(...)`,
+`http.x509(...)`, etc.); don't call `securityMatcher` or `authorizeHttpRequests` again. A
+`DashboardAuthenticationConfigurer` bean takes priority over every built-in mechanism — including OAuth2
+login and OAuth2 resource server, if either is also configured — and, like both of those, is exempt from the
+"fail-fast if HTTP Basic has no way to authenticate anyone" check below (it authenticates on its own terms).
 
 !!! warning "Map IdP claims to your role/authority — or every login will be denied"
 An OAuth2/OIDC login doesn't automatically grant `FAILOVER_ADMIN` or any other configured role/authority —
@@ -553,10 +623,13 @@ non-anonymous authenticated principal), the dashboard **fails to start** unless 
 `AuthenticationProvider` bean exists somewhere in the app — without one, every credential 401s and there is
 no correct password to find. This is deliberately fail-fast rather than a silent dead end: define one of
 those beans (`spring.security.user.name`/`password` is enough for a quick dev user), switch to OAuth2 login
-above, override `dashboardSecurityFilterChain` with your own mechanism, or set `security.allow-insecure=true`
-for trusted-network/dev use. `security.type=EXPRESSION` only warns instead of failing, since a SpEL
-expression might legitimately grant access without real authentication (e.g. an IP-based rule) — something
-that can't be determined statically at startup.
+or OAuth2 resource server above, declare a `DashboardAuthenticationConfigurer` bean, override
+`dashboardSecurityFilterChain` with your own mechanism, or set `security.allow-insecure=true` for
+trusted-network/dev use. `security.type=EXPRESSION` only warns instead of failing, since a SpEL expression
+might legitimately grant access without real authentication (e.g. an IP-based rule) — something that can't
+be determined statically at startup. OAuth2 login, OAuth2 resource server, and a custom
+`DashboardAuthenticationConfigurer` are all exempt from this check — each authenticates on its own terms and
+needs no `UserDetailsService`.
 
 !!! info "Specific 403 messages, not Spring Security's blank default"
 When someone authenticates fine but lacks the required role/authority, the main gate returns a `403` with a
@@ -571,13 +644,15 @@ Security `AccessDeniedHandler`) bean to override.
 #### If your app has endpoints outside `base-path` — you need your own `SecurityFilterChain` too
 
 This isn't specific to the dashboard — it's how Spring Security works whenever more than one
-`SecurityFilterChain` bean exists. `dashboardSecurityFilterChain` / `dashboardOAuth2SecurityFilterChain`
-only ever call `securityMatcher(base-path + "/**")`. If your app has its **own** endpoints outside that
-namespace (`/`, `/api/**`, `/actuator/health`, `/error`, and — with OAuth2 login — the redirect endpoints
-Spring Security itself exposes like `/oauth2/authorization/<registration-id>`), none of them match the
-dashboard's chain, and **no other chain exists unless you add one**. Spring Security's own catch-all default
-chain only auto-registers when *no* `SecurityFilterChain` bean is present anywhere in the app — the
-dashboard's own bean already counts, so that fallback never kicks in.
+`SecurityFilterChain` bean exists. Whichever of `dashboardSecurityFilterChain`,
+`dashboardOAuth2SecurityFilterChain`, `dashboardOAuth2ResourceServerFilterChain`, or
+`dashboardCustomAuthFilterChain` is active only ever calls `securityMatcher(base-path + "/**")`. If your app
+has its **own** endpoints outside that namespace (`/`, `/api/**`, `/actuator/health`, `/error`, and — with
+OAuth2 login — the redirect endpoints Spring Security itself exposes like
+`/oauth2/authorization/<registration-id>`), none of them match the dashboard's chain, and **no other chain
+exists unless you add one**. Spring Security's own catch-all default chain only auto-registers when *no*
+`SecurityFilterChain` bean is present anywhere in the app — the dashboard's own bean already counts, so that
+fallback never kicks in.
 
 Unmatched here doesn't mean "permitted" — it means **not filtered at all**: the request never passes through
 Spring Security, so `SecurityContextHolder` is never populated (an endpoint like `/api/me` reading the
@@ -623,7 +698,7 @@ public class SecurityConfig {
 ```
 
 If the dashboard is the *only* thing your app serves (no other endpoints, [Scenario E — Standalone
-dashboard](#scenario-e--standalone-dashboard-its-own-app)), none of this applies — there's nothing outside
+dashboard](#scenario-e-standalone-dashboard-its-own-app)), none of this applies — there's nothing outside
 `base-path` for a second chain to cover.
 
 ### Expression-based access control
@@ -1313,11 +1388,11 @@ failover:
         max-instances: 10
         jdbc:
           table-prefix: ""       # prepended to the base table name; "" ⇒ FAILOVER_DASHBOARD_SNAPSHOT
-          auto-ddl: true         # create the table on startup if missing
 ```
 
-Requires a `DataSource` in the dashboard app (the usual `spring.datasource.*`). Peers are configured exactly as in
-Scenario C (`cluster.snapshot.publish-url`).
+Requires a `DataSource` in the dashboard app (the usual `spring.datasource.*`), **and the snapshot table already
+created** (see DDL below) — the module never creates or alters it; that is the consuming service's responsibility.
+Peers are configured exactly as in Scenario C (`cluster.snapshot.publish-url`).
 
 !!! question "Is multi-tenancy required for the snapshot store?"
 **No.** The snapshot store holds only **aggregate, non-sensitive failover metrics** (counts, rates, latency
@@ -1330,16 +1405,24 @@ is correct and simplest.
 **Table name.** `table-prefix` + the base `FAILOVER_DASHBOARD_SNAPSHOT` (e.g. prefix `DEMO_` →
 `DEMO_FAILOVER_DASHBOARD_SNAPSHOT`). The prefix is validated as a safe SQL identifier fragment (no injection).
 
-**DDL.** With `auto-ddl: true` the table is created automatically. To manage the schema yourself (`auto-ddl: false`),
-create it with the dialect-appropriate type for the JSON column:
+**DDL.** The failover module never creates or alters this table — create it yourself with the dialect-appropriate
+type for the JSON columns before starting the dashboard:
+
+`RECEIVED_AT` (and, below, `LAST_SEEN`) is a time-zone-aware timestamp — the store reads/writes it as
+`OffsetDateTime` (always UTC) via JDBC 4.2 `setObject`/`getObject`, converting to/from epoch-millis at that
+boundary (the rest of the codebase, e.g. `InstanceMetrics.lastSeenEpochMs`, stays in epoch-millis). Declared
+precision is capped per dialect below — PostgreSQL and H2 differ, and MySQL/MariaDB have no `WITH TIME ZONE`
+syntax at all (their `TIMESTAMP` always stores/converts via the session time zone; since the store always
+writes UTC, this is lossless in practice):
 
 ```sql title="PostgreSQL"
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
     INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT   BIGINT NOT NULL,
+    RECEIVED_AT   TIMESTAMP(6) WITH TIME ZONE NOT NULL, -- Postgres caps fractional precision at 6
     SUMMARY_JSON  TEXT   NOT NULL, -- or JSONB
-    BASELINE_JSON TEXT             -- reset-aware carried baseline (ADR 67); nullable
+    BASELINE_JSON TEXT,            -- reset-aware carried baseline (ADR 67); nullable
+    CONFIG_JSON   TEXT             -- pushed @Failover config entries; nullable
 );
 ```
 
@@ -1347,9 +1430,10 @@ CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
     INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
-    RECEIVED_AT   BIGINT   NOT NULL,
+    RECEIVED_AT   TIMESTAMP(6) NOT NULL, -- no WITH TIME ZONE syntax; max fractional precision is 6
     SUMMARY_JSON  LONGTEXT NOT NULL,
-    BASELINE_JSON LONGTEXT
+    BASELINE_JSON LONGTEXT,
+    CONFIG_JSON   LONGTEXT
 );
 ```
 
@@ -1357,30 +1441,168 @@ CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
     INSTANCE_ID   VARCHAR2(255) PRIMARY KEY,
-    RECEIVED_AT   NUMBER(19)    NOT NULL,
+    RECEIVED_AT   TIMESTAMP(9) WITH TIME ZONE NOT NULL,
     SUMMARY_JSON  CLOB NOT NULL,
-    BASELINE_JSON CLOB
+    BASELINE_JSON CLOB,
+    CONFIG_JSON   CLOB
 );
 ```
 
 ```sql title="H2 / generic"
-CREATE TABLE IF NOT EXISTS FAILOVER_DASHBOARD_SNAPSHOT
+CREATE TABLE FAILOVER_DASHBOARD_SNAPSHOT
 (
-    INSTANCE_ID
-    VARCHAR
-(
-    255
-) PRIMARY KEY,
-    RECEIVED_AT BIGINT NOT NULL,
-    SUMMARY_JSON CLOB NOT NULL,
-    BASELINE_JSON CLOB
-    );
+    INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT   TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+    SUMMARY_JSON  CLOB NOT NULL,
+    BASELINE_JSON CLOB,
+    CONFIG_JSON   CLOB
+);
 ```
 
 Prepend your `table-prefix` to the table name if you set one. One row per instance (upserted on each push).
 `SUMMARY_JSON` holds the latest raw snapshot; `BASELINE_JSON` (nullable) accumulates the pre-restart totals folded in
 when a counter reset is detected — the dashboard serves `baseline + raw` per instance. Every row contributes its
 last-known counts to the aggregate; the liveness window only drives the `LIVE`/`DOWN` status shown in the Instances tab.
+
+**Heartbeat durability.** When [liveness tracking](#28-instance-live-tracking-heartbeat) is on
+(`cluster.shared-store.liveness.enabled=true`), `store=jdbc` also swaps the heartbeat store from
+`HeartbeatStoreInmemory` to a JDBC-backed one, on the same `DataSource`. This matters beyond restart-survival:
+it's what keeps `LIVE`/`DOWN` status correct when the dashboard is **embedded in more than one `@Failover`
+instance** pointed at the same database (rather than run standalone, Scenario E) — each peer's heartbeat push
+normally lands on whichever single dashboard it's configured to push to, so an in-memory store on each embedded
+dashboard would only ever see its *own* loopback heartbeat and show every other peer stuck at `UNKNOWN`. The
+JDBC table makes liveness visible to every embedded dashboard, not just the one that received the ping. If you
+plan to use liveness tracking, create this table alongside the snapshot table up front:
+
+```sql title="PostgreSQL"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(6) WITH TIME ZONE NOT NULL
+);
+```
+
+```sql title="MySQL / MariaDB"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(6) NOT NULL
+);
+```
+
+```sql title="Oracle"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR2(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(9) WITH TIME ZONE NOT NULL
+);
+```
+
+```sql title="H2 / generic"
+CREATE TABLE FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(9) WITH TIME ZONE NOT NULL
+);
+```
+
+Same `table-prefix` as the snapshot table (e.g. `DEMO_` → `DEMO_FAILOVER_DASHBOARD_HEARTBEAT`).
+
+!!! note "Only required when `cluster.shared-store.liveness.enabled=true`"
+    This table (and the `HeartbeatStore` bean, and the `/api/cluster/heartbeat` ingest endpoint) only exist
+    when the dashboard-side `cluster.shared-store.liveness.enabled` toggle (default **`false`**, ADR 66) is
+    explicitly turned on — see [Instance Live Tracking](#28-instance-live-tracking-heartbeat). With `store=jdbc`
+    and liveness left off (the default), the dashboard never queries this table at all, so it does **not**
+    need to exist. Turning liveness on without creating the table first fails every dashboard read with
+    `BadSqlGrammarException` / `Table "...FAILOVER_DASHBOARD_HEARTBEAT" not found` — create it before setting
+    `liveness.enabled=true`, not after.
+
+### Scenario D2 — Cluster via shared-store, JDBC direct (no ingest endpoint)
+
+Same durable `store=jdbc` backend as Scenario D, but peers **write straight to the table** instead of POSTing to
+`/api/cluster/snapshot`. Trades the ingest endpoint — and its HTTP auth gate — for a DB credential/network
+dependency: worth it only when peers already share the dashboard's database (e.g. both point
+`failover.store.type=jdbc` / `cluster.shared-store.store=jdbc` at the same schema). Not a fit when peers sit on
+a different network segment than the DB but can reach the dashboard over HTTP — use Scenario D instead.
+
+```
+  @Failover Service(s)                       Dashboard Host
+ ┌────────────────────────────┐              ┌───────────────────────────┐
+ │  ClusterSnapshotPublisher  │              │  (no ingest controllers   │
+ │  JdbcSnapshotPushClient    │─┐            │   mapped at all)          │
+ │  JdbcHeartbeatPushClient*  │ │            │  SnapshotStore (JDBC)     │
+ └────────────────────────────┘ │            │  HeartbeatStore (JDBC)*   │
+                                 │            │  /failover-dashboard      │
+                                 ▼            └─────────────┬─────────────┘
+                     ┌─────────────────────────┐            │
+                     │  Database               │◄───────────┘
+                     │  FAILOVER_DASHBOARD_     │
+                     │  SNAPSHOT (shared table) │
+                     │  FAILOVER_DASHBOARD_     │
+                     │  HEARTBEAT (shared)*     │
+                     └─────────────────────────┘
+                                        * only when instance live tracking is on
+```
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        max-instances: 10
+        jdbc:
+          table-prefix: ""
+      snapshot:
+        ingest:
+          enabled: false   # no POST /api/cluster/snapshot mapped — nothing to secure
+```
+
+**`@Failover` service YAML (every peer, own DataSource pointed at the same DB):**
+
+```yaml title="peer-service/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard   # same DB the dashboard host uses
+    username: peer_writer
+    password: secret
+
+failover:
+  dashboard:
+    enabled: false           # this peer doesn't need to serve its own dashboard UI
+    cluster:
+      snapshot:
+        jdbc:
+          enabled: true
+          table-prefix: ""   # MUST match the dashboard's shared-store.jdbc.table-prefix
+```
+
+No `publish-url`, `username`/`password`, or `oauth2-client-registration-id` on the peer — setting `jdbc.enabled`
+and `publish-url` together fails fast at startup (`FailoverClusterPublisherProperties`), since the two transports
+are mutually exclusive. The reset-aware baseline carry-forward (ADR 67) is identical to Scenario D — same table,
+same upsert logic, applied by whichever side wrote last.
+
+!!! tip "DDL and credentials"
+Same table as Scenario D — see the DDL there. Grant the peer's DB user `INSERT`/`UPDATE`/`SELECT` on
+`FAILOVER_DASHBOARD_SNAPSHOT` (it reads its own previous row to compute the baseline before writing).
+
+**Instance live tracking works here too** — [Instance Live Tracking (2.8)](#28-instance-live-tracking-heartbeat)
+isn't HTTP-only. Add `cluster.snapshot.heartbeat.enabled=true` on the peer (rides the same `jdbc.enabled`
+transport into `FAILOVER_DASHBOARD_HEARTBEAT`, same `table-prefix`) and `cluster.shared-store.liveness.enabled=true`
+on the dashboard — `cluster.snapshot.ingest.enabled=false` keeps *both* `/api/cluster/snapshot` and
+`/api/cluster/heartbeat` unmapped, since they share the one ingest switch. Grant the peer's DB user
+`INSERT`/`UPDATE`/`SELECT` on `FAILOVER_DASHBOARD_HEARTBEAT` too, and see the [heartbeat DDL](#scenario-d-cluster-via-shared-store-jdbc-durable)
+in Scenario D.
 
 ### Scenario E — Standalone dashboard (its own app)
 
@@ -1550,6 +1772,10 @@ Is Prometheus already in the infra?
 For shared-store — does the aggregate need to survive a dashboard restart?
    Yes → store=jdbc (durable)
    No  → store=inmemory (simple)
+
+For store=jdbc — do peers already share the dashboard's database?
+   Yes → snapshot.jdbc.enabled=true on peers (no ingest endpoint, Scenario D2 / 2.9)
+   No  → snapshot.publish-url on peers (HTTP push, Scenario D / 2.4-2.5)
 ```
 
 In cluster mode the **dashboard host** aggregates metrics from all **peers** (the `@Failover` services).
@@ -1832,8 +2058,7 @@ failover:
         store: jdbc
         max-instances: 10
         jdbc:
-          table-prefix: ""    # "" → FAILOVER_DASHBOARD_SNAPSHOT
-          auto-ddl: true      # create the table on startup; set false to manage DDL yourself
+          table-prefix: ""    # "" → FAILOVER_DASHBOARD_SNAPSHOT (table must already exist — see Scenario D)
       snapshot:
         username: ingest-user
         password: s3cr3t
@@ -1881,7 +2106,6 @@ failover:
         max-instances: 10
         jdbc:
           table-prefix: ""
-          auto-ddl: true
 ```
 
 Dependencies: `failover-dashboard-snapshotstore-jdbc` + `spring-security-oauth2-resource-server` +
@@ -2044,13 +2268,22 @@ classifies instances as `LIVE` or `DOWN`. The dot colour in the Instances tab ch
 
 **Key design decisions:**
 
-- **Off by default** — zero overhead unless you opt in on both sides.
+- **Off by default on both sides, independently** (ADR 66) — zero overhead unless you opt in on *both*: peers
+  won't push unless `cluster.snapshot.heartbeat.enabled=true`, and the dashboard won't create a `HeartbeatStore`,
+  map `/api/cluster/heartbeat`, or query liveness at all unless `cluster.shared-store.liveness.enabled=true`.
+  These are deliberately separate flags on separate processes — the dashboard usually runs as its own
+  deployment (Scenario E) and has no way to read a peer's configuration, and one peer's setting can't speak
+  for the whole cluster's. Both need to be `true` for the feature to do anything: peer-only leaves pushes
+  landing nowhere useful; dashboard-only leaves every instance at `UNKNOWN` forever.
 - **Metrics of DOWN instances are preserved** — last-known values still contribute to the cluster aggregate. Only the
   dot turns red; the numbers are not zeroed.
 - **Liveness ≠ snapshot freshness** — a healthy instance with no upstream calls (quiet period) keeps its heartbeat green
   even if no snapshots arrive.
 - **Heartbeat URL is auto-derived** — `/api/cluster/snapshot` → `/api/cluster/heartbeat`; override only for non-standard
   paths.
+- **`store=jdbc` never requires the heartbeat table unless liveness is on** — with `liveness.enabled=false` (the
+  default), the dashboard never touches `FAILOVER_DASHBOARD_HEARTBEAT` even if `store=jdbc`; see the note in
+  Scenario D.
 
 **Recommended timing rule:** set `liveness-seconds` ≥ 3 × `heartbeat.interval-seconds` so an instance must miss three
 pings before it is classified as DOWN.
@@ -2100,6 +2333,8 @@ failover:
       shared-store:
         store: inmemory
         liveness-seconds: 180    # heartbeat age threshold: DOWN after 180s without a ping (= 3 × peer interval-seconds of 60s)
+        liveness:
+          enabled: true          # off by default — without this, no HeartbeatStore bean, no ingest endpoint, no queries
       snapshot:
         username: ingest-user
         password: s3cr3t
@@ -2113,16 +2348,80 @@ marked DOWN before its first ping arrives.
 
 **What you see in the UI:**
 
-| Instance state                 | Dot colour            | Topbar badge                   |
-|--------------------------------|-----------------------|--------------------------------|
-| Tracking disabled              | light green (unknown) | `instance live tracking · off` |
-| Tracking on, heartbeat fresh   | green pulse           | `instance live tracking · on`  |
-| Tracking on, heartbeat expired | red                   | `instance live tracking · on`  |
+| Instance state                                                   | Dot colour             | Topbar badge                          |
+|--------------------------------------------------------------------|-----------------------|----------------------------------------|
+| `shared-store.liveness.enabled=false` (dashboard-side, default)     | light green (unknown) | `instance live tracking · disabled`   |
+| Dashboard-side enabled, but no peer has sent a heartbeat yet        | light green (unknown) | `instance live tracking · waiting`    |
+| Dashboard-side enabled, peer heartbeat fresh                        | green pulse           | `instance live tracking · on`         |
+| Dashboard-side enabled, peer heartbeat expired                      | red                   | `instance live tracking · on`         |
+
+The topbar badge's tooltip names the exact property to set for the `disabled`/`waiting` states, so there's no
+need to cross-reference this table from the running dashboard.
 
 !!! note "Heartbeat endpoint security"
 `POST /api/cluster/heartbeat` is gated by the **same** filter chain as `POST /api/cluster/snapshot`. No extra security
 config is needed; peers authenticate identically to snapshot pushes.
 
+---
+
+#### 2.9 JDBC Shared-Store — Direct Write (No Ingest Endpoint)
+
+See [Scenario D2](#scenario-d2-cluster-via-shared-store-jdbc-direct-no-ingest-endpoint) above for the full
+picture. Same durable `store=jdbc` backend as 2.4/2.5, but peers write straight into
+`FAILOVER_DASHBOARD_SNAPSHOT` instead of POSTing — no ingest endpoint, no ingest auth config, no
+`ClusterSnapshotController` mapped at all. Instance live tracking (2.8) rides the same transport if you add
+`snapshot.heartbeat.enabled=true` — no separate HTTP path there either.
+
+**Dashboard host YAML:**
+
+```yaml title="dashboard-host/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard
+    username: dashboard
+    password: secret
+
+failover:
+  dashboard:
+    enabled: true
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc
+        jdbc:
+          table-prefix: ""
+      snapshot:
+        ingest:
+          enabled: false
+```
+
+**`@Failover` service YAML (every peer):**
+
+```yaml title="peer-service/application.yml"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/dashboard   # same DB as the dashboard host
+    username: peer_writer
+    password: secret
+
+failover:
+  dashboard:
+    cluster:
+      snapshot:
+        jdbc:
+          enabled: true
+          table-prefix: ""   # must match shared-store.jdbc.table-prefix above
+```
+
+!!! warning "Mutually exclusive with publish-url"
+`cluster.snapshot.jdbc.enabled=true` and `cluster.snapshot.publish-url` cannot both be set on a peer — the
+context fails fast at startup (`FailoverClusterPublisherProperties`). Pick one transport per peer.
+
+!!! tip "Add instance live tracking without adding HTTP"
+    Extend the YAML above with `cluster.shared-store.liveness.enabled=true` (dashboard) and
+    `cluster.snapshot.heartbeat.enabled=true` (peer) — the heartbeat writes to `FAILOVER_DASHBOARD_HEARTBEAT`
+    via the same `jdbc.enabled` transport, no ingest endpoint added. See [2.8](#28-instance-live-tracking-heartbeat)
+    for the DDL and sizing guidance.
 
 ## Exporting Metrics Elsewhere (OTLP / Elastic)
 

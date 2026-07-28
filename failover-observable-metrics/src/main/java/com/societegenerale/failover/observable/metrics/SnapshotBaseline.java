@@ -14,19 +14,18 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
-
-import com.societegenerale.failover.observable.metrics.MetricsSummary;
-import com.societegenerale.failover.observable.metrics.MetricsSummaryAggregator;
+package com.societegenerale.failover.observable.metrics;
 
 import java.util.List;
 
 /**
- * Reset-aware carry-forward shared by every {@link SnapshotStore} implementation (consistency rule,
- * design §5.3). Peer snapshots carry <em>cumulative</em> counter totals that reset to zero when the peer
- * restarts; without correction the cluster aggregate would drop by that instance's pre-restart counts.
+ * Reset-aware carry-forward shared by every JDBC-writing side of the shared-store tier (consistency rule,
+ * design §5.3) — the dashboard's own {@code SnapshotStoreJdbc} and any peer writing directly to the same
+ * table (JDBC-direct publisher). Peer snapshots carry <em>cumulative</em> counter totals that reset to zero
+ * when the peer restarts; without correction the cluster aggregate would drop by that instance's pre-restart
+ * counts.
  *
- * <p>On each upsert the store keeps the incoming snapshot as the instance's <em>raw</em> value and,
+ * <p>On each upsert the writer keeps the incoming snapshot as the instance's <em>raw</em> value and,
  * when a counter reset is detected (cumulative total went backwards), folds the previous raw snapshot
  * into a per-instance <em>baseline</em>. The summary served for the instance is {@code baseline + raw},
  * so the instant aggregate stays monotonic across peer restarts — matching the behaviour the series
@@ -34,6 +33,9 @@ import java.util.List;
  *
  * <p>Limitation: a reset is invisible if the peer regrows past its previous total between two pushes;
  * that window is one push interval (15s by default), the same limitation Prometheus {@code rate()} has.
+ *
+ * <p>Lives here (rather than the dashboard module) so both the dashboard-side JDBC store and a peer's
+ * JDBC-direct publisher can share the same carry-forward logic without either depending on the other.
  *
  * @author Anand Manissery
  */

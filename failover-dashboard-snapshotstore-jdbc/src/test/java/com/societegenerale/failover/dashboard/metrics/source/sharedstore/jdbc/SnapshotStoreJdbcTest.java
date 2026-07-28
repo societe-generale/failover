@@ -27,6 +27,7 @@ import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
@@ -55,8 +56,20 @@ class SnapshotStoreJdbcTest {
         db.shutdown();
     }
 
+    /** Simulates schema provisioned upfront by the consuming service — the store itself never creates it. */
+    private void createSchema(String tableName) {
+        jdbc.execute("CREATE TABLE IF NOT EXISTS " + tableName
+                + " (INSTANCE_ID VARCHAR(255) PRIMARY KEY, RECEIVED_AT TIMESTAMP(9) WITH TIME ZONE NOT NULL, "
+                + "SUMMARY_JSON CLOB NOT NULL, BASELINE_JSON CLOB, CONFIG_JSON CLOB)");
+    }
+
     private SnapshotStoreJdbc store(int maxInstances) {
-        return new SnapshotStoreJdbc(jdbc, mapper, maxInstances, "", true);
+        return store(maxInstances, "");
+    }
+
+    private SnapshotStoreJdbc store(int maxInstances, String tablePrefix) {
+        createSchema(tablePrefix + SnapshotStoreJdbc.BASE_TABLE);
+        return new SnapshotStoreJdbc(jdbc, mapper, maxInstances, tablePrefix);
     }
 
     private static MetricsSummary summaryFor(String name, long success, long recovered) {
@@ -65,15 +78,17 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void autoDdlCreatesTheTable() {
-        store(10);
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
-        assertThat(count).isZero();
+    void doesNotCreateTheTableAutomatically() {
+        // No createSchema() call — schema provisioning is the consuming service's responsibility, not the store's.
+        SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 10, "");
+
+        assertThatThrownBy(() -> store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0))))
+                .isInstanceOf(DataAccessException.class);
     }
 
     @Test
     void tablePrefixNamespacesTheTable() {
-        SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 10, "DEMO_", true);
+        SnapshotStoreJdbc store = store(10, "DEMO_");
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
 
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM DEMO_FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
@@ -82,7 +97,7 @@ class SnapshotStoreJdbcTest {
 
     @Test
     void rejectsAnUnsafeTablePrefix() {
-        assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 10, "x; DROP TABLE y;--", true))
+        assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 10, "x; DROP TABLE y;--"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("table-prefix");
     }
@@ -169,23 +184,6 @@ class SnapshotStoreJdbcTest {
                 .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(103));
     }
 
-    @Test
-    void autoDdlCreatesTheBaselineColumn() {
-        store(10);
-        // Nullable BASELINE_JSON is part of the base schema — insertable and initially null.
-        Integer baselines = jdbc.queryForObject(
-                "SELECT COUNT(BASELINE_JSON) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
-        assertThat(baselines).isZero();
-    }
-
-    @Test
-    void autoDdlCreatesTheConfigColumn() {
-        store(10);
-        Integer configs = jdbc.queryForObject(
-                "SELECT COUNT(CONFIG_JSON) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
-        assertThat(configs).isZero();
-    }
-
     private static ConfigEntry entry(String name) {
         return new ConfigEntry(name, name, 24L, "HOURS", false,
                 "default", "default", "default", "inmemory", "basic", "rethrow", true);
@@ -235,8 +233,7 @@ class SnapshotStoreJdbcTest {
 
     @Test
     void configEntriesTreatsANullConfigJsonRowAsEmpty() {
-        // Simulates a row written before CONFIG_JSON existed (or by an older peer): NULL in that column,
-        // read back via the ALTER TABLE ... ADD COLUMN IF NOT EXISTS upgrade path.
+        // Simulates a row written before CONFIG_JSON existed (or by an older peer): NULL in that column.
         SnapshotStoreJdbc store = store(10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0), List.of(entry("alpha"))));
         jdbc.update("UPDATE FAILOVER_DASHBOARD_SNAPSHOT SET CONFIG_JSON = NULL WHERE INSTANCE_ID = 'i1'");

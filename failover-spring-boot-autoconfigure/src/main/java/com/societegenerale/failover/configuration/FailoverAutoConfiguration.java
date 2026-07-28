@@ -312,6 +312,9 @@ public class FailoverAutoConfiguration {
      * @param properties     failover configuration properties
      * @param applicationContext Spring application context for bean-type detection
      * @param scannerProvider optional failover scanner for per-endpoint details
+     * @param clusterPublisherPropertiesProvider optional peer-side cluster publisher properties (present
+     *        only when {@link FailoverMicrometerAutoConfiguration} activated, i.e. a {@code MeterRegistry}
+     *        is on the classpath) — used to report the shared-store transport, if any
      * @return {@link FailoverStartupSummaryLogger}
      */
     @ConditionalOnMissingBean
@@ -319,8 +322,10 @@ public class FailoverAutoConfiguration {
     public FailoverStartupSummaryLogger failoverStartupSummaryLogger(
             FailoverProperties properties,
             ApplicationContext applicationContext,
-            ObjectProvider<FailoverScanner> scannerProvider) {
-        return new FailoverStartupSummaryLogger(properties, applicationContext, scannerProvider);
+            ObjectProvider<FailoverScanner> scannerProvider,
+            ObjectProvider<FailoverClusterPublisherProperties> clusterPublisherPropertiesProvider) {
+        return new FailoverStartupSummaryLogger(properties, applicationContext, scannerProvider,
+                clusterPublisherPropertiesProvider);
     }
 
     /** Registers the default no-op {@link RecoveredPayloadHandler} that returns the payload unchanged.

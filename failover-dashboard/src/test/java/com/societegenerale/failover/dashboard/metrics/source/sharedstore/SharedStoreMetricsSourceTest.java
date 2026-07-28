@@ -55,7 +55,7 @@ class SharedStoreMetricsSourceTest {
                 return new MetricsSummary(k, List.of(k), List.of(), 0L);
             }
             public List<ApiHealth> health() { return List.of(new ApiHealth(marker, "HEALTHY", 1.0)); }
-            public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false); }
+            public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false, false); }
             public List<SeriesPoint> series(long windowSec) { return List.of(); }
         };
     }
@@ -344,6 +344,26 @@ class SharedStoreMetricsSourceTest {
 
         assertThat(source.info().instancesReporting()).isEqualTo(1); // instance-1 DOWN → not counted
         assertThat(source.instances()).hasSize(2);                   // but both still visible
+    }
+
+    @Test
+    void infoLivenessTrackingEnabledTrueWhenHeartbeatStoreWired() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory();
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, heartbeatStore, 30_000);
+
+        assertThat(source.info().livenessTrackingEnabled()).isTrue();
+    }
+
+    @Test
+    void infoLivenessTrackingEnabledFalseWithoutAHeartbeatStore() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(store, THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.info().livenessTrackingEnabled()).isFalse();
     }
 
 }

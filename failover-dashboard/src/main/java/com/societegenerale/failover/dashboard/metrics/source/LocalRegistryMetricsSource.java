@@ -96,7 +96,7 @@ public class LocalRegistryMetricsSource implements MetricsSource {
 
     @Override
     public SourceInfo info() {
-        return new SourceInfo("local", 1, UNKNOWN, System.currentTimeMillis(), false);
+        return new SourceInfo("local", 1, UNKNOWN, System.currentTimeMillis(), false, false);
     }
 
     @Override

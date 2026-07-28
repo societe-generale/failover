@@ -42,6 +42,11 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - Build: corrected the stale `<scm><tag>` in the parent POM (`failover_1.1.0` → `HEAD`) (audit I-14)
 - Deserialization allowlist moved to the JDBC namespace — `failover.store.allowed-payload-classes` is now
   `failover.store.jdbc.allowed-payload-classes` (it only ever applied to the serializing JDBC store)
+- **Removed** `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` — the dashboard's JDBC snapshot store
+  (`failover-dashboard-snapshotstore-jdbc`) no longer creates or alters the `FAILOVER_DASHBOARD_SNAPSHOT` table;
+  schema management is the consuming service's responsibility. See
+  [Dashboard](../modules/dashboard.md#scenario-d-cluster-via-shared-store-jdbc-durable) for the per-dialect DDL to
+  run beforehand.
 
 ### Added
 
@@ -77,6 +82,27 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   clusters with no Prometheus). `shared-store` ships an in-memory store plus an optional durable JDBC store
   (**`failover-dashboard-snapshotstore-jdbc`** module) with validated `table-prefix`, age+size retention,
   liveness windowing, and a reset-aware cluster trend.
+- **`HeartbeatStoreJdbc`** (`failover-dashboard-snapshotstore-jdbc`, `store=jdbc`) — durable, shared
+  counterpart to `HeartbeatStoreInmemory`. Needed for correct `LIVE`/`DOWN` status when the dashboard is
+  embedded in *multiple* `@Failover` instances sharing one database: the in-memory heartbeat store is
+  process-local, so each embedded dashboard would only ever see the heartbeat pushed to its own loopback
+  and show every other peer stuck at `UNKNOWN`. New table `FAILOVER_DASHBOARD_HEARTBEAT`
+  (`INSTANCE_ID` PK, `LAST_SEEN TIMESTAMP WITH TIME ZONE`), same `table-prefix` and no-auto-DDL convention
+  as the snapshot table — see
+  [Dashboard Scenario D](../modules/dashboard.md#scenario-d-cluster-via-shared-store-jdbc-durable) for the DDL.
+  Both this table's `LAST_SEEN` and the snapshot table's `RECEIVED_AT` are time-zone-aware timestamps
+  (`TIMESTAMP(9) WITH TIME ZONE` on Oracle/H2; capped at `(6)` on PostgreSQL/MySQL/MariaDB, which don't
+  support 9-digit fractional precision, and MySQL/MariaDB have no `WITH TIME ZONE` syntax at all) — read and
+  written as `OffsetDateTime` (UTC) via JDBC 4.2 `setObject`/`getObject`, converted to/from epoch-millis at
+  that boundary so the rest of the codebase stays in epoch-millis
+- **`failover.dashboard.cluster.shared-store.liveness.enabled`** (`DashboardProperties.Liveness`, default
+  `false`) — dashboard-side toggle for heartbeat liveness tracking (ADR 66's original, previously-unimplemented
+  design), independent of the peer-side `cluster.snapshot.heartbeat.enabled`. Until set `true`, no
+  `HeartbeatStore` bean is created at all — neither `HeartbeatStoreInmemory` nor, under `store=jdbc`,
+  `HeartbeatStoreJdbc` — so `/api/cluster/heartbeat` is unmapped, `SharedStoreMetricsSource` never queries
+  liveness, and `FAILOVER_DASHBOARD_HEARTBEAT` is never required to exist. `SourceInfo` gained a
+  `livenessTrackingEnabled` field so the UI's `instance live tracking` badge can distinguish `disabled`
+  (dashboard-side toggle off), `waiting` (toggle on, no peer has pushed yet), and `on`
 - **Reset-aware shared-store aggregate + bounded instance retirement** (ADR 67) — the instant cluster
   aggregate is now monotonic across peer restarts: on counter reset the store folds the pre-restart totals
   into a per-instance carried-forward baseline (`SnapshotBaseline`; persisted in the JDBC store's
@@ -151,6 +177,21 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   (audit I-04) now fires only for genuine partial recovery (`0 < missing < total`); when every slice is
   missing it is full non-recovery — logged as such, no partial metric, and surfaced upstream as
   `is-recovered=false`
+- `DashboardProperties.SharedStore`/`.Jdbc` gained the same `@ConstructorBinding` on their canonical
+  constructor that `Cluster`/`Snapshot`/`Security` already had. Without it, Spring Boot's binder treated
+  the two-constructor record as ambiguous and silently skipped constructor binding, so
+  `cluster.shared-store.store` and `.jdbc.table-prefix` always resolved to their hardcoded defaults
+  regardless of configured YAML
+- `DashboardAutoConfiguration`'s ingest endpoints (`/api/cluster/snapshot`, `/api/cluster/heartbeat`) could
+  silently never map under `cluster.shared-store.store=jdbc` — `clusterSnapshotController`/
+  `clusterHeartbeatController` are `@ConditionalOnBean(SnapshotStore/HeartbeatStore.class)`, but those beans
+  come from the separately-conditioned `SnapshotStoreJdbcAutoConfiguration` in another module, and no
+  ordering edge existed between the two `@AutoConfiguration` classes. `@ConditionalOnBean` across
+  independently-conditioned auto-configurations is unreliable without one — confirmed both declaration
+  orders left the controllers unregistered (bare `404`, not an auth denial). Fixed by adding
+  `SnapshotStoreJdbcAutoConfiguration` to `DashboardAutoConfiguration`'s `@AutoConfiguration(afterName = ...)`
+  list (referenced by name, no compile dependency — same pattern already used for `FailoverAutoConfiguration`)
+  (ADR 70)
 
 ### Security
 

@@ -161,7 +161,7 @@ public class PrometheusMetricsSource implements MetricsSource {
     @Override
     public SourceInfo info() {
         try {
-            return new SourceInfo("prometheus", instanceCount(), -1, System.currentTimeMillis(), false);
+            return new SourceInfo("prometheus", instanceCount(), -1, System.currentTimeMillis(), false, false);
         } catch (PrometheusException e) {
             log.warn("Prometheus instance probe failed; reporting local provenance. Cause: {}", e.getMessage());
             return fallback.info();
