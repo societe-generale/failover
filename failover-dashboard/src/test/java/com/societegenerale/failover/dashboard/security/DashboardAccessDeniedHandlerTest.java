@@ -44,7 +44,7 @@ class DashboardAccessDeniedHandlerTest {
     @DisplayName("ROLE type ⇒ 403 JSON body names the missing role")
     void reportsMissingRole() throws Exception {
         DashboardAccessDeniedHandler handler = new DashboardAccessDeniedHandler(
-                new Security(SecurityType.ROLE, "ADMIN", "FAILOVER_ADMIN", null, false, ""));
+                new Security(SecurityType.ROLE, "ADMIN", "FAILOVER_ADMIN", null, false, "", false));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         handler.handle(request, response, new AccessDeniedException("denied"));
@@ -59,7 +59,7 @@ class DashboardAccessDeniedHandlerTest {
     @DisplayName("AUTHORITY type ⇒ 403 JSON body names the missing authority")
     void reportsMissingAuthority() throws Exception {
         DashboardAccessDeniedHandler handler = new DashboardAccessDeniedHandler(
-                new Security(SecurityType.AUTHORITY, "ADMIN", "FAILOVER_ADMIN", null, false, ""));
+                new Security(SecurityType.AUTHORITY, "ADMIN", "FAILOVER_ADMIN", null, false, "", false));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         handler.handle(request, response, new AccessDeniedException("denied"));
@@ -73,7 +73,7 @@ class DashboardAccessDeniedHandlerTest {
     @DisplayName("EXPRESSION type ⇒ 403 JSON body reports the generic expression denial")
     void reportsExpressionDenial() throws Exception {
         DashboardAccessDeniedHandler handler = new DashboardAccessDeniedHandler(
-                new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", "hasRole('ADMIN')", false, ""));
+                new Security(SecurityType.EXPRESSION, "ADMIN", "FAILOVER_ADMIN", "hasRole('ADMIN')", false, "", false));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         handler.handle(request, response, new AccessDeniedException("denied"));
@@ -88,7 +88,7 @@ class DashboardAccessDeniedHandlerTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new TestingAuthenticationToken("alice", "n/a", List.of()));
         DashboardAccessDeniedHandler handler = new DashboardAccessDeniedHandler(
-                new Security(SecurityType.ROLE, "ADMIN", "FAILOVER_ADMIN", null, false, ""));
+                new Security(SecurityType.ROLE, "ADMIN", "FAILOVER_ADMIN", null, false, "", false));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         // No exception thrown while resolving the authenticated principal — the log line itself isn't

@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.config;
 
 import com.societegenerale.failover.dashboard.security.DashboardAccessDeniedHandler;
 import com.societegenerale.failover.dashboard.security.DashboardAuthBackingValidator;
+import com.societegenerale.failover.dashboard.security.DashboardAuthenticationConfigurer;
 import com.societegenerale.failover.dashboard.security.DefaultFailoverSecurityProvider;
 import com.societegenerale.failover.dashboard.security.FailoverSecurityProvider;
 import com.societegenerale.failover.dashboard.security.SecurityContext;
@@ -59,6 +60,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClas
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -112,7 +114,13 @@ import static org.springframework.boot.autoconfigure.condition.ConditionalOnWebA
                 // After Boot's own fallback-user auto-configuration so dashboardAuthBackingValidator sees
                 // whether Boot already created a generated-password UserDetailsService before deciding
                 // whether the UI gate has no way to authenticate anyone.
-                "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration"
+                "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration",
+                // After the optional JDBC shared-store module (when present) so its SnapshotStore/HeartbeatStore
+                // beans exist by the time snapshotStore()/heartbeatStore() (@ConditionalOnExpression, store=inmemory)
+                // and clusterSnapshotController/clusterHeartbeatController (@ConditionalOnBean) evaluate — without
+                // this, @ConditionalOnBean unreliably sees "no bean" regardless of declaration order between two
+                // independently-conditioned @AutoConfiguration classes, and the ingest endpoints silently never map.
+                "com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc.SnapshotStoreJdbcAutoConfiguration"
         })
 @ConditionalOnWebApplication(type = SERVLET)
 @ConditionalOnClass(MeterRegistry.class)
@@ -137,6 +145,21 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                             + "for UI/API consumers until 'cluster' is added to exposure.include.",
                     properties.basePath());
         }
+    }
+
+    /**
+     * Logs a single consolidated startup summary of the dashboard's own configuration — base path,
+     * exposure, security posture, cluster mode, and (for {@code shared-store}) whether the configured
+     * store/ingest/liveness actually wired up. Fires on {@code ApplicationReadyEvent}, after every other
+     * bean in this class has had a chance to register.
+     *
+     * @param applicationContext Spring application context for bean-type detection
+     * @return {@link DashboardStartupSummaryLogger}
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public DashboardStartupSummaryLogger dashboardStartupSummaryLogger(ApplicationContext applicationContext) {
+        return new DashboardStartupSummaryLogger(properties, applicationContext);
     }
 
     /**
@@ -308,13 +331,18 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * Ingest controller for peer snapshot pushes; present only in shared-store mode.
+     * Ingest controller for peer snapshot pushes; present only in shared-store mode, and only when the HTTP
+     * ingest path is wanted at all ({@code cluster.snapshot.ingest.enabled}, default {@code true}). Turn it
+     * off once every peer writes directly to the shared JDBC table instead — the dashboard still reads from
+     * {@link SnapshotStore} either way, this only stops mapping the HTTP path (and its ingest security gate)
+     * into it.
      *
      * @param snapshotStore the store to record incoming peer snapshots into
      * @return the ingest controller
      */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.ingest", name = "enabled", havingValue = "true", matchIfMissing = true)
     @ConditionalOnBean(SnapshotStore.class)
     @ConditionalOnMissingBean
     public ClusterSnapshotController clusterSnapshotController(SnapshotStore snapshotStore) {
@@ -322,25 +350,44 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
     }
 
     /**
-     * In-memory heartbeat store — always present in shared-store mode. Instances that never send a heartbeat stay UNKNOWN.
+     * In-memory heartbeat store for {@code cluster.mode=shared-store} — the default {@code store=inmemory}.
+     * {@code store=jdbc} instead activates the durable {@code failover-dashboard-snapshotstore-jdbc} module's
+     * {@code HeartbeatStoreJdbc}, so liveness stays consistent across dashboards embedded in multiple instances
+     * sharing one database. {@code @ConditionalOnMissingBean} so a consumer can supply their own implementation.
+     * Instances that never send a heartbeat stay {@code UNKNOWN}.
+     *
+     * <p>Gated on {@code shared-store.liveness.enabled} (default {@code false}, {@link DashboardProperties.Liveness}) —
+     * off by default, no bean at all until explicitly enabled, so no consumer is ever forced to run the
+     * heartbeat ingest endpoint or (under {@code store=jdbc}) provision {@code FAILOVER_DASHBOARD_HEARTBEAT}
+     * just because shared-store mode is on.
      *
      * @return the in-memory heartbeat store
      */
     @Bean
-    @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnExpression("'${failover.dashboard.cluster.mode:local}' == 'shared-store' "
+            + "and '${failover.dashboard.cluster.shared-store.store:inmemory}' == 'inmemory' "
+            + "and '${failover.dashboard.cluster.shared-store.liveness.enabled:false}' == 'true'")
     @ConditionalOnMissingBean(HeartbeatStore.class)
     public HeartbeatStore heartbeatStore() {
         return new HeartbeatStoreInmemory();
     }
 
     /**
-     * Heartbeat ingest endpoint — always active in shared-store mode; peers opt in by enabling heartbeat on their side.
+     * Heartbeat ingest endpoint; present only in shared-store mode with a {@link HeartbeatStore} bean available
+     * (mirrors {@link #clusterSnapshotController}'s guard — e.g. {@code store=jdbc} without the JDBC module on
+     * the classpath leaves no {@link HeartbeatStore} bean, and this controller must not be wired then either),
+     * and only when the HTTP ingest path is wanted at all ({@code cluster.snapshot.ingest.enabled}, same flag
+     * that gates {@link #clusterSnapshotController} — both endpoints share one on/off switch so a JDBC-direct
+     * deployment that turns ingest off doesn't leave the heartbeat path mapped by itself). Peers opt in by
+     * enabling heartbeat on their side.
      *
      * @param heartbeatStore the store to record incoming peer heartbeats into
      * @return the heartbeat ingest controller
      */
     @Bean
     @ConditionalOnProperty(prefix = "failover.dashboard.cluster", name = "mode", havingValue = "shared-store")
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.ingest", name = "enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnBean(HeartbeatStore.class)
     @ConditionalOnMissingBean
     public ClusterHeartbeatController clusterHeartbeatController(HeartbeatStore heartbeatStore) {
         return new ClusterHeartbeatController(heartbeatStore);
@@ -551,6 +598,47 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         }
 
         /**
+         * Top-priority authentication seam: when a consumer declares a {@link DashboardAuthenticationConfigurer}
+         * bean, it wins over both built-in mechanisms (HTTP Basic, OAuth2 login) and the built-in OAuth2
+         * resource-server option. Applies the shared matcher, {@link FailoverSecurityProvider} authorization,
+         * and {@link DashboardAccessDeniedHandler} identically to the built-in chains, then delegates only the
+         * authentication step to the consumer's implementation — covering any mechanism the built-ins don't
+         * (a resource-server/JWT setup with custom validation, a trusted-header identity forwarded by a
+         * reverse proxy, SAML, mTLS, an existing {@code AuthenticationProvider}, or a {@code client_credentials}-only
+         * shop that wants the dashboard behind its own gateway's auth entirely) without re-declaring the whole
+         * chain.
+         *
+         * <p><b>Must stay declared before {@code dashboardAuthBackingValidator} and
+         * {@code dashboardSecurityFilterChain} in this class</b> — same source-declaration-order reasoning as
+         * documented on {@code dashboardAuthBackingValidator} below.
+         *
+         * @param http                     the {@code HttpSecurity} to configure
+         * @param failoverSecurityProvider applies the configured role/authority/expression check
+         * @param accessDeniedHandler      reports {@code 403} with a specific reason
+         * @param props                    the bound {@code failover.dashboard.*} properties
+         * @param authenticationConfigurer the consumer-supplied authentication mechanism
+         * @return the assembled chain
+         * @throws Exception as {@code HttpSecurity} configuration methods declare
+         */
+        @Bean
+        @Order(0)
+        @ConditionalOnBean(DashboardAuthenticationConfigurer.class)
+        @ConditionalOnMissingBean(name = "dashboardCustomAuthFilterChain")
+        SecurityFilterChain dashboardCustomAuthFilterChain(
+                HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
+                DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props,
+                DashboardAuthenticationConfigurer authenticationConfigurer) throws Exception {
+            SecurityContext context = new SecurityContext(props.basePath(), props.security());
+            http.securityMatcher(props.basePath() + "/**")
+                    .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth, context))
+                    .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler));
+            authenticationConfigurer.configure(http, context);
+            log.info("Failover dashboard secured: '{}/**' via a custom DashboardAuthenticationConfigurer, "
+                    + "requires role '{}'.", props.basePath(), props.security().role());
+            return http.build();
+        }
+
+        /**
          * Fails fast when the UI gate has no way to authenticate anyone — {@code security.type=ROLE} or
          * {@code AUTHORITY} requires a non-anonymous authenticated principal, but {@code httpBasic()} alone
          * doesn't guarantee one exists: without a {@code UserDetailsService} or {@code AuthenticationProvider}
@@ -567,18 +655,22 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
          * user-supplied {@code @Configuration} beans before any {@code @AutoConfiguration} bean, so a real
          * override is always visible here regardless of order within this class).
          *
-         * <p>Skipped when a consumer overrides {@code dashboardSecurityFilterChain} by name. Skipped (not
-         * evaluated for the real-auth requirement) when {@code security.oauth2-client-registration-id} is
-         * set — the OAuth2 login variant handles authentication itself and needs no backing
-         * {@code UserDetailsService} — checked directly against the config value rather than the sibling
-         * bean's name, since that bean lives in a different nested {@code @Configuration} class
-         * ({@link OAuth2LoginSecurityConfiguration}) whose relative processing order is not guaranteed.
+         * <p>Skipped when a consumer overrides {@code dashboardSecurityFilterChain} by name, or supplies a
+         * {@link DashboardAuthenticationConfigurer} bean (that mechanism authenticates on its own terms — this
+         * validator can't know whether it needs a {@code UserDetailsService}). Skipped (not evaluated for the
+         * real-auth requirement) when {@code security.oauth2-client-registration-id} is set — the OAuth2 login
+         * variant handles authentication itself and needs no backing {@code UserDetailsService} — checked
+         * directly against the config value rather than the sibling bean's name, since that bean lives in a
+         * different nested {@code @Configuration} class ({@link OAuth2LoginSecurityConfiguration}) whose
+         * relative processing order is not guaranteed. Likewise skipped when
+         * {@code security.oauth2-resource-server=true} — see {@link OAuth2ResourceServerSecurityConfiguration}.
          * {@code security.type=EXPRESSION} only warns, not fails: a SpEL expression might legitimately grant
          * access without real authentication (e.g. an IP-based rule), which we can't determine statically.
          *
-         * @param props                   the bound {@code failover.dashboard.*} properties
-         * @param userDetailsServices     any {@code UserDetailsService} beans in the context
-         * @param authenticationProviders any {@code AuthenticationProvider} beans in the context
+         * @param props                     the bound {@code failover.dashboard.*} properties
+         * @param userDetailsServices       any {@code UserDetailsService} beans in the context
+         * @param authenticationProviders   any {@code AuthenticationProvider} beans in the context
+         * @param authenticationConfigurers any {@code DashboardAuthenticationConfigurer} beans in the context
          * @return a marker confirming the check ran
          */
         @Bean
@@ -586,9 +678,11 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         DashboardAuthBackingValidator dashboardAuthBackingValidator(
                 DashboardProperties props,
                 ObjectProvider<UserDetailsService> userDetailsServices,
-                ObjectProvider<AuthenticationProvider> authenticationProviders) {
-            if (!props.security().oauth2ClientRegistrationId().isBlank()) {
-                return new DashboardAuthBackingValidator(); // OAuth2 login variant authenticates instead
+                ObjectProvider<AuthenticationProvider> authenticationProviders,
+                ObjectProvider<DashboardAuthenticationConfigurer> authenticationConfigurers) {
+            if (!props.security().oauth2ClientRegistrationId().isBlank() || props.security().oauth2ResourceServer()
+                    || authenticationConfigurers.stream().findAny().isPresent()) {
+                return new DashboardAuthBackingValidator(); // another mechanism authenticates instead
             }
             boolean hasBackingAuth = userDetailsServices.stream().findAny().isPresent()
                     || authenticationProviders.stream().findAny().isPresent();
@@ -617,15 +711,21 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         }
 
         /** Main dashboard gate: {@code base-path/**} requires the configured role. {@code @Order(0)} ensures
-         * ingest chains at {@code @Order(-10)} are evaluated first for the ingest paths. Backs off when a
-         * consumer supplies their own {@code dashboardSecurityFilterChain}, or when
-         * {@code security.oauth2-client-registration-id} activates {@code dashboardOAuth2SecurityFilterChain}
-         * instead (see {@link OAuth2LoginSecurityConfiguration}).
+         * ingest chains at {@code @Order(-10)} are evaluated first for the ingest paths. Lowest priority of
+         * the four authentication options — backs off when a consumer supplies their own
+         * {@code dashboardSecurityFilterChain}, declares a {@link DashboardAuthenticationConfigurer} bean
+         * (activates {@code dashboardCustomAuthFilterChain} instead), sets
+         * {@code security.oauth2-client-registration-id} (activates {@code dashboardOAuth2SecurityFilterChain},
+         * see {@link OAuth2LoginSecurityConfiguration}), or sets {@code security.oauth2-resource-server=true}
+         * (activates {@code dashboardOAuth2ResourceServerFilterChain}, see
+         * {@link OAuth2ResourceServerSecurityConfiguration}).
          * Stateless — HTTP Basic auth; no session is created. Dashboard is read-only (GET only), so no
          * state-changing operations exist and CSRF protection uses Spring Security defaults. */
         @Bean
         @Order(0)
-        @ConditionalOnMissingBean(name = {"dashboardSecurityFilterChain", "dashboardOAuth2SecurityFilterChain"})
+        @ConditionalOnMissingBean(value = DashboardAuthenticationConfigurer.class,
+                name = {"dashboardSecurityFilterChain", "dashboardOAuth2SecurityFilterChain",
+                        "dashboardOAuth2ResourceServerFilterChain"})
         SecurityFilterChain dashboardSecurityFilterChain(HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
                                                           DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
             http.securityMatcher(props.basePath() + "/**")
@@ -682,7 +782,7 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
         @Bean("dashboardOAuth2SecurityFilterChain")
         @Order(0)
         @ConditionalOnProperty(prefix = "failover.dashboard.security", name = "oauth2-client-registration-id")
-        @ConditionalOnMissingBean(name = "dashboardOAuth2SecurityFilterChain")
+        @ConditionalOnMissingBean(value = DashboardAuthenticationConfigurer.class, name = "dashboardOAuth2SecurityFilterChain")
         SecurityFilterChain dashboardOAuth2SecurityFilterChain(
                 HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
                 DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
@@ -693,6 +793,50 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
                     .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler));
             log.info("Failover dashboard secured: '{}/**' via OAuth2 login (registration '{}'), requires role '{}'.",
                     props.basePath(), props.security().oauth2ClientRegistrationId(), props.security().role());
+            return http.build();
+        }
+    }
+
+    /**
+     * Dashboard UI/API secured with OAuth2 resource-server (JWT Bearer) validation instead of a browser
+     * login. Activated when {@code failover.dashboard.security.oauth2-resource-server=true} — for consumers
+     * whose SSO is terminated upstream of the dashboard (an API gateway, service mesh sidecar, or reverse
+     * proxy like oauth2-proxy) and forwards a validated JWT on every request, rather than a browser-native
+     * OAuth2 authorization_code login. Authorization still goes through {@link FailoverSecurityProvider} —
+     * role/authority/expression — same as every other mechanism; only authentication differs.
+     *
+     * <p>Standard Spring Boot {@code spring.security.oauth2.resourceserver.jwt.*} properties (issuer-uri or
+     * jwk-set-uri) configure JWT validation — the same properties {@link OAuth2IngestSecurityConfiguration}
+     * relies on for peer ingest. Isolated in its own inner class so the resource-server API is never loaded
+     * when absent from the classpath.
+     *
+     * <p>Stateless — no session is created; a bearer token is expected on every request, including the
+     * initial page load, so this option only works when whatever sits in front of the dashboard is able to
+     * attach one (a gateway/sidecar pattern) rather than a bare browser navigating directly to the dashboard.
+     * For a bare-browser SSO login, use {@code security.oauth2-client-registration-id}
+     * ({@link OAuth2LoginSecurityConfiguration}) instead.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken")
+    static class OAuth2ResourceServerSecurityConfiguration {
+
+        @Bean("dashboardOAuth2ResourceServerFilterChain")
+        @Order(0)
+        @ConditionalOnProperty(prefix = "failover.dashboard.security", name = "oauth2-resource-server", havingValue = "true")
+        @ConditionalOnMissingBean(value = DashboardAuthenticationConfigurer.class,
+                name = {"dashboardSecurityFilterChain", "dashboardOAuth2SecurityFilterChain",
+                        "dashboardOAuth2ResourceServerFilterChain"})
+        SecurityFilterChain dashboardOAuth2ResourceServerFilterChain(
+                HttpSecurity http, FailoverSecurityProvider failoverSecurityProvider,
+                DashboardAccessDeniedHandler accessDeniedHandler, DashboardProperties props) {
+            http.securityMatcher(props.basePath() + "/**")
+                    .authorizeHttpRequests(auth -> failoverSecurityProvider.configure(auth,
+                            new SecurityContext(props.basePath(), props.security())))
+                    .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                    .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(accessDeniedHandler));
+            log.info("Failover dashboard secured: '{}/**' via OAuth2 resource server (JWT Bearer), requires role '{}'.",
+                    props.basePath(), props.security().role());
             return http.build();
         }
     }

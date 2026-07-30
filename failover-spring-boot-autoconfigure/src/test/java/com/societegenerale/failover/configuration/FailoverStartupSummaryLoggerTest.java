@@ -20,6 +20,8 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.BasicFailoverExecution;
 import com.societegenerale.failover.core.FailoverExecution;
 import com.societegenerale.failover.core.scanner.FailoverScanner;
+import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
+import com.societegenerale.failover.observable.micrometer.HeartbeatPublisher;
 import com.societegenerale.failover.observable.micrometer.MicrometerObservablePublisher;
 import com.societegenerale.failover.properties.FailoverProperties;
 import com.societegenerale.failover.properties.StoreType;
@@ -49,6 +51,7 @@ class FailoverStartupSummaryLoggerTest {
 
     @Mock ApplicationContext applicationContext;
     @Mock ObjectProvider<FailoverScanner> scannerProvider;
+    @Mock ObjectProvider<FailoverClusterPublisherProperties> clusterPublisherPropertiesProvider;
 
     private FailoverProperties properties;
     private FailoverStartupSummaryLogger logger;
@@ -56,7 +59,8 @@ class FailoverStartupSummaryLoggerTest {
     @BeforeEach
     void setUp() {
         properties = new FailoverProperties();
-        logger = new FailoverStartupSummaryLogger(properties, applicationContext, scannerProvider);
+        logger = new FailoverStartupSummaryLogger(properties, applicationContext, scannerProvider,
+                clusterPublisherPropertiesProvider);
     }
 
     // ── annotation fixtures ───────────────────────────────────────────────────
@@ -256,6 +260,117 @@ class FailoverStartupSummaryLoggerTest {
                     .thenReturn(new String[]{});
             String summary = logger.buildSummary();
             assertThat(summary).contains("execution        : unknown");
+        }
+    }
+
+    // ── buildSummary — cluster publisher ─────────────────────────────────────
+
+    @Nested
+    @DisplayName("buildSummary — cluster publisher")
+    class BuildSummaryClusterPublisher {
+
+        @BeforeEach
+        void mockDefaults() {
+            when(applicationContext.getBeanNamesForType(FailoverExecution.class))
+                    .thenReturn(new String[]{});
+            when(applicationContext.getBeanNamesForType(MicrometerObservablePublisher.class))
+                    .thenReturn(new String[]{});
+            when(scannerProvider.getIfAvailable()).thenReturn(null);
+        }
+
+        private FailoverClusterPublisherProperties httpProps(boolean heartbeat) {
+            return new FailoverClusterPublisherProperties(
+                    "http://dashboard-host:8080/failover-dashboard", 15, 300, "", "", "", false,
+                    new FailoverClusterPublisherProperties.Heartbeat(heartbeat, 60),
+                    new FailoverClusterPublisherProperties.Jdbc());
+        }
+
+        private FailoverClusterPublisherProperties jdbcProps(boolean heartbeat) {
+            return new FailoverClusterPublisherProperties(
+                    "", 15, 300, "", "", "", false,
+                    new FailoverClusterPublisherProperties.Heartbeat(heartbeat, 60),
+                    new FailoverClusterPublisherProperties.Jdbc(true, "DEMO_"));
+        }
+
+        @Test
+        @DisplayName("no FailoverClusterPublisherProperties bean (no MeterRegistry) ⇒ none")
+        void noPropertiesBean() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(null);
+            assertThat(logger.buildSummary()).contains("cluster-publisher: none");
+        }
+
+        @Test
+        @DisplayName("neither publish-url nor jdbc.enabled set ⇒ none")
+        void neitherTransportConfigured() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable())
+                    .thenReturn(new FailoverClusterPublisherProperties());
+            assertThat(logger.buildSummary()).contains("cluster-publisher: none");
+        }
+
+        @Test
+        @DisplayName("publish-url set + ClusterSnapshotPublisher wired ⇒ shows http target, no NOT WIRED")
+        void httpWired() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(httpProps(false));
+            when(applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class))
+                    .thenReturn(new String[]{"clusterSnapshotPublisher"});
+            assertThat(logger.buildSummary())
+                    .contains("cluster-publisher: http -> http://dashboard-host:8080/failover-dashboard")
+                    .doesNotContain("NOT WIRED");
+        }
+
+        @Test
+        @DisplayName("publish-url set but ClusterSnapshotPublisher absent ⇒ NOT WIRED, points at spring-web")
+        void httpConfiguredButNotWired() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(httpProps(false));
+            when(applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class))
+                    .thenReturn(new String[]{});
+            assertThat(logger.buildSummary())
+                    .contains("NOT WIRED (check for spring-web on the classpath)");
+        }
+
+        @Test
+        @DisplayName("jdbc.enabled=true + ClusterSnapshotPublisher wired ⇒ shows jdbc-direct target with table-prefix")
+        void jdbcWired() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(jdbcProps(false));
+            when(applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class))
+                    .thenReturn(new String[]{"clusterSnapshotPublisher"});
+            assertThat(logger.buildSummary())
+                    .contains("cluster-publisher: jdbc-direct [table-prefix='DEMO_']")
+                    .doesNotContain("NOT WIRED");
+        }
+
+        @Test
+        @DisplayName("jdbc.enabled=true but ClusterSnapshotPublisher absent ⇒ NOT WIRED, points at DataSource")
+        void jdbcConfiguredButNotWired() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(jdbcProps(false));
+            when(applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class))
+                    .thenReturn(new String[]{});
+            assertThat(logger.buildSummary())
+                    .contains("NOT WIRED (check for a DataSource bean)");
+        }
+
+        @Test
+        @DisplayName("heartbeat.enabled=true + HeartbeatPublisher wired ⇒ heartbeat=on, no NOT WIRED suffix on it")
+        void heartbeatWired() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(jdbcProps(true));
+            when(applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class))
+                    .thenReturn(new String[]{"clusterSnapshotPublisher"});
+            when(applicationContext.getBeanNamesForType(HeartbeatPublisher.class))
+                    .thenReturn(new String[]{"heartbeatPublisher"});
+            assertThat(logger.buildSummary())
+                    .contains("heartbeat=on")
+                    .doesNotContain("heartbeat=on — NOT WIRED");
+        }
+
+        @Test
+        @DisplayName("heartbeat.enabled=true but HeartbeatPublisher absent ⇒ heartbeat=on — NOT WIRED")
+        void heartbeatConfiguredButNotWired() {
+            when(clusterPublisherPropertiesProvider.getIfAvailable()).thenReturn(jdbcProps(true));
+            when(applicationContext.getBeanNamesForType(ClusterSnapshotPublisher.class))
+                    .thenReturn(new String[]{"clusterSnapshotPublisher"});
+            when(applicationContext.getBeanNamesForType(HeartbeatPublisher.class))
+                    .thenReturn(new String[]{});
+            assertThat(logger.buildSummary()).contains("heartbeat=on — NOT WIRED");
         }
     }
 

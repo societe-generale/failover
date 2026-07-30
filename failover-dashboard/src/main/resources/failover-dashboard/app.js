@@ -738,16 +738,26 @@ function renderInstances() {
         + ` · ${total} instance${total !== 1 ? 's' : ''}`
         + (trackingEnabled ? ` · ${reporting} live · ${downCount} down` : '');
 
+    // Dashboard-side toggle (cluster.shared-store.liveness.enabled, ADR 66) — distinct from "enabled, but no
+    // peer has pushed a heartbeat yet", which otherwise looks identical (every instance at LiveStatus.UNKNOWN).
+    const livenessEnabledOnDashboard = !!(lastSource && lastSource.livenessTrackingEnabled);
+
     const ltBadge = document.getElementById('live-track-badge');
     if (ltBadge && live) {
-        if (trackingEnabled) {
+        if (!livenessEnabledOnDashboard) {
+            ltBadge.className = 'live-track-badge tip off';
+            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · disabled';
+            ltBadge.dataset.tip = 'Disabled on this dashboard. Enable with failover.dashboard.cluster.shared-store.liveness.enabled=true, '
+                + 'and failover.dashboard.cluster.snapshot.heartbeat.enabled=true on each peer.';
+        } else if (trackingEnabled) {
             ltBadge.className = 'live-track-badge tip on';
             ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · on';
             ltBadge.dataset.tip = 'Heartbeat liveness tracking is active — instance dots reflect LIVE / DOWN status';
         } else {
             ltBadge.className = 'live-track-badge tip off';
-            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · off';
-            ltBadge.dataset.tip = 'Instance heartbeat tracking is disabled — dot colour reflects snapshot age only';
+            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · waiting';
+            ltBadge.dataset.tip = 'Enabled on this dashboard, but no peer has sent a heartbeat yet. Enable '
+                + 'failover.dashboard.cluster.snapshot.heartbeat.enabled=true on each peer instance.';
         }
     }
 

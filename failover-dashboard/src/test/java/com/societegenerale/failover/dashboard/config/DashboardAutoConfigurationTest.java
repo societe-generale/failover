@@ -17,22 +17,31 @@
 package com.societegenerale.failover.dashboard.config;
 
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
+import com.societegenerale.failover.dashboard.security.DashboardAuthenticationConfigurer;
 import com.societegenerale.failover.dashboard.service.DashboardConfigService;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
+import com.societegenerale.failover.dashboard.web.ClusterHeartbeatController;
 import com.societegenerale.failover.dashboard.web.DashboardController;
 import com.societegenerale.failover.dashboard.web.DashboardMetricsController;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.LocalRegistryMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusMetricsSource;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
+import com.societegenerale.failover.dashboard.web.ClusterSnapshotController;
 import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 
@@ -83,6 +92,7 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx).hasSingleBean(DashboardProperties.class);
                     assertThat(ctx).hasSingleBean(DashboardConfigService.class);
                     assertThat(ctx).hasSingleBean(DashboardController.class);
+                    assertThat(ctx).hasSingleBean(DashboardStartupSummaryLogger.class);
                     assertThat(ctx.getBean(DashboardProperties.class).basePath())
                             .isEqualTo("/failover-dashboard");
                 });
@@ -174,10 +184,25 @@ class DashboardAutoConfigurationTest {
                 .run(ctx -> {
                     assertThat(ctx.getBean(MetricsSource.class))
                             .isInstanceOf(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SharedStoreMetricsSource.class);
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.web.ClusterSnapshotController.class);
+                    assertThat(ctx).hasSingleBean(SnapshotStore.class);
+                    assertThat(ctx).hasSingleBean(ClusterSnapshotController.class);
                     assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesStore.class);
                     assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.ClusterSeriesSampler.class);
+                    assertThat(ctx.getBean(MetricsSource.class).info().mode()).isEqualTo("shared-store");
+                });
+    }
+
+    @Test
+    @DisplayName("cluster.mode=shared-store + snapshot.ingest.enabled=false ⇒ no ClusterSnapshotController, SnapshotStore still wired")
+    void sharedStoreModeWithIngestDisabledSkipsController() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.ingest.enabled=false")
+                .run(ctx -> {
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotController.class);
+                    assertThat(ctx).hasSingleBean(SnapshotStore.class);
                     assertThat(ctx.getBean(MetricsSource.class).info().mode()).isEqualTo("shared-store");
                 });
     }
@@ -192,7 +217,7 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.cluster.shared-store.store=jdbc")
                 .run(ctx -> {
                     assertThat(ctx).hasNotFailed();
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
+                    assertThat(ctx).doesNotHaveBean(SnapshotStore.class);
                     assertThat(ctx.getBean(MetricsSource.class)).isInstanceOf(LocalRegistryMetricsSource.class);
                 });
     }
@@ -204,23 +229,56 @@ class DashboardAutoConfigurationTest {
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues("failover.dashboard.enabled=true")
                 .run(ctx -> {
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore.class);
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.web.ClusterSnapshotController.class);
+                    assertThat(ctx).doesNotHaveBean(SnapshotStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotController.class);
                 });
     }
 
     @Test
     @SuppressWarnings("java:S2699")
-    @DisplayName("shared-store mode ⇒ HeartbeatStore + ClusterHeartbeatController always wired")
-    void heartbeatBeansAlwaysWiredInSharedStoreMode() {
+    @DisplayName("shared-store mode, liveness.enabled unset ⇒ off by default, no HeartbeatStore or ClusterHeartbeatController (ADR 66)")
+    void heartbeatBeansAbsentByDefaultInSharedStoreMode() {
         runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues(
                         "failover.dashboard.enabled=true",
                         "failover.dashboard.cluster.mode=shared-store")
                 .run(ctx -> {
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class);
-                    assertThat(ctx).hasSingleBean(com.societegenerale.failover.dashboard.web.ClusterHeartbeatController.class);
+                    assertThat(ctx).doesNotHaveBean(HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterHeartbeatController.class);
+                });
+    }
+
+    @Test
+    @SuppressWarnings("java:S2699")
+    @DisplayName("shared-store mode + liveness.enabled=true ⇒ HeartbeatStore + ClusterHeartbeatController wired")
+    void heartbeatBeansWiredWhenLivenessExplicitlyEnabled() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.shared-store.liveness.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(HeartbeatStore.class);
+                    assertThat(ctx).hasSingleBean(ClusterHeartbeatController.class);
+                });
+    }
+
+    @Test
+    @DisplayName("shared-store mode + liveness.enabled=true + snapshot.ingest.enabled=false ⇒ HeartbeatStore wired, ClusterHeartbeatController absent")
+    void heartbeatControllerAbsentWhenIngestDisabledEvenWithLivenessOn() {
+        runner.withBean(io.micrometer.core.instrument.MeterRegistry.class,
+                        io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
+                .withPropertyValues(
+                        "failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.shared-store.liveness.enabled=true",
+                        "failover.dashboard.cluster.snapshot.ingest.enabled=false")
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterHeartbeatController.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterSnapshotController.class);
                 });
     }
 
@@ -232,8 +290,8 @@ class DashboardAutoConfigurationTest {
                         io.micrometer.core.instrument.simple.SimpleMeterRegistry::new)
                 .withPropertyValues("failover.dashboard.enabled=true")
                 .run(ctx -> {
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class);
-                    assertThat(ctx).doesNotHaveBean(com.societegenerale.failover.dashboard.web.ClusterHeartbeatController.class);
+                    assertThat(ctx).doesNotHaveBean(HeartbeatStore.class);
+                    assertThat(ctx).doesNotHaveBean(ClusterHeartbeatController.class);
                 });
     }
 
@@ -383,7 +441,7 @@ class DashboardAutoConfigurationTest {
     void uiOffServesNoStatic() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(false, true, java.util.List.of("config", "metrics", "health")),
-                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false, ""),
+                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY, "FAILOVER_ADMIN","FAILOVER_ADMIN", null, false, "", false),
                 new DashboardProperties.History(false, 120, 15),
                 new DashboardProperties.Health(0.99, 0.90, 100),
                 new DashboardProperties.Cluster("local"));
@@ -782,6 +840,73 @@ class DashboardAutoConfigurationTest {
                     assertThat(ctx).hasBean("dashboardOAuth2SecurityFilterChain");
                     assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
                 });
+    }
+
+    // --- DashboardAuthenticationConfigurer seam ---
+
+    @Test
+    @DisplayName("DashboardAuthenticationConfigurer bean present ⇒ custom auth chain registered, built-ins back off")
+    void customAuthenticationConfigurerTakesPriority() {
+        runner.withUserConfiguration(CustomAuthenticationConfigurerConfig.class)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardCustomAuthFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardOAuth2SecurityFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardOAuth2ResourceServerFilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("DashboardAuthenticationConfigurer bean present ⇒ auth-backing validator not required")
+    void authBackingValidatorSkippedWhenCustomConfigurerPresent() {
+        bareSecurityRunner()
+                .withUserConfiguration(CustomAuthenticationConfigurerConfig.class)
+                .withPropertyValues("failover.dashboard.enabled=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("security.oauth2-resource-server=true ⇒ OAuth2 resource-server filter chain registered")
+    void oauth2ResourceServerChainRegistered() {
+        runner.withBean(JwtDecoder.class, () -> Mockito.mock(JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-resource-server=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardOAuth2ResourceServerFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardSecurityFilterChain");
+                });
+    }
+
+    @Test
+    @DisplayName("no backing auth + security.oauth2-resource-server=true ⇒ validator doesn't require one (resource server authenticates instead)")
+    void authBackingValidatorSkippedWhenResourceServerConfigured() {
+        bareSecurityRunner()
+                .withBean(JwtDecoder.class, () -> Mockito.mock(JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-resource-server=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed());
+    }
+
+    @Test
+    @DisplayName("security.oauth2-resource-server=true takes lower priority than a custom DashboardAuthenticationConfigurer")
+    void customConfigurerTakesPriorityOverResourceServer() {
+        runner.withUserConfiguration(CustomAuthenticationConfigurerConfig.class)
+                .withBean(JwtDecoder.class, () -> Mockito.mock(JwtDecoder.class))
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.security.oauth2-resource-server=true")
+                .run(ctx -> {
+                    assertThat(ctx).hasBean("dashboardCustomAuthFilterChain");
+                    assertThat(ctx).doesNotHaveBean("dashboardOAuth2ResourceServerFilterChain");
+                });
+    }
+
+    @Configuration
+    static class CustomAuthenticationConfigurerConfig {
+        @Bean
+        DashboardAuthenticationConfigurer dashboardAuthenticationConfigurer() {
+            return (http, context) -> http.httpBasic(Customizer.withDefaults());
+        }
     }
 
     @org.springframework.context.annotation.Configuration

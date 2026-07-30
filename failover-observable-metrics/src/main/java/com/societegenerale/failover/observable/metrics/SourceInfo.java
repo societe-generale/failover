@@ -25,16 +25,24 @@ package com.societegenerale.failover.observable.metrics;
  * cluster size is unknown), and the UI renders a "this instance only" badge. Cluster-aware modes
  * (Prometheus / shared store) populate the instance counts and freshness.
  *
- * @param mode               {@code local} | {@code prometheus} | {@code shared-store}
- * @param instancesReporting how many instances contributed to these figures ({@code 1} in local mode)
- * @param instancesExpected  best-known total instance count, or {@code -1} when unknown (local mode)
- * @param asOfEpochMs        freshness of the underlying data (epoch millis)
- * @param partial            {@code true} when some expected instances are missing or stale
+ * @param mode                     {@code local} | {@code prometheus} | {@code shared-store}
+ * @param instancesReporting       how many instances contributed to these figures ({@code 1} in local mode)
+ * @param instancesExpected        best-known total instance count, or {@code -1} when unknown (local mode)
+ * @param asOfEpochMs              freshness of the underlying data (epoch millis)
+ * @param partial                  {@code true} when some expected instances are missing or stale
+ * @param livenessTrackingEnabled  {@code true} only for {@code shared-store} mode with the dashboard-side
+ *                                 {@code cluster.shared-store.liveness.enabled=true} toggle on (ADR 66) —
+ *                                 {@code false} in {@code local}/{@code prometheus} (no heartbeat concept
+ *                                 there) and in {@code shared-store} when the toggle is off. Lets the UI
+ *                                 tell "liveness tracking disabled on the dashboard" apart from "enabled,
+ *                                 but no peer has pushed a heartbeat yet" (both otherwise look identical —
+ *                                 every instance at {@code LiveStatus.UNKNOWN})
  */
 public record SourceInfo(
         String mode,
         int instancesReporting,
         int instancesExpected,
         long asOfEpochMs,
-        boolean partial) {
+        boolean partial,
+        boolean livenessTrackingEnabled) {
 }

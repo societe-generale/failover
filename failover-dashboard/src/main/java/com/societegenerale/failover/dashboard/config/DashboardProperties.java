@@ -20,6 +20,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -86,7 +87,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, ""), new History(false, 120, 15), new Health(0.99, 0.90, 100),
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, "", false), new History(false, 120, 15), new Health(0.99, 0.90, 100),
                 new Cluster("local"));
     }
 
@@ -99,7 +100,7 @@ public record DashboardProperties(
      */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, ""), new History(false, 120, 15), health, new Cluster("local"));
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, "", false), new History(false, 120, 15), health, new Cluster("local"));
     }
 
     /**
@@ -150,6 +151,13 @@ public record DashboardProperties(
      *                      through {@code type}/{@code role}/{@code authority}/{@code expression} — only the
      *                      authentication mechanism changes. See the {@code GrantedAuthoritiesMapper} note in
      *                      the dashboard security docs for mapping IdP claims onto {@code FAILOVER_ADMIN}.
+     * @param oauth2ResourceServer secure the dashboard UI/API with OAuth2 resource-server (JWT Bearer)
+     *                      validation instead of a browser login (default {@code false}); for consumers whose
+     *                      SSO is terminated upstream (gateway/sidecar) and forwards a validated JWT on every
+     *                      request. Requires {@code spring-security-oauth2-resource-server} on the classpath
+     *                      and the standard {@code spring.security.oauth2.resourceserver.jwt.*} properties.
+     *                      Ignored when {@code oauth2ClientRegistrationId} is set or a
+     *                      {@code DashboardAuthenticationConfigurer} bean is present.
      */
     public record Security(
         @DefaultValue("AUTHORITY") SecurityType type,
@@ -157,7 +165,8 @@ public record DashboardProperties(
         @DefaultValue("FAILOVER_ADMIN") String authority,
         String expression,
         @DefaultValue("false") boolean allowInsecure,
-        @DefaultValue("") String oauth2ClientRegistrationId
+        @DefaultValue("") String oauth2ClientRegistrationId,
+        @DefaultValue("false") boolean oauth2ResourceServer
     ) {
         /** Canonical, binder-targeted constructor — validates the expression is set when required. */
         @ConstructorBinding
@@ -285,19 +294,26 @@ public record DashboardProperties(
      * @param retention         bounded retention for the cluster trend history
      * @param sampleIntervalSeconds seconds between cluster-trend samples (default {@code 30})
      * @param jdbc              JDBC durability settings, used when {@code store=jdbc}
+     * @param liveness          dashboard-side toggle for heartbeat liveness tracking (ADR 66); off by default
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
         @DefaultValue("180") int livenessSeconds,
         @DefaultValue("10") int maxInstances,
-        @DefaultValue("7d") java.time.Duration instanceRetention,
+        @DefaultValue("7d") Duration instanceRetention,
         @DefaultValue Retention retention,
         @DefaultValue("30") int sampleIntervalSeconds,
-        @DefaultValue Jdbc jdbc
+        @DefaultValue Jdbc jdbc,
+        @DefaultValue Liveness liveness
     ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public SharedStore {
+        }
+
         /** Convenience with defaults (used in tests / programmatic setup). */
         public SharedStore() {
-            this("inmemory", 180, 10, java.time.Duration.ofDays(7), new Retention(), 30, new Jdbc());
+            this("inmemory", 180, 10, Duration.ofDays(7), new Retention(), 30, new Jdbc(), new Liveness());
         }
     }
 
@@ -310,17 +326,51 @@ public record DashboardProperties(
      * FAILOVER_DASHBOARD_SNAPSHOT}. The prefix is validated (letters/digits/underscore only) since it is
      * concatenated into SQL — use it to namespace per environment or per tenant (one table per tenant).
      *
+     * <p>The snapshot table is never created or altered by the failover module — schema management (including
+     * upgrades when new columns are added) is the consuming service's responsibility. See the module docs for the
+     * DDL to run per dialect.
+     *
      * @param tablePrefix prefix prepended to the base table {@code FAILOVER_DASHBOARD_SNAPSHOT} (default {@code ""});
      *                    letters/digits/underscore only
-     * @param autoDdl     create the table on startup if missing (default {@code true}); disable to manage the schema yourself
      */
     public record Jdbc(
-        @DefaultValue("") String tablePrefix,
-        @DefaultValue("true") boolean autoDdl
+        @DefaultValue("") String tablePrefix
     ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Jdbc {
+        }
+
         /** Convenience with defaults. */
         public Jdbc() {
-            this("", true);
+            this("");
+        }
+    }
+
+    /**
+     * Dashboard-side toggle for heartbeat liveness tracking (ADR 66), separate from the peer-side
+     * {@code cluster.snapshot.heartbeat.enabled} push flag. Off by default: when disabled, no
+     * {@code HeartbeatStore} bean is created at all (neither the in-memory default nor, under
+     * {@code store=jdbc}, the durable JDBC one) — the ingest endpoint ({@code /api/cluster/heartbeat}) is
+     * not mapped, {@code SharedStoreMetricsSource} never queries the store (every instance stays
+     * {@code LiveStatus.UNKNOWN}), and — critically for {@code store=jdbc} — the
+     * {@code FAILOVER_DASHBOARD_HEARTBEAT} table is never required to exist. Enable only when at least one
+     * peer also sets {@code cluster.snapshot.heartbeat.enabled=true}; enabling one side without the other
+     * leaves every instance at {@code UNKNOWN} (dashboard side) or wastes pushes nobody reads (peer side).
+     *
+     * @param enabled turn on dashboard-side heartbeat liveness tracking (default {@code false})
+     */
+    public record Liveness(
+        @DefaultValue("false") boolean enabled
+    ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Liveness {
+        }
+
+        /** Convenience with defaults. */
+        public Liveness() {
+            this(false);
         }
     }
 
@@ -333,12 +383,12 @@ public record DashboardProperties(
      * @param maxEntries hard cap on retained points; oldest truncated first (default {@code 100000})
      */
     public record Retention(
-        @DefaultValue("7d") java.time.Duration maxAge,
+        @DefaultValue("7d") Duration maxAge,
         @DefaultValue("100000") int maxEntries
     ) {
         /** Convenience with defaults. */
         public Retention() {
-            this(java.time.Duration.ofDays(7), 100_000);
+            this(Duration.ofDays(7), 100_000);
         }
     }
 
@@ -364,6 +414,8 @@ public record DashboardProperties(
      * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})
      * @param oauth2ClientRegistrationId Spring Security resource-server registration id for JWT validation (blank ⇒ disabled)
      * @param allowInsecureIngest        {@code true} to allow ingest without any auth gate (not recommended in production)
+     * @param ingest                     controls whether the HTTP ingest endpoint ({@code ClusterSnapshotController})
+     *                                    is mapped at all — turn off when every peer writes via JDBC-direct instead
      */
     public record Snapshot(
         @DefaultValue("") String publishUrl,
@@ -371,16 +423,48 @@ public record DashboardProperties(
         @DefaultValue("") String username,
         @DefaultValue("") String password,
         @DefaultValue("") String oauth2ClientRegistrationId,
-        @DefaultValue("false") boolean allowInsecureIngest
+        @DefaultValue("false") boolean allowInsecureIngest,
+        @DefaultValue Ingest ingest
     ) {
         /** Canonical constructor used by Spring Boot's relaxed property binder. */
         @ConstructorBinding
         public Snapshot {
         }
 
+        /** Convenience with all defaults (used in tests / programmatic setup). */
+        public Snapshot(String publishUrl, int intervalSeconds, String username, String password,
+                         String oauth2ClientRegistrationId, boolean allowInsecureIngest) {
+            this(publishUrl, intervalSeconds, username, password, oauth2ClientRegistrationId, allowInsecureIngest,
+                    new Ingest());
+        }
+
         /** Convenience with defaults. */
         public Snapshot() {
             this("", 15, "", "", "", false);
+        }
+    }
+
+    /**
+     * Toggle for the HTTP snapshot-ingest endpoint ({@code ClusterSnapshotController}, mapped at
+     * {@code base-path/api/cluster/snapshot}). On by default — turning it off does not disable
+     * {@code cluster.mode=shared-store} itself, only the HTTP path into it; the dashboard still reads
+     * from whichever {@code SnapshotStore} is configured (in-memory or JDBC). Set {@code false} once every
+     * peer writes directly to the shared JDBC table ({@code failover.dashboard.cluster.snapshot.jdbc.enabled=true}
+     * on the peer side) so the endpoint — and its ingest security config — is never mapped at all.
+     *
+     * @param enabled map the ingest endpoint (default {@code true})
+     */
+    public record Ingest(
+        @DefaultValue("true") boolean enabled
+    ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Ingest {
+        }
+
+        /** Convenience with defaults. */
+        public Ingest() {
+            this(true);
         }
     }
 

@@ -22,6 +22,7 @@ import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.MetricsSummaryAggregator;
+import com.societegenerale.failover.observable.metrics.SnapshotBaseline;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
