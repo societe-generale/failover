@@ -13,7 +13,7 @@ How maintainers cut and publish a new version of Failover to Maven Central.
 Releases are a two-stage process:
 
 1. **Local/manual stage** — bump the version, tag it, push to `main`. Nothing is published yet.
-2. **CI stage** — creating a GitHub Release from that tag triggers [`release_workflow.yml`](https://github.com/societe-generale/failover/blob/main/.github/workflows/release_workflow.yml), which builds, signs, and publishes the artifacts to Maven Central via OSSRH.
+2. **CI stage** — creating a GitHub Release from that tag triggers [`release_workflow.yml`](https://github.com/societe-generale/failover/blob/main/.github/workflows/release_workflow.yml), which builds, signs, and publishes the artifacts to Maven Central via the [Central Portal](https://central.sonatype.com).
 
 Pushing a tag by itself does **not** publish anything — the workflow only fires on the `release: created` GitHub event.
 
@@ -23,9 +23,22 @@ Pushing a tag by itself does **not** publish anything — the workflow only fire
 
 - Push access to `main` and permission to create GitHub Releases.
 - The following repository secrets must already be configured (done once, not per release):
-  - `OSSRH_GPG_SECRET_KEY` / `OSSRH_GPG_SECRET_KEY_PASSWORD` — GPG key used to sign artifacts.
-  - `OSSRH_USERNAME` / `OSSRH_TOKEN` — Sonatype OSSRH credentials.
+  - `OSSRH_GPG_SECRET_KEY` / `GPG_PASSPHRASE` — GPG key used to sign artifacts, and its passphrase.
+  - `CENTRAL_USERNAME` / `CENTRAL_PASSWORD` — a **Central Portal user token**, generated at
+    [central.sonatype.com/account](https://central.sonatype.com/account).
 - Confirm CI is green on `main` ([`java-maven-ci.yml`](https://github.com/societe-generale/failover/blob/main/.github/workflows/java-maven-ci.yml)) before starting.
+
+!!! warning "Migrated off OSSRH"
+    Publishing used to go through Sonatype OSSRH (`s01.oss.sonatype.org`) with
+    `nexus-staging-maven-plugin`. Those hosts are decommissioned and now answer `HTTP 402`, so that
+    path can no longer publish anything. The build uses
+    [`central-publishing-maven-plugin`](https://central.sonatype.org/publish/publish-portal-maven/)
+    against the Central Portal instead.
+
+    A Portal **user token** is a distinct credential — the old `OSSRH_USERNAME` / `OSSRH_TOKEN` values
+    will not authenticate against it, even though the namespace itself was migrated automatically.
+    Generate a fresh token and store it as `CENTRAL_USERNAME` / `CENTRAL_PASSWORD`. The signing key
+    itself is unchanged; its passphrase secret is now read as `GPG_PASSPHRASE`.
 
 ---
 
@@ -97,25 +110,37 @@ This fires [`release_workflow.yml`](https://github.com/societe-generale/failover
 On `release: created`, the workflow:
 
 1. Imports the GPG secret key and refreshes it against the Ubuntu keyserver.
-2. Sets up JDK 21 (Temurin) with `ossrh` server credentials wired from secrets.
+2. Sets up JDK 21 (Temurin), writing a `<server id="central">` block into `settings.xml` from the
+   `CENTRAL_USERNAME` / `CENTRAL_PASSWORD` secrets. That id must match
+   `<publishingServerId>central</publishingServerId>` in the `makeRelease` profile.
 3. Runs:
 
    ```bash
-   mvn --no-transfer-progress --batch-mode -Dgpg.passphrase=*** clean deploy -P makeRelease
+   mvn --no-transfer-progress --batch-mode clean deploy -P makeRelease
    ```
+
+   The GPG passphrase is passed as the `MAVEN_GPG_PASSPHRASE` environment variable rather than
+   `-Dgpg.passphrase=…`, so it never appears in the process argument list.
 
 The `makeRelease` Maven profile (defined in root `pom.xml`) additionally:
 
 - Attaches a `-sources` jar (`maven-source-plugin`).
 - GPG-signs every artifact during the `verify` phase (`maven-gpg-plugin`).
-- Stages, closes, and **auto-releases** the Nexus/Sonatype staging repository (`nexus-staging-maven-plugin`, `autoReleaseAfterClose=true`) — no manual step in the Sonatype UI is needed.
+- Uploads the bundle to the Central Portal and **auto-publishes** it once validation passes
+  (`central-publishing-maven-plugin`, `autoPublish=true`) — no manual step in the Portal UI is needed.
+  `waitUntil=published` makes the build block on validation, so a rejected bundle fails the workflow
+  instead of passing green with nothing published.
+
+There is no `<distributionManagement>` in the POM: the plugin's `extensions=true` replaces the default
+deploy target with the Portal upload. Adding one back would be ignored at best.
 
 ---
 
 ## Step 5 — Verify
 
 - Check the **Actions** tab — the `release_workflow.yml` run must complete successfully.
-- Search [Maven Central](https://search.maven.org/) for the new `com.societegenerale.failover` coordinates. Sync typically takes 10–30 minutes after staging auto-release.
+- Check the [Central Portal deployments view](https://central.sonatype.com/publishing/deployments) — the bundle must reach `PUBLISHED`, not stall in `VALIDATING` or land in `FAILED`.
+- Search [Maven Central](https://search.maven.org/) for the new `com.societegenerale.failover` coordinates. Sync typically takes 10–30 minutes after publish.
 - Confirm the GitHub Release notes and tag look correct.
 
 ---
@@ -127,8 +152,10 @@ The `makeRelease` Maven profile (defined in root `pom.xml`) additionally:
 | `release:prepare` fails mid-way (before push) | `mvn release:rollback` |
 | Wrong version pushed, release not yet published on Central | Delete the GitHub Release and tag, fix the version, re-tag, re-release |
 | Already synced to Maven Central | Central artifacts are immutable — cut a new patch version instead |
-| Workflow fails on GPG import/signing | Verify `OSSRH_GPG_SECRET_KEY*` secrets haven't expired or been rotated |
-| Workflow fails on deploy/auth | Verify `OSSRH_USERNAME` / `OSSRH_TOKEN` are still valid for the `ossrh` server id |
+| Workflow fails on GPG import/signing | Verify `OSSRH_GPG_SECRET_KEY` / `GPG_PASSPHRASE` haven't expired or been rotated |
+| Workflow fails on deploy with `401`/`403` | Regenerate the Central Portal user token and update `CENTRAL_USERNAME` / `CENTRAL_PASSWORD`. An old OSSRH credential will never authenticate here |
+| Workflow fails on deploy with `402` | Something still points at the retired OSSRH hosts — grep the POM and workflow for `oss.sonatype.org` |
+| Bundle uploads but validation fails | Open the deployment in the [Portal](https://central.sonatype.com/publishing/deployments) for the per-artifact reason — usually a missing signature, `-sources`, or `-javadoc` jar, or POM metadata (`name`/`description`/`url`/`licenses`/`developers`/`scm`) |
 
 ---
 
@@ -136,4 +163,4 @@ The `makeRelease` Maven profile (defined in root `pom.xml`) additionally:
 
 - Release trigger workflow: `.github/workflows/release_workflow.yml`
 - Version / tag / profile config: root `pom.xml` — `maven-release-plugin` config and the `makeRelease` profile
-- Tag naming convention: `failover_<version>` (e.g. `failover_1.0.0`) 
+- Tag naming convention: `failover_<version>` (e.g. `failover_1.0.0`)

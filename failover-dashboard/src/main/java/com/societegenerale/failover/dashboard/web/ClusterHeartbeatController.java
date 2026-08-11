@@ -55,11 +55,17 @@ public class ClusterHeartbeatController implements PeerIngestEndpoint {
     /**
      * Records a heartbeat. Returns {@code 202 Accepted}; liveness classification happens lazily on read.
      *
+     * <p>The instance id is validated before it reaches the store — it becomes a map key held for the
+     * retention window and is rendered in the Instances table, so an absent, oversized or
+     * markup-bearing id is rejected rather than recorded. See {@link InstanceId}.
+     *
      * @param payload the pushing peer's identity
+     * @throws org.springframework.web.server.ResponseStatusException {@code 400} if the body is
+     *         missing an instance id or carries an unusable one
      */
     @PostMapping("/heartbeat")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void heartbeat(@RequestBody HeartbeatPayload payload) {
-        heartbeatStore.record(payload.instanceId());
+        heartbeatStore.record(InstanceId.validated(payload.instanceId()));
     }
 }

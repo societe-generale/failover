@@ -43,6 +43,8 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Retenti
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SharedStoreMetricsSource;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 
+import com.societegenerale.failover.core.clock.DefaultFailoverClock;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
 import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
@@ -368,8 +370,17 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
             + "and '${failover.dashboard.cluster.shared-store.store:inmemory}' == 'inmemory' "
             + "and '${failover.dashboard.cluster.shared-store.liveness.enabled:false}' == 'true'")
     @ConditionalOnMissingBean(HeartbeatStore.class)
-    public HeartbeatStore heartbeatStore() {
-        return new HeartbeatStoreInmemory();
+    public HeartbeatStore heartbeatStore(ObjectProvider<FailoverClock> failoverClock) {
+        // Same retention as the snapshot store: once an instance is retired from allInstances(), its
+        // heartbeat is never looked up again, so expiring both on the same window drops nothing that
+        // is still reachable while keeping the map bounded against pod churn.
+        //
+        // ObjectProvider, not a hard dependency: the dashboard is normally its own deployment, with no
+        // @Failover auto-configuration and therefore no FailoverClock bean. When it is co-located with
+        // instrumented services, the application's clock is picked up so heartbeats age on the same
+        // time source as failover expiry.
+        return new HeartbeatStoreInmemory(properties.cluster().sharedStore().instanceRetention(),
+                failoverClock.getIfAvailable(DefaultFailoverClock::new));
     }
 
     /**
@@ -547,6 +558,15 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
          * Covers both the snapshot and heartbeat paths with one matcher so they can't drift onto
          * different gates. Stateless — service-to-service only; no session is created, so CSRF does not
          * apply.
+         *
+         * <p>Fails fast when {@code username} is set but {@code password} is blank. Both properties default
+         * to {@code ""} and only {@code username} gates this bean, so a password that silently resolves to
+         * empty — an unmounted secret, an unresolved placeholder, a typo'd env var — would otherwise build an
+         * in-memory user whose encoded password is exactly {@code {noop}}. {@code NoOpPasswordEncoder} then
+         * matches an empty submitted password, so {@code Authorization: Basic base64("<username>:")}
+         * authenticates and any caller who guesses the username can push forged snapshots and heartbeats
+         * into the cluster view — while startup logs that ingest *is* secured with HTTP Basic. Refusing to
+         * start is the same posture the insecure escape hatches take under {@code prod} above.
          */
         @Bean
         @Order(-10)
@@ -556,6 +576,23 @@ public class DashboardAutoConfiguration implements WebMvcConfigurer {
             String[] ingestPaths = ingestPaths(props);
             DashboardProperties.Snapshot snapshot = props.cluster().snapshot();
             String password = snapshot.password();
+            if (snapshot.username().isBlank()) {
+                throw new IllegalStateException(
+                        "Failover dashboard has failover.dashboard.cluster.snapshot.username set to a blank value. "
+                                + "Basic-auth ingest cannot be secured with an empty username. Set a real username "
+                                + "and password, switch to snapshot.oauth2-client-registration-id, or remove the "
+                                + "username property so the ingest gate is chosen explicitly.");
+            }
+            if (password.isBlank()) {
+                throw new IllegalStateException(
+                        "Failover dashboard has failover.dashboard.cluster.snapshot.username='" + snapshot.username()
+                                + "' but no failover.dashboard.cluster.snapshot.password. An empty password would be "
+                                + "accepted by HTTP Basic, leaving the peer ingest endpoints ("
+                                + String.join(", ", ingestPaths) + ") open to anyone who knows the username. Set "
+                                + "snapshot.password (optionally pre-encoded, e.g. '{bcrypt}…'), or use "
+                                + "snapshot.oauth2-client-registration-id, or — for a trusted internal network only — "
+                                + "snapshot.allow-insecure-ingest=true.");
+            }
             String encodedPassword = password.startsWith("{") ? password : "{noop}" + password;
             InMemoryUserDetailsManager userDetails = new InMemoryUserDetailsManager(
                     User.builder().username(snapshot.username()).password(encodedPassword)
