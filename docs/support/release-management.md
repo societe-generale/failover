@@ -23,8 +23,8 @@ Pushing a tag by itself does **not** publish anything — the workflow only fire
 
 - Push access to `main` and permission to create GitHub Releases.
 - The following repository secrets must already be configured (done once, not per release):
-    - `OSSRH_GPG_SECRET_KEY` / `OSSRH_GPG_SECRET_KEY_PASSWORD` — GPG key used to sign artifacts.
-    - `OSSRH_USERNAME` / `OSSRH_TOKEN` — Sonatype OSSRH credentials.
+  - `OSSRH_GPG_SECRET_KEY` / `OSSRH_GPG_SECRET_KEY_PASSWORD` — GPG key used to sign artifacts.
+  - `OSSRH_USERNAME` / `OSSRH_TOKEN` — Sonatype OSSRH credentials.
 - Confirm CI is green on `main` ([`java-maven-ci.yml`](https://github.com/societe-generale/failover/blob/main/.github/workflows/java-maven-ci.yml)) before starting.
 
 ---
@@ -50,7 +50,7 @@ Because `pushChanges=false`, this step only commits and tags **locally**. Nothin
 !!! tip "Manual alternative"
     If you'd rather not use the release plugin's interactive flow:
 
-    ```bash
+```bash
     mvn versions:set -DnewVersion=1.0.0 -DprocessAllModules=true
     mvn versions:commit
     git commit -am "release: 1.0.0"
@@ -59,7 +59,7 @@ Because `pushChanges=false`, this step only commits and tags **locally**. Nothin
     mvn versions:set -DnewVersion=1.0.1-SNAPSHOT -DprocessAllModules=true
     mvn versions:commit
     git commit -am "chore: next dev version 1.0.1-SNAPSHOT"
-    ```
+```
 
 If something goes wrong before pushing, roll back cleanly:
 
