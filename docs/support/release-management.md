@@ -136,4 +136,4 @@ The `makeRelease` Maven profile (defined in root `pom.xml`) additionally:
 
 - Release trigger workflow: `.github/workflows/release_workflow.yml`
 - Version / tag / profile config: root `pom.xml` — `maven-release-plugin` config and the `makeRelease` profile
-- Tag naming convention: `failover_<version>` (e.g. `failover_1.0.0`)
+- Tag naming convention: `failover_<version>` (e.g. `failover_1.0.0`) 
