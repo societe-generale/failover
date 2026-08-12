@@ -2922,7 +2922,10 @@ allowlist exists to close.
 
 Add an opt-in strict mode that removes the fail-open path, without changing the secure default behaviour.
 
-* New property `failover.store.jdbc.strict-allowlist` (default `false`, backward-compatible).
+* New property `failover.store.jdbc.strict-allowlist`. Introduced as `false` (backward-compatible)
+  in 2.x; **the default flipped to `true` in 3.0.0** — a major version being the point at which the
+  fail-open path stops being the out-of-the-box behaviour. Setting it back to `false` restores the
+  2.x semantics.
 * `JsonSerializer` gains a `strict` flag (new constructor). In `isAllowed`, an empty resolved allowlist
   returns `!strict`: allow-all when lenient (legacy), **deny-all (fail-closed)** when strict.
 * Strict + empty is logged at `ERROR` (deserialization denied) rather than `WARN`. The normal path —

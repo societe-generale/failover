@@ -121,6 +121,7 @@ nav:
     - getting-started/index.md
     - Installation: getting-started/installation.md
     - Quickstart: getting-started/quickstart.md
+    - Migrating 2.x → 3.0: getting-started/migration-3.0.md
   - Concepts:
     - concepts/index.md
     - How It Works: concepts/how-it-works.md
