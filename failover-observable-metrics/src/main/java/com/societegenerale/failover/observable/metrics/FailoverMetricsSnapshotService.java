@@ -55,11 +55,18 @@ public class FailoverMetricsSnapshotService {
 
     private final MeterRegistry registry;
 
+    /**
+     * Creates a new snapshot service reading from {@code registry}.
+     *
+     * @param registry the meter registry to read {@code failover.*} meters from
+     */
     public FailoverMetricsSnapshotService(MeterRegistry registry) {
         this.registry = registry;
     }
 
     /**
+     * Aggregates the current counter/timer totals into a summary.
+     *
      * @return per-API and overall KPIs derived from the current counter totals.
      */
     public MetricsSummary metricsSummary() {
@@ -138,7 +145,11 @@ public class FailoverMetricsSnapshotService {
         return new double[]{round2(mean), round2(maxMs), round2(p95), round2(p99)};
     }
 
-    /** Per-failover-point exception counts: name → list of (type, count), sorted by count descending. */
+    /**
+     * Per-failover-point exception counts: name → list of (type, count), sorted by count descending.
+     *
+     * @return exception counts grouped by failover name
+     */
     public Map<String, List<ExceptionStat>> exceptionsByApi() {
         Map<String, Map<String, Long>> byNameAndType = new LinkedHashMap<>();
         for (Counter c : registry.find(EXCEPTION_TOTAL).counters()) {
@@ -201,7 +212,11 @@ public class FailoverMetricsSnapshotService {
 
     // ── registry access ─────────────────────────────────────────────────────
 
-    /** Distinct failover names across the store and outcome counters, sorted. */
+    /**
+     * Distinct failover names across the store and outcome counters, sorted.
+     *
+     * @return sorted set of discovered failover names
+     */
     public TreeSet<String> discoveredNames() {
         TreeSet<String> names = new TreeSet<>();
         collectNames(STORE_TOTAL, names);

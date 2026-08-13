@@ -14,17 +14,33 @@
  * limitations under the License.
  */
 
-package com.societegenerale.failover.dashboard.metrics;
+package com.societegenerale.failover.observable.metrics;
 
 /**
  * One row of the configuration view: a single {@code @Failover} point plus the global framework
  * settings echoed for convenience.
  *
  * <p>Per-annotation overrides that are left empty (e.g. {@code keyGenerator=""}) are normalised to
- * {@code "default"} by {@code DashboardConfigService} to signal "framework default" in the UI.
+ * {@code "default"} by {@link FailoverConfigSnapshotService} to signal "framework default" in the UI.
  * Carries only annotation attributes and global <em>types</em> — never connection strings,
- * credentials, or payload data (design doc §9, data-minimisation).
+ * credentials, or payload data (data-minimisation).
  *
+ * <p>Lives here (rather than in the dashboard module) so both the emitting service
+ * ({@code ClusterSnapshotPublisher}, for the shared-store cluster tier) and every dashboard
+ * {@code MetricsSource} can share the same shape without either depending on {@code FailoverScanner}.
+ *
+ * @param name            failover name
+ * @param domain          effective store namespace ({@code domain()} if set, else {@code name})
+ * @param expiryDuration  configured expiry duration
+ * @param expiryUnit      configured expiry unit (e.g. {@code HOURS})
+ * @param recoverAll      whether the failover recovers a collection ({@code recoverAll()})
+ * @param payloadSplitter configured payload splitter bean name, or {@code "default"}
+ * @param keyGenerator    configured key generator bean name, or {@code "default"}
+ * @param expiryPolicy    configured expiry policy bean name, or {@code "default"}
+ * @param storeType       global {@code failover.store.type}
+ * @param executionType   global {@code failover.type}
+ * @param exceptionPolicy global {@code failover.exception-policy}
+ * @param asyncStore      global {@code failover.store.async}
  * @author Anand Manissery
  */
 public record ConfigEntry(

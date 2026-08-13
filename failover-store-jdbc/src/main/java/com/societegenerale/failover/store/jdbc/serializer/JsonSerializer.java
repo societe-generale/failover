@@ -105,8 +105,10 @@ public class JsonSerializer implements Serializer {
      * @param allowedPayloadClassesSupplier supplies the effective allowlist (exact class names or
      *                                      package prefixes); invoked once and memoized
      * @param strict                        when {@code true}, an empty resolved allowlist denies all
-     *                                      deserialization (fail-closed); when {@code false}, an empty
-     *                                      allowlist disables the restriction (allow-all, legacy default)
+     *                                      deserialization (fail-closed — what
+     *                                      {@code failover.store.jdbc.strict-allowlist} defaults to since
+     *                                      3.0.0); when {@code false}, an empty allowlist disables the
+     *                                      restriction (allow-all, the 2.x behaviour)
      */
     public JsonSerializer(ObjectMapper objectMapper, Supplier<List<String>> allowedPayloadClassesSupplier, boolean strict) {
         this.objectMapper = objectMapper;
@@ -217,10 +219,12 @@ public class JsonSerializer implements Serializer {
                         + "failover.store.jdbc.allowed-payload-classes is empty; recovery from the JDBC store will fail until the allowlist is populated.");
                 return;
             }
-            log.warn("Failover deserialization allowlist is EMPTY — every payload class read back from the "
-                    + "store will be loaded (allow-all). Set failover.store.jdbc.allowed-payload-classes, enable "
-                    + "failover.store.jdbc.strict-allowlist=true to fail closed, or rely on @Failover scanning to "
-                    + "restrict which classes may be deserialized.");
+            log.warn("Failover deserialization allowlist is EMPTY and strict mode is OFF "
+                    + "(failover.store.jdbc.strict-allowlist=false) — every payload class read back from the store "
+                    + "will be loaded (allow-all). Strict mode is the default since 3.0.0; this fail-open path is "
+                    + "reached only because it was explicitly disabled. Populate "
+                    + "failover.store.jdbc.allowed-payload-classes (or let @Failover scanning derive it) and remove "
+                    + "the override.");
             return;
         }
         List<String> prefixGrants = resolved.stream().filter(entry -> !isLoadableClass(entry)).toList();

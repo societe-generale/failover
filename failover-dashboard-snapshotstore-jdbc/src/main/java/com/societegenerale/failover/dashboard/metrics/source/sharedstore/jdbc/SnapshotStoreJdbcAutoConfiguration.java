@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -25,6 +26,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,10 +34,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 
 /**
- * Auto-configuration for the durable JDBC snapshot store ({@code cluster.shared-store.store=jdbc}). Provides a
- * {@link SnapshotStoreJdbc} that the dashboard's {@code SharedStoreMetricsSource} picks up in place of the default
- * in-memory store (whose bean is disabled when {@code store != inmemory}). Active only when JDBC is on the classpath
- * and a {@link DataSource} is present; ordered after Spring Boot's {@code DataSourceAutoConfiguration}.
+ * Auto-configuration for the durable JDBC shared-store tier ({@code cluster.shared-store.store=jdbc}). Provides a
+ * {@link SnapshotStoreJdbc} and a {@link HeartbeatStoreJdbc} that the dashboard's {@code SharedStoreMetricsSource}
+ * picks up in place of the default in-memory stores (whose beans are disabled when {@code store != inmemory}).
+ * Active only when JDBC is on the classpath and a {@link DataSource} is present; ordered after Spring Boot's
+ * {@code DataSourceAutoConfiguration}.
  *
  * @author Anand Manissery
  */
@@ -65,7 +68,29 @@ public class SnapshotStoreJdbcAutoConfiguration {
                 new JdbcTemplate(dataSource),
                 mapper.getIfAvailable(ObjectMapper::new),
                 sharedStore.maxInstances(),
-                sharedStore.jdbc().tablePrefix(),
-                sharedStore.jdbc().autoDdl());
+                sharedStore.jdbc().tablePrefix());
+    }
+
+    /**
+     * The durable heartbeat store — keeps peer liveness consistent when the dashboard is embedded in multiple
+     * {@code @Failover} instances sharing this database (each instance's own {@code HeartbeatStoreInmemory}
+     * would otherwise only ever see the heartbeat it received itself). {@code @ConditionalOnMissingBean} so a
+     * consumer can still override it; requires a {@link DataSource} in the context.
+     *
+     * <p>Gated on {@code shared-store.liveness.enabled} (default {@code false}) — off by default, so
+     * {@code store=jdbc} alone never requires provisioning {@code FAILOVER_DASHBOARD_HEARTBEAT}; only
+     * enabling liveness tracking does.
+     *
+     * @param dataSource the application datasource
+     * @param properties dashboard properties (shared-store jdbc settings)
+     * @return a {@link HeartbeatStoreJdbc}
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.shared-store.liveness", name = "enabled", havingValue = "true")
+    @ConditionalOnBean(DataSource.class)
+    @ConditionalOnMissingBean(HeartbeatStore.class)
+    public HeartbeatStore heartbeatStore(DataSource dataSource, DashboardProperties properties) {
+        DashboardProperties.SharedStore sharedStore = properties.cluster().sharedStore();
+        return new HeartbeatStoreJdbc(new JdbcTemplate(dataSource), sharedStore.jdbc().tablePrefix());
     }
 }

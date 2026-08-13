@@ -18,6 +18,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.Latency;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -26,6 +27,7 @@ import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
@@ -54,8 +56,20 @@ class SnapshotStoreJdbcTest {
         db.shutdown();
     }
 
+    /** Simulates schema provisioned upfront by the consuming service — the store itself never creates it. */
+    private void createSchema(String tableName) {
+        jdbc.execute("CREATE TABLE IF NOT EXISTS " + tableName
+                + " (INSTANCE_ID VARCHAR(255) PRIMARY KEY, RECEIVED_AT TIMESTAMP(9) WITH TIME ZONE NOT NULL, "
+                + "SUMMARY_JSON CLOB NOT NULL, BASELINE_JSON CLOB, CONFIG_JSON CLOB)");
+    }
+
     private SnapshotStoreJdbc store(int maxInstances) {
-        return new SnapshotStoreJdbc(jdbc, mapper, maxInstances, "", true);
+        return store(maxInstances, "");
+    }
+
+    private SnapshotStoreJdbc store(int maxInstances, String tablePrefix) {
+        createSchema(tablePrefix + SnapshotStoreJdbc.BASE_TABLE);
+        return new SnapshotStoreJdbc(jdbc, mapper, maxInstances, tablePrefix);
     }
 
     private static MetricsSummary summaryFor(String name, long success, long recovered) {
@@ -64,15 +78,17 @@ class SnapshotStoreJdbcTest {
     }
 
     @Test
-    void autoDdlCreatesTheTable() {
-        store(10);
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
-        assertThat(count).isZero();
+    void doesNotCreateTheTableAutomatically() {
+        // No createSchema() call — schema provisioning is the consuming service's responsibility, not the store's.
+        SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 10, "");
+
+        assertThatThrownBy(() -> store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0))))
+                .isInstanceOf(DataAccessException.class);
     }
 
     @Test
     void tablePrefixNamespacesTheTable() {
-        SnapshotStoreJdbc store = new SnapshotStoreJdbc(jdbc, mapper, 10, "DEMO_", true);
+        SnapshotStoreJdbc store = store(10, "DEMO_");
         store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0)));
 
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM DEMO_FAILOVER_DASHBOARD_SNAPSHOT", Integer.class);
@@ -81,7 +97,7 @@ class SnapshotStoreJdbcTest {
 
     @Test
     void rejectsAnUnsafeTablePrefix() {
-        assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 10, "x; DROP TABLE y;--", true))
+        assertThatThrownBy(() -> new SnapshotStoreJdbc(jdbc, mapper, 10, "x; DROP TABLE y;--"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("table-prefix");
     }
@@ -138,5 +154,91 @@ class SnapshotStoreJdbcTest {
         store.upsert(new ClusterSnapshot("i3", summaryFor("country", 1, 0)));   // beyond ceiling — warn only
 
         assertThat(store.allInstances()).hasSize(3);
+    }
+
+    @Test
+    void counterResetFoldsPreviousTotalsIntoBaseline() {
+        // A peer restart resets its counters; the served summary must be baseline + raw, never smaller.
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 100, 0)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 3, 0)));   // 3 < 100 → reset detected
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(103));
+
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 7, 0)));   // same process grows — no re-fold
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(107));
+    }
+
+    @Test
+    void carriedBaselineSurvivesADashboardRestart() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 100, 0)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 3, 0)));   // baseline 100 persisted
+
+        SnapshotStoreJdbc reopened = store(10);                                 // fresh store, same table
+
+        assertThat(reopened.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(103));
+    }
+
+    private static ConfigEntry entry(String name) {
+        return new ConfigEntry(name, name, 24L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+    }
+
+    @Test
+    void configEntriesRoundTripAndSurviveAStoreRestart() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0), List.of(entry("country-by-code"))));
+
+        SnapshotStoreJdbc reopened = store(10);   // fresh store, same table
+
+        assertThat(reopened.configEntries()).singleElement()
+                .satisfies(e -> {
+                    assertThat(e.name()).isEqualTo("country-by-code");
+                    assertThat(e.expiryDuration()).isEqualTo(24L);
+                });
+    }
+
+    @Test
+    void configEntriesMergedAcrossInstancesUnionedByName() {
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1, 0), List.of(entry("alpha"))));
+        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 1, 0), List.of(entry("zebra"))));
+
+        assertThat(store.configEntries()).extracting(ConfigEntry::name).containsExactly("alpha", "zebra");
+    }
+
+    @Test
+    void configEntriesReflectsTheLatestPushForAReUpsertedInstance() {
+        SnapshotStoreJdbc store = store(10);
+        ConfigEntry stale = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        ConfigEntry fresh = new ConfigEntry("alpha", "alpha", 2L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1, 0), List.of(stale)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1, 0), List.of(fresh)));   // same instance, re-pushed
+
+        assertThat(store.configEntries()).singleElement()
+                .satisfies(e -> assertThat(e.expiryDuration()).isEqualTo(2L));
+    }
+
+    @Test
+    void configEntriesEmptyWhenNothingPushedYet() {
+        assertThat(store(10).configEntries()).isEmpty();
+    }
+
+    @Test
+    void configEntriesTreatsANullConfigJsonRowAsEmpty() {
+        // Simulates a row written before CONFIG_JSON existed (or by an older peer): NULL in that column.
+        SnapshotStoreJdbc store = store(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("country", 1, 0), List.of(entry("alpha"))));
+        jdbc.update("UPDATE FAILOVER_DASHBOARD_SNAPSHOT SET CONFIG_JSON = NULL WHERE INSTANCE_ID = 'i1'");
+
+        assertThat(store.configEntries()).isEmpty();
+        assertThat(store.allInstances()).hasSize(1);   // the row itself (metrics) is unaffected
     }
 }

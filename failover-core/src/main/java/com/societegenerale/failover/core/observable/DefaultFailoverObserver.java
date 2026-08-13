@@ -78,8 +78,13 @@ public class DefaultFailoverObserver implements FailoverObserver {
         failoverScanner.findAllFailover().forEach(failover->  {
             Metrics metrics = Metrics.of("failover-report-%s".formatted(failover.name()))
                     .collect("name", failover.name())
+                    .collect("domain", failover.domain())
+                    .collect("key-generator", failover.keyGenerator())
                     .collect("expiry-duration", failoverExpiryExtractor.expiryDuration(failover))
-                    .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name());
+                    .collect("expiry-unit", failoverExpiryExtractor.expiryUnit(failover).name())
+                    .collect("expiry-policy", failover.expiryPolicy())
+                    .collect("payloadSplitter",  failover.payloadSplitter())
+                    .collect("recover-all", String.valueOf(failover.recoverAll()));
             genericInfo.forEach(metrics::collect);
             observablePublisher.publish(metrics);
         });

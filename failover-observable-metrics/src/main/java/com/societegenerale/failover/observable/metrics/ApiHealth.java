@@ -30,5 +30,12 @@ public record ApiHealth(
         double healthyRate) {
 
     /** Health status values. */
-    public enum Status { HEALTHY, DEGRADED, UNHEALTHY }
+    public enum Status {
+        /** Healthy rate at or above the healthy threshold. */
+        HEALTHY,
+        /** Healthy rate below the healthy threshold but at or above the unhealthy threshold. */
+        DEGRADED,
+        /** Healthy rate below the unhealthy threshold. */
+        UNHEALTHY
+    }
 }

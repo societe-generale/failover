@@ -212,8 +212,132 @@ See [Scatter / Gather](../concepts/scatter-gather.md) for the full implementatio
 
 ---
 
+## 7. Add the Dashboard (JDBC Store + JDBC Shared-Store, Direct Write)
+
+The most complete production shape in one service: the `@Failover` store, the dashboard's cluster aggregate, and
+the peer snapshot writes all live in the **same database** — no ingest endpoint, no ingest auth to configure,
+one dependency set. Run one instance or ten identical replicas behind a load balancer; every replica uses this
+exact same YAML, pointed at the same DB.
+
+=== "Maven"
+
+    ```xml title="pom.xml"
+    <dependency>
+        <groupId>com.societegenerale.failover</groupId>
+        <artifactId>failover-spring-boot-starter</artifactId>
+        <version>3.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>com.societegenerale.failover</groupId>
+        <artifactId>failover-dashboard-spring-boot-starter</artifactId>
+        <version>3.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>com.societegenerale.failover</groupId>
+        <artifactId>failover-dashboard-snapshotstore-jdbc</artifactId>
+        <version>3.0.0</version>
+    </dependency>
+    ```
+
+=== "Gradle"
+
+    ```kotlin title="build.gradle.kts"
+    implementation("com.societegenerale.failover:failover-spring-boot-starter:3.0.0")
+    implementation("com.societegenerale.failover:failover-dashboard-spring-boot-starter:3.0.0")
+    implementation("com.societegenerale.failover:failover-dashboard-snapshotstore-jdbc:3.0.0")
+    ```
+
+```yaml title="application.yml — complete, copy-pasteable, includes instance live tracking"
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/myapp
+    username: myapp
+    password: secret
+
+failover:
+  enabled: true
+  store:
+    type: jdbc                       # the @Failover store itself — recovered payloads
+    jdbc:
+      table-prefix: DEMO_            # -> DEMO_FAILOVER_STORE (DDL: step 2 above)
+
+  dashboard:
+    enabled: true
+    security:
+      allow-insecure: true           # dev/local only — starts unsecured with a loud WARN;
+      #   REFUSED under the 'prod' profile. Remove this and grant FAILOVER_ADMIN once
+      #   Spring Security is configured for real use.
+    cluster:
+      mode: shared-store
+      shared-store:
+        store: jdbc                  # durable cluster aggregate — survives a restart
+        max-instances: 10
+        liveness-seconds: 180        # instance is DOWN after this long without a heartbeat (≈ 3x peer interval)
+        liveness:
+          enabled: true              # without this: no HeartbeatStore, no liveness query, ever
+        jdbc:
+          table-prefix: DEMO_        # -> DEMO_FAILOVER_DASHBOARD_SNAPSHOT / _HEARTBEAT (DDL below)
+      snapshot:
+        ingest:
+          enabled: false             # no POST /api/cluster/snapshot or /heartbeat mapped — nothing to secure
+        heartbeat:
+          enabled: true              # sends a ~10-byte ping (instance id only) every interval-seconds
+          interval-seconds: 60       # keep ≤ ⅓ of liveness-seconds above
+        jdbc:
+          enabled: true              # this instance writes its own snapshot + heartbeat straight into the tables
+          table-prefix: DEMO_        # MUST match shared-store.jdbc.table-prefix above
+```
+
+```sql title="create_dashboard_snapshot_table.sql (PostgreSQL)"
+CREATE TABLE DEMO_FAILOVER_DASHBOARD_SNAPSHOT
+(
+    INSTANCE_ID   VARCHAR(255) PRIMARY KEY,
+    RECEIVED_AT   TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+    SUMMARY_JSON  TEXT NOT NULL,
+    BASELINE_JSON TEXT,   -- reset-aware carried baseline; nullable
+    CONFIG_JSON   TEXT    -- pushed @Failover config entries; nullable
+);
+```
+
+```sql title="create_dashboard_heartbeat_table.sql (PostgreSQL)"
+CREATE TABLE DEMO_FAILOVER_DASHBOARD_HEARTBEAT
+(
+    INSTANCE_ID VARCHAR(255) PRIMARY KEY,
+    LAST_SEEN   TIMESTAMP(6) WITH TIME ZONE NOT NULL
+);
+```
+
+Open `http://<app>:<port>/failover-dashboard` — no login needed with `allow-insecure: true` (dev/local; see the
+warning below). Two independent JDBC tables share a `table-prefix` here for clarity — `store.jdbc.table-prefix`
+names the `@Failover` store's own table, `dashboard.cluster.shared-store.jdbc.table-prefix` (which must equal
+`dashboard.cluster.snapshot.jdbc.table-prefix` on every peer) names the dashboard's snapshot + heartbeat tables.
+Neither table is created by the module — both DDLs above are yours to run.
+
+!!! warning "`allow-insecure: true` is dev/local only"
+    Starts the dashboard with **no access gate** — anyone who can reach `/failover-dashboard` sees it. Refused
+    outright under the `prod` Spring profile (context fails fast). For real deployments, remove this line and
+    grant the `FAILOVER_ADMIN` authority instead — see [Security](../support/security.md).
+
+!!! tip "Multiple replicas, zero extra config"
+    This YAML is already replica-ready: point every instance at the same database with the same `table-prefix`
+    and each one becomes a `@Failover` node, a peer pushing its own snapshot row, and a heartbeat pinger — all
+    into the same shared tables. No dashboard "host" process, no ingest URL, no ingest credentials to distribute.
+
+!!! note "Only need part of this?"
+    - **Just the `@Failover` store, no dashboard** — stop after step 2 (JDBC).
+    - **Dashboard without cluster aggregation** (single instance, no peers) — drop the whole `cluster:` block;
+      `mode` defaults to `local` and the dashboard reads only this instance's own metrics.
+    - **No instance live tracking** — drop `shared-store.liveness*` and `snapshot.heartbeat*`; snapshot
+      aggregation works the same without it, instances just stay `UNKNOWN` instead of `LIVE`/`DOWN`.
+    - **HTTP ingest instead of direct write** (peers on a different network than the DB) — see
+      [Dashboard → Scenario D](../modules/dashboard.md#scenario-d-cluster-via-shared-store-jdbc-durable) and the
+      [deployment-configs reference](../modules/dashboard.md#configuration-how-to).
+
+---
+
 ## Next Steps
 
 - [How It Works](../concepts/how-it-works.md) — full lifecycle explanation
 - [Properties Reference](../configuration/properties-reference.md) — all configuration options
 - [Store Types](../configuration/store-types.md) — choose the right backing store
+- [Dashboard](../modules/dashboard.md) — every deployment shape (single JVM, shared-store, Prometheus), copy-pasteable

@@ -136,7 +136,7 @@ The dashboard is a separate, opt-in add-on: the default starter does **not** dep
     | `failover-lookup` | Spring `BeanFactory` lookups for named `KeyGenerator` / `ExpiryPolicy` / `PayloadSplitter` beans |
     | `failover-observable-micrometer` | Micrometer counters + health indicator |
     | `failover-dashboard` | Opt-in embedded observability UI + read-only JSON API (local / Prometheus / shared-store cluster modes) |
-    | `failover-dashboard-snapshotstore-jdbc` | Optional durable JDBC `SnapshotStore` for the dashboard `shared-store` cluster mode |
+    | `failover-dashboard-snapshotstore-jdbc` | Optional durable JDBC `SnapshotStore` + `HeartbeatStore` for the dashboard `shared-store` cluster mode |
     | `failover-dashboard-spring-boot-starter` | The only artifact a consumer adds to obtain the dashboard |
 
 ---

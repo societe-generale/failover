@@ -10,6 +10,10 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ## [3.0.0-SNAPSHOT] — In Development
 
+!!! info "Upgrading from 2.x?"
+    See **[Migrating 2.x → 3.0](../getting-started/migration-3.0.md)** for the breaking changes that
+    need action, ordered by likelihood of affecting you.
+
 ### Changed
 
 - Upgraded to Spring Boot 4.x and Spring Cloud 2025.x
@@ -40,11 +44,50 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - SPI Javadoc hardened with `@implSpec` contracts (`KeyGenerator`, `ExpiryPolicy`, `PayloadEnricher`,
   `RecoveredPayloadHandler`); `FailoverHandler.recoverAll` documented as an optional operation (audit I-09, I-11)
 - Build: corrected the stale `<scm><tag>` in the parent POM (`failover_1.1.0` → `HEAD`) (audit I-14)
+- Build: **Maven Central publishing migrated from OSSRH to the Central Portal.** The legacy
+  `s01.oss.sonatype.org` hosts are decommissioned and answer `HTTP 402`, so the EOL
+  `nexus-staging-maven-plugin` could no longer publish. Replaced with
+  `central-publishing-maven-plugin` (`publishingServerId=central`, `autoPublish=true`,
+  `waitUntil=published`); `<distributionManagement>` and the `maven-release-plugin`
+  `<stagingRepository>` are gone — the plugin's `extensions=true` owns the deploy target. Maintainers
+  must generate a Central Portal **user token** and store it as `CENTRAL_USERNAME` /
+  `CENTRAL_PASSWORD`; the retired OSSRH credentials do not authenticate against the Portal. The
+  GPG passphrase now reaches `maven-gpg-plugin` via `MAVEN_GPG_PASSPHRASE` (secret `GPG_PASSPHRASE`)
+  instead of `-Dgpg.passphrase=…`, keeping it out of the process argument list. See
+  [Release Management](../support/release-management.md)
 - Deserialization allowlist moved to the JDBC namespace — `failover.store.allowed-payload-classes` is now
   `failover.store.jdbc.allowed-payload-classes` (it only ever applied to the serializing JDBC store)
+- **`failover.store.jdbc.strict-allowlist` now defaults to `true`** (was `false`). An empty resolved
+  allowlist — no `@Failover` payload types discovered *and* nothing configured — denies all
+  deserialization instead of disabling the restriction and loading whatever class name a store row
+  carries. A major version is the point to stop shipping the fail-open path as the default. Zero-config
+  applications are unaffected (the allowlist is auto-derived from discovered payload packages and is
+  never empty); applications driving `FailoverStore` **directly**, outside any `@Failover` method, have
+  nothing to derive from and must now name their payload types in `allowed-payload-classes`. Setting the
+  flag back to `false` restores 2.x behaviour (ADR 60)
+- **Removed** `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` — the dashboard's JDBC snapshot store
+  (`failover-dashboard-snapshotstore-jdbc`) no longer creates or alters the `FAILOVER_DASHBOARD_SNAPSHOT` table;
+  schema management is the consuming service's responsibility. See
+  [Dashboard](../modules/dashboard.md#scenario-d-cluster-via-shared-store-jdbc-durable) for the per-dialect DDL to
+  run beforehand.
 
 ### Added
 
+- **Windowed dashboard health classification** (`failover.dashboard.health.sample-size`, default `100`) — the
+  `HEALTHY`/`DEGRADED`/`UNHEALTHY` status (and the Upstream call health cards below) is now computed over only the
+  most recent `sample-size` calls per failover point, not the lifetime-cumulative rate: a handful of errors from
+  hours ago no longer keep a since-recovered endpoint stuck `DEGRADED`. Implemented by `RollingHealthWindow`,
+  reconstructed server-side from counter deltas on every poll — no new instrumentation, local source only for now.
+- **Upstream call health cards** (Health tab) — one card per `@Failover` point, scored on the upstream call alone
+  (`failoverRate`), deliberately not masked by how well failover recovered — a card can read `FAILING` while every
+  other view in the dashboard is green because recovery is still covering for it. Each card shows a
+  `STABLE`/`WATCH`/`FAILING` severity, a composition bar (fresh / recovered / blocked over the current window), a
+  trend sparkline, the top exception, and — when masked — the failover point's configured expiry with a prompt to
+  notify the upstream owner before it ages out. New read-only endpoint `/api/health/upstream`
+  (`MetricsSource.upstreamWindows()`, `UpstreamWindow` DTO); empty on `prometheus`/`shared-store` sources for now.
+- Per-API table: **not-recovered** and **errors** are now separate sortable columns (previously a single `errors`
+  column silently excluded `not_recovered` outcomes — a row could be `UNHEALTHY` while showing `errors=0`).
+- Tooltips (`data-tip`) on every dashboard section header, chart, KPI, and table column.
 - **Non-blocking metric publishing** — `AsyncObservablePublisher` (in `failover-core`) wraps the composite
   publisher so every `ObservablePublisher` (built-in **and** custom) runs off the caller thread; a bounded
   queue with drop-on-full (counted as `failover.metrics.dropped.total`) guarantees metric emission never
@@ -62,6 +105,36 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   clusters with no Prometheus). `shared-store` ships an in-memory store plus an optional durable JDBC store
   (**`failover-dashboard-snapshotstore-jdbc`** module) with validated `table-prefix`, age+size retention,
   liveness windowing, and a reset-aware cluster trend.
+- **`HeartbeatStoreJdbc`** (`failover-dashboard-snapshotstore-jdbc`, `store=jdbc`) — durable, shared
+  counterpart to `HeartbeatStoreInmemory`. Needed for correct `LIVE`/`DOWN` status when the dashboard is
+  embedded in *multiple* `@Failover` instances sharing one database: the in-memory heartbeat store is
+  process-local, so each embedded dashboard would only ever see the heartbeat pushed to its own loopback
+  and show every other peer stuck at `UNKNOWN`. New table `FAILOVER_DASHBOARD_HEARTBEAT`
+  (`INSTANCE_ID` PK, `LAST_SEEN TIMESTAMP WITH TIME ZONE`), same `table-prefix` and no-auto-DDL convention
+  as the snapshot table — see
+  [Dashboard Scenario D](../modules/dashboard.md#scenario-d-cluster-via-shared-store-jdbc-durable) for the DDL.
+  Both this table's `LAST_SEEN` and the snapshot table's `RECEIVED_AT` are time-zone-aware timestamps
+  (`TIMESTAMP(9) WITH TIME ZONE` on Oracle/H2; capped at `(6)` on PostgreSQL/MySQL/MariaDB, which don't
+  support 9-digit fractional precision, and MySQL/MariaDB have no `WITH TIME ZONE` syntax at all) — read and
+  written as `OffsetDateTime` (UTC) via JDBC 4.2 `setObject`/`getObject`, converted to/from epoch-millis at
+  that boundary so the rest of the codebase stays in epoch-millis
+- **`failover.dashboard.cluster.shared-store.liveness.enabled`** (`DashboardProperties.Liveness`, default
+  `false`) — dashboard-side toggle for heartbeat liveness tracking (ADR 66's original, previously-unimplemented
+  design), independent of the peer-side `cluster.snapshot.heartbeat.enabled`. Until set `true`, no
+  `HeartbeatStore` bean is created at all — neither `HeartbeatStoreInmemory` nor, under `store=jdbc`,
+  `HeartbeatStoreJdbc` — so `/api/cluster/heartbeat` is unmapped, `SharedStoreMetricsSource` never queries
+  liveness, and `FAILOVER_DASHBOARD_HEARTBEAT` is never required to exist. `SourceInfo` gained a
+  `livenessTrackingEnabled` field so the UI's `instance live tracking` badge can distinguish `disabled`
+  (dashboard-side toggle off), `waiting` (toggle on, no peer has pushed yet), and `on`
+- **Reset-aware shared-store aggregate + bounded instance retirement** (ADR 67) — the instant cluster
+  aggregate is now monotonic across peer restarts: on counter reset the store folds the pre-restart totals
+  into a per-instance carried-forward baseline (`SnapshotBaseline`; persisted in the JDBC store's
+  `BASELINE_JSON` column), so Overview cards and the trend graph finally agree. Instances not seen
+  within `failover.dashboard.cluster.shared-store.instance-retention` (default `7d`, `0` = never) are
+  retired from the Instances tab while their counts keep contributing via `SnapshotStore.retiredAggregate()`;
+  beyond 100 retired entries the oldest compact into a tombstone aggregate — the in-memory store stays
+  heap-bounded under Kubernetes pod churn. Summary-merge math extracted to a shared
+  `MetricsSummaryAggregator` (`failover-observable-metrics`) so every consumer uses identical KPI formulas.
 - **Dashboard Instances tab** — per-instance roll-up + table + drill-down (`/api/instances`,
   `MetricsSource.instances()`) for `shared-store` and `prometheus`; answers "one bad node vs all". Plus a
   cluster health roll-up on the Health tab and a metrics-provenance badge (this-instance vs cluster).
@@ -116,6 +189,17 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Fixed
 
+- **`HeartbeatStoreInmemory` no longer grows without bound.** Every distinct instance id ever POSTed to
+  the heartbeat endpoint stayed resident for the life of the JVM — ordinary pod churn left one dead
+  entry per rolled instance forever. It now applies the same two bounds as `SnapshotStoreInmemory`:
+  entries not refreshed within `cluster.shared-store.instance-retention` (default `7d`) are dropped,
+  and a hard ceiling of 10 000 instances evicts the oldest heartbeat to admit a new one. Retention is
+  deliberately the *same* window the snapshot store retires on, so nothing still reachable from
+  `allInstances()` is ever discarded. The store now takes a `FailoverClock` rather than reading
+  `System.currentTimeMillis()` directly, so a co-located deployment ages heartbeats on the same clock
+  the rest of failover uses for expiry.
+- Dashboard `openTab` escapes the tab name before building its `querySelector`. A crafted
+  `#…` fragment produced an invalid selector, so `querySelector` threw and page initialisation stopped.
 - JDBC INSERT/UPDATE fallback no longer silently drops a write when a concurrent expiry delete
   removes the row between the failed INSERT and the follow-up UPDATE. A **single bounded retry**
   re-INSERTs the now-absent row; if every attempt loses the race the write is abandoned at `warn`
@@ -127,9 +211,45 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
   (audit I-04) now fires only for genuine partial recovery (`0 < missing < total`); when every slice is
   missing it is full non-recovery — logged as such, no partial metric, and surfaced upstream as
   `is-recovered=false`
+- `DashboardProperties.SharedStore`/`.Jdbc` gained the same `@ConstructorBinding` on their canonical
+  constructor that `Cluster`/`Snapshot`/`Security` already had. Without it, Spring Boot's binder treated
+  the two-constructor record as ambiguous and silently skipped constructor binding, so
+  `cluster.shared-store.store` and `.jdbc.table-prefix` always resolved to their hardcoded defaults
+  regardless of configured YAML
+- `DashboardAutoConfiguration`'s ingest endpoints (`/api/cluster/snapshot`, `/api/cluster/heartbeat`) could
+  silently never map under `cluster.shared-store.store=jdbc` — `clusterSnapshotController`/
+  `clusterHeartbeatController` are `@ConditionalOnBean(SnapshotStore/HeartbeatStore.class)`, but those beans
+  come from the separately-conditioned `SnapshotStoreJdbcAutoConfiguration` in another module, and no
+  ordering edge existed between the two `@AutoConfiguration` classes. `@ConditionalOnBean` across
+  independently-conditioned auto-configurations is unreliable without one — confirmed both declaration
+  orders left the controllers unregistered (bare `404`, not an auth denial). Fixed by adding
+  `SnapshotStoreJdbcAutoConfiguration` to `DashboardAutoConfiguration`'s `@AutoConfiguration(afterName = ...)`
+  list (referenced by name, no compile dependency — same pattern already used for `FailoverAutoConfiguration`)
+  (ADR 70)
 
 ### Security
 
+- **Dashboard UI now HTML-escapes every server-supplied string it renders.** Referential names and
+  domains, store/policy bean ids, exception types, config values and — in `cluster.mode=shared-store` —
+  peer-pushed instance ids were interpolated raw into `innerHTML`. The CSP (`script-src 'self'`, no
+  `unsafe-inline`) already blocked script execution, but `style-src` permits inline styles, so injected
+  markup could still deface or spoof an operator console, and `data-id="${instanceId}"` was one
+  unescaped quote from an attribute breakout.
+- **Peer-ingest endpoints validate the instance id.** `POST …/api/cluster/snapshot` and
+  `…/api/cluster/heartbeat` took `@RequestBody` with no checks: a null id NPE'd into a `500`, and an
+  arbitrary-length, arbitrary-charset id became a stored map key and rendered table content. Both now
+  reject a missing, blank, over-long (>200 char) or non-conforming id with `400`, accepting only
+  letters, digits and the separators `. _ - : @ /`. A snapshot with no `summary` is rejected too — it
+  is dereferenced on every aggregation, so accepting it traded one `400` for a `500` on every
+  subsequent read.
+- Dashboard peer ingest now **fails fast when `failover.dashboard.cluster.snapshot.username` is set
+  without a `password`**. Both properties default to `""` and only `username` gated the Basic-auth
+  filter chain, so a password that silently resolved to empty (unmounted secret, unresolved
+  placeholder, typo'd env var) built an in-memory user whose encoded password was exactly `{noop}` —
+  `NoOpPasswordEncoder` matched an empty submitted password, so `Authorization: Basic base64("<user>:")`
+  authenticated and any caller who guessed the username could push forged snapshots and heartbeats
+  into the cluster view, while startup logged that ingest *was* secured. A blank `username` is
+  rejected for the same reason (`@ConditionalOnProperty` matches on presence, not on a real value).
 - Deserialization allowlist for stored payload classes — `JsonSerializer.toClass` rejects unknown
   classes (`FailoverStoreException`). Auto-populated from the packages of discovered `@Failover`
   payload types (secure by default); `failover.store.jdbc.allowed-payload-classes` is an additive override

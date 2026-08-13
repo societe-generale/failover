@@ -1,9 +1,10 @@
 name: Publish package to the Maven Central Repository
+
 on:
   release:
-    types: [ created ]
+    types: [ published ]
 
-# Least-privilege: deployment to Maven Central uses OSSRH/GPG secrets, not GITHUB_TOKEN,
+# Least-privilege: deployment to Maven Central uses the Central Portal token + GPG secrets, not GITHUB_TOKEN,
 # so the workflow only needs to read the repository contents.
 permissions:
   contents: read
@@ -12,28 +13,47 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# One release publish at a time: Central artifacts are immutable (see docs/support/release-management.md),
+# so a stray concurrent run from a re-triggered release event would only race or duplicate work, never help.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # makeRelease's waitUntil=published blocks on Central Portal validation; cap the hang instead of
+    # letting a stalled Portal run out the default 6h job timeout.
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - name: Install gpg secret key
-        run: |
-          cat <(echo -e "${{ secrets.OSSRH_GPG_SECRET_KEY }}") | base64 --decode | gpg --batch --import
-          gpg --refresh-keys --keyserver keyserver.ubuntu.com
-          gpg --list-secret-keys --keyid-format LONG    
+      - name: Checkout sources
+        uses: actions/checkout@v5
 
-      - name: Set up Maven Central Repository
+      # server-id must match <publishingServerId>central</publishingServerId> in the root pom's
+      # 'makeRelease' profile — setup-java writes the matching <server> block into settings.xml.
+      # gpg-private-key imports the signing key into the runner's keyring directly (raw ASCII-armored
+      # key, not base64 — GPG_PRIVATE_KEY must be stored that way, unlike the old OSSRH_GPG_SECRET_KEY).
+      # gpg-passphrase names the env var maven-gpg-plugin reads the passphrase from at deploy time;
+      # set as a real value only in the deploy step below, never inline here.
+      - name: Set up JDK with GPG
         uses: actions/setup-java@v5
         with:
+          distribution: temurin
           java-version: '21'
-          distribution: 'temurin'
-          server-id: ossrh
-          server-username: MAVEN_USERNAME
-          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
 
-      - name: Publish package
-        run: mvn --no-transfer-progress --batch-mode -Dgpg.passphrase=${{ secrets.OSSRH_GPG_SECRET_KEY_PASSWORD }} clean deploy -P makeRelease
+      # CENTRAL_USERNAME / CENTRAL_PASSWORD hold a Central Portal *user token*, generated at
+      # https://central.sonatype.com/account. The retired OSSRH credentials do not authenticate
+      # against the Portal.
+      - name: Build & Deploy
+        run: mvn --no-transfer-progress --batch-mode clean deploy -P makeRelease
         env:
-          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          # Passed as an env var rather than -Dgpg.passphrase so the passphrase never appears in the
+          # process argument list; maven-gpg-plugin 3.x reads MAVEN_GPG_PASSPHRASE natively.
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

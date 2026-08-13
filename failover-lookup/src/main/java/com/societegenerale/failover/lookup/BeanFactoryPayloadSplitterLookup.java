@@ -31,6 +31,8 @@ import static com.societegenerale.failover.core.util.CastingUtils.cast;
  * <p>Resolves a {@link PayloadSplitter} by delegating to
  * {@link BeanFactory#getBean(String, Class)}, which matches by both qualifier and bean name.
  *
+ * @param <T> the payload type
+ * @param <R> the slice type
  * @author Anand Manissery
  */
 public class BeanFactoryPayloadSplitterLookup<T,R> implements PayloadSplitterLookup<T,R>, BeanFactoryAware {

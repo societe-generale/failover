@@ -57,21 +57,37 @@ failover:
       allowed-payload-classes:
         - com.acme.referential          # package prefix
         - com.acme.special.Currency     # exact class
-      strict-allowlist: true            # recommended for production — see below
+      strict-allowlist: true            # the default since 3.0.0 — see below
 ```
 
-The restriction is disabled (allow-all) only when no payload types are discovered **and** the
-property is empty.
+An empty resolved allowlist — no payload types discovered **and** the property empty — denies all
+deserialization.
 
-!!! danger "Fail-open vs. fail-closed (`strict-allowlist`)"
-    By default, an empty resolved allowlist **disables** the restriction (allow-all / fail-open) and
-    logs a `WARN`. This preserves backward compatibility but means a misconfiguration — no `@Failover`
-    types discovered and no configured entries — silently re-opens the deserialization-gadget surface.
+!!! danger "Fail-closed by default (`strict-allowlist`)"
+    **Changed in 3.0.0:** `failover.store.jdbc.strict-allowlist` now defaults to `true`. An empty
+    resolved allowlist **denies all** deserialization (logged at `ERROR`) rather than loading arbitrary
+    classes named in store data. In 2.x the default was `false`, which disabled the restriction
+    entirely (allow-all / fail-open) on an empty allowlist and logged only a `WARN` — so a
+    misconfiguration (scanner found nothing, AOP not wired) silently re-opened the very
+    deserialization-gadget surface the allowlist exists to close.
 
-    Set `failover.store.jdbc.strict-allowlist: true` to **fail closed**: an empty allowlist then
-    **denies all** deserialization (logged at `ERROR`) rather than loading arbitrary classes named in
-    store data. The normal secure-by-default path is unaffected — scanner-derived and configured
-    entries are honoured exactly as before. **Recommended for production.**
+    The normal path is unaffected: scanner-derived and configured entries are honoured exactly as
+    before, and a working zero-config application never has an empty allowlist.
+
+    **Who this breaks.** Applications that use `FailoverStore` **directly**, outside any `@Failover`
+    method, have no annotations for the scanner to derive from — so their allowlist resolves empty and
+    recovery now fails closed with `FailoverStoreException`. Name the payload types explicitly:
+
+    ```yaml
+    failover:
+      store:
+        jdbc:
+          allowed-payload-classes:
+            - com.acme.referential.Country
+    ```
+
+    Setting `strict-allowlist: false` restores the 2.x fail-open behaviour as an escape hatch, but
+    leaves the fail-open path in place — prefer populating the allowlist.
 
 **Derivation algorithm (and its limit).** The allowlist is built from the **packages** of the payload
 types the scanner finds on `@Failover` methods (return type + collection/array element type), minus

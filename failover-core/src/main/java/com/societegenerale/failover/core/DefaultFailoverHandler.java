@@ -32,7 +32,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
-import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
+import static com.societegenerale.failover.core.util.FailoverUtil.effectiveName;
 
 /**
  * Default {@link FailoverHandler} that persists payloads to the failover store on success
