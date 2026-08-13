@@ -64,6 +64,8 @@ public class EncryptingSerializer implements Serializer {
     private final PayloadCipher writeCipher;
 
     /**
+     * Creates a new encrypting serializer wrapper.
+     *
      * @param delegate    the underlying serializer (e.g. {@code JsonSerializer})
      * @param ciphers     all available ciphers (used for reads); ids must be unique and envelope-safe
      * @param writeCipher the cipher to encrypt new writes with, or {@code null} to write plaintext;

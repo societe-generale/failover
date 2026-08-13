@@ -29,6 +29,7 @@ import java.time.Duration;
  */
 public record RetentionPolicy(Duration maxAge, int maxEntries) {
 
+    /** Validates that both bounds are positive. */
     public RetentionPolicy {
         if (maxAge == null || maxAge.isNegative() || maxAge.isZero()) {
             throw new IllegalArgumentException("maxAge must be a positive duration, but was " + maxAge);
@@ -38,7 +39,13 @@ public record RetentionPolicy(Duration maxAge, int maxEntries) {
         }
     }
 
-    /** @return {@code true} if a point captured at {@code timestampMs} is older than {@link #maxAge} relative to {@code nowMs}. */
+    /**
+     * Checks whether a point is older than {@link #maxAge}.
+     *
+     * @param timestampMs the point's capture time, epoch millis
+     * @param nowMs       the current time, epoch millis
+     * @return {@code true} if a point captured at {@code timestampMs} is older than {@link #maxAge} relative to {@code nowMs}.
+     */
     public boolean isExpired(long timestampMs, long nowMs) {
         return nowMs - timestampMs > maxAge.toMillis();
     }

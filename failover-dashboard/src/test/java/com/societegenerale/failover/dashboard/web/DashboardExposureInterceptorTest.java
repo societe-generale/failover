@@ -17,24 +17,27 @@
 package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
+import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.method.HandlerMethod;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class DashboardExposureInterceptorTest {
 
     private DashboardExposureInterceptor interceptor(boolean api, List<String> include) {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
                 new DashboardProperties.Exposure(true, api, include),
-                new DashboardProperties.Security("FAILOVER_ADMIN", false),
+                new DashboardProperties.Security(DashboardProperties.SecurityType.AUTHORITY,"FAILOVER_ADMIN","FAILOVER_ADMIN", null, false, "", false),
                 new DashboardProperties.History(false, 120, 15),
-                new DashboardProperties.Health(0.99, 0.90),
+                new DashboardProperties.Health(0.99, 0.90, 100),
                 new DashboardProperties.Cluster("local"));
         return new DashboardExposureInterceptor(props);
     }
@@ -117,5 +120,39 @@ class DashboardExposureInterceptorTest {
                 "/failover-dashboard/api/config/settings", res);
         assertThat(proceed).isFalse();
         assertThat(res.getStatus()).isEqualTo(HttpServletResponse.SC_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("cluster snapshot ingest passes even when 'cluster' is narrowed out of exposure.include")
+    void clusterIngestBypassesExposureNarrowing() throws Exception {
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        DashboardExposureInterceptor i = interceptor(true, List.of("config", "metrics", "health"));
+        HandlerMethod ingestHandler = new HandlerMethod(
+                new ClusterSnapshotController(mock(SnapshotStore.class)),
+                ClusterSnapshotController.class.getMethod("ingest", com.societegenerale.failover.observable.metrics.ClusterSnapshot.class));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/failover-dashboard/api/cluster/snapshot");
+        req.setRequestURI("/failover-dashboard/api/cluster/snapshot");
+        boolean proceed = i.preHandle(req, res, ingestHandler);
+
+        assertThat(proceed).isTrue();
+        assertThat(res.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+    }
+
+    @Test
+    @DisplayName("cluster heartbeat ingest passes even when 'cluster' is narrowed out of exposure.include")
+    void clusterHeartbeatBypassesExposureNarrowing() throws Exception {
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        DashboardExposureInterceptor i = interceptor(true, List.of("config", "metrics", "health"));
+        HandlerMethod heartbeatHandler = new HandlerMethod(
+                new ClusterHeartbeatController(mock(com.societegenerale.failover.dashboard.metrics.source.sharedstore.HeartbeatStore.class)),
+                ClusterHeartbeatController.class.getMethod("heartbeat", HeartbeatPayload.class));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/failover-dashboard/api/cluster/heartbeat");
+        req.setRequestURI("/failover-dashboard/api/cluster/heartbeat");
+        boolean proceed = i.preHandle(req, res, heartbeatHandler);
+
+        assertThat(proceed).isTrue();
+        assertThat(res.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
     }
 }

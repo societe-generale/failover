@@ -37,6 +37,11 @@ public class ClusterSeriesStore {
     private final LongSupplier nowMillis;
     private final Deque<SeriesPoint> ring = new ArrayDeque<>();
 
+    /**
+     * Creates a new store bounded by {@code retention}.
+     *
+     * @param retention the size/age bounds to prune by
+     */
     public ClusterSeriesStore(RetentionPolicy retention) {
         this(retention, System::currentTimeMillis);
     }
@@ -47,7 +52,11 @@ public class ClusterSeriesStore {
         this.nowMillis = nowMillis;
     }
 
-    /** Appends a point (assumed newest) and prunes by size then age. */
+    /**
+     * Appends a point (assumed newest) and prunes by size then age.
+     *
+     * @param point the newest series point
+     */
     public void append(SeriesPoint point) {
         synchronized (ring) {
             ring.addLast(point);
@@ -62,6 +71,8 @@ public class ClusterSeriesStore {
     }
 
     /**
+     * Returns retained points within the given window.
+     *
      * @param windowSec only points captured within this many seconds of now ({@code <= 0} returns all retained)
      * @return retained points in chronological order
      */
@@ -78,7 +89,11 @@ public class ClusterSeriesStore {
         }
     }
 
-    /** Current number of retained points (diagnostics / tests). */
+    /**
+     * Current number of retained points (diagnostics / tests).
+     *
+     * @return the retained point count
+     */
     public int size() {
         synchronized (ring) {
             return ring.size();

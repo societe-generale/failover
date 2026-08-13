@@ -20,6 +20,7 @@ import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -82,6 +83,9 @@ public class CommonsUtil {
      * Innermost cause of {@code throwable}. The aspect wraps every upstream failure (often several
      * layers deep), so the real root cause is the deepest link in the chain. Returns {@code null} when
      * {@code throwable} has no cause. Guards against a self-referential cause chain.
+     *
+     * @param throwable the exception to walk, may be {@code null}
+     * @return the innermost cause, or {@code null} when {@code throwable} is {@code null} or has no cause
      */
     public static Throwable finalRootCauseOf(Throwable throwable) {
         Throwable root = throwable == null ? null : throwable.getCause();
@@ -95,18 +99,50 @@ public class CommonsUtil {
         return root;
     }
 
-    /** Null-safe canonical class name; returns {@code null} for a {@code null} throwable. */
+    /**
+     * Null-safe canonical class name; returns {@code null} for a {@code null} throwable.
+     *
+     * @param throwable the exception to inspect, may be {@code null}
+     * @return the canonical class name, or {@code null} when {@code throwable} is {@code null}
+     */
     public static String canonicalTypeOf(Throwable throwable) {
         return throwable == null ? null : throwable.getClass().getCanonicalName();
     }
 
-    /** Null-safe throwable message; returns {@code null} for a {@code null} throwable. */
+    /**
+     * Null-safe throwable message; returns {@code null} for a {@code null} throwable.
+     *
+     * @param throwable the exception to inspect, may be {@code null}
+     * @return the exception message, or {@code null} when {@code throwable} is {@code null}
+     */
     public static String messageOf(Throwable throwable) {
         return throwable == null ? null : throwable.getMessage();
     }
 
-    /** Intercepted method identity as {@code SimpleClassName#methodName}. */
+    /**
+     * Intercepted method identity as {@code SimpleClassName#methodName}.
+     *
+     * @param method the intercepted method
+     * @return the method identity string
+     */
     public static String methodId(@NonNull Method method) {
         return method.getDeclaringClass().getSimpleName() + "#" + method.getName();
+    }
+
+    /**
+     * Formats a {@link Duration} into a human-readable string. If the duration is null, returns "unlimited".
+     * If the duration is a whole number of minutes, returns the number of minutes followed by "m".
+     * If the duration is a whole number of seconds, returns the number of seconds followed by "s".
+     * Otherwise, returns the number of milliseconds followed by "ms".
+     *
+     * @param timeout the duration to format
+     * @return a human-readable string representation of the duration
+     */
+    public static String format(Duration timeout) {
+        if (timeout == null) return "unlimited";
+        long ms = timeout.toMillis();
+        if (ms % 60_000 == 0) return (ms / 60_000) + "m";
+        if (ms % 1_000 == 0)  return (ms / 1_000) + "s";
+        return ms + "ms";
     }
 }

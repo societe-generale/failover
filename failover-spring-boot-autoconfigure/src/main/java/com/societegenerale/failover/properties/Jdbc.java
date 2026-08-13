@@ -46,26 +46,31 @@ public class Jdbc {
      * common case needs no configuration and is secure by default. Add entries here only for payload
      * classes the scanner cannot infer (e.g. a slice type in a different package than its composite).
      *
-     * <p>If both this list is empty <em>and</em> the scanner discovers no payload types, the restriction
-     * is disabled (allow-all) to preserve backward compatibility — unless {@link #strictAllowlist} is
-     * enabled, in which case an empty allowlist denies all deserialization (fail-closed).
+     * <p>If both this list is empty <em>and</em> the scanner discovers no payload types, deserialization
+     * is denied outright (fail-closed) — see {@link #strictAllowlist}, whose default flipped to
+     * {@code true} in 3.0.0.
      */
     private List<String> allowedPayloadClasses = new ArrayList<>();
 
     /**
      * Hardening switch for the deserialization allowlist (audit A3, security).
      *
-     * <p>When {@code false} (default, backward-compatible): an empty resolved allowlist disables the
-     * restriction (<b>allow-all / fail-open</b>) and only a {@code WARN} is logged.
+     * <p>When {@code true} (default since 3.0.0): an empty resolved allowlist <b>denies all</b> payload
+     * deserialization (<b>fail-closed</b>) rather than loading arbitrary classes named in store data.
      *
-     * <p>When {@code true}: an empty resolved allowlist <b>denies all</b> payload deserialization
-     * (<b>fail-closed</b>) rather than loading arbitrary classes named in store data. Recommended for
-     * production: it removes the fail-open path so a misconfiguration (no {@code @Failover} types
-     * discovered and no configured entries) can never silently re-open the deserialization-gadget
-     * surface. The normal secure-by-default path is unaffected — scanner-derived and configured entries
-     * are still honoured exactly as before.
+     * <p>When {@code false}: an empty resolved allowlist disables the restriction
+     * (<b>allow-all / fail-open</b>) and only a {@code WARN} is logged. This was the 2.x default, kept
+     * as an escape hatch for an upgrade that trips on the new default before its allowlist is sorted
+     * out.
+     *
+     * <p>The normal path is unaffected either way. The framework auto-allows the packages of every
+     * discovered {@code @Failover} payload type, so a working zero-config application has a non-empty
+     * allowlist and never reaches this branch. It is reached only when the scanner finds no payload
+     * types <em>and</em> nothing is configured — a state in which recovery has nothing legitimate to
+     * deserialize anyway, so failing closed costs a working deployment nothing and removes a path where
+     * a misconfiguration silently re-opens the deserialization-gadget surface.
      */
-    private boolean strictAllowlist = false;
+    private boolean strictAllowlist = true;
 
     /**
      * Whether to expose the {@code failover.live.entries} gauge for the JDBC store (audit A7 — capacity

@@ -35,6 +35,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(properties = {
         "failover.dashboard.enabled=true",
+        "failover.dashboard.security.type=ROLE",
         "failover.store.async=false",                 // synchronous writes ⇒ deterministic assertions
         "failover.observable.async.enabled=false",    // synchronous metric publish ⇒ counters visible before HTTP assert
         "spring.security.user.name=admin",
@@ -140,6 +143,22 @@ class FailoverDashboardEndToEndIT {
     void staticUiIsServedFromTheClasspath() throws Exception {
         mockMvc.perform(get("/failover-dashboard/index.html").header("Authorization", AUTH))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(8)
+    void barePathRedirectsToTrailingSlashSoRelativeAssetsResolveUnderTheBasePath() throws Exception {
+        mockMvc.perform(get("/failover-dashboard").header("Authorization", AUTH))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", "/failover-dashboard/"));
+    }
+
+    @Test
+    @Order(9)
+    void trailingSlashPathForwardsDirectlyToIndexHtml() throws Exception {
+        mockMvc.perform(get("/failover-dashboard/").header("Authorization", AUTH))
+                .andExpect(status().isOk())
+                .andExpect(forwardedUrl("/failover-dashboard/index.html"));
     }
 
     // ── test application ──────────────────────────────────────────────────────

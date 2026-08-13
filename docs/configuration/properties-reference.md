@@ -4,70 +4,72 @@ icon: material/format-list-bulleted
 
 # Properties Reference
 
-All properties are prefixed with `failover`. There are no mandatory properties — the framework starts with production-safe defaults.
+All properties are prefixed with `failover`. There are no mandatory properties — the framework starts with
+production-safe defaults.
 
 ---
 
 ## Root Properties
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.enabled` | `boolean` | `true` | Enable or disable the entire failover framework. Set `false` to bypass all interception without removing annotations. |
-| `failover.type` | `FailoverType` | `BASIC` | Execution strategy. `BASIC` uses try/catch; `RESILIENCE` wraps upstream calls in a Resilience4j circuit-breaker; `CUSTOM` for your own `FailoverExecution` bean. |
+| Property                    | Type              | Default   | Description                                                                                                                                                                                                             |
+|-----------------------------|-------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.enabled`          | `boolean`         | `true`    | Enable or disable the entire failover framework. Set `false` to bypass all interception without removing annotations.                                                                                                   |
+| `failover.type`             | `FailoverType`    | `BASIC`   | Execution strategy. `BASIC` uses try/catch; `RESILIENCE` wraps upstream calls in a Resilience4j circuit-breaker; `CUSTOM` for your own `FailoverExecution` bean.                                                        |
 | `failover.exception-policy` | `ExceptionPolicy` | `RETHROW` | Behaviour when recovery finds nothing. `RETHROW` re-throws the original upstream exception; `NEVER_THROW` returns `null` (or the `RecoveredPayloadHandler` result); `CUSTOM` for your own `MethodExceptionPolicy` bean. |
 
 ---
 
 ## Store Properties
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.store.type` | `StoreType` | `INMEMORY` | Backing store. `INMEMORY` (dev/test only — not persistent), `CAFFEINE`, `JDBC`, `CUSTOM`. |
-| `failover.store.async` | `boolean` | `true` | Offload write operations (`store`, `delete`, `cleanByExpiry`) to a background virtual-thread executor. `find` is always synchronous. Set `false` when using the JDBC `SCHEMA` multi-tenant strategy. |
-| `failover.store.async-executor.concurrency-limit` | `int` | `0` | Max concurrently in-flight async store writes. `0` (or negative) = unbounded (default). A positive value bounds the executor (back-pressure guard) while still running accepted tasks on virtual threads. |
-| `failover.store.async-executor.rejection-policy` | `RejectionPolicy` | `DISCARD` | What happens when a write is submitted at the concurrency limit (only when limit > 0). `DISCARD` drops it with a `WARN` (non-blocking; data is regenerable cache); `CALLER_RUNS` runs it on the calling thread (back-pressure, not a virtual thread); `ABORT` throws `RejectedExecutionException`. |
-| `failover.store.inmemory.max-entries` | `int` | `10000` | Max entries retained by the in-memory store; the least-recently-accessed entry is evicted (LRU) once exceeded. `0` (or negative) = unbounded. Caps heap growth from high-cardinality keys. |
-| `failover.store.caffeine.max-size` | `long` | `10000` | Max entries for the Caffeine store; once exceeded Caffeine evicts by its size-based (Window TinyLFU) policy. Same default as `inmemory.max-entries`. `0` (or negative) = unbounded (limited only by per-entry expiry). |
+| Property                                          | Type              | Default    | Description                                                                                                                                                                                                                                                                                        |
+|---------------------------------------------------|-------------------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.store.type`                             | `StoreType`       | `INMEMORY` | Backing store. `INMEMORY` (dev/test only — not persistent), `CAFFEINE`, `JDBC`, `CUSTOM`.                                                                                                                                                                                                          |
+| `failover.store.async`                            | `boolean`         | `true`     | Offload write operations (`store`, `delete`, `cleanByExpiry`) to a background virtual-thread executor. `find` is always synchronous. Set `false` when using the JDBC `SCHEMA` multi-tenant strategy.                                                                                               |
+| `failover.store.async-executor.concurrency-limit` | `int`             | `0`        | Max concurrently in-flight async store writes. `0` (or negative) = unbounded (default). A positive value bounds the executor (back-pressure guard) while still running accepted tasks on virtual threads.                                                                                          |
+| `failover.store.async-executor.rejection-policy`  | `RejectionPolicy` | `DISCARD`  | What happens when a write is submitted at the concurrency limit (only when limit > 0). `DISCARD` drops it with a `WARN` (non-blocking; data is regenerable cache); `CALLER_RUNS` runs it on the calling thread (back-pressure, not a virtual thread); `ABORT` throws `RejectedExecutionException`. |
+| `failover.store.inmemory.max-entries`             | `int`             | `10000`    | Max entries retained by the in-memory store; the least-recently-accessed entry is evicted (LRU) once exceeded. `0` (or negative) = unbounded. Caps heap growth from high-cardinality keys.                                                                                                         |
+| `failover.store.caffeine.max-size`                | `long`            | `10000`    | Max entries for the Caffeine store; once exceeded Caffeine evicts by its size-based (Window TinyLFU) policy. Same default as `inmemory.max-entries`. `0` (or negative) = unbounded (limited only by per-entry expiry).                                                                             |
 
 ### JDBC Properties
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.store.jdbc.table-prefix` | `String` | `""` | Prefix prepended to `FAILOVER_STORE` to form the table name. `MYAPP_` → table `MYAPP_FAILOVER_STORE`. Validated to contain only letters, digits, underscores, and dot-separated qualifiers. |
-| `failover.store.jdbc.allowed-payload-classes` | `List<String>` | `[]` | Deserialization allowlist for the JDBC store (other store types hold live objects and never deserialize). Exact class names or package prefixes. **Additive** to the secure-by-default auto-allowlist derived from discovered `@Failover` payload packages — set only for classes the scanner cannot infer. See [Security](../support/security.md). |
-| `failover.store.jdbc.encryption.enabled` | `boolean` | `false` | Payload-at-rest encryption for the `PAYLOAD` column. Gates the **write** side only: new rows are written as `ENC(<cipher>:<ciphertext>)`. Reads always honour the `ENC(...)` marker, so toggling this leaves both existing encrypted rows and plaintext rows readable. JDBC-only. |
-| `failover.store.jdbc.encryption.cipher` | `String` | `"b64"` | Id of the registered `PayloadCipher` used for new writes. Default `b64` is the built-in Base64 encoder — **encoding only, not real encryption**. Declare a `PayloadCipher` bean with a real algorithm and set this to its id for actual protection. |
+| Property                                      | Type           | Default | Description                                                                                                                                                                                                                                                                                                                                         |
+|-----------------------------------------------|----------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.store.jdbc.table-prefix`            | `String`       | `""`    | Prefix prepended to `FAILOVER_STORE` to form the table name. `MYAPP_` → table `MYAPP_FAILOVER_STORE`. Validated to contain only letters, digits, underscores, and dot-separated qualifiers.                                                                                                                                                         |
+| `failover.store.jdbc.allowed-payload-classes` | `List<String>` | `[]`    | Deserialization allowlist for the JDBC store (other store types hold live objects and never deserialize). Exact class names or package prefixes. **Additive** to the secure-by-default auto-allowlist derived from discovered `@Failover` payload packages — set only for classes the scanner cannot infer. See [Security](../support/security.md). |
+| `failover.store.jdbc.strict-allowlist` | `boolean` | `true` | **Changed in 3.0.0** (was `false`). When an empty allowlist resolves — no `@Failover` payload types discovered *and* nothing configured — deny all deserialization (fail-closed, logged at `ERROR`) instead of disabling the restriction (allow-all). Affects only that degenerate case; scanner-derived and configured entries behave identically either way. Applications driving `FailoverStore` directly must now name their payload types in `allowed-payload-classes`. See [Security](../support/security.md). |
+| `failover.store.jdbc.encryption.enabled`      | `boolean`      | `false` | Payload-at-rest encryption for the `PAYLOAD` column. Gates the **write** side only: new rows are written as `ENC(<cipher>:<ciphertext>)`. Reads always honour the `ENC(...)` marker, so toggling this leaves both existing encrypted rows and plaintext rows readable. JDBC-only.                                                                   |
+| `failover.store.jdbc.encryption.cipher`       | `String`       | `"b64"` | Id of the registered `PayloadCipher` used for new writes. Default `b64` is the built-in Base64 encoder — **encoding only, not real encryption**. Declare a `PayloadCipher` bean with a real algorithm and set this to its id for actual protection.                                                                                                 |
 
 ### Multi-Tenant Properties
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.store.multitenant.enabled` | `boolean` | `false` | Enable multi-tenant store routing. |
-| `failover.store.multitenant.strategy` | `JdbcMultiTenantStrategy` | `TABLE_PREFIX` | `TABLE_PREFIX` — separate table per tenant. `SCHEMA` — separate schema per tenant (requires custom `TenantStoreFactory` bean). |
-| `failover.store.multitenant.default-tenant` | `String` | `""` | Fallback tenant ID when `TenantResolver` returns `null`. Throws `FailoverStoreException` if blank and resolver returns `null`. |
-| `failover.store.multitenant.strict` | `boolean` | `false` | In `TABLE_PREFIX` mode, reject a tenant that is not present in `tenants` (throws `FailoverStoreException`) instead of silently routing it to the shared global table. When `false`, such a tenant is allowed with a one-time `WARN`. The `default-tenant` is exempt. |
-| `failover.store.multitenant.tenants` | `Map<String, TenantConfig>` | `{}` | Per-tenant configuration. Key = tenant ID. Each entry can override `table-prefix` (TABLE_PREFIX strategy) or `schema` (SCHEMA strategy). |
+| Property                                    | Type                        | Default        | Description                                                                                                                                                                                                                                                          |
+|---------------------------------------------|-----------------------------|----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.store.multitenant.enabled`        | `boolean`                   | `false`        | Enable multi-tenant store routing.                                                                                                                                                                                                                                   |
+| `failover.store.multitenant.strategy`       | `JdbcMultiTenantStrategy`   | `TABLE_PREFIX` | `TABLE_PREFIX` — separate table per tenant. `SCHEMA` — separate schema per tenant (requires custom `TenantStoreFactory` bean).                                                                                                                                       |
+| `failover.store.multitenant.default-tenant` | `String`                    | `""`           | Fallback tenant ID when `TenantResolver` returns `null`. Throws `FailoverStoreException` if blank and resolver returns `null`.                                                                                                                                       |
+| `failover.store.multitenant.strict`         | `boolean`                   | `false`        | In `TABLE_PREFIX` mode, reject a tenant that is not present in `tenants` (throws `FailoverStoreException`) instead of silently routing it to the shared global table. When `false`, such a tenant is allowed with a one-time `WARN`. The `default-tenant` is exempt. |
+| `failover.store.multitenant.tenants`        | `Map<String, TenantConfig>` | `{}`           | Per-tenant configuration. Key = tenant ID. Each entry can override `table-prefix` (TABLE_PREFIX strategy) or `schema` (SCHEMA strategy).                                                                                                                             |
 
 ---
 
 ## Scheduler Properties
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.scheduler.enabled` | `boolean` | `true` | Enable or disable both schedulers. |
-| `failover.scheduler.report-cron` | `String` | `"0 0 0 * * *"` | Cron expression for the observable report publisher. Default: daily at midnight. |
-| `failover.scheduler.cleanup-cron` | `String` | `"0 0 * * * *"` | Cron expression for the expiry-cleanup scheduler. Default: every hour. |
+| Property                          | Type      | Default         | Description                                                                      |
+|-----------------------------------|-----------|-----------------|----------------------------------------------------------------------------------|
+| `failover.scheduler.enabled`      | `boolean` | `true`          | Enable or disable both schedulers.                                               |
+| `failover.scheduler.report-cron`  | `String`  | `"0 0 0 * * *"` | Cron expression for the observable report publisher. Default: daily at midnight. |
+| `failover.scheduler.cleanup-cron` | `String`  | `"0 0 * * * *"` | Cron expression for the expiry-cleanup scheduler. Default: every hour.           |
 
 ---
 
 ## Scatter Properties
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.scatter.parallel` | `boolean` | `true` | Dispatch scatter/gather slices in parallel using virtual threads. Set `false` for sequential processing. |
-| `failover.scatter.timeout` | `Duration` | `10s` | Per-slice timeout for the parallel path (ignored when `parallel=false`). On timeout a recover slice is treated as not recovered, and a store slice surfaces the timeout (isolated by the execution layer) — a hung slice never blocks the caller indefinitely. Empty/null = wait indefinitely. |
-| `failover.scatter.concurrency-limit` | `int` | `0` | Max concurrently in-flight scatter slices across all parallel dispatches. `0` (or negative) = unbounded (default). A positive value bounds slice fan-out while still running accepted slices on virtual threads. |
-| `failover.scatter.rejection-policy` | `RejectionPolicy` | `DISCARD` | What happens when a slice is submitted at the concurrency limit (only when limit > 0). `DISCARD` drops it with a `WARN` (a discarded recover slice yields no data, already tolerated by gather); `CALLER_RUNS` runs it on the calling thread; `ABORT` throws `RejectedExecutionException`. |
+| Property                             | Type              | Default   | Description                                                                                                                                                                                                                                                                                    |
+|--------------------------------------|-------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.scatter.parallel`          | `boolean`         | `true`    | Dispatch scatter/gather slices in parallel using virtual threads. Set `false` for sequential processing.                                                                                                                                                                                       |
+| `failover.scatter.timeout`           | `Duration`        | `10s`     | Per-slice timeout for the parallel path (ignored when `parallel=false`). On timeout a recover slice is treated as not recovered, and a store slice surfaces the timeout (isolated by the execution layer) — a hung slice never blocks the caller indefinitely. Empty/null = wait indefinitely. |
+| `failover.scatter.concurrency-limit` | `int`             | `0`       | Max concurrently in-flight scatter slices across all parallel dispatches. `0` (or negative) = unbounded (default). A positive value bounds slice fan-out while still running accepted slices on virtual threads.                                                                               |
+| `failover.scatter.rejection-policy`  | `RejectionPolicy` | `DISCARD` | What happens when a slice is submitted at the concurrency limit (only when limit > 0). `DISCARD` drops it with a `WARN` (a discarded recover slice yields no data, already tolerated by gather); `CALLER_RUNS` runs it on the calling thread; `ABORT` throws `RejectedExecutionException`.     |
 
 ---
 
@@ -75,63 +77,76 @@ All properties are prefixed with `failover`. There are no mandatory properties �
 
 Control how failover metrics are published. See [Observability](../modules/observability.md).
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.observable.async.enabled` | `boolean` | `true` | Publish metrics off the caller thread via a bounded queue drained by a virtual-thread worker, so emitting metrics can never block or slow the `@Failover` call. Set `false` to publish synchronously (deterministic for tests). |
-| `failover.observable.async.queue-capacity` | `int` | `10000` | Bounded queue size. A full queue **drops** the metric (counted as `failover.metrics.dropped.total`) rather than back-pressuring the caller. Raise for very high failover throughput. |
-| `failover.observable.instance.mode` | `auto` \| `always` \| `never` | `auto` | `instance`-tag strategy. **`auto`** (default) tags every registry **except** a Prometheus one (Prometheus adds `instance` itself at scrape; push backends like OTLP/Elastic don't, so they get tagged — zero config). `always` tags every registry incl. Prometheus (surfaces as `exported_instance`). `never` disables the tag. |
-| `failover.observable.instance.id` | `String` | `""` | Instance-tag value. Blank ⇒ resolved at startup from `spring.application.name` + host name. On k8s/Docker set to `${HOSTNAME}` (or the pod name via Downward API) for a reliable, readable identity. |
-| `failover.observable.cardinality.enabled` | `boolean` | `true` | Cardinality guard: cap the number of distinct `name` tag values on `failover.*` meters so a misconfigured high-cardinality name can't explode the registry. |
-| `failover.observable.cardinality.max-apis` | `int` | `1000` | Maximum distinct `name` values; new series are denied once the cap is hit. |
+| Property                                   | Type                          | Default | Description                                                                                                                                                                                                                                                                                                                      |
+|--------------------------------------------|-------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.observable.async.enabled`        | `boolean`                     | `true`  | Publish metrics off the caller thread via a bounded queue drained by a virtual-thread worker, so emitting metrics can never block or slow the `@Failover` call. Set `false` to publish synchronously (deterministic for tests).                                                                                                  |
+| `failover.observable.async.queue-capacity` | `int`                         | `10000` | Bounded queue size. A full queue **drops** the metric (counted as `failover.metrics.dropped.total`) rather than back-pressuring the caller. Raise for very high failover throughput.                                                                                                                                             |
+| `failover.observable.instance.mode`        | `auto` \| `always` \| `never` | `auto`  | `instance`-tag strategy. **`auto`** (default) tags every registry **except** a Prometheus one (Prometheus adds `instance` itself at scrape; push backends like OTLP/Elastic don't, so they get tagged — zero config). `always` tags every registry incl. Prometheus (surfaces as `exported_instance`). `never` disables the tag. |
+| `failover.observable.instance.id`          | `String`                      | `""`    | Instance-tag value. Blank ⇒ resolved at startup from `spring.application.name` + host name. On k8s/Docker set to `${HOSTNAME}` (or the pod name via Downward API) for a reliable, readable identity.                                                                                                                             |
+| `failover.observable.cardinality.enabled`  | `boolean`                     | `true`  | Cardinality guard: cap the number of distinct `name` tag values on `failover.*` meters so a misconfigured high-cardinality name can't explode the registry.                                                                                                                                                                      |
+| `failover.observable.cardinality.max-apis` | `int`                         | `1000`  | Maximum distinct `name` values; new series are denied once the cap is hit.                                                                                                                                                                                                                                                       |
 
 ---
 
 ## Dashboard Properties
 
-Only active with `failover-dashboard-spring-boot-starter` on the classpath (see [Dashboard](../modules/dashboard.md)). `enabled` is the only switch you need; everything else has a working default once enabled.
+Only active with `failover-dashboard-spring-boot-starter` on the classpath (see [Dashboard](../modules/dashboard.md)).
+`enabled` is the only switch you need; everything else has a working default once enabled.
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.dashboard.enabled` | `boolean` | `false` | Master switch (secure-by-default). Must be explicitly `true` to map anything. |
-| `failover.dashboard.base-path` | `String` | `/failover-dashboard` | Single dedicated namespace for the UI and API. Must start with `/`, must not be `/`, and must not end with `/` — a misconfigured value fails the context fast. |
-| `failover.dashboard.exposure.ui` | `boolean` | `true` | Serve the static HTML/JS UI. Set `false` to narrow to API-only. |
-| `failover.dashboard.exposure.api` | `boolean` | `true` | Serve the JSON API. Set `false` to narrow to UI-only. |
-| `failover.dashboard.exposure.include` | `List<String>` | `[config, failover-health, metrics, health, cluster, instances]` | Which API endpoints are served. Trim to narrow; an endpoint not listed returns `404`. (`cluster` gates the shared-store snapshot ingest; `instances` gates the per-instance view.) |
-| `failover.dashboard.security.role` | `String` | `FAILOVER_ADMIN` | Role required for `base-path/**` when Spring Security is present. |
-| `failover.dashboard.security.allow-insecure` | `boolean` | `false` | When Spring Security is absent: `false` fails the context fast (fail-closed); `true` starts unsecured with a loud `WARN` (dev / trusted-network only). **Refused outright when the `prod` profile is active** — production must add Spring Security. |
-| `failover.dashboard.history.enabled` | `boolean` | `false` | Enable the server-side ring-buffer sampler and `/api/metrics/series` for reload-surviving trends. |
-| `failover.dashboard.history.samples` | `int` | `120` | Ring-buffer capacity (retained sample count). |
-| `failover.dashboard.history.sample-interval-seconds` | `int` | `15` | Seconds between samples. |
-| `failover.dashboard.health.degraded-threshold` | `double` | `0.99` | Healthy-rate floor for `HEALTHY`; below it (down to the unhealthy floor) is `DEGRADED`. |
-| `failover.dashboard.health.unhealthy-threshold` | `double` | `0.90` | Healthy-rate floor for `DEGRADED`; below it is `UNHEALTHY`. |
+| Property                                             | Type           | Default                                                          | Description                                                                                                                                                                                                                                             |
+|------------------------------------------------------|----------------|------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.dashboard.enabled`                         | `boolean`      | `false`                                                          | Master switch (secure-by-default). Must be explicitly `true` to map anything.                                                                                                                                                                           |
+| `failover.dashboard.base-path`                       | `String`       | `/failover-dashboard`                                            | Single dedicated namespace for the UI and API. Must start with `/`, must not be `/`, and must not end with `/` — a misconfigured value fails the context fast.                                                                                          |
+| `failover.dashboard.exposure.ui`                     | `boolean`      | `true`                                                           | Serve the static HTML/JS UI. Set `false` to narrow to API-only.                                                                                                                                                                                         |
+| `failover.dashboard.exposure.api`                    | `boolean`      | `true`                                                           | Serve the JSON API. Set `false` to narrow to UI-only.                                                                                                                                                                                                   |
+| `failover.dashboard.exposure.include`                | `List<String>` | `[config, failover-health, metrics, health, cluster, instances]` | Which **read** API endpoints are served. Trim to narrow; an endpoint not listed returns `404`. (`cluster` gates cluster-aggregated read views; `instances` gates the per-instance view.) Does **not** gate `POST /api/cluster/snapshot` (peer ingest) — that write path is exempt and secured separately, see [exposure.include vs. ingest access control](../modules/dashboard.md#exposureinclude-vs-ingest-access-control). |
+| `failover.dashboard.security.type`                   | `SecurityType` | `AUTHORITY`                                                      | Authorization strategy. `ROLE` — checks role via `hasRole(security.role)` (RBAC); `AUTHORITY` — checks authority via `hasAuthority(security.authority)` (permission-based); `EXPRESSION` — evaluates the SpEL `security.expression` via `WebExpressionAuthorizationManager`. See [Security](../modules/dashboard.md#security). |
+| `failover.dashboard.security.role`                   | `String`       | `FAILOVER_ADMIN`                                                 | Role required for `base-path/**` when `security.type=ROLE` and Spring Security is present. Ignored otherwise.                                                                                                                                            |
+| `failover.dashboard.security.authority`              | `String`       | `FAILOVER_ADMIN`                                                 | Authority required for `base-path/**` when `security.type=AUTHORITY` (default) and Spring Security is present. Ignored otherwise.                                                                                                                       |
+| `failover.dashboard.security.expression`             | `String`       | *(none)*                                                         | SpEL web-security expression evaluated for `base-path/**` when `security.type=EXPRESSION`, e.g. `hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')`. **Required (non-blank) when `type=EXPRESSION`** — the context fails fast otherwise. Ignored for `ROLE`/`AUTHORITY`.                                                                       |
+| `failover.dashboard.security.oauth2-client-registration-id` | `String` | `""`                                                       | Registration id under `spring.security.oauth2.client.registration.<id>` used to secure the dashboard **UI** with OAuth2 login instead of HTTP Basic (blank ⇒ disabled, HTTP Basic used). Authorization still goes through `type`/`role`/`authority`/`expression` — only the login mechanism changes. Different property from `cluster.snapshot.oauth2-client-registration-id` below (that one is for peer ingest, machine-to-machine). See [Authentication mechanism](../modules/dashboard.md#authentication-mechanism-http-basic-oauth2-login-oauth2-resource-server-or-bring-your-own). |
+| `failover.dashboard.security.oauth2-resource-server` | `boolean` | `false`                                                          | Secure the dashboard UI/API with OAuth2 resource-server (JWT Bearer) validation instead of HTTP Basic — stateless, for SSO terminated upstream (gateway/sidecar) that forwards a validated JWT on every request. Requires `spring-security-oauth2-resource-server` and the standard `spring.security.oauth2.resourceserver.jwt.*` properties. Ignored when `oauth2-client-registration-id` is set or a `DashboardAuthenticationConfigurer` bean is present. See [Authentication mechanism](../modules/dashboard.md#authentication-mechanism-http-basic-oauth2-login-oauth2-resource-server-or-bring-your-own). |
+| `failover.dashboard.security.allow-insecure`         | `boolean`      | `false`                                                          | When Spring Security is absent: `false` fails the context fast (fail-closed); `true` starts unsecured with a loud `WARN` (dev / trusted-network only). When Spring Security is present, only relevant if you also set it `true` — an explicit, narrower escape hatch (main gate defaults to authenticated access either way). **Refused outright when the `prod` profile is active, in both cases** — production must not silently disable the access gate.    |
+| `failover.dashboard.history.enabled`                 | `boolean`      | `false`                                                          | Enable the server-side ring-buffer sampler and `/api/metrics/series` for reload-surviving trends.                                                                                                                                                       |
+| `failover.dashboard.history.samples`                 | `int`          | `120`                                                            | Ring-buffer capacity (retained sample count).                                                                                                                                                                                                           |
+| `failover.dashboard.history.sample-interval-seconds` | `int`          | `15`                                                             | Seconds between samples.                                                                                                                                                                                                                                |
+| `failover.dashboard.health.degraded-threshold`       | `double`       | `0.99`                                                           | Healthy-rate floor for `HEALTHY`; below it (down to the unhealthy floor) is `DEGRADED`.                                                                                                                                                                 |
+| `failover.dashboard.health.unhealthy-threshold`      | `double`       | `0.90`                                                           | Healthy-rate floor for `DEGRADED`; below it is `UNHEALTHY`.                                                                                                                                                                                             |
+| `failover.dashboard.health.sample-size`              | `int`          | `100`                                                            | The rate above is computed over only the most recent `sample-size` calls per failover point, not the lifetime total — a cumulative rate never fully recovers from an old bad spell. Rejected (context fails fast) if `<= 0`. Also sizes the rolling window backing the Upstream call health cards (see [Dashboard](../modules/dashboard.md#upstream-call-health)). |
 
 ### Cluster Properties
 
-Where the dashboard reads metrics from in a multi-instance deployment (see [Distributed Deployment](../modules/dashboard.md#distributed-deployment-scenarios)). Default `local` reads this instance only.
+Where the dashboard reads metrics from in a multi-instance deployment (
+see [Distributed Deployment](../modules/dashboard.md#distributed-deployment-scenarios)). Default `local` reads this
+instance only.
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `failover.dashboard.cluster.mode` | `String` | `local` | `local` (this instance) \| `prometheus` (PromQL across instances) \| `shared-store` (peers push snapshots, aggregated in-app). |
-| `failover.dashboard.cluster.prometheus.base-url` | `String` | `""` | Prometheus base URL (e.g. `http://prometheus:9090`). Blank ⇒ falls back to `local`. Used when `mode=prometheus`. |
-| `failover.dashboard.cluster.prometheus.token` | `String` | `""` | Optional bearer token sent as `Authorization: Bearer …`. |
-| `failover.dashboard.cluster.prometheus.timeout-seconds` | `int` | `5` | Per-query connect/read timeout. |
-| `failover.dashboard.cluster.shared-store.store` | `String` | `inmemory` | `inmemory` (default) \| `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). Used when `mode=shared-store`. |
-| `failover.dashboard.cluster.shared-store.liveness-seconds` | `int` | `180` | **Heartbeat liveness window.** An instance that has not sent a heartbeat within this many seconds is classified as `DOWN`. Always active in shared-store mode; instances that never send a heartbeat remain `UNKNOWN`. Recommended: 3× the peer `heartbeat.interval-seconds`. |
-| `failover.dashboard.cluster.shared-store.max-instances` | `int` | `10` | Supported small-cluster ceiling; exceeding it logs a warning (graduate to `prometheus`). |
-| `failover.dashboard.cluster.shared-store.sample-interval-seconds` | `int` | `30` | Cluster-trend sampling cadence. |
-| `failover.dashboard.cluster.shared-store.retention.max-age` | `Duration` | `7d` | Trend-history age bound; older points evicted. |
-| `failover.dashboard.cluster.shared-store.retention.max-entries` | `int` | `100000` | Trend-history size bound; oldest truncated first. |
-| `failover.dashboard.cluster.shared-store.jdbc.table-prefix` | `String` | `""` | Prefix prepended to base `FAILOVER_DASHBOARD_SNAPSHOT` (validated). Used when `store=jdbc`. |
-| `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` | `boolean` | `true` | Create the snapshot table on startup if missing. |
-| `failover.dashboard.cluster.snapshot.publish-url` | `String` | `""` | Peer-side: the dashboard's base URL (same as `failover.dashboard.base-path` on the dashboard host). Pattern: `http://<dashboard-host>:<port><basePath>`. With the default `basePath=/failover-dashboard` this is `http://<host>:<port>/failover-dashboard`. The snapshot endpoint (`/api/cluster/snapshot`) and heartbeat endpoint (`/api/cluster/heartbeat`) are derived automatically. Blank ⇒ this instance does not push. |
-| `failover.dashboard.cluster.snapshot.interval-seconds` | `int` | `15` | Throttle interval: at most one push per this many seconds. Pushes are event-driven (triggered by metric events), not polled. A high-throughput app firing 1000 req/s still pushes at most once per interval. |
-| `failover.dashboard.cluster.snapshot.retry-interval-seconds` | `int` | `300` | After a push failure, all subsequent push attempts are suppressed for this many seconds. One WARN is logged on first failure; INFO on recovery. Default 5 min keeps noise low. |
-| `failover.dashboard.cluster.snapshot.username` | `String` | `""` | HTTP Basic Auth username for the dashboard ingest endpoint. Set together with `password`. Ignored when `oauth2-client-registration-id` is set. |
-| `failover.dashboard.cluster.snapshot.password` | `String` | `""` | HTTP Basic Auth password. Set together with `username`. |
-| `failover.dashboard.cluster.snapshot.oauth2-client-registration-id` | `String` | `""` | Spring Security OAuth2 client registration id. When set, a Bearer token is fetched via `OAuth2AuthorizedClientManager` and sent as `Authorization: Bearer …`. Takes priority over Basic Auth. Requires `spring-security-oauth2-client` on the classpath. |
-| `failover.dashboard.cluster.snapshot.allow-insecure-ingest` | `boolean` | `false` | Suppress the no-auth startup warning when neither Basic Auth nor OAuth2 is configured. Use only in trusted networks or local dev. |
-| `failover.dashboard.cluster.snapshot.heartbeat.enabled` | `boolean` | `false` | Enable lightweight periodic heartbeat pushes from this instance to the dashboard. Off by default. When enabled, `publish-url` must be set; the heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`. |
-| `failover.dashboard.cluster.snapshot.heartbeat.interval-seconds` | `int` | `60` | How often (in seconds) this instance sends a heartbeat ping (instance id only, no metrics payload). Should be ≤ ⅓ of the dashboard `liveness-seconds` window. |
+| Property                                                            | Type       | Default    | Description                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|---------------------------------------------------------------------|------------|------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `failover.dashboard.cluster.mode`                                   | `String`   | `local`    | `local` (this instance) \| `prometheus` (PromQL across instances) \| `shared-store` (peers push snapshots, aggregated in-app).                                                                                                                                                                                                                                                                                                |
+| `failover.dashboard.cluster.prometheus.base-url`                    | `String`   | `""`       | Prometheus base URL (e.g. `http://prometheus:9090`). Blank ⇒ falls back to `local`. Used when `mode=prometheus`.                                                                                                                                                                                                                                                                                                              |
+| `failover.dashboard.cluster.prometheus.token`                       | `String`   | `""`       | Optional bearer token sent as `Authorization: Bearer …`.                                                                                                                                                                                                                                                                                                                                                                      |
+| `failover.dashboard.cluster.prometheus.timeout-seconds`             | `int`      | `5`        | Per-query connect/read timeout.                                                                                                                                                                                                                                                                                                                                                                                               |
+| `failover.dashboard.cluster.shared-store.store`                     | `String`   | `inmemory` | `inmemory` (default) \| `jdbc` (durable; needs the `failover-dashboard-snapshotstore-jdbc` module + a `DataSource`). Used when `mode=shared-store`.                                                                                                                                                                                                                                                                           |
+| `failover.dashboard.cluster.shared-store.liveness.enabled`          | `boolean`  | `false`    | **Dashboard-side** toggle for heartbeat liveness tracking (ADR 66) — off by default. Until set `true`, no `HeartbeatStore` bean exists at all: `/api/cluster/heartbeat` is not mapped, no liveness query ever runs, and (with `store=jdbc`) `FAILOVER_DASHBOARD_HEARTBEAT` is never required. Independent of the peer-side `cluster.snapshot.heartbeat.enabled` — the dashboard has no way to read a peer's config, so both sides need this set for the feature to do anything.                                                          |
+| `failover.dashboard.cluster.shared-store.liveness-seconds`          | `int`      | `180`      | **Heartbeat liveness window.** An instance that has not sent a heartbeat within this many seconds is classified as `DOWN`. Only relevant when `liveness.enabled=true`; instances that never send a heartbeat remain `UNKNOWN`. Recommended: 3× the peer `heartbeat.interval-seconds`.                                                                                                                                                 |
+| `failover.dashboard.cluster.shared-store.max-instances`             | `int`      | `10`       | Supported small-cluster ceiling; exceeding it logs a warning (graduate to `prometheus`).                                                                                                                                                                                                                                                                                                                                      |
+| `failover.dashboard.cluster.shared-store.instance-retention`        | `Duration` | `7d`       | **Instance retirement window.** An instance not seen for this long is retired from `allInstances()` / the Instances tab — its counts keep contributing to the cluster aggregate (bounded tombstone). Keeps the in-memory store heap-bounded under pod churn. `0` retains every instance forever. In-memory store only; the JDBC store retains all rows.                                                                       |
+| `failover.dashboard.cluster.shared-store.sample-interval-seconds`   | `int`      | `30`       | Cluster-trend sampling cadence.                                                                                                                                                                                                                                                                                                                                                                                               |
+| `failover.dashboard.cluster.shared-store.retention.max-age`         | `Duration` | `7d`       | Trend-history age bound; older points evicted.                                                                                                                                                                                                                                                                                                                                                                                |
+| `failover.dashboard.cluster.shared-store.retention.max-entries`     | `int`      | `100000`   | Trend-history size bound; oldest truncated first.                                                                                                                                                                                                                                                                                                                                                                             |
+| `failover.dashboard.cluster.shared-store.jdbc.table-prefix`         | `String`   | `""`       | Prefix prepended to base `FAILOVER_DASHBOARD_SNAPSHOT` / `FAILOVER_DASHBOARD_HEARTBEAT` (validated). Used when `store=jdbc`, which also swaps the heartbeat store to its durable JDBC counterpart. Neither table is ever created or altered by the module — both must be provisioned by the consuming service; see [Dashboard](../modules/dashboard.md) for the DDL. |
+| `failover.dashboard.cluster.snapshot.publish-url`                   | `String`   | `""`       | Peer-side: the dashboard's base URL (same as `failover.dashboard.base-path` on the dashboard host). Pattern: `http://<dashboard-host>:<port><basePath>`. With the default `basePath=/failover-dashboard` this is `http://<host>:<port>/failover-dashboard`. The snapshot endpoint (`/api/cluster/snapshot`) and heartbeat endpoint (`/api/cluster/heartbeat`) are derived automatically. Blank ⇒ this instance does not push. |
+| `failover.dashboard.cluster.snapshot.interval-seconds`              | `int`      | `15`       | Throttle interval: at most one push per this many seconds. Pushes are event-driven (triggered by metric events), not polled. A high-throughput app firing 1000 req/s still pushes at most once per interval.                                                                                                                                                                                                                  |
+| `failover.dashboard.cluster.snapshot.retry-interval-seconds`        | `int`      | `300`      | After a push failure, all subsequent push attempts are suppressed for this many seconds. One WARN is logged on first failure; INFO on recovery. Default 5 min keeps noise low.                                                                                                                                                                                                                                                |
+| `failover.dashboard.cluster.snapshot.username`                      | `String`   | `""`       | HTTP Basic Auth username for the dashboard ingest endpoint. Set together with `password`. Ignored when `oauth2-client-registration-id` is set.                                                                                                                                                                                                                                                                                |
+| `failover.dashboard.cluster.snapshot.password`                      | `String`   | `""`       | HTTP Basic Auth password. Set together with `username`.                                                                                                                                                                                                                                                                                                                                                                       |
+| `failover.dashboard.cluster.snapshot.oauth2-client-registration-id` | `String`   | `""`       | Spring Security OAuth2 client registration id. When set, a Bearer token is fetched via `OAuth2AuthorizedClientManager` and sent as `Authorization: Bearer …`. Takes priority over Basic Auth. Requires `spring-security-oauth2-client` on the classpath.                                                                                                                                                                      |
+| `failover.dashboard.cluster.snapshot.allow-insecure-ingest`         | `boolean`  | `false`    | Suppress the no-auth startup warning when neither Basic Auth nor OAuth2 is configured. Use only in trusted networks or local dev.                                                                                                                                                                                                                                                                                             |
+| `failover.dashboard.cluster.snapshot.heartbeat.enabled`             | `boolean`  | `false`    | Enable lightweight periodic heartbeat pushes from this instance to the dashboard. Off by default. When enabled, `publish-url` must be set; the heartbeat URL is always derived as `{publish-url}/api/cluster/heartbeat`.                                                                                                                                                                                                      |
+| `failover.dashboard.cluster.snapshot.heartbeat.interval-seconds`    | `int`      | `60`       | How often (in seconds) this instance sends a heartbeat ping (instance id only, no metrics payload). Should be ≤ ⅓ of the dashboard `liveness-seconds` window.                                                                                                                                                                                                                                                                 |
+| `failover.dashboard.cluster.snapshot.ingest.enabled`                | `boolean`  | `true`     | **Dashboard-side only.** Whether `POST /api/cluster/snapshot` (`ClusterSnapshotController`) is mapped. Set `false` once every peer writes JDBC-direct instead (see `snapshot.jdbc.enabled` below) — the dashboard still reads from `SnapshotStore`; this only stops mapping the HTTP path and its ingest security gate.                                                                                                     |
+| `failover.dashboard.cluster.snapshot.jdbc.enabled`                  | `boolean`  | `false`    | **Peer-side only.** Write this instance's snapshot straight into `FAILOVER_DASHBOARD_SNAPSHOT` instead of POSTing — requires this peer's own `DataSource` pointed at the dashboard's database. **Mutually exclusive with `publish-url`**; setting both fails fast at startup (`FailoverClusterPublisherProperties`).                                                                                                        |
+| `failover.dashboard.cluster.snapshot.jdbc.table-prefix`             | `String`   | `""`       | **Peer-side only.** Table prefix for JDBC-direct writes; must match the dashboard's `cluster.shared-store.jdbc.table-prefix` — both sides read/write the same table.                                                                                                                                                                                                                                                          |
 
 ---
 
@@ -146,12 +161,13 @@ failover:
   store:
     type: jdbc                       # inmemory | caffeine | jdbc | custom
     async: true
-    async-executor:                  # back-pressure guard for async writes (default unbounded)
+    async-executor: # back-pressure guard for async writes (default unbounded)
       concurrency-limit: 0           # 0 = unbounded; >0 caps in-flight writes (still virtual threads)
       rejection-policy: discard      # discard | caller_runs | abort (only when limit > 0)
     jdbc:
       table-prefix: MYAPP_
-      allowed-payload-classes: []    # additive; auto-derived from @Failover payload packages
+      allowed-payload-classes: [ ]    # additive; auto-derived from @Failover payload packages
+      strict-allowlist: true          # 3.0.0 default; empty allowlist ⇒ deny all deserialization
       encryption:
         enabled: false             # encrypt new PAYLOAD writes as ENC(<cipher>:...); reads honour marker regardless
         cipher: b64                # registered PayloadCipher id; b64 = Base64 encode only (NOT real encryption)
@@ -177,17 +193,23 @@ failover:
     concurrency-limit: 0             # 0 = unbounded; >0 caps slice fan-out (still virtual threads)
     rejection-policy: discard        # discard | caller_runs | abort (only when limit > 0)
 
-  dashboard:                         # needs failover-dashboard-spring-boot-starter on the classpath
+  dashboard: # needs failover-dashboard-spring-boot-starter on the classpath
     enabled: false                   # master switch (secure-by-default) — set true to map anything
     base-path: /failover-dashboard   # single dedicated namespace for UI + API
-    exposure:                        # defaults expose everything; set flags only to NARROW
+    exposure: # defaults expose everything; set flags only to NARROW
       ui: true
       api: true
-      include: [config, failover-health, metrics, health]
+      include: [ config, failover-health, metrics, health, cluster, instances ]
     security:
-      role: FAILOVER_ADMIN           # required role for base-path/** when Spring Security is present
+      type: authority                # role (hasRole) | authority (hasAuthority, default) | expression (SpEL)
+      role: FAILOVER_ADMIN           # role used when type=role
+      authority: FAILOVER_ADMIN      # authority used when type=authority
+      expression: ""                 # SpEL used when type=expression, e.g. "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"
+      #   required (non-blank) when type=expression — fails fast at startup otherwise
+      oauth2-client-registration-id: ""  # set ⇒ OAuth2 login (browser SSO) instead of HTTP Basic
+      oauth2-resource-server: false      # true ⇒ OAuth2 resource server (JWT Bearer) instead of HTTP Basic
       allow-insecure: false          # if true, start unsecured + loud WARN (dev/trusted-net ONLY)
-                                     # refused outright when the 'prod' profile is active
+      # refused outright when the 'prod' profile is active
     history:
       enabled: false                 # server-side ring-buffer sampler + /api/metrics/series
       samples: 120                   # ring-buffer capacity (retained sample count)
@@ -195,6 +217,37 @@ failover:
     health:
       degraded-threshold: 0.99       # healthy-rate floor for HEALTHY
       unhealthy-threshold: 0.90      # healthy-rate floor for DEGRADED
+      sample-size: 100               # rate computed over only the last N calls per failover point, not the lifetime total (must be > 0)
+    cluster: # where metrics are read from across instances (see Cluster Properties above)
+      mode: local                    # local (default) | prometheus | shared-store
+      prometheus: # used when mode=prometheus
+        base-url: ""                 # e.g. http://prometheus:9090 (blank ⇒ falls back to local)
+        token: ""                    # optional bearer token
+        timeout-seconds: 5
+      shared-store: # used when mode=shared-store (peers push snapshots, aggregated in-app)
+        store: inmemory              # inmemory (default) | jdbc (needs failover-dashboard-snapshotstore-jdbc)
+        liveness-seconds: 180        # heartbeat age before an instance is DOWN (only matters if liveness.enabled)
+        liveness:
+          enabled: false             # off by default — dashboard-side toggle, independent of the peer-side heartbeat.enabled
+        max-instances: 10            # supported small-cluster ceiling (warns beyond)
+        instance-retention: 7d       # retire unseen instances from the Instances tab (0 ⇒ never)
+        sample-interval-seconds: 30  # cluster-trend sampling cadence
+        retention:
+          max-age: 7d                # trend-history age bound
+          max-entries: 100000        # trend-history size bound (oldest truncated)
+        jdbc: # used when store=jdbc; table must be created by the consuming service — see module docs for DDL
+          table-prefix: ""           # prepended to FAILOVER_DASHBOARD_SNAPSHOT (validated)
+      snapshot: # peer-side push (every instance, incl. non-UI nodes)
+        publish-url: ""              # dashboard base URL incl. base-path (blank ⇒ this instance does not push)
+        interval-seconds: 15         # at most one push per interval (event-driven, throttled)
+        retry-interval-seconds: 300  # suppress push attempts for this long after a failure
+        username: ""                 # ingest Basic-auth (set with password; ignored when oauth2 id set)
+        password: ""
+        oauth2-client-registration-id: ""  # Bearer auth via OAuth2 client (takes priority over Basic)
+        allow-insecure-ingest: false # suppress the no-auth ingest warning (trusted networks only)
+        heartbeat:
+          enabled: false             # lightweight liveness pings to the dashboard
+          interval-seconds: 60       # keep ≤ ⅓ of the dashboard liveness-seconds
 ```
 
 ---

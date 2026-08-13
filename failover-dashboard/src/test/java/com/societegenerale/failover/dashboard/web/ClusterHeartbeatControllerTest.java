@@ -29,6 +29,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,5 +59,62 @@ class ClusterHeartbeatControllerTest {
                 .andExpect(status().isAccepted());
 
         verify(heartbeatStore).record("app-host:8080");
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat with no instanceId returns 400 and records nothing")
+    void rejectsMissingInstanceId() throws Exception {
+        mockMvc.perform(post("/failover-dashboard/api/cluster/heartbeat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(heartbeatStore);
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat with a blank instanceId returns 400 and records nothing")
+    void rejectsBlankInstanceId() throws Exception {
+        mockMvc.perform(post("/failover-dashboard/api/cluster/heartbeat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(heartbeatStore);
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat with a markup-bearing instanceId returns 400 — never reaches the store or the UI")
+    void rejectsMarkupInInstanceId() throws Exception {
+        mockMvc.perform(post("/failover-dashboard/api/cluster/heartbeat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"<img src=x onerror=alert(1)>\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(heartbeatStore);
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat with an over-long instanceId returns 400 — bounds the stored key")
+    void rejectsOverlongInstanceId() throws Exception {
+        String tooLong = "a".repeat(201);
+        mockMvc.perform(post("/failover-dashboard/api/cluster/heartbeat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(heartbeatStore);
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat accepts the separators real instance ids use")
+    void acceptsRealisticInstanceIds() throws Exception {
+        for (String id : new String[]{"orders-svc:host-1:8080", "pod_abc.ns.svc", "a/b@c", "9f1c2e3d-4b5a"}) {
+            mockMvc.perform(post("/failover-dashboard/api/cluster/heartbeat")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"instanceId\":\"" + id + "\"}"))
+                    .andExpect(status().isAccepted());
+            verify(heartbeatStore).record(id);
+        }
     }
 }

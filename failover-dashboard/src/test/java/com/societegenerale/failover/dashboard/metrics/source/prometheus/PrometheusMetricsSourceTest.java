@@ -23,6 +23,7 @@ import com.societegenerale.failover.dashboard.metrics.source.prometheus.Promethe
 import com.societegenerale.failover.dashboard.metrics.source.prometheus.PrometheusClient.Sample;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -47,7 +48,7 @@ class PrometheusMetricsSourceTest {
 
     private final PrometheusClient client = mock(PrometheusClient.class);
     private final MetricsSource fallback = mock(MetricsSource.class);
-    private final DashboardProperties.Health thresholds = new DashboardProperties.Health(0.99, 0.90);
+    private final DashboardProperties.Health thresholds = new DashboardProperties.Health(0.99, 0.90, 100);
     private final PrometheusMetricsSource source = new PrometheusMetricsSource(client, fallback, thresholds);
 
     private static Sample sample(double value, String... kv) {
@@ -237,10 +238,161 @@ class PrometheusMetricsSourceTest {
     void infoFallsBack() {
         when(client.query(argThat(q -> q != null && q.contains("group by (instance)"))))
                 .thenThrow(new PrometheusException("boom", null));
-        SourceInfo localInfo = new SourceInfo("local", 1, -1, 1L, false);
+        SourceInfo localInfo = new SourceInfo("local", 1, -1, 1L, false, false);
         when(fallback.info()).thenReturn(localInfo);
 
         assertThat(source.info()).isSameAs(localInfo);
+    }
+
+    @Test
+    @DisplayName("configEntries() maps the raw expiry+global gauge samples to a ConfigEntry, deduped by name")
+    void configEntriesMapsGaugeSamples() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(7200, "name", "country", "domain", "geo", "unit", "HOURS", "duration", "2",
+                        "recoverAll", "true", "payloadSplitter", "mySplitter", "keyGenerator", "myKeyGen",
+                        "expiryPolicy", "myExpiryPolicy"),
+                // a second instance's identical series (same name, different 'instance' label) — deduped
+                sample(7200, "name", "country", "domain", "geo", "unit", "HOURS", "duration", "2",
+                        "recoverAll", "true", "payloadSplitter", "mySplitter", "keyGenerator", "myKeyGen",
+                        "expiryPolicy", "myExpiryPolicy", "instance", "host-2")));
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of(
+                sample(1, "storeType", "jdbc", "executionType", "resilience",
+                        "exceptionPolicy", "never_throw", "asyncStore", "false")));
+
+        List<ConfigEntry> entries = source.configEntries();
+
+        assertThat(entries).singleElement().satisfies(e -> {
+            assertThat(e.name()).isEqualTo("country");
+            assertThat(e.domain()).isEqualTo("geo");
+            assertThat(e.expiryDuration()).isEqualTo(2L);
+            assertThat(e.expiryUnit()).isEqualTo("HOURS");
+            assertThat(e.recoverAll()).isTrue();
+            assertThat(e.payloadSplitter()).isEqualTo("mySplitter");
+            assertThat(e.keyGenerator()).isEqualTo("myKeyGen");
+            assertThat(e.expiryPolicy()).isEqualTo("myExpiryPolicy");
+            assertThat(e.storeType()).isEqualTo("jdbc");
+            assertThat(e.executionType()).isEqualTo("resilience");
+            assertThat(e.exceptionPolicy()).isEqualTo("never_throw");
+            assertThat(e.asyncStore()).isFalse();
+        });
+    }
+
+    @Test
+    @DisplayName("configEntries() applies framework defaults when no global gauge sample is present")
+    void configEntriesDefaultsWhenGlobalGaugeAbsent() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(3600, "name", "alpha", "domain", "alpha", "unit", "HOURS", "duration", "1",
+                        "recoverAll", "false", "payloadSplitter", "", "keyGenerator", "", "expiryPolicy", "")));
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of());
+
+        ConfigEntry e = source.configEntries().getFirst();
+
+        assertThat(e.payloadSplitter()).isEqualTo("default");
+        assertThat(e.storeType()).isEqualTo("inmemory");
+        assertThat(e.executionType()).isEqualTo("basic");
+        assertThat(e.exceptionPolicy()).isEqualTo("rethrow");
+        assertThat(e.asyncStore()).isTrue();
+    }
+
+    @Test
+    @DisplayName("configEntries() drops samples lacking a name label and falls back to name for a blank domain/unit")
+    void configEntriesDropsUnlabelledAndFallsBackForBlankTags() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(3600, "domain", "geo"),   // no 'name' label → dropped
+                sample(3600, "name", "alpha", "domain", "", "unit", "", "duration", "1",
+                        "recoverAll", "false", "payloadSplitter", "", "keyGenerator", "", "expiryPolicy", "")));
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of());
+
+        List<ConfigEntry> entries = source.configEntries();
+
+        assertThat(entries).singleElement().satisfies(e -> {
+            assertThat(e.name()).isEqualTo("alpha");
+            assertThat(e.domain()).isEqualTo("alpha");   // blank domain tag falls back to the name
+            assertThat(e.expiryUnit()).isEmpty();         // blank unit tag has no name-based fallback
+        });
+    }
+
+    @Test
+    @DisplayName("configEntries() falls back to the local source when Prometheus fails")
+    void configEntriesFallsBack() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenThrow(new PrometheusException("boom", null));
+        ConfigEntry local = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        when(fallback.configEntries()).thenReturn(List.of(local));
+
+        assertThat(source.configEntries()).containsExactly(local);
+    }
+
+    @Test
+    @DisplayName("configEntries() falls back to the name and framework defaults when optional labels are entirely absent (not just blank)")
+    void configEntriesHandlesMissingOptionalLabels() {
+        when(client.query(eq("failover_config_expiry_seconds"))).thenReturn(List.of(
+                sample(0, "name", "beta")));   // domain, unit, duration, payloadSplitter, keyGenerator, expiryPolicy all absent
+        when(client.query(eq("failover_config_global"))).thenReturn(List.of(
+                sample(1, "storeType", "jdbc")));   // executionType, exceptionPolicy, asyncStore all absent
+
+        ConfigEntry e = source.configEntries().getFirst();
+
+        assertThat(e.name()).isEqualTo("beta");
+        assertThat(e.domain()).isEqualTo("beta");       // missing domain label falls back to the name
+        assertThat(e.expiryDuration()).isZero();         // missing duration label → parseLongOrZero(null)
+        assertThat(e.expiryUnit()).isEmpty();
+        assertThat(e.payloadSplitter()).isEqualTo("default");
+        assertThat(e.keyGenerator()).isEqualTo("default");
+        assertThat(e.expiryPolicy()).isEqualTo("default");
+        assertThat(e.storeType()).isEqualTo("jdbc");
+        assertThat(e.executionType()).isEqualTo("basic");     // missing label → framework default
+        assertThat(e.exceptionPolicy()).isEqualTo("rethrow");
+        assertThat(e.asyncStore()).isTrue();
+    }
+
+    @Test
+    @DisplayName("summary() ignores outcome samples without a name, falls domain back to the name, and drops unmapped/missing outcome labels")
+    void summaryHandlesOutcomeLabelEdgeCases() {
+        when(client.query(argThat(q -> q != null && q.contains("stored=") && !q.contains("instance")))).thenReturn(List.of(
+                sample(10, "name", "gamma")));
+        when(client.query(argThat(q -> q != null && q.contains("recovery_outcome_total") && !q.contains("instance")))).thenReturn(List.of(
+                sample(99, "outcome", "recovered"),                        // no 'name' label → skipped entirely
+                sample(2, "name", "gamma", "outcome", "unknown_outcome"),  // unmapped outcome → default arm, ignored
+                sample(3, "name", "gamma")));                              // no 'outcome' label → coalesced to "" → default arm
+
+        MetricsSummary summary = source.summary();
+
+        ApiKpis gamma = summary.perApi().getFirst();
+        assertThat(gamma.name()).isEqualTo("gamma");
+        assertThat(gamma.domain()).isEqualTo("gamma");   // no 'domain' label on any gamma sample → falls back to the name
+        assertThat(gamma.recovered()).isZero();          // unknown/missing outcome labels contribute to neither counter
+        assertThat(gamma.notRecovered()).isZero();
+    }
+
+    @Test
+    @DisplayName("topExceptions() falls through a missing then a blank cause label to the next non-blank one")
+    void topExceptionsSkipsMissingAndBlankLabels() {
+        when(client.query(argThat(q -> q != null && q.contains("stored=") && !q.contains("instance")))).thenReturn(List.of(
+                sample(5, "name", "delta")));
+        when(client.query(argThat(q -> q != null && q.contains("recovery_outcome_total") && !q.contains("instance")))).thenReturn(List.of(
+                sample(1, "name", "delta", "domain", "d", "outcome", "recovered")));
+        when(client.query(argThat(q -> q != null && q.contains("exception_total") && !q.contains("instance")))).thenReturn(List.of(
+                // final_cause_type label entirely absent, cause_type blank, exception_type real → firstPresent falls through both
+                sample(6, "cause_type", "", "exception_type", "java.io.IOException")));
+        when(client.query(argThat(q -> q != null && q.contains("duration_seconds_sum") && !q.contains("instance")))).thenReturn(List.of(
+                sample(0.05, "name", "delta")));   // 'action' label missing → LatencyIndex.put's 2nd condition evaluated false
+
+        MetricsSummary summary = source.summary();
+
+        assertThat(summary.topExceptions()).singleElement()
+                .satisfies(e -> assertThat(e.type()).isEqualTo("java.io.IOException"));
+    }
+
+    @Test
+    @DisplayName("configEntries() falls back to the local source when only the global-config query fails")
+    void configEntriesFallsBackWhenGlobalQueryFails() {
+        when(client.query(eq("failover_config_global"))).thenThrow(new PrometheusException("boom", null));
+        ConfigEntry local = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        when(fallback.configEntries()).thenReturn(List.of(local));
+
+        assertThat(source.configEntries()).containsExactly(local);
     }
 
     private static RangeSeries range(double... tsValuePairs) {

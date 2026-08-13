@@ -45,6 +45,12 @@ public class DashboardHistoryService {
     private final int capacity;
     private final Deque<SeriesPoint> ring = new ArrayDeque<>();
 
+    /**
+     * Creates a new history service.
+     *
+     * @param metricsService source of the counters sampled into the ring
+     * @param capacity       ring-buffer capacity, i.e. retained sample count
+     */
     public DashboardHistoryService(DashboardMetricsService metricsService, int capacity) {
         this.metricsService = metricsService;
         this.capacity = Math.max(1, capacity);
@@ -82,6 +88,8 @@ public class DashboardHistoryService {
     }
 
     /**
+     * Returns retained samples within the given window.
+     *
      * @param windowSec only return samples captured within this many seconds of now ({@code <= 0} returns all retained)
      * @return retained samples in chronological order
      */

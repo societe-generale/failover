@@ -22,7 +22,7 @@ import lombok.AllArgsConstructor;
 import java.util.List;
 import java.util.UUID;
 
-import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
+import static com.societegenerale.failover.core.util.FailoverUtil.effectiveName;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**

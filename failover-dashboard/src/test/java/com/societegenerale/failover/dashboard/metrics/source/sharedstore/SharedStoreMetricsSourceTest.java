@@ -19,6 +19,7 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 import com.societegenerale.failover.dashboard.config.DashboardProperties;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.Latency;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
@@ -28,8 +29,11 @@ import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import static java.lang.System.currentTimeMillis;
@@ -37,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SharedStoreMetricsSourceTest {
 
-    private static final DashboardProperties.Health THRESHOLDS = new DashboardProperties.Health(0.99, 0.90);
+    private static final DashboardProperties.Health THRESHOLDS = new DashboardProperties.Health(0.99, 0.90, 100);
 
     private static MetricsSummary snapshot(String name, long success, long recovered, long notRecovered,
                                            long errors, List<ExceptionStat> exceptions) {
@@ -54,7 +58,7 @@ class SharedStoreMetricsSourceTest {
                 return new MetricsSummary(k, List.of(k), List.of(), 0L);
             }
             public List<ApiHealth> health() { return List.of(new ApiHealth(marker, "HEALTHY", 1.0)); }
-            public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false); }
+            public SourceInfo info() { return new SourceInfo("local", 1, -1, 0L, false, false); }
             public List<SeriesPoint> series(long windowSec) { return List.of(); }
         };
     }
@@ -115,6 +119,77 @@ class SharedStoreMetricsSourceTest {
                 return out;
             }
         };
+    }
+
+    @Test
+    void retiredAggregateStillContributesToSummary() {
+        MetricsSummary retired = snapshot("country", 20, 0, 0, 0, List.of());
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                withRetired(stubStore(snapshot("country", 10, 0, 0, 0, List.of())), retired),
+                THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.summary().perApi()).singleElement()
+                .satisfies(k -> assertThat(k.upstreamSuccess()).isEqualTo(30));
+    }
+
+    @Test
+    void retiredAggregateAloneServesClusterSummaryNotFallback() {
+        // Every instance retired (e.g. rolling deploy churned all ids) → aggregate still cluster data
+        MetricsSummary retired = snapshot("country", 20, 0, 0, 0, List.of());
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                withRetired(stubStore(), retired), THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.summary().perApi()).singleElement()
+                .satisfies(k -> {
+                    assertThat(k.name()).isEqualTo("country");
+                    assertThat(k.upstreamSuccess()).isEqualTo(20);
+                });
+        assertThat(source.instances()).isEmpty();
+    }
+
+    /** Wraps a stub store with a fixed retired aggregate. */
+    private static SnapshotStore withRetired(SnapshotStore delegate, MetricsSummary retired) {
+        return new SnapshotStore() {
+            public void upsert(ClusterSnapshot snapshot) { delegate.upsert(snapshot); }
+            public List<InstanceMetrics> allInstances() { return delegate.allInstances(); }
+            public MetricsSummary retiredAggregate() { return retired; }
+        };
+    }
+
+    /** Wraps a stub store with fixed config entries (the merged view {@code SnapshotStoreInmemory} would build). */
+    private static SnapshotStore withConfig(SnapshotStore delegate, List<ConfigEntry> configEntries) {
+        return new SnapshotStore() {
+            public void upsert(ClusterSnapshot snapshot) { delegate.upsert(snapshot); }
+            public List<InstanceMetrics> allInstances() { return delegate.allInstances(); }
+            public List<ConfigEntry> configEntries() { return configEntries; }
+        };
+    }
+
+    private static ConfigEntry entry(String name) {
+        return new ConfigEntry(name, name, 24L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+    }
+
+    @Test
+    void configEntriesDelegatesToTheStore() {
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                withConfig(stubStore(), List.of(entry("alpha"))), THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.configEntries()).extracting(ConfigEntry::name).containsExactly("alpha");
+    }
+
+    @Test
+    void configEntriesFallsBackToLocalWhenStoreHasNoneYet() {
+        MetricsSource fb = new MetricsSource() {
+            public MetricsSummary summary() { return null; }
+            public List<ApiHealth> health() { return List.of(); }
+            public SourceInfo info() { return null; }
+            public List<SeriesPoint> series(long w) { return List.of(); }
+            public List<ConfigEntry> configEntries() { return List.of(entry("fallback-entry")); }
+        };
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(stubStore(), THRESHOLDS, fb, 10);
+
+        assertThat(source.configEntries()).extracting(ConfigEntry::name).containsExactly("fallback-entry");
     }
 
     @Test
@@ -242,7 +317,8 @@ class SharedStoreMetricsSourceTest {
         SnapshotStore store = stubStore(
                 snapshot("country", 100, 0, 0, 0, List.of()),
                 snapshot("country", 50, 0, 0, 0, List.of()));
-        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(clock::get);
+        FailoverClock failoverClock = () -> Instant.ofEpochMilli(clock.get());
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(Duration.ZERO, failoverClock);
         heartbeatStore.record("instance-1"); // recorded at t=1000; will be stale when liveness check runs
         clock.set(40_000);                   // advance 39s — exceeds 30s window → instance-1 DOWN
         heartbeatStore.record("instance-0"); // fresh at t=40000
@@ -262,7 +338,8 @@ class SharedStoreMetricsSourceTest {
         SnapshotStore store = stubStore(
                 snapshot("country", 10, 0, 0, 0, List.of()),
                 snapshot("country", 10, 0, 0, 0, List.of()));
-        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(clock::get);
+        FailoverClock failoverClock = () -> Instant.ofEpochMilli(clock.get());
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(Duration.ZERO, failoverClock);
         heartbeatStore.record("instance-1"); // recorded at t=1000; will be stale
         clock.set(40_000);                   // advance past 30s window → instance-1 DOWN
         heartbeatStore.record("instance-0"); // fresh at t=40000
@@ -272,6 +349,26 @@ class SharedStoreMetricsSourceTest {
 
         assertThat(source.info().instancesReporting()).isEqualTo(1); // instance-1 DOWN → not counted
         assertThat(source.instances()).hasSize(2);                   // but both still visible
+    }
+
+    @Test
+    void infoLivenessTrackingEnabledTrueWhenHeartbeatStoreWired() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory();
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(
+                store, THRESHOLDS, fallback("local"), 10, null, heartbeatStore, 30_000);
+
+        assertThat(source.info().livenessTrackingEnabled()).isTrue();
+    }
+
+    @Test
+    void infoLivenessTrackingEnabledFalseWithoutAHeartbeatStore() {
+        SnapshotStore store = stubStore(snapshot("country", 10, 0, 0, 0, List.of()));
+
+        SharedStoreMetricsSource source = new SharedStoreMetricsSource(store, THRESHOLDS, fallback("local"), 10);
+
+        assertThat(source.info().livenessTrackingEnabled()).isFalse();
     }
 
 }

@@ -15,6 +15,15 @@ const charts = {};
 const pct = v => `${(v * 100).toFixed(1)}%`;
 const n = v => Number(v).toLocaleString();
 const ms = v => `${(Math.round(v * 10) / 10)}ms`;
+// Every server-supplied string rendered through innerHTML below goes through esc(). None of it is
+// authored by this page: referential names and domains come from @Failover annotations in the
+// consuming service, store/policy names from its bean ids, exception types from its stack traces,
+// and in cluster.mode=shared-store the instance ids and config entries arrive over the network on
+// the peer-ingest endpoint. The CSP (script-src 'self', no unsafe-inline) stops injected markup from
+// executing script, but style-src does allow inline styles, so unescaped values could still deface
+// or spoof an operator console — and an attribute value is one unescaped quote from breaking out.
+const esc = v => String(v ?? '').replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const P = () => ({
     accent: css('--accent'), good: css('--good'), warn: css('--warn'), bad: css('--bad'),
@@ -25,6 +34,8 @@ const classify = h => h >= 0.99 ? 'HEALTHY' : h >= 0.90 ? 'DEGRADED' : 'UNHEALTH
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let lastSummary = null;
+let lastExceptions = {};        // endpointName → [{type, count}], from api/metrics/exceptions (local source only)
+let lastUpstreamWindows = {};   // endpointName → {failoverRate, healthyRate, recoveryRate, sampleCount}, from api/health/upstream (local source only)
 let statusByName = {};          // name → HEALTHY|DEGRADED|UNHEALTHY (from api/health)
 let lastSource = null;          // SourceInfo {mode, instancesReporting, instancesExpected, asOfEpochMs, partial}
 let configRows = [];
@@ -36,6 +47,7 @@ let activeView = 'overview';
 const TREND_MAX = 30;
 const timeline = { labels: [], calls: [], succ: [], fail: [], rec: [] };
 const apiTrend = { labels: [], series: {} };
+const upstreamRateTrend = { series: {} };   // name → [windowed failoverRate per tick, 0..1] — feeds the sparkline on each Upstream call health card
 let lastTotal = null;
 let lastApiFailover = {};
 let timelineHydrated = false;
@@ -54,7 +66,7 @@ function kpiCard(k) {
         ? `<div class="valrow"><span class="val">${k.val}</span><span class="of">${k.of}</span></div>`
         : `<div class="val">${k.val}</div>`;
     return `<div class="kpi" data-c="${k.c}">
-        <div class="top"><span class="lbl">${k.lbl}</span><span class="ic">${k.ic}</span></div>
+        <div class="top"><span class="lbl tip" data-tip="${k.sub}">${k.lbl}</span><span class="ic">${k.ic}</span></div>
         ${valrow}<div class="sub">${k.sub}</div></div>`;
 }
 
@@ -70,7 +82,7 @@ function kpiCards(o, perApi) {
     const apis = [...perApi].sort((a, b) => effRate(a) - effRate(b));
     const worst = apis.filter(k => effStatus(k) !== 'HEALTHY').length;
     const overall = `<div class="health-overall">
-        <div class="top"><span class="lbl">Overall API Health</span>
+        <div class="top"><span class="lbl tip" data-tip="(Success + Recovered) / Total calls, across every @Failover point">Overall API Health</span>
             <span class="badge ${status.toLowerCase()}">${status}</span></div>
         <div class="gauge-lg"><canvas id="g_health"></canvas><div class="gv">${hasCalls ? pct(oRate) : '—'}</div></div>
         <div class="note">${hasCalls ? `${n(usable)} of ${n(o.totalCalls)} calls usable` : 'no calls yet'}<br>${
@@ -78,8 +90,8 @@ function kpiCards(o, perApi) {
     </div>`;
     const apiCards = apis.map(k => {
         const st = effStatus(k), h = (effRate(k) * 100).toFixed(1);
-        return `<div class="api-hcard ${st.toLowerCase()}" title="${k.name} · ${k.domain}">
-            <div class="nm">${k.name}</div><div class="dm">${k.domain}</div>
+        return `<div class="api-hcard ${st.toLowerCase()}" title="${esc(k.name)} · ${esc(k.domain)}">
+            <div class="nm">${esc(k.name)}</div><div class="dm">${esc(k.domain)}</div>
             <div class="mid"><span class="hpct">${h}%</span><span class="st">${st}</span></div>
             <div class="hbar"><i style="width:${h}%"></i></div>
             <div class="meta"><span>calls <b>${n(k.totalCalls)}</b></span><span>fail <b>${pct(k.rates.failoverRate)}</b></span></div>
@@ -272,12 +284,15 @@ function perApiChart(perApi) {
     }, { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14, font: { size: 11 } } } }, scales: { y: { beginAtZero: true } } });
 }
 
+function sparkSvgFrom(values, stroke) {
+    const vals = values.length >= 2 ? values : [0, 0];
+    const w = 90, h = 28, max = Math.max(...vals, 1), min = Math.min(...vals, 0), rng = max - min || 1;
+    const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - ((v - min) / rng) * (h - 4) - 2}`).join(' ');
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${pts}"/></svg>`;
+}
+
 function sparkSvg(name) {
-    const series = apiTrend.series[name] || [];
-    const values = series.length >= 2 ? series : [0, 0];
-    const w = 90, h = 28, max = Math.max(...values, 1), min = Math.min(...values, 0), rng = max - min || 1;
-    const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${h - ((v - min) / rng) * (h - 4) - 2}`).join(' ');
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${css('--warn')}" stroke-width="1.6" points="${pts}"/></svg>`;
+    return sparkSvgFrom(apiTrend.series[name] || [], css('--warn'));
 }
 
 let apiSort = { key: 'totalCalls', dir: -1 };
@@ -294,7 +309,7 @@ function apiTable(perApi) {
         const hp = (effRate(k) * 100).toFixed(1);
         const col = st === 'HEALTHY' ? p.good : st === 'DEGRADED' ? p.warn : p.bad;
         return `<tr>
-            <td class="name-cell">${k.name}<small>${k.domain}</small></td>
+            <td class="name-cell">${esc(k.name)}<small>${esc(k.domain)}</small></td>
             <td class="r num">${n(k.totalCalls)}</td>
             <td class="barcell"><div class="barrow">
                 <div class="bar"><i style="width:${hp}%;background:${col}"></i></div>
@@ -302,6 +317,7 @@ function apiTable(perApi) {
             <td class="r num">${pct(k.rates.successRate)}</td>
             <td class="r num">${pct(k.rates.failoverRate)}</td>
             <td class="r num">${pct(k.rates.recoveryRate)}</td>
+            <td class="r num">${n(k.notRecovered)}</td>
             <td class="r num">${n(k.errors)}</td>
             <td>${sparkSvg(k.name)}</td>
             <td><span class="badge ${st.toLowerCase()}">${st}</span></td>
@@ -326,13 +342,14 @@ function configTable() {
     const rows = configRows.filter(r => !q ||
         [r.name, r.domain, r.storeType, r.executionType].some(v => String(v).toLowerCase().includes(q)));
     const dash = '<span style="color:var(--faint)">—</span>';
-    const norm = v => (!v || v === '') ? dash : v === 'default' ? '<span style="color:var(--faint)">default</span>' : v;
+    // norm() returns markup for the empty/default cases, so the caller-supplied branch escapes.
+    const norm = v => (!v || v === '') ? dash : v === 'default' ? '<span style="color:var(--faint)">default</span>' : esc(v);
     document.getElementById('cfgbody').innerHTML = rows.map(r => `<tr>
-        <td class="name-cell">${r.name}</td>
-        <td>${r.domain}</td>
-        <td class="r num">${r.expiryDuration} <span style="color:var(--faint)">${String(r.expiryUnit).toLowerCase()}</span></td>
-        <td><span class="pill-tag">${r.storeType}</span></td>
-        <td><span class="pill-tag">${r.executionType}</span></td>
+        <td class="name-cell">${esc(r.name)}</td>
+        <td>${esc(r.domain)}</td>
+        <td class="r num">${esc(r.expiryDuration)} <span style="color:var(--faint)">${esc(String(r.expiryUnit).toLowerCase())}</span></td>
+        <td><span class="pill-tag">${esc(r.storeType)}</span></td>
+        <td><span class="pill-tag">${esc(r.executionType)}</span></td>
         <td>${r.recoverAll ? '<span class="badge healthy" style="padding:2px 8px">yes</span>' : dash}</td>
         <td>${norm(r.payloadSplitter)}</td>
         <td>${norm(r.keyGenerator)}</td>
@@ -350,9 +367,9 @@ function renderSettings() {
             if (v === 'true' || v === true) { cls = 'on'; txt = 'true'; }
             else if (v === 'false' || v === false) { cls = 'off'; txt = 'false'; }
             else if (v === '' || v == null) { cls = 'empty'; txt = '—'; }
-            return `<div class="kvrow"><span class="k" title="${k}">${key}</span><span class="v ${cls}">${txt}</span></div>`;
+            return `<div class="kvrow"><span class="k" title="${esc(k)}">${esc(key)}</span><span class="v ${cls}">${esc(txt)}</span></div>`;
         }).join('');
-        return `<div class="kvcard"><div class="g">${g}</div>${rows}</div>`;
+        return `<div class="kvcard"><div class="g">${esc(g)}</div>${rows}</div>`;
     }).join('');
 }
 
@@ -380,8 +397,8 @@ function renderFailoverHealth(h) {
                 : empty ? 'empty' : '';
             const label = k.replace(/[-.]/g, ' ');
             return `<div class="stat-card">
-                <span class="stat-k">${label}</span>
-                <span class="stat-v ${cls}">${empty ? '—' : v}</span>
+                <span class="stat-k">${esc(label)}</span>
+                <span class="stat-v ${cls}">${empty ? '—' : esc(v)}</span>
             </div>`;
         }).join('');
 }
@@ -471,10 +488,10 @@ function showBanner(perApi) {
     let kind, icon, title, sub;
     if (bad.length) {
         kind = 'bad'; icon = '✕'; title = `${bad.length} API${bad.length > 1 ? 's' : ''} unhealthy — action needed`;
-        sub = `Failover frequently cannot recover: <b>${bad.map(k => k.name).join(', ')}</b>`;
+        sub = `Failover frequently cannot recover: <b>${bad.map(k => esc(k.name)).join(', ')}</b>`;
     } else if (deg.length) {
         kind = 'warn'; icon = '!'; title = `${deg.length} API${deg.length > 1 ? 's' : ''} need attention`;
-        sub = `Failover working but firing often: <b>${deg.map(k => k.name).join(', ')}</b>`;
+        sub = `Failover working but firing often: <b>${deg.map(k => esc(k.name)).join(', ')}</b>`;
     } else {
         kind = 'ok'; icon = '✓'; title = 'All APIs healthy';
         sub = `<b>${perApi.length}</b> failover point(s) serving usable results`;
@@ -507,10 +524,24 @@ async function loadMetrics(quiet = false) {
         if (activeView === 'apis') { apiTable(summary.perApi); apiTrendChart(); perApiChart(summary.perApi); }
         if (!bannerDismissed) showBanner(summary.perApi);
         renderHealthRollup();
+        renderHeroUpstreamMetrics();
+        renderUpstreamHealth();
         loadInstances();   // refreshes the Instances tab + toggles its visibility
         markUpdated();
         fetchJson('api/metrics/source').then(renderSourceBadge).catch(() => {});           // non-fatal
-        fetchJson('api/metrics/exceptions').then(renderApiExceptionsChart).catch(() => {}); // non-fatal
+        fetchJson('api/metrics/exceptions').then(x => {
+            lastExceptions = x;
+            renderApiExceptionsChart(x);
+            renderUpstreamHealth();   // re-render with per-endpoint exception types now available
+        }).catch(() => {}); // non-fatal
+        if (configRows.length === 0) {
+            fetchJson('api/config').then(rows => { configRows = rows; renderUpstreamHealth(); }).catch(() => {}); // non-fatal — powers the expiry hint
+        }
+        fetchJson('api/health/upstream').then(w => {
+            lastUpstreamWindows = w;
+            pushUpstreamTrendTick(w, summary.perApi);
+            renderUpstreamHealth();   // re-render with the rolling window (severity + sparkline) now available
+        }).catch(() => {}); // non-fatal — local source only; cumulative failoverRate is the fallback
     } catch (e) {
         if (!quiet) showNotice(`Metrics unavailable — ${e.message}. The Config and Health views still work without Micrometer.`);
     }
@@ -577,6 +608,111 @@ function renderHealthRollup() {
     el.innerHTML = html;
 }
 
+// Hero quick-glance metrics — the UP/DOWN status above is recovery-rate driven, so a fully
+// masked upstream failure (100% recovered) still reads as healthy. These two surface it anyway.
+function renderHeroUpstreamMetrics() {
+    const el = document.getElementById('health-hero-metrics');
+    if (!el) return;
+    const apis = (lastSummary && lastSummary.perApi) || [];
+    const failing = apis.filter(k => k.failoverInvoked > 0);
+    const ex = (lastSummary && lastSummary.topExceptions) || [];
+    const top = ex[0];
+    const exShort = t => t.split('.').pop();
+    el.innerHTML = `
+        <div class="hh-stat"><span class="hh-k">Upstream failing</span>
+            <span class="hh-v ${failing.length ? 'warn' : ''}">${failing.length} of ${apis.length}</span></div>
+        <div class="hh-stat"><span class="hh-k">Top upstream exception</span>
+            <span class="hh-v ${top ? 'warn' : ''}">${top ? `${esc(exShort(top.type))} · ${n(top.count)}` : '—'}</span></div>`;
+}
+
+// Expiry text for a failover point, from the Config API — lazily fetched, see loadMetrics().
+function expiryFor(name) {
+    const cfg = configRows.find(r => r.name === name);
+    // Escaped here rather than at the use site: the result is spliced into the upstream card's note.
+    return cfg ? `${esc(cfg.expiryDuration)} ${esc(String(cfg.expiryUnit).toLowerCase())}` : null;
+}
+
+// Upstream call health (Health tab) — one card per failover point, scored on the upstream call
+// alone (failoverRate). Recovery is deliberately NOT factored in: a card here can be red while
+// every other view reads green, because failover is still masking it. That gap is the early
+// warning — investigate/notify before the cached value expires and it becomes a real outage.
+const UPSTREAM_WATCH_THRESHOLD = 0.10;   // <= this fraction of upstream calls failing is WATCH, above is FAILING
+
+function upstreamSeverity(rate) {
+    // failoverRate arrives via float division (server + JSON round-trip) so a logical 10% can land
+    // a hair either side of 0.10 (e.g. 0.09999999999999998) — round before thresholding so the
+    // colour class and the text label can never land on opposite sides of the same boundary.
+    const r = Math.round(rate * 10000) / 10000;
+    if (r === 0) return { cls: 'healthy', lbl: 'STABLE' };
+    return r <= UPSTREAM_WATCH_THRESHOLD ? { cls: 'degraded', lbl: 'WATCH' } : { cls: 'unhealthy', lbl: 'FAILING' };
+}
+
+// One tick of the sparkline history — the windowed failoverRate when available (falls back to the
+// cumulative rate for non-local sources, which have no rolling window).
+function pushUpstreamTrendTick(windows, perApi) {
+    for (const k of perApi) {
+        const w = windows[k.name];
+        const rate = w ? w.failoverRate : k.rates.failoverRate;
+        const arr = (upstreamRateTrend.series[k.name] ??= []);
+        arr.push(rate);
+        if (arr.length > TREND_MAX) arr.shift();
+    }
+}
+
+function upstreamCard(k) {
+    const w = lastUpstreamWindows[k.name];
+    const rate = w ? w.failoverRate : k.rates.failoverRate;
+    const recoveryRate = w ? w.recoveryRate : k.rates.recoveryRate;
+    const pctv = (rate * 100).toFixed(1);
+    const { cls, lbl } = upstreamSeverity(rate);
+    const exShort = t => t.split('.').pop();
+    const exList = (lastExceptions[k.name] || []).slice().sort((a, b) => b.count - a.count);
+    const top = exList[0];
+    const exLine = top ? `${esc(exShort(top.type))} ×${n(top.count)}` : (k.failoverInvoked > 0 ? 'unknown' : '—');
+    const exp = expiryFor(k.name);
+    const basis = w ? `last ${n(w.sampleCount)} call${w.sampleCount === 1 ? '' : 's'}` : 'lifetime total';
+    const note = k.failoverInvoked === 0
+        ? 'no upstream failures'
+        : recoveryRate >= 0.999
+            ? `masked by cache — fully recovered over the ${basis}${exp ? `, expires in ${exp}` : ''}. notify upstream owner before it expires.`
+            : `recovery incomplete — some calls already failing for real, not just masked`;
+    const spark = upstreamRateTrend.series[k.name] && upstreamRateTrend.series[k.name].length >= 2
+        ? sparkSvgFrom(upstreamRateTrend.series[k.name], css(cls === 'healthy' ? '--good' : cls === 'degraded' ? '--warn' : '--bad'))
+        : '';
+    const comp = upstreamComposition(w);
+    return `<div class="api-hcard ${cls}" title="${esc(k.name)} · ${esc(k.domain)}">
+        <div class="nm">${esc(k.name)}</div><div class="dm">${esc(k.domain)}</div>
+        <div class="mid"><span class="hpct">${pctv}%</span><span class="st">${lbl}</span></div>
+        <div class="hbar"><i style="width:${pctv}%"></i></div>
+        <div class="meta"><span>calls <b>${n(k.totalCalls)}</b></span><span>upstream fails <b>${n(k.failoverInvoked)}</b></span></div>
+        <div class="meta"><span>exception <b title="${top ? esc(top.type) : ''}">${exLine}</b></span></div>
+        ${comp}
+        ${spark ? `<div class="uh-spark tip" data-tip="Windowed upstream-failure rate across recent dashboard refreshes">${spark}</div>` : ''}
+        <div class="uh-note">${note}</div>
+    </div>`;
+}
+
+// Composition of the rolling window itself — fresh / recovered / blocked, as fractions of the last
+// w.sampleCount calls. Derived from the three windowed rates already returned by the API (no extra
+// backend field needed): fresh = 1 - failoverRate; of the failoverRate slice, recoveryRate is
+// recovered and the remainder is blocked.
+function upstreamComposition(w) {
+    if (!w || w.sampleCount === 0) return '';
+    const freshPct = Math.max(0, (1 - w.failoverRate) * 100);
+    const stalePct = Math.max(0, w.failoverRate * w.recoveryRate * 100);
+    const blockedPct = Math.max(0, 100 - freshPct - stalePct);
+    return `<div class="uh-comp tip" data-tip="Last ${n(w.sampleCount)} calls — ${freshPct.toFixed(0)}% fresh, ${stalePct.toFixed(0)}% recovered, ${blockedPct.toFixed(0)}% blocked">
+        <i style="width:${freshPct}%;background:var(--good)"></i><i style="width:${stalePct}%;background:var(--info)"></i><i style="width:${blockedPct}%;background:var(--bad)"></i>
+    </div>`;
+}
+
+function renderUpstreamHealth() {
+    const el = document.getElementById('upstream-cards');
+    if (!el) return;
+    const apis = [...((lastSummary && lastSummary.perApi) || [])].sort((a, b) => b.rates.failoverRate - a.rates.failoverRate);
+    el.innerHTML = apis.map(upstreamCard).join('');
+}
+
 // ── Instances tab (cluster per-instance metrics) ──────────────────────────────────
 let instances = [];           // [InstanceMetrics {instanceId, lastSeenEpochMs, summary}]
 let selectedInstance = null;  // instanceId
@@ -613,16 +749,26 @@ function renderInstances() {
         + ` · ${total} instance${total !== 1 ? 's' : ''}`
         + (trackingEnabled ? ` · ${reporting} live · ${downCount} down` : '');
 
+    // Dashboard-side toggle (cluster.shared-store.liveness.enabled, ADR 66) — distinct from "enabled, but no
+    // peer has pushed a heartbeat yet", which otherwise looks identical (every instance at LiveStatus.UNKNOWN).
+    const livenessEnabledOnDashboard = !!(lastSource && lastSource.livenessTrackingEnabled);
+
     const ltBadge = document.getElementById('live-track-badge');
     if (ltBadge && live) {
-        if (trackingEnabled) {
+        if (!livenessEnabledOnDashboard) {
+            ltBadge.className = 'live-track-badge tip off';
+            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · disabled';
+            ltBadge.dataset.tip = 'Disabled on this dashboard. Enable with failover.dashboard.cluster.shared-store.liveness.enabled=true, '
+                + 'and failover.dashboard.cluster.snapshot.heartbeat.enabled=true on each peer.';
+        } else if (trackingEnabled) {
             ltBadge.className = 'live-track-badge tip on';
             ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · on';
             ltBadge.dataset.tip = 'Heartbeat liveness tracking is active — instance dots reflect LIVE / DOWN status';
         } else {
             ltBadge.className = 'live-track-badge tip off';
-            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · off';
-            ltBadge.dataset.tip = 'Instance heartbeat tracking is disabled — dot colour reflects snapshot age only';
+            ltBadge.innerHTML = '<span class="lt-dot"></span>instance live tracking · waiting';
+            ltBadge.dataset.tip = 'Enabled on this dashboard, but no peer has sent a heartbeat yet. Enable '
+                + 'failover.dashboard.cluster.snapshot.heartbeat.enabled=true on each peer instance.';
         }
     }
 
@@ -647,8 +793,8 @@ function renderInstances() {
         const hbCell = ls === 'LIVE'    ? '<span class="hb-badge live">● on</span>'
                      : ls === 'DOWN'    ? '<span class="hb-badge down">● down</span>'
                      :                    '<span class="hb-badge off">—</span>';
-        return `<tr data-id="${i.instanceId}" class="${i.instanceId === selectedInstance ? 'sel' : ''}">
-            <td><span class="inst-dot ${dotCls}" title="${dotTitle}"></span><span class="inst-id">${i.instanceId}</span></td>
+        return `<tr data-id="${esc(i.instanceId)}" class="${i.instanceId === selectedInstance ? 'sel' : ''}">
+            <td><span class="inst-dot ${dotCls}" title="${dotTitle}"></span><span class="inst-id">${esc(i.instanceId)}</span></td>
             <td class="r">${n(o.totalCalls)}</td>
             <td class="r">${pct(r.successRate)}</td>
             <td class="r">${pct(r.failoverRate)}</td>
@@ -724,7 +870,8 @@ async function fetchJson(path) {
     return res.json();
 }
 function showNotice(msg) {
-    document.getElementById('notice-slot').innerHTML = `<div class="notice">${msg}</div>`;
+    // msg embeds fetch/error text, which can carry a server-supplied response body.
+    document.getElementById('notice-slot').innerHTML = `<div class="notice">${esc(msg)}</div>`;
 }
 function clearNotice() { document.getElementById('notice-slot').innerHTML = ''; }
 function markUpdated() {
@@ -760,7 +907,9 @@ function applyRefresh() {
 
 // tabs
 function openTab(name) {
-    const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+    // CSS.escape: `name` reaches here from location.hash on first load, and an unescaped quote or
+    // bracket there makes this an invalid selector, so querySelector throws and page init stops.
+    const tab = document.querySelector(`.tab[data-tab="${CSS.escape(name)}"]`);
     if (!tab) return;
     activeView = name;
     document.querySelectorAll('.tab').forEach(x => {
@@ -802,6 +951,6 @@ if (refreshParam !== null && [...document.getElementById('refresh').options].som
 chartTheme();
 initApiSort();
 const hashTab = location.hash.slice(1);
-if (document.querySelector(`.tab[data-tab="${hashTab}"]`)) openTab(hashTab);
+if (hashTab && document.querySelector(`.tab[data-tab="${CSS.escape(hashTab)}"]`)) openTab(hashTab);
 else refreshActive();
 applyRefresh();

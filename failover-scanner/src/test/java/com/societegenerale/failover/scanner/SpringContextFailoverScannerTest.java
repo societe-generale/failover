@@ -20,6 +20,7 @@ import com.societegenerale.failover.annotations.Failover;
 import com.societegenerale.failover.core.scanner.FailoverScannerException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
@@ -97,6 +98,54 @@ class SpringContextFailoverScannerTest {
         assertThat(result.expiryUnit()).isEqualTo(ChronoUnit.HOURS);
     }
 
+    @Test
+    @DisplayName("should NOT throw when the same method is discovered via two different bean definitions (same class registered twice)")
+    void shouldNotThrowWhenSameMethodDiscoveredViaTwoBeans() {
+        // Scenario 1: same method — the scanner de-duplicates silently (FailoverUnit.equals is true)
+        when(applicationContext.getBeanDefinitionNames())
+            .thenReturn(new String[]{"bean1", "bean2"});
+        doReturn(DuplicateA.class).when(applicationContext).getType("bean1");
+        doReturn(DuplicateA.class).when(applicationContext).getType("bean2"); // same class → same Method
+
+        // must not throw — this is NOT a real duplicate
+        scanner.afterSingletonsInstantiated();
+
+        // the name is stored exactly once (de-duplicated)
+        List<Failover> all = scanner.findAllFailover();
+        assertThat(all).hasSize(1);
+        assertThat(all.getFirst().name()).isEqualTo("duplicate-name");
+    }
+
+    @Test
+    @DisplayName("should throw FailoverScannerException when two DIFFERENT methods share the same @Failover name (different classes)")
+    void shouldThrowOnDuplicateNamesAcrossClasses() {
+        // Scenario 2: actual duplicate — different methods on different classes, same @Failover name
+        when(applicationContext.getBeanDefinitionNames())
+            .thenReturn(new String[]{"bean1", "bean2"});
+        doReturn(DuplicateA.class).when(applicationContext).getType("bean1");
+        doReturn(DuplicateB.class).when(applicationContext).getType("bean2"); // different class → different Method
+
+        assertThatThrownBy(() -> scanner.afterSingletonsInstantiated())
+            .isInstanceOf(FailoverScannerException.class)
+            .hasMessageContaining("Duplicate @Failover name")
+            .hasMessageContaining("duplicate-name");
+    }
+
+    @Test
+    @DisplayName("should throw FailoverScannerException when two overloaded methods on the SAME class share the same @Failover name")
+    void shouldThrowOnDuplicateNamesViaOverloadedMethods() {
+        // Scenario 2 (same class variant): overloaded methods → different Method objects → actual duplicate
+        when(applicationContext.getBeanDefinitionNames())
+            .thenReturn(new String[]{"bean"});
+        doReturn(OverloadedDuplicateName.class).when(applicationContext).getType("bean");
+
+        assertThatThrownBy(() -> scanner.afterSingletonsInstantiated())
+            .isInstanceOf(FailoverScannerException.class)
+            .hasMessageContaining("Duplicate @Failover name")
+            .hasMessageContaining("overloaded-name");
+    }
+
+    // kept for backward compatibility — same assertion as shouldThrowOnDuplicateNamesAcrossClasses
     @Test
     @DisplayName("should throw FailoverScannerException on duplicate @Failover names")
     void shouldThrowOnDuplicateNames() {
@@ -187,7 +236,7 @@ class SpringContextFailoverScannerTest {
 
     // ── Advisability warnings (audit A8) ────────────────────────────────────────
 
-    @org.junit.jupiter.api.Nested
+    @Nested
     @DisplayName("warns when @Failover cannot be advised by the proxy")
     class AdvisabilityWarnings {
 
@@ -399,6 +448,15 @@ class SpringContextFailoverScannerTest {
     static class DuplicateB {
         @Failover(name = "duplicate-name")
         public String methodB() { return null; }
+    }
+
+    /** Two overloaded methods on the same class sharing the same {@code @Failover} name — a genuine duplicate. */
+    static class OverloadedDuplicateName {
+        @Failover(name = "overloaded-name")
+        public String find(Long id) { return null; }
+
+        @Failover(name = "overloaded-name")
+        public String find(String code) { return null; } // different signature → different Method → actual duplicate
     }
 
     static class PlainBean {
