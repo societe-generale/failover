@@ -30,7 +30,7 @@ import java.util.function.Supplier;
 
 import static com.societegenerale.failover.core.util.CastingUtils.cast;
 import static com.societegenerale.failover.core.util.CommonsUtil.methodId;
-import static com.societegenerale.failover.core.util.FailoverNameResolver.effectiveName;
+import static com.societegenerale.failover.core.util.FailoverUtil.effectiveName;
 
 /**
  * Basic {@link FailoverExecution} that invokes the supplier, stores the result on success,
@@ -57,6 +57,8 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
     private final @Nullable ObservablePublisher observablePublisher;
 
     /**
+     * Creates a new execution wired to its collaborators.
+     *
      * @param failoverHandler        handler for store and recover operations
      * @param methodExceptionHandler policy for handling exceptions after recovery
      * @param observablePublisher    non-blocking publisher for the {@code failover.upstream.duration} metric
@@ -69,7 +71,12 @@ public class BasicFailoverExecution<T> implements FailoverExecution<T> {
         this.observablePublisher = observablePublisher;
     }
 
-    /** Convenience constructor without upstream-duration metrics (used in unit tests). */
+    /**
+     * Convenience constructor without upstream-duration metrics (used in unit tests).
+     *
+     * @param failoverHandler        handler for store and recover operations
+     * @param methodExceptionHandler policy for handling exceptions after recovery
+     */
     public BasicFailoverExecution(FailoverHandler<T> failoverHandler, MethodExceptionHandler methodExceptionHandler) {
         this(failoverHandler, methodExceptionHandler, null);
     }

@@ -128,6 +128,7 @@ public class FailoverStoreMultiTenantAutoConfiguration {
      * Registers a per-tenant Caffeine store factory (one isolated cache per tenant).
      *
      * @param failoverClock clock used by each per-tenant Caffeine cache for expiry
+     * @param properties    failover properties (store caffeine max-size)
      * @return per-tenant Caffeine store factory
      */
     @Bean
@@ -142,6 +143,7 @@ public class FailoverStoreMultiTenantAutoConfiguration {
     /**
      * Registers a per-tenant in-memory store factory (one independent map per tenant).
      *
+     * @param properties failover properties (store inmemory max-entries)
      * @return per-tenant in-memory store factory
      */
     @Bean

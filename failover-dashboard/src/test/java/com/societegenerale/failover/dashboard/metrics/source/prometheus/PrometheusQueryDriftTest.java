@@ -50,7 +50,9 @@ class PrometheusQueryDriftTest {
             "failover_recovery_partial",            // failover.recovery.partial.total
             "failover_store_async_failed",          // failover.store.async.failed(.total)
             "failover_exception",                   // failover.exception.total
-            "failover_operation_duration_seconds"   // failover.operation.duration timer (seconds)
+            "failover_operation_duration_seconds",  // failover.operation.duration timer (seconds)
+            "failover_config_expiry_seconds",       // failover.config.expiry.seconds (per-failover config gauge)
+            "failover_config_global"                // failover.config.global (process-wide config gauge)
     );
 
     /** Matches a Prometheus metric token inside a PromQL string. */

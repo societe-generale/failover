@@ -5,10 +5,13 @@
     <artifactId>failover-dashboard</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-dashboard</name>
+    <description>Opt-in, secure-by-default embedded observability UI and read-only JSON API</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>
-        <version>3.0.0-SNAPSHOT</version>
+        <version>3.0.1-SNAPSHOT</version>
     </parent>
 
     <properties>
@@ -19,11 +22,6 @@
         <dependency>
             <groupId>com.societegenerale.failover</groupId>
             <artifactId>failover-core</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.societegenerale.failover</groupId>
-            <artifactId>failover-scanner</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
 
@@ -74,9 +72,9 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- OAuth2 client — provided/optional: snapshot publisher uses the consumer's existing
-             OAuth2AuthorizedClientManager to obtain Bearer tokens for the ingest endpoint. Only
-             activates when the consumer already has spring-security-oauth2-client on the classpath. -->
+        <!-- OAuth2 client — provided/optional: backs the dashboard UI's OAuth2 login gate
+             (dashboardOAuth2SecurityFilterChain, activated by security.oauth2-client-registration-id).
+             Only activates when the consumer already has spring-security-oauth2-client on the classpath. -->
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-oauth2-client</artifactId>
@@ -122,6 +120,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- oauth2ResourceServer().jwt() needs JwtDecoder, shipped in oauth2-jose rather than
+             oauth2-resource-server itself; exercises the dashboardIngestOAuth2FilterChain bean in tests. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

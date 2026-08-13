@@ -34,6 +34,12 @@ public class RestClientHeartbeatPushClient implements HeartbeatPushClient {
     private final RestClient client;
     private final String heartbeatUrl;
 
+    /**
+     * Creates a new client.
+     *
+     * @param client       the RestClient used to POST heartbeats
+     * @param heartbeatUrl the dashboard's heartbeat ingest endpoint URL
+     */
     public RestClientHeartbeatPushClient(RestClient client, String heartbeatUrl) {
         this.client = client;
         this.heartbeatUrl = heartbeatUrl;

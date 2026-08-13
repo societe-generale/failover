@@ -25,5 +25,6 @@ package com.societegenerale.failover.observable.micrometer;
  */
 public interface SnapshotPublisher {
 
+    /** Pushes the current snapshot to the receiver; must never throw. */
     void push();
 }

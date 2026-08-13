@@ -18,13 +18,16 @@ package com.societegenerale.failover.dashboard.metrics.source.sharedstore;
 
 import com.societegenerale.failover.observable.metrics.ApiKpis;
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.Latency;
 import com.societegenerale.failover.observable.metrics.LiveStatus;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,6 +36,11 @@ class SnapshotStoreInmemoryTest {
     private static MetricsSummary summaryFor(String name, long success) {
         ApiKpis k = MetricsKpis.build(name, name, success, 0, 0, 0, 0, 0, new Latency(0, 0, 0, 0));
         return new MetricsSummary(k, List.of(k), List.of(), 0L);
+    }
+
+    private static ConfigEntry entry(String name) {
+        return new ConfigEntry(name, name, 24L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
     }
 
     @Test
@@ -76,9 +84,9 @@ class SnapshotStoreInmemoryTest {
     }
 
     @Test
-    void allInstancesAlwaysIncludesOldSnapshots() {
-        // Old data is retained forever — stale peer still contributes last-known values to the aggregate.
-        // Per-instance staleness is visible through lastSeenEpochMs shown in the Instances tab.
+    void allInstancesAlwaysIncludesOldSnapshotsWhenRetentionDisabled() {
+        // With retention disabled (int-only ctor) old data is retained forever — stale peer still
+        // contributes last-known values; staleness visible through lastSeenEpochMs in the Instances tab.
         SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
         store.upsert(new ClusterSnapshot("i1", summaryFor("a", 42)));
 
@@ -89,5 +97,119 @@ class SnapshotStoreInmemoryTest {
                     assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(42);
                     assertThat(im.liveStatus()).isEqualTo(LiveStatus.UNKNOWN);
                 });
+    }
+
+    @Test
+    void counterResetFoldsPreviousTotalsIntoBaseline() {
+        // A peer restart resets its counters; the served summary must be baseline + raw, never smaller.
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 100)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 3)));    // 3 < 100 → reset detected
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(103));
+
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 7)));    // same process grows — no re-fold
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(107));
+    }
+
+    @Test
+    void secondResetAccumulatesIntoTheSameBaseline() {
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 50)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 2)));    // reset #1 → baseline 50
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1)));    // reset #2 → baseline 52
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(53));
+    }
+
+    @Test
+    void retiresInstancesPastRetentionButKeepsCountsInAggregate() {
+        AtomicLong clock = new AtomicLong(1_000);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10, Duration.ofMillis(500), clock::get);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 42)));
+        clock.set(2_000);                                               // i1 now past retention
+        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 8)));
+
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.instanceId()).isEqualTo("i2"));
+        assertThat(store.retiredAggregate()).isNotNull()
+                .satisfies(s -> assertThat(s.perApi().getFirst().upstreamSuccess()).isEqualTo(42));
+    }
+
+    @Test
+    void retiredInstanceReappearingResumesItsHistory() {
+        AtomicLong clock = new AtomicLong(1_000);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10, Duration.ofMillis(500), clock::get);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 100)));
+        clock.set(2_000);
+        assertThat(store.allInstances()).isEmpty();                     // i1 retired
+
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 5)));    // restarted peer reappears (reset)
+
+        assertThat(store.retiredAggregate()).isNull();                  // moved back to active
+        assertThat(store.allInstances()).singleElement()
+                .satisfies(im -> assertThat(im.summary().perApi().getFirst().upstreamSuccess()).isEqualTo(105));
+    }
+
+    @Test
+    void retiredEntriesBeyondCapCompactIntoTombstoneWithoutLosingCounts() {
+        AtomicLong clock = new AtomicLong(1_000);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(1_000, Duration.ofMillis(500), clock::get);
+        int churned = SnapshotStoreInmemory.MAX_RETIRED + 5;
+        for (int i = 0; i < churned; i++) {
+            store.upsert(new ClusterSnapshot("pod-" + i, summaryFor("a", 1)));
+        }
+        clock.set(10_000);                                              // everything past retention
+
+        assertThat(store.allInstances()).isEmpty();
+        assertThat(store.retiredCount()).isEqualTo(SnapshotStoreInmemory.MAX_RETIRED);  // bounded
+        assertThat(store.retiredAggregate().perApi().getFirst().upstreamSuccess()).isEqualTo(churned);
+    }
+
+    @Test
+    void configEntriesSurviveEveryInstanceRetiring() {
+        // A rolling restart briefly retires every instance; config must not go blank in the meantime,
+        // unlike churned-away instances beyond MAX_RETIRED that compact into the metrics-only tombstone.
+        AtomicLong clock = new AtomicLong(1_000);
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10, Duration.ofMillis(500), clock::get);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1), List.of(entry("alpha"))));
+        clock.set(2_000);                                               // i1 now past retention
+
+        assertThat(store.allInstances()).isEmpty();
+        assertThat(store.configEntries()).extracting(ConfigEntry::name).containsExactly("alpha");
+    }
+
+    @Test
+    void configEntriesMergedAcrossInstancesUnionedByName() {
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1), List.of(entry("alpha"))));
+        store.upsert(new ClusterSnapshot("i2", summaryFor("a", 1), List.of(entry("zebra"))));
+
+        assertThat(store.configEntries()).extracting(ConfigEntry::name).containsExactly("alpha", "zebra");
+    }
+
+    @Test
+    void configEntriesLastSeenInstanceWinsPerName() {
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
+        ConfigEntry stale = new ConfigEntry("alpha", "alpha", 1L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        ConfigEntry fresh = new ConfigEntry("alpha", "alpha", 2L, "HOURS", false,
+                "default", "default", "default", "inmemory", "basic", "rethrow", true);
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1), List.of(stale)));
+        store.upsert(new ClusterSnapshot("i1", summaryFor("a", 1), List.of(fresh)));   // same instance, re-pushed
+
+        assertThat(store.configEntries()).singleElement()
+                .satisfies(e -> assertThat(e.expiryDuration()).isEqualTo(2L));
+    }
+
+    @Test
+    void configEntriesEmptyWhenNothingPushedYet() {
+        SnapshotStoreInmemory store = new SnapshotStoreInmemory(10);
+
+        assertThat(store.configEntries()).isEmpty();
     }
 }

@@ -2922,7 +2922,10 @@ allowlist exists to close.
 
 Add an opt-in strict mode that removes the fail-open path, without changing the secure default behaviour.
 
-* New property `failover.store.jdbc.strict-allowlist` (default `false`, backward-compatible).
+* New property `failover.store.jdbc.strict-allowlist`. Introduced as `false` (backward-compatible)
+  in 2.x; **the default flipped to `true` in 3.0.0** — a major version being the point at which the
+  fail-open path stops being the out-of-the-box behaviour. Setting it back to `false` restores the
+  2.x semantics.
 * `JsonSerializer` gains a `strict` flag (new constructor). In `isAllowed`, an empty resolved allowlist
   returns `!strict`: allow-all when lenient (legacy), **deny-all (fail-closed)** when strict.
 * Strict + empty is logged at `ERROR` (deserialization denied) rather than `WARN`. The normal path —
@@ -3224,5 +3227,270 @@ Separate liveness tracking into a lightweight heartbeat mechanism decoupled from
 * Zero overhead by default — both heartbeat sending and liveness checking are opt-in.
 * Module boundaries preserved: `failover-observable-micrometer` has no `spring-web` dependency.
 * Polling is correct for heartbeat (unlike event-driven snapshot publishing) — heartbeats must fire on a fixed schedule even when no metric events occur.
+
+___
+
+## ADR 67 — Reset-Aware Shared-Store Aggregate and Bounded Instance Retirement
+
+**Date : 03-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The `shared-store` cluster tier had two gaps, both rooted in the fact that peer snapshots carry **cumulative** Micrometer counter totals that reset to zero when the peer process restarts:
+
+1. **Instant aggregate not reset-aware.** The cluster trend was already protected — `ClusterSeriesSampler` accumulates a monotonic adjusted total (design §5.3) — but the instant aggregate (`SharedStoreMetricsSource.merge`) was a raw sum of the latest snapshot per instance. A peer restart with a stable `instanceId` overwrote its stored snapshot with near-zero counters, so the Overview cards dropped by that instance's pre-restart counts while the trend graph stayed smooth: two views of the same data disagreeing.
+2. **Unbounded snapshot map.** `SnapshotStoreInmemory` never evicted. Under Kubernetes-style churn (a new pod name = a new `instanceId` per deploy) the map and the Instances tab grew forever; `max-instances` only warned. Naively evicting old entries would violate the tier's core invariant — counts of a dead peer must keep contributing to the cluster totals.
+
+### Decision
+
+1. **`MetricsSummaryAggregator`** (`failover-observable-metrics`) — the summary-merge math (per-API counter sums, count-weighted latency mean, max-of-max, top-8 exception fold) extracted from `SharedStoreMetricsSource` into a shared, pure utility next to `MetricsKpis`. Also provides `cumulativeTotal(summary)` and `isCounterReset(previous, incoming)`: a drop in the cumulative total between two snapshots of the same instance can only mean a process restart.
+
+2. **`SnapshotBaseline`** (`failover-dashboard`, `sharedstore` package) — the carry-forward rule applied by every `SnapshotStore` implementation on upsert: keep the incoming snapshot as the instance's *raw* value; when a reset is detected, fold the previous raw snapshot into a per-instance *baseline* (accumulating across repeated restarts). The summary served for the instance is always `baseline + raw`, so the instant aggregate is monotonic across peer restarts — the same guarantee, produced by the same detection rule, that the series sampler already gave the trend.
+
+3. **`SnapshotStoreInmemory`** applies the baseline in memory and adds **bounded instance retirement**: entries not updated within `failover.dashboard.cluster.shared-store.instance-retention` (default `7d`; `0` disables) move from the active map to a retired map — out of `allInstances()` (Instances tab stays clean, map stays bounded) but still contributing through the new `SnapshotStore.retiredAggregate()` default method. A retired instance that pushes again is promoted back with raw + baseline intact (reset detection then applies as normal). Beyond `MAX_RETIRED` (100) individually retained entries, the oldest are compacted into a single immutable tombstone summary — a hard heap bound regardless of churn rate.
+
+4. **`SnapshotStoreJdbc`** persists the baseline in a nullable `BASELINE_JSON` CLOB column — part of the base schema (the project is unreleased, so no migration path is shipped). The carried-forward totals survive a dashboard restart along with the snapshots. The JDBC store does not retire (rows are cheap and durable; the heap concern is the in-memory default).
+
+5. **`SharedStoreMetricsSource`** merges active instances **plus** `retiredAggregate()` via the shared aggregator; it falls back to the local source only when the store holds nothing at all (no active, no retired).
+
+### Consequences
+
+* Overview cards and the trend graph now agree after a peer restart — one consistency rule (§5.3) applied at both the read path (baseline) and the sampling path (monotonic series).
+* `SnapshotStoreInmemory` heap is bounded: ≤ `max-instances`-ish active + ≤ 100 retired + 1 tombstone, regardless of pod churn.
+* Cluster totals never shrink: not on peer restart (baseline), not on retirement (retired aggregate), not on tombstone compaction (counts folded before dropping per-id state).
+* Reset detection window: a restart is invisible if the peer regrows past its previous cumulative total within one push interval (15s default) — the same theoretical limit as Prometheus `rate()`. Undercounts at most one interval's worth of events in that rare case.
+* After tombstone compaction a reappearing `instanceId` is treated as brand-new; if that same *process* had silently survived past retention **and** 100+ churned peers, its counts would double — accepted as vanishingly rare for the small-cluster tier.
+* `retiredAggregate()` is a `default` method returning `null`, so custom `SnapshotStore` implementations compile unchanged.
+
+___
+
+## ADR 68 — Rolling-Window Dashboard Health Classification
+
+**Date : 11-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The dashboard's `HEALTHY`/`DEGRADED`/`UNHEALTHY` classification (`DashboardMetricsService.health()`, via `MetricsKpis.classify`) was computed from `ApiKpis.rates().healthyRate()` — a **lifetime-cumulative** rate derived by summing Micrometer `Counter`s since process start. Two operators reported the same symptom from opposite ends: the status correctly degrades the moment upstream starts failing, but never fully recovers afterward — a handful of errors from hours ago keep dragging an endpoint that has been fine for the last 10,000 calls back into `DEGRADED`, because the counters behind it only ever grow.
+
+The codebase already had a rolling-window mechanism for exactly this — `FailoverApiHealthTracker` (`failover-observable-micrometer`) feeds the `failover.api.health` gauge from a fixed-size (`window=200`, hardcoded) ring of per-call outcomes recorded at the point of interception. It was not usable here directly: it lives in an optional module the dashboard does not depend on, its window size isn't configurable, and reading it back out per-name would require the dashboard to depend on Micrometer gauge internals rather than the `MetricsSource` abstraction it already reads through (`FailoverMetricsSnapshotService`, which only *sums* counters — a pure, source-agnostic reader with no event hook).
+
+A second, related gap: the same masking applies to "is the upstream itself healthy" as distinct from "did the caller get a value." An endpoint recovering 100% of calls reads green in the hero, the Per-API table and the banner alike — there was no view scored on the raw upstream failure rate alone.
+
+### Decision
+
+1. **`RollingHealthWindow`** (`failover-dashboard`, package-private) — a per-failover-name last-*N*-calls window reconstructed **without a per-call hook**: each poll it diffs the current cumulative `(upstreamSuccess, recovered, notRecovered+errors)` totals against the previous poll's totals for that name, and folds the delta in as one batch. A bounded `Deque` of batches evicts oldest-first once the running total exceeds capacity; a batch that straddles the boundary is trimmed proportionally (order *within* one poll interval isn't known, only the aggregate counts are — membership in the window is otherwise exact). First observation seeds the window with the full lifetime total, capped at capacity — the only sane estimate with no prior baseline.
+2. **`failover.dashboard.health.sample-size`** (default `100`, validated `> 0`) — sizes the window, alongside the existing `degraded-threshold`/`unhealthy-threshold` in the same `DashboardProperties.Health` record.
+3. **`DashboardMetricsService.health()`** now classifies against the windowed healthy-rate instead of the cumulative one. A new **`DashboardMetricsService.upstreamWindows()`** exposes the same window's `failoverRate`/`recoveryRate` per name (`UpstreamWindow` DTO) via a new default method on `MetricsSource` and a new endpoint, `GET /api/health/upstream` — powering the dashboard's Upstream call health cards (Health tab), scored on the upstream call alone and deliberately not masked by recovery.
+4. Scoped to the `local` source only for now: `MetricsSource.upstreamWindows()` defaults to an empty map, and `prometheus`/`shared-store` do not override it — those tiers aggregate cumulative snapshots differently across instances, and an equivalent windowed signal there (e.g. PromQL `rate()` over a time window) is a different mechanism, left for a later ADR if needed.
+
+### Consequences
+
+* A recovered endpoint reflects as recovered within `sample-size` calls, not never — the "stuck DEGRADED" complaint is fixed for the `local` source, which is the default and the common single-instance case.
+* No new instrumentation: the window is reconstructed entirely from counters the dashboard already reads; existing deployments get the fix by upgrading, no code change needed at the `@Failover` call sites.
+* Precision trade-off: window membership is exact in aggregate, but ordering within a single poll interval is not preserved (a poll interval's worth of calls is folded in as one undifferentiated batch). At typical dashboard poll cadences (seconds) against `sample-size=100`, this is not user-visible; a very slow poll interval relative to `sample-size` would coarsen it.
+* `RollingHealthWindow` intentionally does not reuse `FailoverApiHealthTracker` — different module, different configurability, different read path (`MetricsSource` abstraction vs. direct gauge access). The two mechanisms currently coexist; unifying them is a candidate for a future ADR if the duplication becomes a maintenance cost.
+* `MetricsSource.upstreamWindows()` is a `default` method returning `Map.of()`, so existing custom `MetricsSource` implementations compile unchanged.
+
+___
+
+## ADR 69 — Specific Authorization-Denial Messages for the Dashboard UI Gate
+
+**Date : 15-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+The dashboard's main UI/API gate (`dashboardSecurityFilterChain` / `dashboardOAuth2SecurityFilterChain`)
+authorizes via `FailoverSecurityProvider` — `hasRole`/`hasAuthority`/a SpEL expression, per
+`security.type`. When an authenticated caller lacks the required role or authority, Spring Security's
+default `AccessDeniedHandlerImpl` returns a `403` with no body (or a bare Whitelabel error page for
+browser requests) — correct behaviour, but it gives an operator nothing to act on. Distinguishing "wrong
+credentials" (`401`, already actionable — Spring's `WWW-Authenticate` challenge) from "authenticated fine,
+but missing role X" (`403`, previously silent) matters most once OAuth2 login (ADR-adjacent: config-driven
+`security.oauth2-client-registration-id`) is in play — an operator can log in successfully via GitHub/OIDC
+and still be denied because no `GrantedAuthoritiesMapper` maps IdP claims onto the configured role, with no
+indication that mapping is the missing piece.
+
+### Decision
+
+Add `DashboardAccessDeniedHandler` (`failover-dashboard`, package `security`), a Spring Security
+`AccessDeniedHandler` bean wired into both variants of the main gate via
+`.exceptionHandling(exceptions -> exceptions.accessDeniedHandler(...))`:
+
+1. Client-facing response: `403` with a small JSON body naming exactly what's missing —
+   `{"error":"Forbidden","message":"Authorization failed: missing required role 'FAILOVER_ADMIN'"}` for
+   `security.type=ROLE`, `missing required authority '...'` for `AUTHORITY`, and the generic `denied by the
+   configured access expression` for `EXPRESSION` (a SpEL expression's failure reason can't be introspected
+   generically — Spring Security only reports pass/fail, not which sub-clause failed).
+2. Server-side: an `INFO` log line with the authenticated principal's name and actual granted authorities,
+   for operator diagnosis — deliberately **not** included in the client-facing body, since a request that's
+   already been identified and denied doesn't need the extra detail handed back to it.
+3. `@ConditionalOnMissingBean(DashboardAccessDeniedHandler.class)` — a consumer can declare their own
+   `DashboardAccessDeniedHandler` or any plain `AccessDeniedHandler` to override.
+4. Scoped to the main gate only. The peer-ingest chains (`dashboardIngestBasicFilterChain` /
+   `dashboardIngestOAuth2FilterChain` / `dashboardIngestOpenFilterChain`) only ever check
+   `anyRequest().authenticated()` — there is no role/authority to be missing there, so a `403` from ingest
+   is not a scenario this handler needs to explain.
+
+### Consequences
+
+* An operator who authenticates successfully but lacks the configured role/authority now gets a specific,
+  actionable `403` body instead of a blank one — cuts the "authenticated fine, still can't get in" class of
+  support question to a one-line read of the response.
+* The exact required role/authority string is now visible to any caller who reaches the check (i.e. anyone
+  already authenticated) — a minor information disclosure relative to Spring's blank default, judged
+  acceptable since it only reaches principals who are already identified, and it does not reveal the
+  requester's *own* actual authorities (only the log does).
+* `security.type=EXPRESSION` gets a generic message rather than a specific one, by design — the alternative
+  would require either re-evaluating expression sub-clauses (fragile, expression-shape-dependent) or asking
+  consumers to supply their own reason text, which is better served by consumers overriding the handler bean
+  entirely for expression-heavy setups than by the starter guessing.
+* New extension point (`DashboardAccessDeniedHandler`) follows the same `@ConditionalOnMissingBean` shape as
+  `FailoverSecurityProvider` — consistent with the module's existing pattern for pluggable security
+  behaviour rather than introducing a new override mechanism.
+
+___
+
+## ADR 70 — No Auto-DDL, and a Durable Heartbeat Store for the JDBC Shared-Store Tier
+
+**Date : 28-JUL-2026**
+
+### Status
+
+Accepted
+
+### Context
+
+Three issues surfaced together while reviewing the JDBC shared-store tier (`failover-dashboard-snapshotstore-jdbc`):
+
+1. **Auto-DDL didn't belong in the module.** `SnapshotStoreJdbc` created `FAILOVER_DASHBOARD_SNAPSHOT` (and
+   migrated it with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`) on first use, gated by
+   `cluster.shared-store.jdbc.auto-ddl` (default `true`). Schema ownership belongs to the consuming service,
+   not a library silently issuing DDL against someone else's database on startup — the same principle already
+   applied to `failover-store-jdbc`, which has never auto-created `FAILOVER_STORE`.
+2. **`SharedStore`/`Jdbc` config silently ignored YAML.** Both records declare a canonical constructor plus a
+   convenience no-arg constructor (for tests/programmatic setup) but neither canonical constructor carried
+   `@ConstructorBinding` — unlike `Cluster`/`Snapshot`/`Security`, which have the identical two-constructor
+   shape and are correctly annotated. Spring Boot's binder treats a multi-constructor record with no
+   `@ConstructorBinding` as ambiguous and skips constructor binding entirely, so `shared-store.store` and
+   `shared-store.jdbc.table-prefix` always resolved to their hardcoded defaults regardless of configured YAML
+   — found via a demo app where `store: jdbc` and a custom `table-prefix` were both silently dropped.
+3. **Heartbeat liveness wasn't shareable.** `HeartbeatStoreInmemory` is the only `HeartbeatStore` implementation
+   and is process-local. That's invisible in the common single-dashboard topology, but breaks down when the
+   dashboard is embedded in *multiple* `@Failover` instances that all point `store=jdbc` at the same database
+   (a legitimate way to get an HA dashboard without a dedicated host): each peer's heartbeat push lands on
+   whichever one dashboard it's configured to push to (typically itself, via a loopback `publish-url`), so
+   every *other* embedded dashboard's in-memory store never sees it — those peers show `UNKNOWN` forever even
+   though they're alive and correctly contributing to the (JDBC-shared) metrics aggregate.
+4. **`clusterSnapshotController` could silently never map, pre-dating this ADR.** It is
+   `@ConditionalOnBean(SnapshotStore.class)`, but that bean is registered by the separately-conditioned
+   `SnapshotStoreJdbcAutoConfiguration` in another module, and `DashboardAutoConfiguration`'s
+   `@AutoConfiguration(afterName = ...)` list did not include it. `@ConditionalOnBean` across two
+   independently-conditioned `@AutoConfiguration` classes with no ordering edge between them is unreliable —
+   confirmed empirically with an `ApplicationContextRunner` probe that declared the two configurations in
+   both orders: **both** left `clusterSnapshotController` (and, after item 5's guard was added,
+   `clusterHeartbeatController`) unregistered, because `@ConditionalOnBean` evaluation for one configuration's
+   `@Bean` methods does not wait on another configuration's `@Bean` methods being processed unless an explicit
+   ordering annotation forces it — the order the two classes are merged from separate `AutoConfiguration.imports`
+   files across jars does not by itself provide that. Net effect for a consumer on `store=jdbc`: `/api/cluster/snapshot`
+   returns a bare `404` (unmapped, not merely denied) while the rest of the dashboard (UI, config, metrics, and
+   `/api/cluster/heartbeat`, which had no such guard at the time) serves normally — indistinguishable from a
+   routing typo, and the reason `SnapshotStore.upsert()` was never reached however `publish-url` was configured.
+
+### Decision
+
+1. **Auto-DDL removed outright** — no config flag, no fallback. `SnapshotStoreJdbc` and the new
+   `HeartbeatStoreJdbc` (below) never issue `CREATE TABLE` or `ALTER TABLE`; both tables must pre-exist.
+   `cluster.shared-store.jdbc.auto-ddl` is deleted from `DashboardProperties.Jdbc`. Per-dialect DDL is
+   documented in [Dashboard Scenario D](../modules/dashboard.md#scenario-d-cluster-via-shared-store-jdbc-durable).
+2. **`@ConstructorBinding` added** to `SharedStore` and `Jdbc`'s canonical constructors, matching the existing
+   `Cluster`/`Snapshot`/`Security` pattern. Swept the repo for the same two-constructor-no-annotation shape;
+   no other instances found.
+3. **`HeartbeatStoreJdbc`** (`failover-dashboard-snapshotstore-jdbc`) — a durable, shared `HeartbeatStore`
+   mirroring `SnapshotStoreJdbc`'s conventions: table `FAILOVER_DASHBOARD_HEARTBEAT`
+   (`INSTANCE_ID` PK, `LAST_SEEN BIGINT`), same `table-prefix`, no auto-DDL, `record()` as a portable
+   update-then-insert (falls back to an UPDATE on `DuplicateKeyException` if two first-heartbeats for the same
+   instance race each other). `TablePrefix.validate()` extracted as a small shared utility for both stores.
+4. **Wiring mirrors the snapshot store exactly.** `SnapshotStoreJdbcAutoConfiguration` gained a
+   `heartbeatStore` bean under the identical `@ConditionalOnBean(DataSource.class)` /
+   `@ConditionalOnMissingBean(HeartbeatStore.class)` guard. `DashboardAutoConfiguration.heartbeatStore()`
+   (the in-memory default) is now restricted to `store=inmemory` via `@ConditionalOnExpression` — the same
+   explicit, ordering-independent guard `snapshotStore()` already used — rather than relying on
+   `@ConditionalOnMissingBean` plus auto-configuration processing order between the two modules.
+5. **Found while making that change:** `clusterHeartbeatController` had no `@ConditionalOnBean(HeartbeatStore.class)`
+   guard (unlike `clusterSnapshotController`, which has one) — with the in-memory bean now correctly gated off
+   under `store=jdbc`, a consumer without the JDBC module on the classpath would have no `HeartbeatStore` bean
+   at all, and the ingest controller's constructor injection would fail context startup. Added the missing
+   guard so it degrades the same way the snapshot controller already does.
+6. **Fixed the ordering bug (context item 4) directly** rather than reworking the conditions again:
+   `DashboardAutoConfiguration`'s `@AutoConfiguration(afterName = ...)` list gained
+   `"com.societegenerale.failover.dashboard.metrics.source.sharedstore.jdbc.SnapshotStoreJdbcAutoConfiguration"` — referenced by name, the same
+   no-compile-dependency pattern already used for `FailoverAutoConfiguration` in the same list (the dependency
+   direction runs the other way: `failover-dashboard-snapshotstore-jdbc` depends on `failover-dashboard`, never
+   the reverse). This forces `SnapshotStoreJdbcAutoConfiguration` to fully process — registering its
+   `SnapshotStore`/`HeartbeatStore` beans — before `DashboardAutoConfiguration`'s own `@Bean` methods are
+   evaluated, regardless of classpath/module declaration order. Verified with an
+   `ApplicationContextRunner`-based test asserting both controllers wire in both declared orders
+   (`failover-dashboard-snapshotstore-jdbc`'s `DashboardJdbcWiringOrderTest`, added to its test-only
+   `spring-boot-starter-web` dependency so the real, servlet-conditional `DashboardAutoConfiguration` can be
+   exercised there); confirmed it fails (both orders) with the `afterName` entry reverted.
+7. **`RECEIVED_AT`/`LAST_SEEN` changed from `BIGINT`/epoch-millis to a time-zone-aware timestamp column**
+   (`TIMESTAMP(9) WITH TIME ZONE` on Oracle/H2 — the two dialects that support 9-digit fractional precision
+   with an explicit zone; capped at `TIMESTAMP(6) WITH TIME ZONE` on PostgreSQL, which caps fractional
+   precision at 6; `TIMESTAMP(6)` with no `WITH TIME ZONE` clause at all on MySQL/MariaDB, which don't have
+   that SQL syntax — its plain `TIMESTAMP` already stores/converts via the session time zone, and since the
+   store always writes UTC this loses nothing in practice). `SnapshotStoreJdbc`/`HeartbeatStoreJdbc` write
+   `OffsetDateTime.now(ZoneOffset.UTC)` via `PreparedStatement`/`JdbcTemplate` `setObject` and read back via
+   `ResultSet.getObject(column, OffsetDateTime.class)` — the portable JDBC 4.2 mapping for a `WITH TIME ZONE`
+   column — converting to/from epoch-millis only at this JDBC boundary; `InstanceMetrics.lastSeenEpochMs`,
+   `HeartbeatStore.lastSeen`, and every other consumer of these values are untouched and stay epoch-millis.
+8. **Dashboard-side liveness toggle added, closing a gap left by items 3–6**: those made
+   `HeartbeatStoreJdbc`/`clusterHeartbeatController` well-behaved *once wired*, but the bean itself was still
+   unconditional in shared-store mode — meaning `store=jdbc` alone forced `FAILOVER_DASHBOARD_HEARTBEAT` to
+   exist even for a deployment that never intended to use heartbeat at all, because
+   `SharedStoreMetricsSource.enrichWithLiveness()` queries `HeartbeatStore.lastSeen()` on every read
+   the moment the bean is non-null — regardless of whether any peer ever pushes. This is precisely the
+   originally-specified but never-implemented `failover.dashboard.cluster.shared-store.liveness.enabled`
+   flag from ADR 66 (§9, "opt-in, default off... Dashboard: `shared-store.liveness.enabled=false`") — its
+   javadoc reference already existed on `ClusterHeartbeatController` (stale until now). Implemented as
+   `DashboardProperties.Liveness` (default `false`) and used to gate both `heartbeatStore()` bean methods
+   (`DashboardAutoConfiguration`'s in-memory one via `@ConditionalOnExpression`; the JDBC one via
+   `@ConditionalOnProperty`) — `clusterHeartbeatController`'s existing `@ConditionalOnBean(HeartbeatStore.class)`
+   guard (item 5) then transitively disables the ingest endpoint too, with no further change needed there.
+   `SourceInfo` gained a `livenessTrackingEnabled` field (set from `heartbeatStore != null` in
+   `SharedStoreMetricsSource.info()`) so the UI can distinguish "disabled on the dashboard" from "enabled, but
+   no peer has pushed a heartbeat yet" — both otherwise look identical (every instance at
+   `LiveStatus.UNKNOWN`) — and show an actionable message naming the exact property for each case.
+
+### Consequences
+
+* No `@Failover` or dashboard module ever runs DDL against a consumer's database — schema is entirely the
+  consuming service's responsibility, consistent across `failover-store-jdbc` and both shared-store tables.
+* `cluster.shared-store.store=jdbc` and `.jdbc.table-prefix` now actually bind from YAML — previously silent,
+  now covered by an `ApplicationContextRunner` regression test that fails with the exact
+  `Table "FAILOVER_DASHBOARD_SNAPSHOT" not found` error when `@ConstructorBinding` is reverted.
+* A dashboard embedded in multiple `@Failover` instances sharing one JDBC database — with liveness tracking
+  turned on (item 8) — now shows correct cluster-wide `LIVE`/`DOWN` status on every instance, not just the
+  one that happened to receive a given peer's heartbeat ping.
+* `FAILOVER_DASHBOARD_HEARTBEAT` is required only when `shared-store.liveness.enabled=true` (item 8) — a
+  `store=jdbc` deployment that never turns liveness on never needs to provision it, and never queries it.
+* `store=jdbc` now reliably maps `/api/cluster/snapshot` and `/api/cluster/heartbeat` regardless of which
+  order the two `@AutoConfiguration` classes happen to be discovered in — previously a real, silent gap
+  (bare `404`, not an auth denial) that existed independently of every other change in this ADR, since it
+  predates the heartbeat store and only needed `SnapshotStore` to reproduce. `@ConditionalOnBean` across
+  independently-conditioned auto-configurations in different modules should always be paired with an explicit
+  ordering edge (`@AutoConfigureAfter`/`afterName`) — this ADR's fix is the concrete precedent for the next
+  optional module added to the shared-store tier.
 
 ___

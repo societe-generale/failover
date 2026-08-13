@@ -18,7 +18,9 @@ package com.societegenerale.failover.configuration;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.observable.micrometer.SnapshotPushClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -29,11 +31,18 @@ import org.springframework.web.client.RestClient;
  *
  * @author Anand Manissery
  */
+@Slf4j
 public class RestClientSnapshotPushClient implements SnapshotPushClient {
 
     private final RestClient client;
     private final String publishUrl;
 
+    /**
+     * Creates a new client.
+     *
+     * @param client     the RestClient used to POST snapshots
+     * @param publishUrl the dashboard's snapshot ingest endpoint URL
+     */
     public RestClientSnapshotPushClient(RestClient client, String publishUrl) {
         this.client = client;
         this.publishUrl = publishUrl;
@@ -41,11 +50,13 @@ public class RestClientSnapshotPushClient implements SnapshotPushClient {
 
     @Override
     public void send(ClusterSnapshot snapshot) {
-        client.post()
+        log.debug("POSTing cluster snapshot for instance '{}' to '{}'.", snapshot.instanceId(), publishUrl);
+        ResponseEntity<Void> response = client.post()
                 .uri(publishUrl)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(snapshot)
                 .retrieve()
                 .toBodilessEntity();
+        log.debug("Cluster snapshot POST to '{}' returned status {}.", publishUrl, response.getStatusCode());
     }
 }

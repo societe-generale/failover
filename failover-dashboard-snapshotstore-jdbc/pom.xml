@@ -5,10 +5,13 @@
     <artifactId>failover-dashboard-snapshotstore-jdbc</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-dashboard-snapshotstore-jdbc</name>
+    <description>Optional durable JDBC backing for the dashboard's shared-store tier</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>
-        <version>3.0.0-SNAPSHOT</version>
+        <version>3.0.1-SNAPSHOT</version>
     </parent>
 
     <properties>
@@ -43,6 +46,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Test-only: lets us stand up the real, servlet-conditional DashboardAutoConfiguration
+             alongside SnapshotStoreJdbcAutoConfiguration, to test their auto-configuration ordering. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

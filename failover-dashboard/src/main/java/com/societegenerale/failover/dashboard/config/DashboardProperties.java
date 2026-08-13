@@ -20,6 +20,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -71,25 +72,35 @@ public record DashboardProperties(
     /** Canonical, binder-targeted constructor — validates the base path fail-fast. */
     @ConstructorBinding
     public DashboardProperties {
-        if (basePath == null || basePath.isBlank() || !basePath.startsWith("/")
-                || basePath.equals("/") || basePath.endsWith("/")) {
+        if (basePath == null || basePath.isBlank() || !basePath.startsWith("/") || basePath.endsWith("/")) {
             throw new IllegalArgumentException(
                 "failover.dashboard.base-path must be a dedicated, non-root path starting with '/' "
                     + "and without a trailing '/' (e.g. '/failover-dashboard'), but was '" + basePath + "'");
         }
     }
 
-    /** Convenience constructor applying all defaults (used in tests/programmatic setup). */
+    /**
+     * Convenience constructor applying all defaults (used in tests/programmatic setup).
+     *
+     * @param enabled  master switch
+     * @param basePath dedicated, non-root base path
+     */
     public DashboardProperties(boolean enabled, String basePath) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), new Health(0.99, 0.90),
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, "", false), new History(false, 120, 15), new Health(0.99, 0.90, 100),
                 new Cluster("local"));
     }
 
-    /** Convenience constructor with custom health, default exposure/security/history/cluster. */
+    /**
+     * Convenience constructor with custom health, default exposure/security/history/cluster.
+     *
+     * @param enabled  master switch
+     * @param basePath dedicated, non-root base path
+     * @param health   health-classification thresholds
+     */
     public DashboardProperties(boolean enabled, String basePath, Health health) {
         this(enabled, basePath, new Exposure(true, true, List.of("config", "failover-health", "metrics", "health", "cluster", "instances")),
-                new Security("FAILOVER_ADMIN", false), new History(false, 120, 15), health, new Cluster("local"));
+                new Security(SecurityType.AUTHORITY, "FAILOVER_ADMIN", "FAILOVER_ADMIN", null, false, "", false), new History(false, 120, 15), health, new Cluster("local"));
     }
 
     /**
@@ -107,7 +118,12 @@ public record DashboardProperties(
         @DefaultValue("true") boolean api,
         @DefaultValue({"config", "failover-health", "metrics", "health", "cluster", "instances"}) List<String> include
     ) {
-        /** @return {@code true} if the named API endpoint is exposed. */
+        /**
+         * Checks whether the named API endpoint is exposed.
+         *
+         * @param endpoint the endpoint name (e.g. {@code "config"}, {@code "metrics"})
+         * @return {@code true} if the named API endpoint is exposed.
+         */
         public boolean includes(String endpoint) {
             return api && include.contains(endpoint);
         }
@@ -120,14 +136,63 @@ public record DashboardProperties(
      * (trusted-network / dev only). {@code allowInsecure=true} is rejected outright when the
      * {@code prod} profile is active — production must add Spring Security (I-14).
      *
-     * @param role          required role for {@code base-path/**} (default {@code FAILOVER_ADMIN})
+     * @param type          {@code AUTHORITY} (default), {@code ROLE}, or {@code EXPRESSION} — which
+     *                      Spring Security check to use
+     * @param role          required role for {@code base-path/**} when {@code type=ROLE} (default {@code FAILOVER_ADMIN})
+     * @param authority     required authority for {@code base-path/**} when {@code type=AUTHORITY} (default {@code FAILOVER_ADMIN})
+     * @param expression    SpEL web-security expression evaluated for {@code base-path/**} when
+     *                      {@code type=EXPRESSION}, e.g. {@code "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"};
+     *                      required (non-blank) when {@code type=EXPRESSION}
      * @param allowInsecure start without an access gate when Spring Security is absent (default {@code false});
      *                      ignored/refused under the {@code prod} profile
+     * @param oauth2ClientRegistrationId Spring Security client-registration id to secure the dashboard UI
+     *                      with OAuth2 login instead of HTTP Basic (blank ⇒ disabled, the default); requires
+     *                      {@code spring-security-oauth2-client} on the classpath. Authorization still goes
+     *                      through {@code type}/{@code role}/{@code authority}/{@code expression} — only the
+     *                      authentication mechanism changes. See the {@code GrantedAuthoritiesMapper} note in
+     *                      the dashboard security docs for mapping IdP claims onto {@code FAILOVER_ADMIN}.
+     * @param oauth2ResourceServer secure the dashboard UI/API with OAuth2 resource-server (JWT Bearer)
+     *                      validation instead of a browser login (default {@code false}); for consumers whose
+     *                      SSO is terminated upstream (gateway/sidecar) and forwards a validated JWT on every
+     *                      request. Requires {@code spring-security-oauth2-resource-server} on the classpath
+     *                      and the standard {@code spring.security.oauth2.resourceserver.jwt.*} properties.
+     *                      Ignored when {@code oauth2ClientRegistrationId} is set or a
+     *                      {@code DashboardAuthenticationConfigurer} bean is present.
      */
     public record Security(
+        @DefaultValue("AUTHORITY") SecurityType type,
         @DefaultValue("FAILOVER_ADMIN") String role,
-        @DefaultValue("false") boolean allowInsecure
+        @DefaultValue("FAILOVER_ADMIN") String authority,
+        String expression,
+        @DefaultValue("false") boolean allowInsecure,
+        @DefaultValue("") String oauth2ClientRegistrationId,
+        @DefaultValue("false") boolean oauth2ResourceServer
     ) {
+        /** Canonical, binder-targeted constructor — validates the expression is set when required. */
+        @ConstructorBinding
+        public Security {
+            if (type == SecurityType.EXPRESSION && (expression == null || expression.isBlank())) {
+                throw new IllegalArgumentException(
+                    "failover.dashboard.security.expression must be set (non-blank) when "
+                        + "failover.dashboard.security.type=EXPRESSION");
+            }
+        }
+    }
+
+    /**
+     * Security type for failover — AUTHORITY, ROLE, or EXPRESSION. This is used to determine how the
+     * role/authority/expression is interpreted in the security configuration.
+     * If AUTHORITY (by default), it will perform the check on configured authority (hasAuthority(authority));
+     * if ROLE, it will perform the check on configured role (hasRole(role)); if EXPRESSION, it
+     * will evaluate the configured SpEL web-security expression (e.g. {@code "hasAnyRole('ADMIN') or hasAnyAuthority('WRITE_PRIVILEGE')"}).
+     */
+    public enum SecurityType {
+        /** Gate checked via {@code hasRole(role)}. */
+        ROLE,
+        /** Gate checked via {@code hasAuthority(authority)}. */
+        AUTHORITY,
+        /** Gate checked via evaluating the configured SpEL {@code expression}. */
+        EXPRESSION
     }
 
     /**
@@ -151,13 +216,28 @@ public record DashboardProperties(
      * {@code HEALTHY} when {@code rate >= degradedThreshold}, {@code DEGRADED} when
      * {@code rate >= unhealthyThreshold}, otherwise {@code UNHEALTHY}.
      *
+     * <p>The rate itself is computed over only the most recent {@code sampleSize} calls per failover
+     * point, not the lifetime total: a cumulative rate never fully recovers from an old bad spell (a
+     * handful of errors from hours ago keep dragging a now-healthy endpoint into DEGRADED), so
+     * classification instead uses a bounded trailing window that ages old outcomes out.
+     *
      * @param degradedThreshold  healthy-rate floor for {@code HEALTHY} (default {@code 0.99})
      * @param unhealthyThreshold healthy-rate floor for {@code DEGRADED} (default {@code 0.90})
+     * @param sampleSize         number of most-recent calls, per failover point, considered when
+     *                           computing the rate for classification (default {@code 100}); must be {@code > 0}
      */
     public record Health(
         @DefaultValue("0.99") double degradedThreshold,
-        @DefaultValue("0.90") double unhealthyThreshold
+        @DefaultValue("0.90") double unhealthyThreshold,
+        @DefaultValue("100") int sampleSize
     ) {
+        /** Canonical, binder-targeted constructor — validates the sample size fail-fast. */
+        public Health {
+            if (sampleSize <= 0) {
+                throw new IllegalArgumentException(
+                    "failover.dashboard.health.sample-size must be > 0, but was " + sampleSize);
+            }
+        }
     }
 
     /**
@@ -182,7 +262,11 @@ public record DashboardProperties(
         public Cluster {
         }
 
-        /** Convenience: a cluster mode with default sub-settings (used in tests / programmatic setup). */
+        /**
+         * Convenience: a cluster mode with default sub-settings (used in tests / programmatic setup).
+         *
+         * @param mode {@code local} | {@code prometheus} | {@code shared-store}
+         */
         public Cluster(String mode) {
             this(mode, new Prometheus("", "", 5), new SharedStore(), new Snapshot());
         }
@@ -193,25 +277,43 @@ public record DashboardProperties(
      * where peers push their KPI snapshot to the dashboard and it aggregates them in memory, with no Prometheus.
      * Production-supported for small deployments; data quality/consistency is prioritised over durability.
      *
-     * <p>All snapshots are retained regardless of age. Each instance always contributes its last-known values
-     * to the cluster aggregate. Per-instance staleness is visible through each row's {@code lastSeenEpochMs}
-     * timestamp in the Instances tab.
+     * <p>Counts are never dropped from the cluster aggregate: each instance always contributes its last-known
+     * values, and a peer restart (counter reset) folds the pre-restart totals into a carried-forward baseline.
+     * Instances not seen within {@code instanceRetention} are retired from the Instances tab (keeping the
+     * in-memory store bounded under pod churn) while their counts keep contributing to the aggregate.
+     * Per-instance staleness is visible through each row's {@code lastSeenEpochMs} timestamp.
      *
-     * @param livenessSeconds  heartbeat age threshold in seconds — an instance is {@code DOWN} when no heartbeat
-     *                         was received within this window; {@code UNKNOWN} if no heartbeat ever received
-     *                         (default {@code 180}; rule of thumb: ≥ 3 × peer {@code heartbeat.interval-seconds})
-     * @param maxInstances     supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
+     * @param livenessSeconds   heartbeat age threshold in seconds — an instance is {@code DOWN} when no heartbeat
+     *                          was received within this window; {@code UNKNOWN} if no heartbeat ever received
+     *                          (default {@code 180}; rule of thumb: ≥ 3 × peer {@code heartbeat.interval-seconds})
+     * @param maxInstances      supported small-cluster ceiling; beyond it a warning is logged (default {@code 10})
+     * @param instanceRetention retire instances not seen for this long from the per-instance view — their counts
+     *                          stay in the aggregate (default {@code 7d}; {@code 0} keeps every instance forever;
+     *                          applies to the in-memory store only — the durable JDBC store retains all rows)
+     * @param store             backing store for pushed snapshots: {@code inmemory} (default) or {@code jdbc}
+     * @param retention         bounded retention for the cluster trend history
+     * @param sampleIntervalSeconds seconds between cluster-trend samples (default {@code 30})
+     * @param jdbc              JDBC durability settings, used when {@code store=jdbc}
+     * @param liveness          dashboard-side toggle for heartbeat liveness tracking (ADR 66); off by default
      */
     public record SharedStore(
         @DefaultValue("inmemory") String store,
         @DefaultValue("180") int livenessSeconds,
         @DefaultValue("10") int maxInstances,
+        @DefaultValue("7d") Duration instanceRetention,
         @DefaultValue Retention retention,
         @DefaultValue("30") int sampleIntervalSeconds,
-        @DefaultValue Jdbc jdbc
+        @DefaultValue Jdbc jdbc,
+        @DefaultValue Liveness liveness
     ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public SharedStore {
+        }
+
+        /** Convenience with defaults (used in tests / programmatic setup). */
         public SharedStore() {
-            this("inmemory", 180, 10, new Retention(), 30, new Jdbc());
+            this("inmemory", 180, 10, Duration.ofDays(7), new Retention(), 30, new Jdbc(), new Liveness());
         }
     }
 
@@ -224,17 +326,51 @@ public record DashboardProperties(
      * FAILOVER_DASHBOARD_SNAPSHOT}. The prefix is validated (letters/digits/underscore only) since it is
      * concatenated into SQL — use it to namespace per environment or per tenant (one table per tenant).
      *
+     * <p>The snapshot table is never created or altered by the failover module — schema management (including
+     * upgrades when new columns are added) is the consuming service's responsibility. See the module docs for the
+     * DDL to run per dialect.
+     *
      * @param tablePrefix prefix prepended to the base table {@code FAILOVER_DASHBOARD_SNAPSHOT} (default {@code ""});
      *                    letters/digits/underscore only
-     * @param autoDdl     create the table on startup if missing (default {@code true}); disable to manage the schema yourself
      */
     public record Jdbc(
-        @DefaultValue("") String tablePrefix,
-        @DefaultValue("true") boolean autoDdl
+        @DefaultValue("") String tablePrefix
     ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Jdbc {
+        }
+
         /** Convenience with defaults. */
         public Jdbc() {
-            this("", true);
+            this("");
+        }
+    }
+
+    /**
+     * Dashboard-side toggle for heartbeat liveness tracking (ADR 66), separate from the peer-side
+     * {@code cluster.snapshot.heartbeat.enabled} push flag. Off by default: when disabled, no
+     * {@code HeartbeatStore} bean is created at all (neither the in-memory default nor, under
+     * {@code store=jdbc}, the durable JDBC one) — the ingest endpoint ({@code /api/cluster/heartbeat}) is
+     * not mapped, {@code SharedStoreMetricsSource} never queries the store (every instance stays
+     * {@code LiveStatus.UNKNOWN}), and — critically for {@code store=jdbc} — the
+     * {@code FAILOVER_DASHBOARD_HEARTBEAT} table is never required to exist. Enable only when at least one
+     * peer also sets {@code cluster.snapshot.heartbeat.enabled=true}; enabling one side without the other
+     * leaves every instance at {@code UNKNOWN} (dashboard side) or wastes pushes nobody reads (peer side).
+     *
+     * @param enabled turn on dashboard-side heartbeat liveness tracking (default {@code false})
+     */
+    public record Liveness(
+        @DefaultValue("false") boolean enabled
+    ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Liveness {
+        }
+
+        /** Convenience with defaults. */
+        public Liveness() {
+            this(false);
         }
     }
 
@@ -247,12 +383,12 @@ public record DashboardProperties(
      * @param maxEntries hard cap on retained points; oldest truncated first (default {@code 100000})
      */
     public record Retention(
-        @DefaultValue("7d") java.time.Duration maxAge,
+        @DefaultValue("7d") Duration maxAge,
         @DefaultValue("100000") int maxEntries
     ) {
         /** Convenience with defaults. */
         public Retention() {
-            this(java.time.Duration.ofDays(7), 100_000);
+            this(Duration.ofDays(7), 100_000);
         }
     }
 
@@ -278,6 +414,8 @@ public record DashboardProperties(
      * @param password                   ingest Basic-auth password; may be pre-encoded ({@code {bcrypt}…})
      * @param oauth2ClientRegistrationId Spring Security resource-server registration id for JWT validation (blank ⇒ disabled)
      * @param allowInsecureIngest        {@code true} to allow ingest without any auth gate (not recommended in production)
+     * @param ingest                     controls whether the HTTP ingest endpoint ({@code ClusterSnapshotController})
+     *                                    is mapped at all — turn off when every peer writes via JDBC-direct instead
      */
     public record Snapshot(
         @DefaultValue("") String publishUrl,
@@ -285,15 +423,48 @@ public record DashboardProperties(
         @DefaultValue("") String username,
         @DefaultValue("") String password,
         @DefaultValue("") String oauth2ClientRegistrationId,
-        @DefaultValue("false") boolean allowInsecureIngest
+        @DefaultValue("false") boolean allowInsecureIngest,
+        @DefaultValue Ingest ingest
     ) {
+        /** Canonical constructor used by Spring Boot's relaxed property binder. */
         @ConstructorBinding
         public Snapshot {
+        }
+
+        /** Convenience with all defaults (used in tests / programmatic setup). */
+        public Snapshot(String publishUrl, int intervalSeconds, String username, String password,
+                         String oauth2ClientRegistrationId, boolean allowInsecureIngest) {
+            this(publishUrl, intervalSeconds, username, password, oauth2ClientRegistrationId, allowInsecureIngest,
+                    new Ingest());
         }
 
         /** Convenience with defaults. */
         public Snapshot() {
             this("", 15, "", "", "", false);
+        }
+    }
+
+    /**
+     * Toggle for the HTTP snapshot-ingest endpoint ({@code ClusterSnapshotController}, mapped at
+     * {@code base-path/api/cluster/snapshot}). On by default — turning it off does not disable
+     * {@code cluster.mode=shared-store} itself, only the HTTP path into it; the dashboard still reads
+     * from whichever {@code SnapshotStore} is configured (in-memory or JDBC). Set {@code false} once every
+     * peer writes directly to the shared JDBC table ({@code failover.dashboard.cluster.snapshot.jdbc.enabled=true}
+     * on the peer side) so the endpoint — and its ingest security config — is never mapped at all.
+     *
+     * @param enabled map the ingest endpoint (default {@code true})
+     */
+    public record Ingest(
+        @DefaultValue("true") boolean enabled
+    ) {
+        /** Canonical, binder-targeted constructor (disambiguates from the convenience one below). */
+        @ConstructorBinding
+        public Ingest {
+        }
+
+        /** Convenience with defaults. */
+        public Ingest() {
+            this(true);
         }
     }
 

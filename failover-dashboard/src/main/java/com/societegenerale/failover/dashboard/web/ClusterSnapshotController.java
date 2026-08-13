@@ -18,12 +18,14 @@ package com.societegenerale.failover.dashboard.web;
 
 import com.societegenerale.failover.observable.metrics.ClusterSnapshot;
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Ingest endpoint for {@code cluster.mode=shared-store}: peers POST their {@link ClusterSnapshot} here and it is
@@ -33,20 +35,46 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * @author Anand Manissery
  */
+@Slf4j
 @RestController
 @RequestMapping("${failover.dashboard.base-path:/failover-dashboard}/api/cluster")
-public class ClusterSnapshotController {
+public class ClusterSnapshotController implements PeerIngestEndpoint {
 
     private final SnapshotStore snapshotStore;
 
+    /**
+     * Creates a new controller.
+     *
+     * @param snapshotStore the store to record incoming peer snapshots into
+     */
     public ClusterSnapshotController(SnapshotStore snapshotStore) {
         this.snapshotStore = snapshotStore;
     }
 
-    /** Records a pushed snapshot. Returns {@code 202 Accepted}; aggregation happens lazily on read. */
+    /**
+     * Records a pushed snapshot. Returns {@code 202 Accepted}; aggregation happens lazily on read.
+     *
+     * <p>The instance id is validated before the snapshot reaches the store — it becomes the store key
+     * and is rendered in the Instances table, so an absent, oversized or markup-bearing id is rejected
+     * rather than recorded (see {@link InstanceId}). A missing {@code summary} is rejected for the same
+     * reason: it is dereferenced on every aggregation, so accepting it would trade a {@code 400} on the
+     * pushing peer for a {@code 500} on every subsequent dashboard read. {@code configEntries} needs no
+     * check — {@link ClusterSnapshot}'s compact constructor already normalises {@code null} to empty.
+     *
+     * @param snapshot the pushed peer snapshot
+     * @throws org.springframework.web.server.ResponseStatusException {@code 400} if the body carries an
+     *         unusable instance id or no summary
+     */
     @PostMapping("/snapshot")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void ingest(@RequestBody ClusterSnapshot snapshot) {
+        String instanceId = InstanceId.validated(snapshot.instanceId());
+        if (snapshot.summary() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "summary is required.");
+        }
+        log.debug("Received cluster snapshot from instance '{}' ({} config entries).",
+                instanceId, snapshot.configEntries().size());
         snapshotStore.upsert(snapshot);
+        log.debug("Cluster snapshot from instance '{}' recorded.", instanceId);
     }
 }

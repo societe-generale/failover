@@ -19,9 +19,12 @@ package com.societegenerale.failover.dashboard.metrics.source;
 import com.societegenerale.failover.core.observable.InstanceIdResolver;
 import com.societegenerale.failover.dashboard.service.DashboardMetricsService;
 import com.societegenerale.failover.dashboard.service.DashboardHistoryService;
+import com.societegenerale.failover.dashboard.service.UpstreamWindow;
 
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import com.societegenerale.failover.observable.metrics.ExceptionStat;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsSummary;
 import com.societegenerale.failover.observable.metrics.SeriesPoint;
@@ -50,12 +53,35 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     private final DashboardMetricsService metricsService;
     private final DashboardHistoryService history;   // nullable — present only when history is enabled
     private final InstanceIdResolver instanceIdResolver;
+    private final FailoverConfigSnapshotService configSnapshotService;   // nullable — absent without a MeterRegistry
 
+    /**
+     * Creates a new source with no {@link FailoverConfigSnapshotService} (config view stays empty).
+     *
+     * @param metricsService     source of this instance's metrics
+     * @param history            optional trend-history ring
+     * @param instanceIdResolver resolves this instance's identity
+     */
     public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
                                       InstanceIdResolver instanceIdResolver) {
+        this(metricsService, history, instanceIdResolver, null);
+    }
+
+    /**
+     * Creates a new source.
+     *
+     * @param metricsService        source of this instance's metrics
+     * @param history               optional trend-history ring
+     * @param instanceIdResolver    resolves this instance's identity
+     * @param configSnapshotService optional source of this instance's {@code @Failover} configuration
+     */
+    public LocalRegistryMetricsSource(DashboardMetricsService metricsService, DashboardHistoryService history,
+                                      InstanceIdResolver instanceIdResolver,
+                                      FailoverConfigSnapshotService configSnapshotService) {
         this.metricsService = metricsService;
         this.history = history;
         this.instanceIdResolver = instanceIdResolver;
+        this.configSnapshotService = configSnapshotService;
     }
 
     @Override
@@ -70,7 +96,7 @@ public class LocalRegistryMetricsSource implements MetricsSource {
 
     @Override
     public SourceInfo info() {
-        return new SourceInfo("local", 1, UNKNOWN, System.currentTimeMillis(), false);
+        return new SourceInfo("local", 1, UNKNOWN, System.currentTimeMillis(), false, false);
     }
 
     @Override
@@ -86,5 +112,15 @@ public class LocalRegistryMetricsSource implements MetricsSource {
     @Override
     public Map<String, List<ExceptionStat>> exceptionsByApi() {
         return metricsService.exceptionsByApi();
+    }
+
+    @Override
+    public List<ConfigEntry> configEntries() {
+        return configSnapshotService != null ? configSnapshotService.configEntries() : List.of();
+    }
+
+    @Override
+    public Map<String, UpstreamWindow> upstreamWindows() {
+        return metricsService.upstreamWindows();
     }
 }

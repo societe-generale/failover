@@ -22,6 +22,7 @@ import com.societegenerale.failover.core.observable.publisher.ObservablePublishe
 import com.societegenerale.failover.core.scanner.FailoverScanner;
 import com.societegenerale.failover.core.store.FailoverStore;
 import com.societegenerale.failover.observable.metrics.DefaultInstanceIdResolver;
+import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
 import com.societegenerale.failover.observable.metrics.FailoverMetricsSnapshotService;
 import com.societegenerale.failover.observable.micrometer.AbstractSnapshotPublisher;
 import com.societegenerale.failover.observable.micrometer.ClusterSnapshotPublisher;
@@ -37,6 +38,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.config.MeterFilter;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -51,12 +53,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.ObjectMapper;
 
 import com.societegenerale.failover.store.async.BoundedTaskExecutor;
 import com.societegenerale.failover.store.async.RejectionPolicy;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 
+import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.concurrent.Executor;
@@ -108,6 +113,9 @@ public class FailoverMicrometerAutoConfiguration {
      *
      * <p>Declare a custom {@link InstanceIdResolver} bean to override — for example to use a k8s pod
      * name, a Docker container id, or the explicit {@code failover.observable.instance.id} value.
+     *
+     * @param environment resolves {@code spring.application.name} and the server port
+     * @return the default instance id resolver
      */
     @ConditionalOnMissingBean
     @Bean
@@ -123,7 +131,8 @@ public class FailoverMicrometerAutoConfiguration {
      * Emits {@code failover.store.total}, {@code failover.recover.total},
      * {@code failover.exception.total}, and {@code failover.operation.duration} meters.
      *
-     * @param meterRegistry active meter registry
+     * @param meterRegistry     active meter registry
+     * @param snapshotPublisher optional shared-store snapshot publisher notified on every metric event
      * @return {@link MicrometerObservablePublisher}
      */
     @ConditionalOnMissingBean(MicrometerObservablePublisher.class)
@@ -135,12 +144,21 @@ public class FailoverMicrometerAutoConfiguration {
     }
 
     /**
-     * Binds {@code failover.registered.total} and per-failover
-     * {@code failover.config.expiry.seconds} gauges to the registry.
+     * Binds {@code failover.registered.total}, per-failover {@code failover.config.expiry.seconds}, and
+     * {@code failover.config.global} gauges to the registry.
+     *
+     * <p>Calls {@link FailoverMeterBinder#bindTo(MeterRegistry)} explicitly rather than relying solely on
+     * Spring Boot's automatic {@code MeterBinder} discovery: that mechanism is not guaranteed to reach a
+     * {@link MeterRegistry} bean the consuming application declares itself (as opposed to one Boot's own
+     * metrics autoconfiguration creates), which would silently leave the config gauges unregistered. The
+     * call is idempotent — Micrometer returns the existing meter when the same id is registered twice, so
+     * it is harmless if Boot's own mechanism also invokes {@code bindTo} for this registry.
      *
      * @param failoverScanner  scanner providing the list of registered failovers
      * @param expiryExtractor  extracts expiry configuration from each failover
      * @param failoverStore    the assembled store; backs the {@code failover.live.entries} gauge when size-aware
+     * @param properties       failover properties; source of the {@code failover.config.global} gauge tags
+     * @param meterRegistry    the active registry to bind the gauges to immediately
      * @return {@link FailoverMeterBinder}
      */
     @ConditionalOnMissingBean(FailoverMeterBinder.class)
@@ -148,18 +166,45 @@ public class FailoverMicrometerAutoConfiguration {
     public FailoverMeterBinder failoverMeterBinder(
             FailoverScanner failoverScanner,
             FailoverExpiryExtractor expiryExtractor,
-            ObjectProvider<FailoverStore<Object>> failoverStore) {
-        return new FailoverMeterBinder(failoverScanner, expiryExtractor, failoverStore.getIfAvailable());
+            ObjectProvider<FailoverStore<Object>> failoverStore,
+            FailoverProperties properties,
+            MeterRegistry meterRegistry) {
+        FailoverMeterBinder.GlobalConfig globalConfig = new FailoverMeterBinder.GlobalConfig(
+                properties.getStore().getType().name().toLowerCase(),
+                properties.getType().name().toLowerCase(),
+                properties.getExceptionPolicy().name().toLowerCase(),
+                properties.getStore().isAsync());
+        FailoverMeterBinder binder = new FailoverMeterBinder(failoverScanner, expiryExtractor,
+                failoverStore.getIfAvailable(), globalConfig);
+        binder.bindTo(meterRegistry);
+        return binder;
     }
 
     /**
      * Aggregates the existing {@code failover.*} Micrometer counters into a {@link com.societegenerale.failover.observable.metrics.MetricsSummary}.
      * Used by peer apps to build snapshots for the shared-store cluster tier without dashboard dependencies.
+     *
+     * @param registry the meter registry to read {@code failover.*} meters from
+     * @return the metrics snapshot service
      */
     @ConditionalOnMissingBean
     @Bean
     public FailoverMetricsSnapshotService failoverMetricsSnapshotService(MeterRegistry registry) {
         return new FailoverMetricsSnapshotService(registry);
+    }
+
+    /**
+     * Rebuilds the {@code @Failover} configuration view from the gauges {@link FailoverMeterBinder} registers.
+     * Used by peer apps to build snapshots for the shared-store cluster tier without a {@code FailoverScanner}
+     * dependency on the dashboard side.
+     *
+     * @param registry the meter registry to read {@code failover.config.*} gauges from
+     * @return the config snapshot service
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public FailoverConfigSnapshotService failoverConfigSnapshotService(MeterRegistry registry) {
+        return new FailoverConfigSnapshotService(registry);
     }
 
     // ── instance tag (failover.observable.instance.mode) ──────────────────────────────
@@ -227,7 +272,7 @@ public class FailoverMicrometerAutoConfiguration {
         Tag instanceTag = Tag.of("instance", instanceId);
         return new MeterFilter() {
             @Override
-            public Meter.Id map(Meter.Id id) {
+            public Meter.@NonNull Id map(Meter.@NonNull Id id) {
                 return id.getName().startsWith("failover") ? id.withTag(instanceTag) : id;
             }
         };
@@ -250,6 +295,79 @@ public class FailoverMicrometerAutoConfiguration {
     // ── cluster snapshot publisher (shared-store peer side) ───────────────────────────
 
     /**
+     * Peer-side snapshot publisher: periodically delivers this instance's local metrics snapshot via
+     * whichever {@link SnapshotPushClient} transport is in context — HTTP ({@link PublisherConfiguration})
+     * or JDBC-direct ({@link JdbcPublisherConfiguration}). Transport-agnostic on purpose: throttling,
+     * backoff and the log-once-on-failure policy are identical regardless of delivery mechanism, so this
+     * bean activates whenever a transport is configured rather than being duplicated per transport.
+     *
+     * @param metricsSnapshotService source of this instance's metrics snapshot
+     * @param configSnapshotService  source of this instance's {@code @Failover} configuration
+     * @param instanceIdResolver     resolves this instance's identity for the pushed snapshot
+     * @param snapshotPushClient     the active transport (HTTP or JDBC-direct)
+     * @param publisherProperties    throttle / retry settings
+     * @return the publisher
+     */
+    @Bean
+    @ConditionalOnBean(SnapshotPushClient.class)
+    @ConditionalOnMissingBean(ClusterSnapshotPublisher.class)
+    public ClusterSnapshotPublisher clusterSnapshotPublisher(
+            FailoverMetricsSnapshotService metricsSnapshotService,
+            FailoverConfigSnapshotService configSnapshotService,
+            InstanceIdResolver instanceIdResolver,
+            SnapshotPushClient snapshotPushClient,
+            FailoverClusterPublisherProperties publisherProperties) {
+        var base = new SimpleAsyncTaskExecutor("failover-snapshot-publisher-");
+        base.setVirtualThreads(true);
+        Executor executor = new BoundedTaskExecutor(base, 1, RejectionPolicy.DISCARD, "failover-snapshot-publisher");
+        return new ClusterSnapshotPublisher(metricsSnapshotService, configSnapshotService, instanceIdResolver,
+                snapshotPushClient, resolvePublishTarget(publisherProperties),
+                publisherProperties.intervalSeconds(), publisherProperties.retryIntervalSeconds(),
+                executor);
+    }
+
+    /** Logging-only description of where snapshots are delivered — an HTTP URL or, in JDBC-direct mode, the target table. */
+    private static String resolvePublishTarget(FailoverClusterPublisherProperties props) {
+        if (props.jdbc().enabled()) {
+            String prefix = props.jdbc().tablePrefix();
+            return "jdbc:" + (prefix == null || prefix.isBlank() ? "" : prefix) + JdbcSnapshotPushClient.BASE_TABLE;
+        }
+        return PublisherConfiguration.resolveSnapshotUrl(props);
+    }
+
+    /**
+     * Peer-side heartbeat publisher: periodically pings the dashboard via whichever {@link HeartbeatPushClient}
+     * transport is in context — HTTP ({@link PublisherConfiguration}) or JDBC-direct
+     * ({@link JdbcPublisherConfiguration}). Transport-agnostic for the same reason as
+     * {@link #clusterSnapshotPublisher}: the polling schedule and log-once-on-failure policy don't depend
+     * on delivery mechanism.
+     *
+     * @param instanceIdResolver  resolves this instance's identity for the pushed heartbeat
+     * @param heartbeatPushClient the active transport (HTTP or JDBC-direct)
+     * @param publisherProperties source of the configured heartbeat interval
+     * @return the publisher
+     */
+    @Bean(destroyMethod = "close")
+    @ConditionalOnBean(HeartbeatPushClient.class)
+    @ConditionalOnMissingBean(HeartbeatPublisher.class)
+    public HeartbeatPublisher heartbeatPublisher(
+            InstanceIdResolver instanceIdResolver,
+            HeartbeatPushClient heartbeatPushClient,
+            FailoverClusterPublisherProperties publisherProperties) {
+        return new HeartbeatPublisher(instanceIdResolver, heartbeatPushClient, resolveHeartbeatTarget(publisherProperties),
+                publisherProperties.heartbeat().intervalSeconds());
+    }
+
+    /** Logging-only description of where heartbeats are delivered — an HTTP URL or, in JDBC-direct mode, the target table. */
+    private static String resolveHeartbeatTarget(FailoverClusterPublisherProperties props) {
+        if (props.jdbc().enabled()) {
+            String prefix = props.jdbc().tablePrefix();
+            return "jdbc:" + (prefix == null || prefix.isBlank() ? "" : prefix) + JdbcHeartbeatPushClient.BASE_TABLE;
+        }
+        return PublisherConfiguration.resolveHeartbeatUrl(props);
+    }
+
+    /**
      * Snapshot publisher configuration — active only when {@code spring-web} is on the classpath
      * (RestClient is in spring-web). Isolated in a nested class so that the RestClient type is only
      * referenced when it is actually available — ASM-evaluated condition means no runtime failure
@@ -261,7 +379,7 @@ public class FailoverMicrometerAutoConfiguration {
     static class PublisherConfiguration {
 
         /**
-         * Peer-side snapshot publisher: periodically POSTs this instance's local metrics snapshot to
+         * Peer-side snapshot transport: periodically POSTs this instance's local metrics snapshot to
          * the dashboard's ingest endpoint. Active only when a non-blank publish URL is configured.
          * Moved here from the dashboard artifact so that any peer app carrying only the
          * {@code failover-spring-boot-starter} (no dashboard dependency) can push snapshots to a
@@ -286,24 +404,13 @@ public class FailoverMicrometerAutoConfiguration {
             return new RestClientSnapshotPushClient(client, resolveSnapshotUrl(publisherProperties));
         }
 
+        /**
+         * HTTP heartbeat transport. Requires {@code publish-url} (the heartbeat URL is derived from it) in
+         * addition to {@code heartbeat.enabled} — without this guard, enabling heartbeat in JDBC-direct mode
+         * (where {@code publish-url} is blank) would build a relative URL and fail on every ping.
+         */
         @Bean
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot", name = "publish-url")
-        @ConditionalOnMissingBean(ClusterSnapshotPublisher.class)
-        public ClusterSnapshotPublisher clusterSnapshotPublisher(
-                FailoverMetricsSnapshotService metricsSnapshotService,
-                InstanceIdResolver instanceIdResolver,
-                SnapshotPushClient snapshotPushClient,
-                FailoverClusterPublisherProperties publisherProperties) {
-            var base = new SimpleAsyncTaskExecutor("failover-snapshot-publisher-");
-            base.setVirtualThreads(true);
-            Executor executor = new BoundedTaskExecutor(base, 1, RejectionPolicy.DISCARD, "failover-snapshot-publisher");
-            return new ClusterSnapshotPublisher(metricsSnapshotService, instanceIdResolver,
-                    snapshotPushClient, resolveSnapshotUrl(publisherProperties),
-                    publisherProperties.intervalSeconds(), publisherProperties.retryIntervalSeconds(),
-                    executor);
-        }
-
-        @Bean
         @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
         @ConditionalOnMissingBean(HeartbeatPushClient.class)
         public HeartbeatPushClient restClientHeartbeatPushClient(
@@ -313,18 +420,6 @@ public class FailoverMicrometerAutoConfiguration {
             RestClient client = buildPublisherClient(publisherProperties, oauth2Interceptor.getIfAvailable());
             String url = resolveHeartbeatUrl(publisherProperties);
             return new RestClientHeartbeatPushClient(client, url);
-        }
-
-        @Bean(destroyMethod = "close")
-        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
-        @ConditionalOnMissingBean(HeartbeatPublisher.class)
-        public HeartbeatPublisher heartbeatPublisher(
-                InstanceIdResolver instanceIdResolver,
-                HeartbeatPushClient heartbeatPushClient,
-                FailoverClusterPublisherProperties publisherProperties) {
-            String url = resolveHeartbeatUrl(publisherProperties);
-            return new HeartbeatPublisher(instanceIdResolver, heartbeatPushClient, url,
-                    publisherProperties.heartbeat().intervalSeconds());
         }
 
         private static String resolveSnapshotUrl(FailoverClusterPublisherProperties props) {
@@ -399,6 +494,53 @@ public class FailoverMicrometerAutoConfiguration {
                     return execution.execute(req, body);
                 };
             }
+        }
+    }
+
+    /**
+     * JDBC-direct snapshot transport ({@code failover.dashboard.cluster.snapshot.jdbc.enabled=true}): writes
+     * this instance's snapshot straight into the dashboard's shared-store table instead of POSTing to the
+     * ingest endpoint — no HTTP client, no ingest auth gate, no {@code ClusterSnapshotController} on the
+     * dashboard side. Requires this instance to have its own {@link DataSource} pointed at the dashboard's
+     * database. {@code JdbcTemplate} is always on this module's classpath (transitively via
+     * {@code failover-store-jdbc}), so the class-level condition only needs the property + a {@link DataSource}
+     * bean, mirroring {@code SnapshotStoreJdbcAutoConfiguration} on the dashboard side.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.jdbc", name = "enabled", havingValue = "true")
+    static class JdbcPublisherConfiguration {
+
+        /**
+         * @param dataSource          this instance's datasource, pointed at the dashboard's database
+         * @param mapper              JSON mapper for the summary/baseline/config columns (a context bean if present)
+         * @param publisherProperties source of the configured {@code table-prefix}
+         * @return the JDBC-direct transport
+         */
+        @Bean
+        @ConditionalOnBean(DataSource.class)
+        @ConditionalOnMissingBean(SnapshotPushClient.class)
+        public SnapshotPushClient jdbcSnapshotPushClient(DataSource dataSource, ObjectProvider<ObjectMapper> mapper,
+                                                          FailoverClusterPublisherProperties publisherProperties) {
+            return new JdbcSnapshotPushClient(new JdbcTemplate(dataSource), mapper.getIfAvailable(ObjectMapper::new),
+                    publisherProperties.jdbc().tablePrefix());
+        }
+
+        /**
+         * JDBC-direct heartbeat transport — active alongside {@link #jdbcSnapshotPushClient} when
+         * {@code snapshot.heartbeat.enabled=true} is also set. Same {@code DataSource}, same
+         * {@code table-prefix}, sibling table.
+         *
+         * @param dataSource          this instance's datasource, pointed at the dashboard's database
+         * @param publisherProperties source of the configured {@code table-prefix}
+         * @return the JDBC-direct heartbeat transport
+         */
+        @Bean
+        @ConditionalOnProperty(prefix = "failover.dashboard.cluster.snapshot.heartbeat", name = "enabled", havingValue = "true")
+        @ConditionalOnBean(DataSource.class)
+        @ConditionalOnMissingBean(HeartbeatPushClient.class)
+        public HeartbeatPushClient jdbcHeartbeatPushClient(DataSource dataSource,
+                                                           FailoverClusterPublisherProperties publisherProperties) {
+            return new JdbcHeartbeatPushClient(new JdbcTemplate(dataSource), publisherProperties.jdbc().tablePrefix());
         }
     }
 }

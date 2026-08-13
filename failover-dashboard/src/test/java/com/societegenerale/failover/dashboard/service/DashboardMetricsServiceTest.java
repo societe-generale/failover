@@ -323,6 +323,46 @@ class DashboardMetricsServiceTest {
                 .containsEntry("unhealthy", "UNHEALTHY");
     }
 
+    @Test
+    @DisplayName("health recovers promptly once enough fresh calls age an old bad spell out of the sample window")
+    void healthRecoversPromptlyAfterWindowFills() {
+        DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
+                new DashboardProperties.Health(0.99, 0.90, 10));
+        DashboardMetricsService windowed = new DashboardMetricsService(new FailoverMetricsSnapshotService(registry), props);
+
+        // A bad spell: 10 calls, all not_recovered -> healthyRate 0 -> UNHEALTHY.
+        outcome("svc", "svc", "not_recovered", 10);
+        assertThat(windowed.health().getFirst().status()).isEqualTo("UNHEALTHY");
+
+        // Upstream fully recovers: 10 more calls, all fresh. The old 10 failures must age out of the
+        // last-10-calls window entirely, not just get diluted by a lifetime average.
+        store("svc", true, 10);
+        assertThat(windowed.health().getFirst().status()).isEqualTo("HEALTHY");
+        assertThat(windowed.health().getFirst().healthyRate()).isEqualTo(1.0, within(EPS));
+    }
+
+    // ── upstreamWindows ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("upstreamWindows reports the rolling upstream-failure rate per name, independent of recovery")
+    void upstreamWindowsReportsFailoverRateIgnoringRecovery() {
+        // Fully masked case: upstream fails every time, but failover recovers every time too.
+        outcome("masked", "masked", "recovered", 20);
+
+        var windows = service.upstreamWindows();
+
+        assertThat(windows).containsKey("masked");
+        assertThat(windows.get("masked").failoverRate()).isEqualTo(1.0, within(EPS));
+        assertThat(windows.get("masked").recoveryRate()).isEqualTo(1.0, within(EPS));
+        assertThat(windows.get("masked").sampleCount()).isEqualTo(20);
+    }
+
+    @Test
+    @DisplayName("upstreamWindows is empty when there is no traffic yet")
+    void upstreamWindowsEmptyWithNoTraffic() {
+        assertThat(service.upstreamWindows()).isEmpty();
+    }
+
     // ── exceptionsByApi ───────────────────────────────────────────────────────
 
     @Test
@@ -362,7 +402,7 @@ class DashboardMetricsServiceTest {
     @DisplayName("custom thresholds shift the classification boundaries")
     void customThresholds() {
         DashboardProperties props = new DashboardProperties(true, "/failover-dashboard",
-                new DashboardProperties.Health(0.80, 0.50));
+                new DashboardProperties.Health(0.80, 0.50, 100));
         DashboardMetricsService custom = new DashboardMetricsService(new FailoverMetricsSnapshotService(registry), props);
         store("svc", true, 85);
         outcome("svc", "svc", "not_recovered", 15); // healthyRate 0.85 -> HEALTHY under 0.80 floor

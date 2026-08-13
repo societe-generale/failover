@@ -16,22 +16,21 @@
 
 package com.societegenerale.failover.dashboard.service;
 
-import com.societegenerale.failover.annotations.Failover;
-import com.societegenerale.failover.core.scanner.FailoverScanner;
-import com.societegenerale.failover.dashboard.metrics.ConfigEntry;
 import com.societegenerale.failover.dashboard.metrics.FailoverHealth;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
 import com.societegenerale.failover.observable.metrics.ApiHealth;
+import com.societegenerale.failover.observable.metrics.ConfigEntry;
 import org.springframework.core.env.Environment;
 
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Builds the configuration view: one {@link ConfigEntry} per {@code @Failover} point discovered by
- * the {@link FailoverScanner}, enriched with the global framework settings.
+ * Builds the configuration view: one {@link ConfigEntry} per {@code @Failover} point, sourced from the
+ * {@link MetricsSource} — never a live {@code FailoverScanner} reference. The entries themselves come from
+ * the {@code failover.config.*} gauges the running service emits (see {@code FailoverConfigSnapshotService}),
+ * so this module has zero dependency on the scanner.
  *
  * <p>Global settings are read from the {@link Environment} (the {@code failover.*} keys) rather than
  * the typed {@code FailoverProperties} bean, keeping this module decoupled from
@@ -42,35 +41,36 @@ import java.util.Map;
  */
 public class DashboardConfigService {
 
-    private static final String DEFAULT = "default";
-
-    private final FailoverScanner scanner;
     private final Environment environment;
     private final MetricsSource metricsSource;
 
-    public DashboardConfigService(FailoverScanner scanner, Environment environment) {
-        this(scanner, environment, null);
+    /**
+     * Creates a new service with no {@link MetricsSource} (config view stays empty).
+     *
+     * @param environment source of the {@code failover.*} global settings
+     */
+    public DashboardConfigService(Environment environment) {
+        this(environment, null);
     }
 
-    public DashboardConfigService(FailoverScanner scanner, Environment environment, MetricsSource metricsSource) {
-        this.scanner = scanner;
+    /**
+     * Creates a new service.
+     *
+     * @param environment   source of the {@code failover.*} global settings
+     * @param metricsSource source of the {@code @Failover} config entries; {@code null} if none is wired
+     */
+    public DashboardConfigService(Environment environment, MetricsSource metricsSource) {
         this.environment = environment;
         this.metricsSource = metricsSource;
     }
 
     /**
+     * Lists every discovered {@code @Failover} configuration entry.
+     *
      * @return one {@link ConfigEntry} per discovered {@code @Failover}, sorted by name; never {@code null}.
      */
     public List<ConfigEntry> configEntries() {
-        String storeType = environment.getProperty("failover.store.type", "inmemory");
-        String executionType = environment.getProperty("failover.type", "basic");
-        String exceptionPolicy = environment.getProperty("failover.exception-policy", "rethrow");
-        boolean asyncStore = environment.getProperty("failover.store.async", Boolean.class, Boolean.TRUE);
-
-        return scanner.findAllFailover().stream()
-                .map(f -> toEntry(f, storeType, executionType, exceptionPolicy, asyncStore))
-                .sorted(Comparator.comparing(ConfigEntry::name))
-                .toList();
+        return metricsSource == null ? List.of() : metricsSource.configEntries();
     }
 
     /**
@@ -115,8 +115,8 @@ public class DashboardConfigService {
             }
         }
 
-        // Local mode or no MetricsSource: scanner-based fallback
-        int registered = scanner.findAllFailover().size();
+        // Local mode or no MetricsSource: fall back to the discovered-config count
+        int registered = configEntries().size();
         details.put("registered-failovers", Integer.toString(registered));
         details.put("enabled", environment.getProperty("failover.enabled", "true"));
         details.put("type", environment.getProperty("failover.type", "BASIC"));
@@ -191,27 +191,5 @@ public class DashboardConfigService {
             entries.put(keyDefaultPairs[i], environment.getProperty(keyDefaultPairs[i], keyDefaultPairs[i + 1]));
         }
         return entries;
-    }
-
-    private ConfigEntry toEntry(Failover f, String storeType, String executionType,
-                                String exceptionPolicy, boolean asyncStore) {
-        return new ConfigEntry(
-                f.name(),
-                orDefault(f.domain()),
-                f.expiryDuration(),
-                f.expiryUnit().name(),
-                f.recoverAll(),
-                orDefault(f.payloadSplitter()),
-                orDefault(f.keyGenerator()),
-                orDefault(f.expiryPolicy()),
-                storeType,
-                executionType,
-                exceptionPolicy,
-                asyncStore);
-    }
-
-    /** Empty per-annotation overrides render as {@code "default"} to signal "framework default". */
-    private String orDefault(String value) {
-        return (value == null || value.isBlank()) ? DEFAULT : value;
     }
 }

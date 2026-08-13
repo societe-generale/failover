@@ -48,7 +48,7 @@ class ClusterSeriesSamplerTest {
         }
         public MetricsSummary summary() { return current.get(); }
         public List<ApiHealth> health() { return List.of(); }
-        public SourceInfo info() { return new SourceInfo("shared-store", 1, 10, 0L, false); }
+        public SourceInfo info() { return new SourceInfo("shared-store", 1, 10, 0L, false, false); }
         public List<SeriesPoint> series(long windowSec) { return List.of(); }
     }
 
@@ -74,7 +74,7 @@ class ClusterSeriesSamplerTest {
         MetricsSource boom = new MetricsSource() {
             public MetricsSummary summary() { throw new IllegalStateException("kaboom"); }
             public List<ApiHealth> health() { return List.of(); }
-            public SourceInfo info() { return new SourceInfo("shared-store", 0, 0, 0L, false); }
+            public SourceInfo info() { return new SourceInfo("shared-store", 0, 0, 0L, false, false); }
             public List<SeriesPoint> series(long windowSec) { return List.of(); }
         };
         ClusterSeriesStore store = new ClusterSeriesStore(new RetentionPolicy(Duration.ofDays(1), 100));
