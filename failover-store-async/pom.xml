@@ -11,7 +11,7 @@
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>
-        <version>3.0.0</version>
+        <version>3.0.1-SNAPSHOT</version>
     </parent>
 
     <properties>
