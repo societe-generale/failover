@@ -31,6 +31,8 @@ import com.societegenerale.failover.dashboard.metrics.source.sharedstore.Heartbe
 import com.societegenerale.failover.dashboard.metrics.source.sharedstore.SnapshotStore;
 import com.societegenerale.failover.dashboard.web.ClusterSnapshotController;
 import com.societegenerale.failover.observable.metrics.FailoverConfigSnapshotService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -571,6 +573,50 @@ class DashboardAutoConfigurationTest {
                         "failover.dashboard.cluster.snapshot.username=peer",
                         "failover.dashboard.cluster.snapshot.password={noop}secret")
                 .run(ctx -> assertThat(ctx).hasBean("dashboardIngestBasicFilterChain"));
+    }
+
+    @Test
+    @DisplayName("shared-store mode + username but no password ⇒ fail-closed (empty password would authenticate)")
+    void basicIngestChainRefusedWhenPasswordMissing() {
+        runner.withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer")
+                .run(ctx -> {
+                    assertThat(ctx).hasFailed();
+                    assertThat(ctx).getFailure()
+                            .hasStackTraceContaining("failover.dashboard.cluster.snapshot.password");
+                });
+    }
+
+    @Test
+    @DisplayName("shared-store mode + username + blank password ⇒ fail-closed (unresolved secret / typo'd env var)")
+    void basicIngestChainRefusedWhenPasswordBlank() {
+        runner.withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=peer",
+                        "failover.dashboard.cluster.snapshot.password=   ")
+                .run(ctx -> {
+                    assertThat(ctx).hasFailed();
+                    assertThat(ctx).getFailure()
+                            .hasStackTraceContaining("failover.dashboard.cluster.snapshot.password");
+                });
+    }
+
+    @Test
+    @DisplayName("shared-store mode + blank username ⇒ fail-closed (chain activates on presence, not on a real value)")
+    void basicIngestChainRefusedWhenUsernameBlank() {
+        runner.withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withPropertyValues("failover.dashboard.enabled=true",
+                        "failover.dashboard.cluster.mode=shared-store",
+                        "failover.dashboard.cluster.snapshot.username=",
+                        "failover.dashboard.cluster.snapshot.password=secret")
+                .run(ctx -> {
+                    assertThat(ctx).hasFailed();
+                    assertThat(ctx).getFailure()
+                            .hasStackTraceContaining("failover.dashboard.cluster.snapshot.username");
+                });
     }
 
     @Test

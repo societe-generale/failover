@@ -538,6 +538,10 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
     @TestPropertySource(properties = {
             "failover.store.multitenant.enabled=true",
             "failover.store.type=jdbc",
+            // These tests drive FailoverStore directly with String payloads, so the scanner derives
+            // no allowlist entry for them. Since 3.0.0 strict-allowlist defaults to true, so direct
+            // (non-@Failover) store use must name its payload types explicitly.
+            "failover.store.jdbc.allowed-payload-classes=java.lang.String",
             "failover.store.async=false",
             "failover.store.multitenant.strategy=table-prefix",
             "failover.store.multitenant.default-tenant=acme",
@@ -968,6 +972,10 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
     @SpringBootTest(classes = {MyTestApplication.class, TenantContextConfig.class})
     @TestPropertySource(properties = {
             "failover.store.type=jdbc",
+            // These tests drive FailoverStore directly with String payloads, so the scanner derives
+            // no allowlist entry for them. Since 3.0.0 strict-allowlist defaults to true, so direct
+            // (non-@Failover) store use must name its payload types explicitly.
+            "failover.store.jdbc.allowed-payload-classes=java.lang.String",
             "failover.store.async=false",
             "failover.store.multitenant.enabled=true",
             "failover.store.multitenant.strategy=table-prefix",
@@ -1137,6 +1145,10 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
     @SpringBootTest(classes = {MyTestApplication.class, RoutingDataSourceConfig.class})
     @TestPropertySource(properties = {
             "failover.store.type=jdbc",
+            // These tests drive FailoverStore directly with String payloads, so the scanner derives
+            // no allowlist entry for them. Since 3.0.0 strict-allowlist defaults to true, so direct
+            // (non-@Failover) store use must name its payload types explicitly.
+            "failover.store.jdbc.allowed-payload-classes=java.lang.String",
             "failover.store.async=false",
             "failover.store.multitenant.enabled=true",
             "failover.store.multitenant.strategy=schema",
@@ -1338,6 +1350,10 @@ class FailoverStoreMultiTenantAutoConfigurationTest {
     @SpringBootTest(classes = {MyTestApplication.class, SeparateDatasourceConfig.class})
     @TestPropertySource(properties = {
             "failover.store.type=jdbc",
+            // These tests drive FailoverStore directly with String payloads, so the scanner derives
+            // no allowlist entry for them. Since 3.0.0 strict-allowlist defaults to true, so direct
+            // (non-@Failover) store use must name its payload types explicitly.
+            "failover.store.jdbc.allowed-payload-classes=java.lang.String",
             "failover.store.async=false",
             "failover.store.multitenant.enabled=true",
             "failover.store.jdbc.table-prefix=DEMO_",

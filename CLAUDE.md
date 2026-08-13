@@ -89,11 +89,13 @@ Every core bean uses `@ConditionalOnMissingBean`. Declare your own bean to repla
 | `failover-lookup` | Spring `BeanFactory`-based lookups for named `KeyGenerator` / `ExpiryPolicy` / `PayloadSplitter` beans |
 | `failover-execution-resilience` | Resilience4j circuit-breaker wrapping upstream calls |
 | `failover-scanner` | Startup scanner: walks Spring context for all `@Failover` methods |
+| `failover-observable-metrics` | Transport-neutral metrics model shared by the collectors and the dashboard: `MetricsSummary`, `ClusterSnapshot`, `ConfigEntry`, `InstanceMetrics`, aggregation helpers |
 | `failover-observable-micrometer` | Micrometer counters + health indicator |
 | `failover-scheduler` | `ExpiryCleanupScheduler` (hourly) + `ObservableScheduler` (daily report) |
 | `failover-spring-boot-autoconfigure` | Zero-config auto-configuration; contains all integration tests |
 | `failover-spring-boot-starter` | Single POM dependency consumers add |
 | `failover-dashboard` | Opt-in, secure-by-default embedded observability UI + read-only JSON API over `FailoverScanner` config and `failover.*` meters; no new instrumentation. Self-contained — does NOT depend on `failover-spring-boot-autoconfigure`; reads globals from `Environment`. All dashboard tests live here |
+| `failover-dashboard-snapshotstore-jdbc` | Optional durable backing for the dashboard's shared-store tier (`cluster.shared-store.store=jdbc`): `SnapshotStoreJdbc` + `HeartbeatStoreJdbc`. Never creates or alters its tables — the consuming service owns the DDL |
 | `failover-dashboard-spring-boot-starter` | The only artifact a consumer adds to obtain the dashboard; the default starter never pulls it |
 | `failover-test-report` | JaCoCo aggregate coverage report |
 

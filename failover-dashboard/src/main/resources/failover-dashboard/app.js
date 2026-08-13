@@ -15,6 +15,15 @@ const charts = {};
 const pct = v => `${(v * 100).toFixed(1)}%`;
 const n = v => Number(v).toLocaleString();
 const ms = v => `${(Math.round(v * 10) / 10)}ms`;
+// Every server-supplied string rendered through innerHTML below goes through esc(). None of it is
+// authored by this page: referential names and domains come from @Failover annotations in the
+// consuming service, store/policy names from its bean ids, exception types from its stack traces,
+// and in cluster.mode=shared-store the instance ids and config entries arrive over the network on
+// the peer-ingest endpoint. The CSP (script-src 'self', no unsafe-inline) stops injected markup from
+// executing script, but style-src does allow inline styles, so unescaped values could still deface
+// or spoof an operator console — and an attribute value is one unescaped quote from breaking out.
+const esc = v => String(v ?? '').replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const P = () => ({
     accent: css('--accent'), good: css('--good'), warn: css('--warn'), bad: css('--bad'),
@@ -81,8 +90,8 @@ function kpiCards(o, perApi) {
     </div>`;
     const apiCards = apis.map(k => {
         const st = effStatus(k), h = (effRate(k) * 100).toFixed(1);
-        return `<div class="api-hcard ${st.toLowerCase()}" title="${k.name} · ${k.domain}">
-            <div class="nm">${k.name}</div><div class="dm">${k.domain}</div>
+        return `<div class="api-hcard ${st.toLowerCase()}" title="${esc(k.name)} · ${esc(k.domain)}">
+            <div class="nm">${esc(k.name)}</div><div class="dm">${esc(k.domain)}</div>
             <div class="mid"><span class="hpct">${h}%</span><span class="st">${st}</span></div>
             <div class="hbar"><i style="width:${h}%"></i></div>
             <div class="meta"><span>calls <b>${n(k.totalCalls)}</b></span><span>fail <b>${pct(k.rates.failoverRate)}</b></span></div>
@@ -300,7 +309,7 @@ function apiTable(perApi) {
         const hp = (effRate(k) * 100).toFixed(1);
         const col = st === 'HEALTHY' ? p.good : st === 'DEGRADED' ? p.warn : p.bad;
         return `<tr>
-            <td class="name-cell">${k.name}<small>${k.domain}</small></td>
+            <td class="name-cell">${esc(k.name)}<small>${esc(k.domain)}</small></td>
             <td class="r num">${n(k.totalCalls)}</td>
             <td class="barcell"><div class="barrow">
                 <div class="bar"><i style="width:${hp}%;background:${col}"></i></div>
@@ -333,13 +342,14 @@ function configTable() {
     const rows = configRows.filter(r => !q ||
         [r.name, r.domain, r.storeType, r.executionType].some(v => String(v).toLowerCase().includes(q)));
     const dash = '<span style="color:var(--faint)">—</span>';
-    const norm = v => (!v || v === '') ? dash : v === 'default' ? '<span style="color:var(--faint)">default</span>' : v;
+    // norm() returns markup for the empty/default cases, so the caller-supplied branch escapes.
+    const norm = v => (!v || v === '') ? dash : v === 'default' ? '<span style="color:var(--faint)">default</span>' : esc(v);
     document.getElementById('cfgbody').innerHTML = rows.map(r => `<tr>
-        <td class="name-cell">${r.name}</td>
-        <td>${r.domain}</td>
-        <td class="r num">${r.expiryDuration} <span style="color:var(--faint)">${String(r.expiryUnit).toLowerCase()}</span></td>
-        <td><span class="pill-tag">${r.storeType}</span></td>
-        <td><span class="pill-tag">${r.executionType}</span></td>
+        <td class="name-cell">${esc(r.name)}</td>
+        <td>${esc(r.domain)}</td>
+        <td class="r num">${esc(r.expiryDuration)} <span style="color:var(--faint)">${esc(String(r.expiryUnit).toLowerCase())}</span></td>
+        <td><span class="pill-tag">${esc(r.storeType)}</span></td>
+        <td><span class="pill-tag">${esc(r.executionType)}</span></td>
         <td>${r.recoverAll ? '<span class="badge healthy" style="padding:2px 8px">yes</span>' : dash}</td>
         <td>${norm(r.payloadSplitter)}</td>
         <td>${norm(r.keyGenerator)}</td>
@@ -357,9 +367,9 @@ function renderSettings() {
             if (v === 'true' || v === true) { cls = 'on'; txt = 'true'; }
             else if (v === 'false' || v === false) { cls = 'off'; txt = 'false'; }
             else if (v === '' || v == null) { cls = 'empty'; txt = '—'; }
-            return `<div class="kvrow"><span class="k" title="${k}">${key}</span><span class="v ${cls}">${txt}</span></div>`;
+            return `<div class="kvrow"><span class="k" title="${esc(k)}">${esc(key)}</span><span class="v ${cls}">${esc(txt)}</span></div>`;
         }).join('');
-        return `<div class="kvcard"><div class="g">${g}</div>${rows}</div>`;
+        return `<div class="kvcard"><div class="g">${esc(g)}</div>${rows}</div>`;
     }).join('');
 }
 
@@ -387,8 +397,8 @@ function renderFailoverHealth(h) {
                 : empty ? 'empty' : '';
             const label = k.replace(/[-.]/g, ' ');
             return `<div class="stat-card">
-                <span class="stat-k">${label}</span>
-                <span class="stat-v ${cls}">${empty ? '—' : v}</span>
+                <span class="stat-k">${esc(label)}</span>
+                <span class="stat-v ${cls}">${empty ? '—' : esc(v)}</span>
             </div>`;
         }).join('');
 }
@@ -478,10 +488,10 @@ function showBanner(perApi) {
     let kind, icon, title, sub;
     if (bad.length) {
         kind = 'bad'; icon = '✕'; title = `${bad.length} API${bad.length > 1 ? 's' : ''} unhealthy — action needed`;
-        sub = `Failover frequently cannot recover: <b>${bad.map(k => k.name).join(', ')}</b>`;
+        sub = `Failover frequently cannot recover: <b>${bad.map(k => esc(k.name)).join(', ')}</b>`;
     } else if (deg.length) {
         kind = 'warn'; icon = '!'; title = `${deg.length} API${deg.length > 1 ? 's' : ''} need attention`;
-        sub = `Failover working but firing often: <b>${deg.map(k => k.name).join(', ')}</b>`;
+        sub = `Failover working but firing often: <b>${deg.map(k => esc(k.name)).join(', ')}</b>`;
     } else {
         kind = 'ok'; icon = '✓'; title = 'All APIs healthy';
         sub = `<b>${perApi.length}</b> failover point(s) serving usable results`;
@@ -612,13 +622,14 @@ function renderHeroUpstreamMetrics() {
         <div class="hh-stat"><span class="hh-k">Upstream failing</span>
             <span class="hh-v ${failing.length ? 'warn' : ''}">${failing.length} of ${apis.length}</span></div>
         <div class="hh-stat"><span class="hh-k">Top upstream exception</span>
-            <span class="hh-v ${top ? 'warn' : ''}">${top ? `${exShort(top.type)} · ${n(top.count)}` : '—'}</span></div>`;
+            <span class="hh-v ${top ? 'warn' : ''}">${top ? `${esc(exShort(top.type))} · ${n(top.count)}` : '—'}</span></div>`;
 }
 
 // Expiry text for a failover point, from the Config API — lazily fetched, see loadMetrics().
 function expiryFor(name) {
     const cfg = configRows.find(r => r.name === name);
-    return cfg ? `${cfg.expiryDuration} ${String(cfg.expiryUnit).toLowerCase()}` : null;
+    // Escaped here rather than at the use site: the result is spliced into the upstream card's note.
+    return cfg ? `${esc(cfg.expiryDuration)} ${esc(String(cfg.expiryUnit).toLowerCase())}` : null;
 }
 
 // Upstream call health (Health tab) — one card per failover point, scored on the upstream call
@@ -657,7 +668,7 @@ function upstreamCard(k) {
     const exShort = t => t.split('.').pop();
     const exList = (lastExceptions[k.name] || []).slice().sort((a, b) => b.count - a.count);
     const top = exList[0];
-    const exLine = top ? `${exShort(top.type)} ×${n(top.count)}` : (k.failoverInvoked > 0 ? 'unknown' : '—');
+    const exLine = top ? `${esc(exShort(top.type))} ×${n(top.count)}` : (k.failoverInvoked > 0 ? 'unknown' : '—');
     const exp = expiryFor(k.name);
     const basis = w ? `last ${n(w.sampleCount)} call${w.sampleCount === 1 ? '' : 's'}` : 'lifetime total';
     const note = k.failoverInvoked === 0
@@ -669,12 +680,12 @@ function upstreamCard(k) {
         ? sparkSvgFrom(upstreamRateTrend.series[k.name], css(cls === 'healthy' ? '--good' : cls === 'degraded' ? '--warn' : '--bad'))
         : '';
     const comp = upstreamComposition(w);
-    return `<div class="api-hcard ${cls}" title="${k.name} · ${k.domain}">
-        <div class="nm">${k.name}</div><div class="dm">${k.domain}</div>
+    return `<div class="api-hcard ${cls}" title="${esc(k.name)} · ${esc(k.domain)}">
+        <div class="nm">${esc(k.name)}</div><div class="dm">${esc(k.domain)}</div>
         <div class="mid"><span class="hpct">${pctv}%</span><span class="st">${lbl}</span></div>
         <div class="hbar"><i style="width:${pctv}%"></i></div>
         <div class="meta"><span>calls <b>${n(k.totalCalls)}</b></span><span>upstream fails <b>${n(k.failoverInvoked)}</b></span></div>
-        <div class="meta"><span>exception <b title="${top ? top.type : ''}">${exLine}</b></span></div>
+        <div class="meta"><span>exception <b title="${top ? esc(top.type) : ''}">${exLine}</b></span></div>
         ${comp}
         ${spark ? `<div class="uh-spark tip" data-tip="Windowed upstream-failure rate across recent dashboard refreshes">${spark}</div>` : ''}
         <div class="uh-note">${note}</div>
@@ -782,8 +793,8 @@ function renderInstances() {
         const hbCell = ls === 'LIVE'    ? '<span class="hb-badge live">● on</span>'
                      : ls === 'DOWN'    ? '<span class="hb-badge down">● down</span>'
                      :                    '<span class="hb-badge off">—</span>';
-        return `<tr data-id="${i.instanceId}" class="${i.instanceId === selectedInstance ? 'sel' : ''}">
-            <td><span class="inst-dot ${dotCls}" title="${dotTitle}"></span><span class="inst-id">${i.instanceId}</span></td>
+        return `<tr data-id="${esc(i.instanceId)}" class="${i.instanceId === selectedInstance ? 'sel' : ''}">
+            <td><span class="inst-dot ${dotCls}" title="${dotTitle}"></span><span class="inst-id">${esc(i.instanceId)}</span></td>
             <td class="r">${n(o.totalCalls)}</td>
             <td class="r">${pct(r.successRate)}</td>
             <td class="r">${pct(r.failoverRate)}</td>
@@ -859,7 +870,8 @@ async function fetchJson(path) {
     return res.json();
 }
 function showNotice(msg) {
-    document.getElementById('notice-slot').innerHTML = `<div class="notice">${msg}</div>`;
+    // msg embeds fetch/error text, which can carry a server-supplied response body.
+    document.getElementById('notice-slot').innerHTML = `<div class="notice">${esc(msg)}</div>`;
 }
 function clearNotice() { document.getElementById('notice-slot').innerHTML = ''; }
 function markUpdated() {
@@ -895,7 +907,9 @@ function applyRefresh() {
 
 // tabs
 function openTab(name) {
-    const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+    // CSS.escape: `name` reaches here from location.hash on first load, and an unescaped quote or
+    // bracket there makes this an invalid selector, so querySelector throws and page init stops.
+    const tab = document.querySelector(`.tab[data-tab="${CSS.escape(name)}"]`);
     if (!tab) return;
     activeView = name;
     document.querySelectorAll('.tab').forEach(x => {
@@ -937,6 +951,6 @@ if (refreshParam !== null && [...document.getElementById('refresh').options].som
 chartTheme();
 initApiSort();
 const hashTab = location.hash.slice(1);
-if (document.querySelector(`.tab[data-tab="${hashTab}"]`)) openTab(hashTab);
+if (hashTab && document.querySelector(`.tab[data-tab="${CSS.escape(hashTab)}"]`)) openTab(hashTab);
 else refreshActive();
 applyRefresh();

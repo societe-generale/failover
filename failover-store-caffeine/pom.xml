@@ -4,10 +4,13 @@
 
     <artifactId>failover-store-caffeine</artifactId>
     <packaging>jar</packaging>
+
+    <name>failover-store-caffeine</name>
+    <description>Caffeine in-process failover store</description>
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>
-        <version>3.0.0-SNAPSHOT</version>
+        <version>3.0.1-SNAPSHOT</version>
     </parent>
 
     <properties>

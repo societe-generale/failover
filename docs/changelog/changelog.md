@@ -10,6 +10,10 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ## [3.0.0-SNAPSHOT] — In Development
 
+!!! info "Upgrading from 2.x?"
+    See **[Migrating 2.x → 3.0](../getting-started/migration-3.0.md)** for the breaking changes that
+    need action, ordered by likelihood of affecting you.
+
 ### Changed
 
 - Upgraded to Spring Boot 4.x and Spring Cloud 2025.x
@@ -40,8 +44,27 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 - SPI Javadoc hardened with `@implSpec` contracts (`KeyGenerator`, `ExpiryPolicy`, `PayloadEnricher`,
   `RecoveredPayloadHandler`); `FailoverHandler.recoverAll` documented as an optional operation (audit I-09, I-11)
 - Build: corrected the stale `<scm><tag>` in the parent POM (`failover_1.1.0` → `HEAD`) (audit I-14)
+- Build: **Maven Central publishing migrated from OSSRH to the Central Portal.** The legacy
+  `s01.oss.sonatype.org` hosts are decommissioned and answer `HTTP 402`, so the EOL
+  `nexus-staging-maven-plugin` could no longer publish. Replaced with
+  `central-publishing-maven-plugin` (`publishingServerId=central`, `autoPublish=true`,
+  `waitUntil=published`); `<distributionManagement>` and the `maven-release-plugin`
+  `<stagingRepository>` are gone — the plugin's `extensions=true` owns the deploy target. Maintainers
+  must generate a Central Portal **user token** and store it as `CENTRAL_USERNAME` /
+  `CENTRAL_PASSWORD`; the retired OSSRH credentials do not authenticate against the Portal. The
+  GPG passphrase now reaches `maven-gpg-plugin` via `MAVEN_GPG_PASSPHRASE` (secret `GPG_PASSPHRASE`)
+  instead of `-Dgpg.passphrase=…`, keeping it out of the process argument list. See
+  [Release Management](../support/release-management.md)
 - Deserialization allowlist moved to the JDBC namespace — `failover.store.allowed-payload-classes` is now
   `failover.store.jdbc.allowed-payload-classes` (it only ever applied to the serializing JDBC store)
+- **`failover.store.jdbc.strict-allowlist` now defaults to `true`** (was `false`). An empty resolved
+  allowlist — no `@Failover` payload types discovered *and* nothing configured — denies all
+  deserialization instead of disabling the restriction and loading whatever class name a store row
+  carries. A major version is the point to stop shipping the fail-open path as the default. Zero-config
+  applications are unaffected (the allowlist is auto-derived from discovered payload packages and is
+  never empty); applications driving `FailoverStore` **directly**, outside any `@Failover` method, have
+  nothing to derive from and must now name their payload types in `allowed-payload-classes`. Setting the
+  flag back to `false` restores 2.x behaviour (ADR 60)
 - **Removed** `failover.dashboard.cluster.shared-store.jdbc.auto-ddl` — the dashboard's JDBC snapshot store
   (`failover-dashboard-snapshotstore-jdbc`) no longer creates or alters the `FAILOVER_DASHBOARD_SNAPSHOT` table;
   schema management is the consuming service's responsibility. See
@@ -166,6 +189,17 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Fixed
 
+- **`HeartbeatStoreInmemory` no longer grows without bound.** Every distinct instance id ever POSTed to
+  the heartbeat endpoint stayed resident for the life of the JVM — ordinary pod churn left one dead
+  entry per rolled instance forever. It now applies the same two bounds as `SnapshotStoreInmemory`:
+  entries not refreshed within `cluster.shared-store.instance-retention` (default `7d`) are dropped,
+  and a hard ceiling of 10 000 instances evicts the oldest heartbeat to admit a new one. Retention is
+  deliberately the *same* window the snapshot store retires on, so nothing still reachable from
+  `allInstances()` is ever discarded. The store now takes a `FailoverClock` rather than reading
+  `System.currentTimeMillis()` directly, so a co-located deployment ages heartbeats on the same clock
+  the rest of failover uses for expiry.
+- Dashboard `openTab` escapes the tab name before building its `querySelector`. A crafted
+  `#…` fragment produced an invalid selector, so `querySelector` threw and page initialisation stopped.
 - JDBC INSERT/UPDATE fallback no longer silently drops a write when a concurrent expiry delete
   removes the row between the failed INSERT and the follow-up UPDATE. A **single bounded retry**
   re-INSERTs the now-absent row; if every attempt loses the race the write is abandoned at `warn`
@@ -195,6 +229,27 @@ All notable changes are documented here. Follows [Keep a Changelog](https://keep
 
 ### Security
 
+- **Dashboard UI now HTML-escapes every server-supplied string it renders.** Referential names and
+  domains, store/policy bean ids, exception types, config values and — in `cluster.mode=shared-store` —
+  peer-pushed instance ids were interpolated raw into `innerHTML`. The CSP (`script-src 'self'`, no
+  `unsafe-inline`) already blocked script execution, but `style-src` permits inline styles, so injected
+  markup could still deface or spoof an operator console, and `data-id="${instanceId}"` was one
+  unescaped quote from an attribute breakout.
+- **Peer-ingest endpoints validate the instance id.** `POST …/api/cluster/snapshot` and
+  `…/api/cluster/heartbeat` took `@RequestBody` with no checks: a null id NPE'd into a `500`, and an
+  arbitrary-length, arbitrary-charset id became a stored map key and rendered table content. Both now
+  reject a missing, blank, over-long (>200 char) or non-conforming id with `400`, accepting only
+  letters, digits and the separators `. _ - : @ /`. A snapshot with no `summary` is rejected too — it
+  is dereferenced on every aggregation, so accepting it traded one `400` for a `500` on every
+  subsequent read.
+- Dashboard peer ingest now **fails fast when `failover.dashboard.cluster.snapshot.username` is set
+  without a `password`**. Both properties default to `""` and only `username` gated the Basic-auth
+  filter chain, so a password that silently resolved to empty (unmounted secret, unresolved
+  placeholder, typo'd env var) built an in-memory user whose encoded password was exactly `{noop}` —
+  `NoOpPasswordEncoder` matched an empty submitted password, so `Authorization: Basic base64("<user>:")`
+  authenticated and any caller who guessed the username could push forged snapshots and heartbeats
+  into the cluster view, while startup logged that ingest *was* secured. A blank `username` is
+  rejected for the same reason (`@ConditionalOnProperty` matches on presence, not on a real value).
 - Deserialization allowlist for stored payload classes — `JsonSerializer.toClass` rejects unknown
   classes (`FailoverStoreException`). Auto-populated from the packages of discovered `@Failover`
   payload types (secure by default); `failover.store.jdbc.allowed-payload-classes` is an additive override

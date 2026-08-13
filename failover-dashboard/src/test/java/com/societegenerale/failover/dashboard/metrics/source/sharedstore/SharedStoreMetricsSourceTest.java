@@ -29,8 +29,11 @@ import com.societegenerale.failover.observable.metrics.ExceptionStat;
 import com.societegenerale.failover.observable.metrics.InstanceMetrics;
 import com.societegenerale.failover.observable.metrics.MetricsKpis;
 import com.societegenerale.failover.dashboard.metrics.source.MetricsSource;
+import com.societegenerale.failover.core.clock.FailoverClock;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import static java.lang.System.currentTimeMillis;
@@ -314,7 +317,8 @@ class SharedStoreMetricsSourceTest {
         SnapshotStore store = stubStore(
                 snapshot("country", 100, 0, 0, 0, List.of()),
                 snapshot("country", 50, 0, 0, 0, List.of()));
-        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(clock::get);
+        FailoverClock failoverClock = () -> Instant.ofEpochMilli(clock.get());
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(Duration.ZERO, failoverClock);
         heartbeatStore.record("instance-1"); // recorded at t=1000; will be stale when liveness check runs
         clock.set(40_000);                   // advance 39s — exceeds 30s window → instance-1 DOWN
         heartbeatStore.record("instance-0"); // fresh at t=40000
@@ -334,7 +338,8 @@ class SharedStoreMetricsSourceTest {
         SnapshotStore store = stubStore(
                 snapshot("country", 10, 0, 0, 0, List.of()),
                 snapshot("country", 10, 0, 0, 0, List.of()));
-        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(clock::get);
+        FailoverClock failoverClock = () -> Instant.ofEpochMilli(clock.get());
+        HeartbeatStoreInmemory heartbeatStore = new HeartbeatStoreInmemory(Duration.ZERO, failoverClock);
         heartbeatStore.record("instance-1"); // recorded at t=1000; will be stale
         clock.set(40_000);                   // advance past 30s window → instance-1 DOWN
         heartbeatStore.record("instance-0"); // fresh at t=40000

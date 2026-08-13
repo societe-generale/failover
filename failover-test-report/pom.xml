@@ -7,8 +7,26 @@
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>
-        <version>3.0.0-SNAPSHOT</version>
+        <version>3.0.1-SNAPSHOT</version>
     </parent>
+
+    <properties>
+        <!--
+          This module is a build-time coverage aggregator, never a consumable artifact — its jar is
+          filled by dependency:unpack-dependencies with a copy of every other module's classes purely
+          so the JaCoCo cross-module gate has something to analyse. It must not reach any repository.
+
+          Under the release profile the Central Portal upload is what actually needs to exclude it, and
+          that is done by <excludeArtifacts> on central-publishing-maven-plugin in the parent POM — the
+          plugin does not honour maven.deploy.skip. Note also that `skipPublishing` must NOT be set
+          here: the publish mojo binds to the `deploy` phase per module and the upload fires on the last
+          reactor module, which is this one, so skipping it would skip the entire release.
+
+          This property covers the other path — a plain `mvn deploy` to some other repository, without
+          the makeRelease profile.
+        -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
 
     <dependencies>
         <dependency>
