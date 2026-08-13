@@ -5,6 +5,9 @@
     <artifactId>failover-store-jdbc</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-store-jdbc</name>
+    <description>JDBC failover store for H2, PostgreSQL, MySQL, MariaDB and Oracle</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

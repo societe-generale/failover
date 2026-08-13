@@ -6,6 +6,9 @@
     <artifactId>failover-observable-metrics</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-observable-metrics</name>
+    <description>Transport-neutral metrics model shared by the metrics collectors and the dashboard</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

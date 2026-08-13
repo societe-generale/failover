@@ -6,6 +6,9 @@
     <artifactId>failover-store-multitenant</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-store-multitenant</name>
+    <description>Per-tenant table-prefix and schema routing for failover stores</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

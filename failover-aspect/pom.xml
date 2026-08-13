@@ -5,6 +5,9 @@
     <artifactId>failover-aspect</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-aspect</name>
+    <description>Spring AOP interceptor for the Failover annotation</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

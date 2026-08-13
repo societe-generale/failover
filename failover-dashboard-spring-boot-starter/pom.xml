@@ -5,6 +5,9 @@
     <artifactId>failover-dashboard-spring-boot-starter</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-dashboard-spring-boot-starter</name>
+    <description>Single dependency consumers add to enable the failover dashboard</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

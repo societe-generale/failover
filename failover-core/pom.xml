@@ -5,6 +5,9 @@
     <artifactId>failover-core</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-core</name>
+    <description>Core failover interfaces and default implementations: handler, store contract, key/expiry/payload</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

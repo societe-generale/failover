@@ -5,6 +5,9 @@
     <artifactId>failover-execution-resilience</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-execution-resilience</name>
+    <description>Resilience4j circuit-breaker wrapping upstream calls</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

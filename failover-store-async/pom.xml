@@ -5,6 +5,9 @@
     <artifactId>failover-store-async</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-store-async</name>
+    <description>Non-blocking failover store write decorator using a virtual-thread executor</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

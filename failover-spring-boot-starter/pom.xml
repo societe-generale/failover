@@ -5,6 +5,9 @@
     <artifactId>failover-spring-boot-starter</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-spring-boot-starter</name>
+    <description>Single dependency consumers add to enable failover</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

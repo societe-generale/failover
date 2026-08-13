@@ -4,6 +4,9 @@
 
     <artifactId>failover-store-caffeine</artifactId>
     <packaging>jar</packaging>
+
+    <name>failover-store-caffeine</name>
+    <description>Caffeine in-process failover store</description>
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

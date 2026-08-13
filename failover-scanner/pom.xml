@@ -6,6 +6,9 @@
     <artifactId>failover-scanner</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-scanner</name>
+    <description>Startup scanner that walks the Spring context for all Failover-annotated methods</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

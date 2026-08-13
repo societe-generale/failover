@@ -5,6 +5,9 @@
     <artifactId>failover-domain</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-domain</name>
+    <description>Failover annotation, Referential, ReferentialAware, and Metadata types</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

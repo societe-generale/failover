@@ -6,6 +6,9 @@
     <artifactId>failover-observable-micrometer</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-observable-micrometer</name>
+    <description>Micrometer counters and health indicator for failover</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

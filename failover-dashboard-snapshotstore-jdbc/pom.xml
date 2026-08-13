@@ -5,6 +5,9 @@
     <artifactId>failover-dashboard-snapshotstore-jdbc</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-dashboard-snapshotstore-jdbc</name>
+    <description>Optional durable JDBC backing for the dashboard's shared-store tier</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

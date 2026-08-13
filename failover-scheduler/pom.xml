@@ -5,6 +5,9 @@
     <artifactId>failover-scheduler</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-scheduler</name>
+    <description>Scheduled expiry cleanup and daily observable report jobs</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

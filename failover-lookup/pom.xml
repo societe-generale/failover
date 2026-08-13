@@ -5,6 +5,9 @@
     <artifactId>failover-lookup</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-lookup</name>
+    <description>Spring BeanFactory-based lookups for named KeyGenerator, ExpiryPolicy and PayloadSplitter beans</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

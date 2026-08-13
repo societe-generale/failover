@@ -5,6 +5,9 @@
     <artifactId>failover-store-inmemory</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-store-inmemory</name>
+    <description>ConcurrentHashMap-backed failover store for dev and test</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

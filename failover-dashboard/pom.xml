@@ -5,6 +5,9 @@
     <artifactId>failover-dashboard</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-dashboard</name>
+    <description>Opt-in, secure-by-default embedded observability UI and read-only JSON API</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>

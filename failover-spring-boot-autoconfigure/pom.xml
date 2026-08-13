@@ -5,6 +5,9 @@
     <artifactId>failover-spring-boot-autoconfigure</artifactId>
     <packaging>jar</packaging>
 
+    <name>failover-spring-boot-autoconfigure</name>
+    <description>Zero-config Spring Boot auto-configuration for failover</description>
+
     <parent>
         <artifactId>failover</artifactId>
         <groupId>com.societegenerale.failover</groupId>
